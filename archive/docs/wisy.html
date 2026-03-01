@@ -657,7 +657,196 @@ createButton(lgData.client, {
   parentData: lgData,
 });
 
-wm.repaint();
+// ── 3D Wireframe Cube Window ──
+const cubeAngle = { x: 0, y: 0 };
+const CUBE_VERTS = [
+  [-1,-1,-1], [1,-1,-1], [1,1,-1], [-1,1,-1],
+  [-1,-1, 1], [1,-1, 1], [1,1, 1], [-1,1, 1]
+];
+const CUBE_EDGES = [
+  [0,1],[1,2],[2,3],[3,0],  // back face
+  [4,5],[5,6],[6,7],[7,4],  // front face
+  [0,4],[1,5],[2,6],[3,7]   // connecting edges
+];
+
+const cubeWnd = createWindow({
+  x: 420, y: 300, w: 240, h: 200,
+  props: FP_TITLE | FP_SIZE | FP_ZOOMBOX | FP_TOFRONT | FP_KILL,
+  clprops: FP_3DBORDER | FP_CLEAR,
+  title: '3D Cube',
+  ttlcolor: 4,
+  clcolor: 0,
+});
+
+const cubeClient = cubeWnd.objdata.client;
+cubeClient.objproc = function(msg, data, sx, sy) {
+  if (msg.id === MSG_PAINT) {
+    const r = data.r;
+    const w = r.region.cx, h = r.region.cy;
+    grFilledBox(sx, sy, sx+w-1, sy+h-1, 0);
+    if (data.props & FP_3DBORDER) grBox3d(sx, sy, sx+w-1, sy+h-1, 8, 8, 15, 15, 1);
+
+    const cx = w / 2, cy = h / 2;
+    const scale = Math.min(w, h) * 0.45;
+    const cosX = Math.cos(cubeAngle.x), sinX = Math.sin(cubeAngle.x);
+    const cosY = Math.cos(cubeAngle.y), sinY = Math.sin(cubeAngle.y);
+
+    const projected = CUBE_VERTS.map(([x, y, z]) => {
+      // Rotate Y then X
+      const x1 = x * cosY - z * sinY;
+      const z1 = x * sinY + z * cosY;
+      const y1 = y * cosX - z1 * sinX;
+      const z2 = y * sinX + z1 * cosX;
+      const d = 3.5 + z2;
+      return [cx + (x1 / d) * scale * 2, cy + (y1 / d) * scale * 2];
+    });
+
+    for (const [a, b] of CUBE_EDGES) {
+      grLine(sx + projected[a][0] | 0, sy + projected[a][1] | 0,
+             sx + projected[b][0] | 0, sy + projected[b][1] | 0, 10);
+    }
+  }
+};
+
+// ── Bouncing Line Window ──
+const bounce = {
+  x1: 30, y1: 20, x2: 80, y2: 60,
+  dx1: 2.3, dy1: 1.7, dx2: -1.9, dy2: 2.1,
+  trails: [], maxTrails: 40, hue: 0,
+};
+
+const bounceWnd = createWindow({
+  x: 30, y: 320, w: 280, h: 220,
+  props: FP_TITLE | FP_SIZE | FP_ZOOMBOX | FP_TOFRONT | FP_KILL,
+  clprops: FP_3DBORDER | FP_CLEAR,
+  title: 'Bouncing Lines',
+  ttlcolor: 5,
+  clcolor: 0,
+});
+
+const bounceClient = bounceWnd.objdata.client;
+bounceClient.objproc = function(msg, data, sx, sy) {
+  if (msg.id === MSG_PAINT) {
+    const r = data.r;
+    const w = r.region.cx, h = r.region.cy;
+    grFilledBox(sx, sy, sx+w-1, sy+h-1, 0);
+    if (data.props & FP_3DBORDER) grBox3d(sx, sy, sx+w-1, sy+h-1, 8, 8, 15, 15, 1);
+
+    // Draw trails oldest to newest, fading out
+    for (let i = 0; i < bounce.trails.length; i++) {
+      const t = bounce.trails[i];
+      const fade = i / bounce.trails.length;
+      // Cycle through VGA colors 9-14 (bright blue, green, cyan, red, magenta, yellow)
+      const col = 9 + (t.col % 6);
+      // Only draw if visible (fade > threshold)
+      if (fade > 0.15) {
+        ctx.globalAlpha = fade;
+        grLine(sx + t.x1 | 0, sy + t.y1 | 0, sx + t.x2 | 0, sy + t.y2 | 0, col);
+      }
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Draw current line bright white
+    grLine(sx + bounce.x1 | 0, sy + bounce.y1 | 0,
+           sx + bounce.x2 | 0, sy + bounce.y2 | 0, 15);
+  }
+};
+
+function tickBounce() {
+  const cl = bounceClient;
+  const w = cl.region.cx - 4, h = cl.region.cy - 4;
+  if (w < 10 || h < 10) return;
+
+  bounce.x1 += bounce.dx1; bounce.y1 += bounce.dy1;
+  bounce.x2 += bounce.dx2; bounce.y2 += bounce.dy2;
+
+  if (bounce.x1 <= 2 || bounce.x1 >= w) { bounce.dx1 = -bounce.dx1; bounce.x1 = Math.max(2, Math.min(w, bounce.x1)); }
+  if (bounce.y1 <= 2 || bounce.y1 >= h) { bounce.dy1 = -bounce.dy1; bounce.y1 = Math.max(2, Math.min(h, bounce.y1)); }
+  if (bounce.x2 <= 2 || bounce.x2 >= w) { bounce.dx2 = -bounce.dx2; bounce.x2 = Math.max(2, Math.min(w, bounce.x2)); }
+  if (bounce.y2 <= 2 || bounce.y2 >= h) { bounce.dy2 = -bounce.dy2; bounce.y2 = Math.max(2, Math.min(h, bounce.y2)); }
+
+  bounce.trails.push({ x1: bounce.x1, y1: bounce.y1, x2: bounce.x2, y2: bounce.y2, col: bounce.hue });
+  if (bounce.trails.length > bounce.maxTrails) bounce.trails.shift();
+  bounce.hue++;
+}
+
+// ── Starfield Window ──
+const stars = [];
+const NUM_STARS = 120;
+for (let i = 0; i < NUM_STARS; i++) {
+  stars.push({
+    x: (Math.random() - 0.5) * 2,
+    y: (Math.random() - 0.5) * 2,
+    z: Math.random() * 4,
+  });
+}
+
+const starWnd = createWindow({
+  x: 500, y: 50, w: 260, h: 220,
+  props: FP_TITLE | FP_SIZE | FP_ZOOMBOX | FP_TOFRONT | FP_KILL,
+  clprops: FP_3DBORDER | FP_CLEAR,
+  title: 'Starfield',
+  ttlcolor: 9,
+  clcolor: 0,
+});
+
+const starClient = starWnd.objdata.client;
+starClient.objproc = function(msg, data, sx, sy) {
+  if (msg.id === MSG_PAINT) {
+    const r = data.r;
+    const w = r.region.cx, h = r.region.cy;
+    grFilledBox(sx, sy, sx+w-1, sy+h-1, 0);
+    if (data.props & FP_3DBORDER) grBox3d(sx, sy, sx+w-1, sy+h-1, 8, 8, 15, 15, 1);
+
+    const cx = w / 2, cy = h / 2;
+    for (const s of stars) {
+      const px = cx + (s.x / s.z) * w * 0.8;
+      const py = cy + (s.y / s.z) * h * 0.8;
+      // Previous position for streak
+      const pz = s.z + 0.06;
+      const ox = cx + (s.x / pz) * w * 0.8;
+      const oy = cy + (s.y / pz) * h * 0.8;
+
+      if (px >= 0 && px < w && py >= 0 && py < h) {
+        // Brightness based on depth — closer = brighter
+        const brightness = 1 - (s.z / 4);
+        let col;
+        if (brightness > 0.7) col = 15;       // white
+        else if (brightness > 0.4) col = 7;   // light gray
+        else col = 8;                          // dark gray
+
+        // Draw streak line for close stars, dot for far ones
+        if (s.z < 1.5) {
+          grLine(sx + ox | 0, sy + oy | 0, sx + px | 0, sy + py | 0, col);
+        } else {
+          ctx.fillStyle = PAL[col];
+          ctx.fillRect((sx + px | 0), (sy + py | 0), 1, 1);
+        }
+      }
+    }
+  }
+};
+
+function tickStars() {
+  for (const s of stars) {
+    s.z -= 0.03;
+    if (s.z <= 0.05) {
+      s.x = (Math.random() - 0.5) * 2;
+      s.y = (Math.random() - 0.5) * 2;
+      s.z = 3.5 + Math.random() * 0.5;
+    }
+  }
+}
+
+// Animation loop — ticks all animated windows and repaints
+(function animate() {
+  cubeAngle.x += 0.02;
+  cubeAngle.y += 0.03;
+  tickBounce();
+  tickStars();
+  wm.repaint();
+  requestAnimationFrame(animate);
+})();
 </script>
 </body>
 </html>
