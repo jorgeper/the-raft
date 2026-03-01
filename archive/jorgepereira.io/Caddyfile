@@ -2,3 +2,8 @@ jorgepereira.io {
     root * /srv
     file_server
 }
+
+:80 {
+    root * /srv
+    file_server
+}
