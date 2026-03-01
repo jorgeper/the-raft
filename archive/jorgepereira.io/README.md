@@ -92,3 +92,52 @@ To redeploy after pushing a new image, pull the latest image and restart the con
 ## HTTPS
 
 HTTPS is handled automatically by Caddy via Let's Encrypt. Make sure your domain's DNS A record points to your Hostinger VPS IP address before deploying. Caddy will obtain and renew certificates automatically.
+
+## How it all works
+
+The HTML files are the actual website. They get packaged into a Docker container image along with Caddy (the web server). From there, the image can go two ways: run locally for testing, or pushed to a registry and deployed to the VPS for production.
+
+```
+                        ┌─────────────────┐
+                        │   HTML files +   │
+                        │   Caddyfile +    │
+                        │   Dockerfile     │
+                        └────────┬────────┘
+                                 │
+                           docker build
+                                 │
+                                 ▼
+                        ┌─────────────────┐
+                        │  Docker Image   │
+                        │ jorgepereira-io │
+                        └───────┬─┬───────┘
+                                │ │
+                 ┌──────────────┘ └──────────────┐
+                 │                                │
+          LOCAL TESTING                    PRODUCTION
+                 │                                │
+          docker run                     git push to main
+          -p 3000:80                              │
+                 │                                ▼
+                 ▼                   ┌──────────────────────┐
+        ┌─────────────────┐         │   GitHub Actions      │
+        │ localhost:3000  │         │   builds & pushes to  │
+        │ (HTTP only)     │         │   GitHub Container    │
+        └─────────────────┘         │   Registry (ghcr.io)  │
+                                    └──────────┬───────────┘
+                                               │
+                                          docker pull
+                                               │
+                                               ▼
+                                    ┌──────────────────────┐
+                                    │   Hostinger VPS       │
+                                    │   ports 80 + 443      │
+                                    │   Caddy auto-HTTPS    │
+                                    │                       │
+                                    │   jorgepereira.io     │
+                                    └──────────────────────┘
+```
+
+**Local flow:** Edit HTML → `docker build` → `docker run` → test at `localhost:3000`. No registry involved, the image stays on your machine.
+
+**Production flow:** Edit HTML → `git push` → GitHub Actions builds the image and pushes it to `ghcr.io` → pull the new image on the Hostinger VPS → restart the container. Caddy handles HTTPS automatically.
