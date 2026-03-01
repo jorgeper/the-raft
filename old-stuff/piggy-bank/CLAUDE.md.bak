@@ -1,0 +1,83 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+PiggyBank is a native iOS application built with Swift and SwiftUI. The project is currently in its initial state with basic Xcode template structure.
+
+## Development Commands
+
+### Building
+```bash
+# Build for iOS Simulator
+xcodebuild -project PiggyBank.xcodeproj -scheme PiggyBank -configuration Debug -sdk iphonesimulator
+
+# Build for device (requires development team configuration)
+xcodebuild -project PiggyBank.xcodeproj -scheme PiggyBank -configuration Release -sdk iphoneos
+```
+
+### Testing
+```bash
+# Run all tests
+xcodebuild test -project PiggyBank.xcodeproj -scheme PiggyBank -destination 'platform=iOS Simulator,name=iPhone 15'
+
+# Run unit tests only
+xcodebuild test -project PiggyBank.xcodeproj -scheme PiggyBank -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:PiggyBankTests
+
+# Run UI tests only
+xcodebuild test -project PiggyBank.xcodeproj -scheme PiggyBank -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:PiggyBankUITests
+```
+
+### Cleaning
+```bash
+# Clean build artifacts
+xcodebuild clean -project PiggyBank.xcodeproj -scheme PiggyBank
+```
+
+### Simulator Management
+```bash
+# List available simulators
+xcrun simctl list devices
+
+# Boot a specific simulator
+xcrun simctl boot "iPhone 15"
+
+# Install app on simulator
+xcrun simctl install booted build/Debug-iphonesimulator/PiggyBank.app
+```
+
+## Architecture
+
+### Project Structure
+- **PiggyBank/**: Main application source code
+  - `PiggyBankApp.swift`: App entry point with @main attribute
+  - `ContentView.swift`: Root SwiftUI view
+  - `Assets.xcassets/`: App resources (icons, colors, images)
+- **PiggyBankTests/**: Unit tests using Swift Testing framework
+- **PiggyBankUITests/**: UI automation tests
+
+### Technology Stack
+- **Language**: Swift 5.0
+- **UI Framework**: SwiftUI
+- **Testing**: Swift Testing framework (modern replacement for XCTest)
+- **Minimum iOS Version**: 18.5
+- **Supported Devices**: iPhone and iPad (Universal)
+
+### Key Technical Details
+- Bundle Identifier: `test.PiggyBank`
+- No external dependencies currently
+- No development team configured (needed for device testing)
+- Uses modern Swift Testing framework (`import Testing`) instead of XCTest
+
+## Important Notes
+
+1. **Xcode Required**: This is a native iOS project that requires Xcode for development. Most development tasks are typically done through Xcode's GUI.
+
+2. **Development Team**: To run on physical devices or distribute the app, you'll need to configure a development team in the project settings.
+
+3. **Swift Testing**: The project uses Apple's new Swift Testing framework. When writing tests, use `@Test` attribute and structured concurrency patterns.
+
+4. **No External Dependencies**: The project currently has no package manager configuration (no Package.swift, Podfile, or Cartfile).
+
+5. **Initial State**: This is a fresh project with only the default Xcode template. All features need to be implemented from scratch.

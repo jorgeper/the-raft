@@ -1,0 +1,89 @@
+[
+    {
+        "id": "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
+        "name": "Xabi",
+        "balance": 47.25,
+        "avatarImageName": "TestData/xabi-avatar",
+        "transactions": [
+            {
+                "id": "11A2B3C4-D5E6-7890-ABCD-EF1234567890",
+                "date": "2025-07-10T10:00:00Z",
+                "amount": 20.00,
+                "description": "Birthday money from grandma",
+                "type": "deposit"
+            },
+            {
+                "id": "22B3C4D5-E6F7-8901-BCDE-F23456789012",
+                "date": "2025-07-08T14:30:00Z",
+                "amount": 5.00,
+                "description": "Toy car purchase",
+                "type": "withdrawal"
+            },
+            {
+                "id": "33C4D5E6-F7A8-9012-CDEF-345678901234",
+                "date": "2025-07-05T09:15:00Z",
+                "amount": 15.00,
+                "description": "Allowance for chores",
+                "type": "deposit"
+            }
+        ]
+    },
+    {
+        "id": "B2C3D4E5-F6A7-8901-BCDE-F23456789012",
+        "name": "Yago",
+        "balance": 132.50,
+        "avatarImageName": "TestData/yago-avatar",
+        "transactions": [
+            {
+                "id": "44D5E6F7-A8B9-0123-DEF1-456789012345",
+                "date": "2025-07-12T16:45:00Z",
+                "amount": 50.00,
+                "description": "Saved allowance for 2 months",
+                "type": "deposit"
+            },
+            {
+                "id": "55E6F7A8-B9C0-1234-EF12-567890123456",
+                "date": "2025-07-09T11:20:00Z",
+                "amount": 12.50,
+                "description": "Video game purchase",
+                "type": "withdrawal"
+            },
+            {
+                "id": "66F7A8B9-C0D1-2345-F123-678901234567",
+                "date": "2025-07-03T15:00:00Z",
+                "amount": 25.00,
+                "description": "Good grades reward",
+                "type": "deposit"
+            }
+        ]
+    },
+    {
+        "id": "C3D4E5F6-A7B8-9012-CDEF-345678901234",
+        "name": "Carmen",
+        "balance": 89.75,
+        "avatarImageName": "TestData/carmen-avatar",
+        "transactions": [
+            {
+                "id": "77A8B9C0-D1E2-3456-1234-789012345678",
+                "date": "2025-07-11T13:30:00Z",
+                "amount": 30.00,
+                "description": "Art supplies fund from mom",
+                "type": "deposit"
+            },
+            {
+                "id": "88B9C0D1-E2F3-4567-1234-890123456789",
+                "date": "2025-07-07T10:45:00Z",
+                "amount": 8.25,
+                "description": "Craft store purchase",
+                "type": "withdrawal"
+            },
+            {
+                "id": "99C0D1E2-F3A4-5678-1234-901234567890",
+                "date": "2025-07-01T12:00:00Z",
+                "amount": 40.00,
+                "description": "Tooth fairy collection",
+                "type": "deposit"
+            }
+        ]
+    }
+]
