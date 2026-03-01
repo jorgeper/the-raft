@@ -1,0 +1,4 @@
+jorgepereira.io {
+    root * /srv
+    file_server
+}

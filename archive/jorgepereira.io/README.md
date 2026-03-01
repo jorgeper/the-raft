@@ -56,12 +56,16 @@ In the Hostinger Docker Manager, create a container with these settings:
 | **Container name** | `jorgepereira-io` |
 | **Image** | `ghcr.io/jorgeper/jorgepereira-io:latest` |
 | **Port** | `80:80/tcp` |
+| **Port** | `443:443/tcp` |
+| **Volume** | `caddy_data:/data` |
 | **Restart policy** | `unless-stopped` |
 
-Leave **Volume** and **Container dependency** empty.
+Leave **Container dependency** empty.
+
+The `caddy_data` volume stores the Let's Encrypt certificates so they persist across restarts.
 
 To redeploy after pushing a new image, pull the latest image and restart the container from Hostinger's Docker Manager.
 
 ## HTTPS
 
-To add HTTPS, put a reverse proxy like Caddy or nginx-proxy with Let's Encrypt in front of the container.
+HTTPS is handled automatically by Caddy via Let's Encrypt. Make sure your domain's DNS A record points to your Hostinger VPS IP address before deploying. Caddy will obtain and renew certificates automatically.
