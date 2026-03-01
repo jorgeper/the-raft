@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demos — JorgePereira.io</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@200;300;400&display=swap');
+
+    :root {
+      --bg: #f4f2ef;
+      --warm: #2a2a3a;
+      --warm-dim: rgba(42, 42, 58, 0.35);
+      --warm-ghost: rgba(42, 42, 58, 0.08);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--warm);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+    }
+
+    /* ── Atmosphere layers ── */
+
+    .vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background: radial-gradient(ellipse at 50% 42%, transparent 30%, rgba(244, 242, 239, 0.7) 100%);
+    }
+
+    .ambient {
+      position: fixed;
+      top: 18%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(600px, 80vw);
+      height: 280px;
+      background: radial-gradient(ellipse, rgba(110, 60, 150, 0.035), transparent 70%);
+      z-index: 2;
+      pointer-events: none;
+      opacity: 0;
+      animation: fadeIn 4s ease 0.5s forwards;
+    }
+
+    /* ── Content ── */
+
+    .content {
+      position: relative;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 8vh 2rem 4rem;
+    }
+
+    /* Name wrapper — hosts the light sweep */
+    .name-wrap {
+      position: relative;
+      overflow: hidden;
+      padding: 0.15em 0.6em;
+    }
+
+    .name-wrap::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -80%;
+      width: 45%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(0,0,0,0.04), transparent);
+      opacity: 0;
+      animation: sweep 2.8s ease-in-out 2.2s forwards;
+    }
+
+    @keyframes sweep {
+      0%   { left: -80%; opacity: 1; }
+      100% { left: 200%; opacity: 0; }
+    }
+
+    /* Name — gradient shimmer text */
+    .name {
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 200;
+      font-size: clamp(1.8rem, 5vw, 3.5rem);
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      line-height: 1.1;
+      background: linear-gradient(
+        90deg,
+        #3a3a4e 0%, #1a1a2e 14%, #2a2a3e 28%,
+        #1a1a2e 48%, #3a3a4e 62%, #1a1a2e 78%, #3a3a4e 100%
+      );
+      background-size: 300% 100%;
+      background-position: 150% 0;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      opacity: 0;
+      animation:
+        fadeUp 2.4s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards,
+        shimmer 10s ease-in-out 3s infinite alternate;
+      text-decoration: none;
+    }
+
+    .name a {
+      color: inherit;
+      text-decoration: none;
+      -webkit-text-fill-color: inherit;
+    }
+
+    /* ── Body text ── */
+
+    .prose {
+      max-width: 580px;
+      margin-top: 4rem;
+      font-weight: 300;
+      font-size: clamp(0.95rem, 2vw, 1.1rem);
+      line-height: 1.75;
+      color: var(--warm-dim);
+      text-align: left;
+      opacity: 0;
+      animation: fadeUp 2s cubic-bezier(0.16, 1, 0.3, 1) 0.8s forwards;
+    }
+
+    .prose p + p {
+      margin-top: 1.2em;
+    }
+
+    /* ── Demo links ── */
+
+    .demo-list {
+      list-style: none;
+      margin-top: 2.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      width: 100%;
+      max-width: 580px;
+      opacity: 0;
+      animation: fadeUp 2s cubic-bezier(0.16, 1, 0.3, 1) 1.2s forwards;
+    }
+
+    .demo-list a {
+      display: block;
+      padding: 1.2rem 1.6rem;
+      border: 1px solid var(--warm-ghost);
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--warm);
+      font-weight: 300;
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+      transition: border-color 0.3s, background 0.3s;
+    }
+
+    .demo-list a:hover {
+      border-color: var(--warm-dim);
+      background: rgba(42, 42, 58, 0.03);
+    }
+
+    .demo-list .demo-title {
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+    }
+
+    .demo-list .demo-desc {
+      margin-top: 0.3rem;
+      font-size: 0.88rem;
+      color: var(--warm-dim);
+    }
+
+    /* ── Back link ── */
+
+    .back {
+      margin-top: 3rem;
+      opacity: 0;
+      animation: fadeUp 2s cubic-bezier(0.16, 1, 0.3, 1) 1.5s forwards;
+    }
+
+    .back a {
+      color: var(--warm-dim);
+      text-decoration: none;
+      font-weight: 300;
+      font-size: 0.9rem;
+      letter-spacing: 0.08em;
+      transition: color 0.3s;
+    }
+
+    .back a:hover {
+      color: var(--warm);
+    }
+
+    /* ── Keyframes ── */
+
+    @keyframes shimmer {
+      to { background-position: -50% 0; }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(22px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="cosmos"></canvas>
+  <div class="vignette"></div>
+  <div class="ambient"></div>
+
+  <div class="content">
+    <div class="name-wrap">
+      <h1 class="name">Demos</h1>
+    </div>
+
+    <div class="prose">
+      <p>These are some old demos from code I wrote back in the 90s, when I was completely obsessed with windowing systems. I spent countless hours building text-mode and graphical window managers in Turbo C and C++ on DOS — draggable windows, resizable borders, buttons, the whole works.</p>
+      <p>I recently cross-compiled the original C source into JavaScript using vibe coding — letting an LLM translate the old Turbo C and GRX routines into Canvas2D, staying faithful to the original logic and pixel-level rendering.</p>
+    </div>
+
+    <ul class="demo-list">
+      <li>
+        <a href="wind.html">
+          <div class="demo-title">Wind</div>
+          <div class="demo-desc">Text-mode windowing system (August 1995) — 80×25 DOS console with draggable, resizable windows</div>
+        </a>
+      </li>
+      <li>
+        <a href="wisy.html">
+          <div class="demo-title">Wisy</div>
+          <div class="demo-desc">Graphical windowing system (~1996) — VGA-style GUI with windows, buttons, and mouse interaction</div>
+        </a>
+      </li>
+    </ul>
+
+    <div class="back">
+      <a href="index.html">← Back</a>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('cosmos');
+    const ctx = canvas.getContext('2d');
+    let W, H;
+
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+
+    /* ── Background nebula wisps (centered on title area) ── */
+    const BG_PALETTE = [
+      [200, 50, 110],  [220, 60, 135], [25, 155, 210],
+      [40, 110, 190],  [115, 40, 185], [75, 55, 170],
+      [170, 35, 90],   [30, 80, 155],
+    ];
+
+    class Wisp {
+      constructor() { this.reset(true); }
+
+      reset(init) {
+        const cx = W / 2, cy = H * 0.1;
+        this.x = cx + (Math.random() - 0.5) * W * 0.45;
+        this.y = cy + (Math.random() - 0.5) * H * 0.14;
+        this.radius = 80 + Math.random() * 180;
+        this.life = init ? Math.random() * 600 : 0;
+        this.maxLife = 420 + Math.random() * 480;
+        this.vx = (Math.random() - 0.5) * 0.18;
+        this.vy = (Math.random() - 0.5) * 0.06;
+        this.angle = Math.random() * Math.PI * 2;
+        this.aSpeed = 0.0018 + Math.random() * 0.004;
+        this.color = BG_PALETTE[Math.floor(Math.random() * BG_PALETTE.length)];
+        this.baseA = 0.038 + Math.random() * 0.055;
+      }
+
+      update() {
+        this.life++;
+        if (this.life > this.maxLife) { this.reset(false); return; }
+        this.angle += this.aSpeed;
+        this.x += this.vx + Math.sin(this.angle) * 0.2;
+        this.y += this.vy + Math.cos(this.angle * 0.7) * 0.08;
+        this.radius += 0.06;
+      }
+
+      draw() {
+        const p = this.life / this.maxLife;
+        let a = this.baseA;
+        if (p < 0.15)     a *= p / 0.15;
+        else if (p > 0.6) a *= (1 - p) / 0.4;
+
+        const [r, g, b] = this.color;
+        const rad = this.radius;
+        const gr = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, rad);
+        gr.addColorStop(0,    `rgba(${r},${g},${b},${a * 2.8})`);
+        gr.addColorStop(0.25, `rgba(${r},${g},${b},${a * 1.6})`);
+        gr.addColorStop(0.6,  `rgba(${r},${g},${b},${a * 0.4})`);
+        gr.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+        ctx.fillStyle = gr;
+        ctx.fillRect(this.x - rad, this.y - rad, rad * 2, rad * 2);
+      }
+    }
+
+    /* ── Init ── */
+    resize();
+    window.addEventListener('resize', resize);
+
+    const wisps = Array.from({ length: 14 }, () => new Wisp());
+
+    /* ── Render ── */
+    function render() {
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'lighter';
+
+      for (const w of wisps) {
+        w.update();
+        w.draw();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+      requestAnimationFrame(render);
+    }
+
+    render();
+  </script>
+</body>
+</html>
