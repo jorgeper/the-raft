@@ -673,7 +673,7 @@ const cubeWnd = createWindow({
   x: 420, y: 300, w: 240, h: 200,
   props: FP_TITLE | FP_SIZE | FP_ZOOMBOX | FP_TOFRONT | FP_KILL,
   clprops: FP_3DBORDER | FP_CLEAR,
-  title: '3D Cube',
+  title: 'Cubo 3D',
   ttlcolor: 4,
   clcolor: 0,
 });
@@ -719,7 +719,7 @@ const bounceWnd = createWindow({
   x: 30, y: 320, w: 280, h: 220,
   props: FP_TITLE | FP_SIZE | FP_ZOOMBOX | FP_TOFRONT | FP_KILL,
   clprops: FP_3DBORDER | FP_CLEAR,
-  title: 'Bouncing Lines',
+  title: 'Lineas Rebotando',
   ttlcolor: 5,
   clcolor: 0,
 });
@@ -732,19 +732,16 @@ bounceClient.objproc = function(msg, data, sx, sy) {
     grFilledBox(sx, sy, sx+w-1, sy+h-1, 0);
     if (data.props & FP_3DBORDER) grBox3d(sx, sy, sx+w-1, sy+h-1, 8, 8, 15, 15, 1);
 
-    // Draw trails oldest to newest, fading out
+    // Draw trails oldest to newest, fading from dark to light gray
     for (let i = 0; i < bounce.trails.length; i++) {
-      const t = bounce.trails[i];
       const fade = i / bounce.trails.length;
-      // Cycle through VGA colors 9-14 (bright blue, green, cyan, red, magenta, yellow)
-      const col = 9 + (t.col % 6);
-      // Only draw if visible (fade > threshold)
-      if (fade > 0.15) {
-        ctx.globalAlpha = fade;
-        grLine(sx + t.x1 | 0, sy + t.y1 | 0, sx + t.x2 | 0, sy + t.y2 | 0, col);
+      if (fade > 0.1) {
+        const gray = Math.floor(40 + fade * 180);
+        const col = `rgb(${gray},${gray},${gray})`;
+        grLine(sx + bounce.trails[i].x1 | 0, sy + bounce.trails[i].y1 | 0,
+               sx + bounce.trails[i].x2 | 0, sy + bounce.trails[i].y2 | 0, col);
       }
     }
-    ctx.globalAlpha = 1.0;
 
     // Draw current line bright white
     grLine(sx + bounce.x1 | 0, sy + bounce.y1 | 0,
@@ -785,7 +782,7 @@ const starWnd = createWindow({
   x: 500, y: 50, w: 260, h: 220,
   props: FP_TITLE | FP_SIZE | FP_ZOOMBOX | FP_TOFRONT | FP_KILL,
   clprops: FP_3DBORDER | FP_CLEAR,
-  title: 'Starfield',
+  title: 'Campo de Estrellas',
   ttlcolor: 9,
   clcolor: 0,
 });
