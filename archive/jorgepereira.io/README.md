@@ -1,5 +1,18 @@
 # jorgepereira.io
 
+## Project structure
+
+```
+jorgepereira.io/
+  Caddyfile        # Caddy web server config
+  Dockerfile       # Builds the container image
+  html/            # Website content served by Caddy
+    index.html
+    demos.html
+    wind.html
+    wisy.html
+```
+
 ## Build and run locally
 
 ```bash
@@ -9,6 +22,8 @@ docker run -d -p 3000:80 --name jorgepereira-io jorgepereira-io
 ```
 
 Open http://localhost:3000 in your browser to test the site.
+
+ACME/Let's Encrypt errors in the logs are expected locally since Caddy cannot obtain a certificate without a public-facing domain. The site still works over HTTP.
 
 ## Pushing updates
 
