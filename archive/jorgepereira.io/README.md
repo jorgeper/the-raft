@@ -99,9 +99,9 @@ The HTML files are the actual website. They get packaged into a Docker container
 
 ```
                         ┌─────────────────┐
-                        │   HTML files +   │
-                        │   Caddyfile +    │
-                        │   Dockerfile     │
+                        │   HTML files +  │
+                        │   Caddyfile +   │
+                        │   Dockerfile    │
                         └────────┬────────┘
                                  │
                            docker build
@@ -112,29 +112,29 @@ The HTML files are the actual website. They get packaged into a Docker container
                         │ jorgepereira-io │
                         └───────┬─┬───────┘
                                 │ │
-                 ┌──────────────┘ └──────────────┐
+                 ┌──────────────┘ └─────────x──────┐
                  │                                │
           LOCAL TESTING                    PRODUCTION
                  │                                │
           docker run                     git push to main
           -p 3000:80                              │
                  │                                ▼
-                 ▼                   ┌──────────────────────┐
-        ┌─────────────────┐         │   GitHub Actions      │
-        │ localhost:3000  │         │   builds & pushes to  │
-        │ (HTTP only)     │         │   GitHub Container    │
-        └─────────────────┘         │   Registry (ghcr.io)  │
+                 ▼                  ┌──────────────────────┐
+        ┌─────────────────┐         │   GitHub Actions     │
+        │ localhost:3000  │         │   builds & pushes to │
+        │ (HTTP only)     │         │   GitHub Container   │
+        └─────────────────┘         │   Registry (ghcr.io) │
                                     └──────────┬───────────┘
                                                │
                                           docker pull
                                                │
                                                ▼
                                     ┌──────────────────────┐
-                                    │   Hostinger VPS       │
-                                    │   ports 80 + 443      │
-                                    │   Caddy auto-HTTPS    │
-                                    │                       │
-                                    │   jorgepereira.io     │
+                                    │   Hostinger VPS      │
+                                    │   ports 80 + 443     │
+                                    │   Caddy auto-HTTPS   │
+                                    │                      │
+                                    │   jorgepereira.io    │
                                     └──────────────────────┘
 ```
 
