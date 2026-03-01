@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WIND — Text-Mode Windowing System (1995) by Jorge Pereira</title>
+<style>
+  * { margin: 0; padding: 0; }
+  body { background: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: monospace; }
+  canvas { cursor: default; image-rendering: pixelated; image-rendering: crisp-edges; }
+  #info { color: #9c9; font-size: 11px; margin-bottom: 6px; text-align: center; line-height: 1.5; }
+  #info b { color: #cc4; }
+</style>
+</head>
+<body>
+<div id="info"><b>WIND</b> — Text-mode windowing system (Aug 23, 1995) by Jorge Pereira<br>Click title to drag, borders to resize, [■] to close, [↑] to maximize. Press any key to exit.</div>
+<canvas id="screen"></canvas>
+<script>
+// ================================================================
+//  WIND — Cross-compiled from Turbo C to JavaScript/Canvas2D
+//  Original: WIN6C.C + TVIEWS.C (text-mode 80x25 DOS windowing)
+// ================================================================
+
+const VIDEO_WIDTH = 80, VIDEO_HEIGTH = 25;
+const CELL_W = 10, CELL_H = 18;  // pixel size per character cell
+const PX_W = VIDEO_WIDTH * CELL_W, PX_H = VIDEO_HEIGTH * CELL_H;
+
+// ═══ DOS text-mode color palette ═══
+const COLORS = [
+  '#000000','#0000AA','#00AA00','#00AAAA','#AA0000','#AA00AA','#AA5500','#AAAAAA',
+  '#555555','#5555FF','#55FF55','#55FFFF','#FF5555','#FF55FF','#FFFF55','#FFFFFF'
+];
+const BLACK=0,BLUE=1,GREEN=2,CYAN=3,RED=4,MAGENTA=5,BROWN=6,LIGHTGRAY=7;
+const DARKGRAY=8,LIGHTBLUE=9,LIGHTGREEN=10,LIGHTCYAN=11,LIGHTRED=12,LIGHTMAGENTA=13,YELLOW=14,WHITE=15;
+
+// ═══ Canvas setup ═══
+const canvas = document.getElementById('screen');
+canvas.width = PX_W; canvas.height = PX_H;
+const scl = Math.min((innerWidth*0.95)/PX_W, (innerHeight*0.85)/PX_H, 2);
+canvas.style.width = (PX_W*scl)+'px'; canvas.style.height = (PX_H*scl)+'px';
+const ctx = canvas.getContext('2d');
+ctx.textBaseline = 'top';
+
+// ═══ Box-drawing characters (CP437) ═══
+const BOX_ACTIVE =  { tl:'┌', tr:'┐', bl:'└', br:'┘', h:'─', v:'│' };
+const BOX_FRONT  =  { tl:'╔', tr:'╗', bl:'╚', br:'╝', h:'═', v:'║' };
+
+// ═══ Screen buffer (twin) — port of TVIEWS.C ═══
+// Each cell: { ch: char, fg: color, bg: color }
+function createBuffer(w, h, fg=LIGHTGRAY, bg=BLACK) {
+  const buf = { w, h, cells: [] };
+  for (let i = 0; i < w * h; i++) buf.cells.push({ ch: ' ', fg, bg });
+  return buf;
+}
+function bufClear(buf, fg, bg, ch=' ') {
+  for (const c of buf.cells) { c.ch = ch; c.fg = fg; c.bg = bg; }
+}
+function bufPut(buf, x, y, str, fg, bg) {
+  for (let i = 0; i < str.length; i++) {
+    const idx = y * buf.w + x + i;
+    if (idx >= 0 && idx < buf.cells.length && x+i >= 0 && x+i < buf.w) {
+      buf.cells[idx].ch = str[i]; buf.cells[idx].fg = fg; buf.cells[idx].bg = bg;
+    }
+  }
+}
+function bufBlit(src, dst, sx, sy, sw, sh, dx, dy) {
+  for (let row = 0; row < sh; row++) {
+    for (let col = 0; col < sw; col++) {
+      const si = (sy+row)*src.w + (sx+col);
+      const di = (dy+row)*dst.w + (dx+col);
+      if (si >= 0 && si < src.cells.length && di >= 0 && di < dst.cells.length &&
+          dx+col >= 0 && dx+col < dst.w && dy+row >= 0 && dy+row < dst.h)
+        dst.cells[di] = { ...src.cells[si] };
+    }
+  }
+}
+function bufChangeColor(buf, x, y, w, h, fg, bg) {
+  for (let row = 0; row < h; row++)
+    for (let col = 0; col < w; col++) {
+      const idx = (y+row)*buf.w + (x+col);
+      if (idx >= 0 && idx < buf.cells.length) { buf.cells[idx].fg = fg; buf.cells[idx].bg = bg; }
+    }
+}
+
+// ═══ Render buffer to canvas ═══
+function renderBuffer(buf, offX=0, offY=0) {
+  ctx.font = (CELL_H-2) + 'px monospace';
+  for (let y = 0; y < buf.h; y++) {
+    for (let x = 0; x < buf.w; x++) {
+      const c = buf.cells[y * buf.w + x];
+      const px = (offX + x) * CELL_W, py = (offY + y) * CELL_H;
+      ctx.fillStyle = COLORS[c.bg]; ctx.fillRect(px, py, CELL_W, CELL_H);
+      if (c.ch !== ' ') { ctx.fillStyle = COLORS[c.fg]; ctx.fillText(c.ch, px+1, py+1); }
+    }
+  }
+}
+
+// ═══ Desktop & Window structures — port of WIN6C.C ═══
+const DT = {
+  x: 1, y: 1, w: VIDEO_WIDTH-2, h: VIDEO_HEIGTH-2,
+  node: '░', nfcolor: BLUE, nbcolor: LIGHTGRAY,
+  wauxfcolor: LIGHTGREEN,
+  back: null, desk: null,
+  windows: [],  // front-to-back order (index 0 = front)
+};
+
+function dtInit() {
+  DT.back = createBuffer(DT.w, DT.h); DT.desk = createBuffer(DT.w, DT.h);
+  bufClear(DT.back, DT.nfcolor, DT.nbcolor, DT.node);
+  bufBlit(DT.back, DT.desk, 0, 0, DT.w, DT.h, 0, 0);
+}
+
+// ═══ Window rendering — port of wnDump() ═══
+function wnDump(wn, destBuf, isFront) {
+  const p = wn.props;
+  const tw = p.vwidth + 2, th = p.vheigth + 2;
+  const tmp = createBuffer(tw, th, p.bfcolor, p.bcolor);
+
+  // Box-drawing border
+  const box = isFront ? BOX_FRONT : BOX_ACTIVE;
+  const hline = box.h.repeat(p.vwidth);
+  bufPut(tmp, 0, 0, box.tl + hline + box.tr, p.bfcolor, p.bcolor);
+  bufPut(tmp, 0, th-1, box.bl + hline + box.br, p.bfcolor, p.bcolor);
+  for (let i = 1; i < th-1; i++) {
+    bufPut(tmp, 0, i, box.v, p.bfcolor, p.bcolor);
+    bufPut(tmp, tw-1, i, box.v, p.bfcolor, p.bcolor);
+  }
+
+  // Title
+  if (wn.props.title) {
+    let t = wn.props.title;
+    const maxLen = p.vwidth - 8 - (p.chsize ? 4 : 0);
+    if (t.length > maxLen) t = t.substring(0, maxLen);
+    const tx = Math.max(6, ((p.vwidth - t.length) / 2) | 0);
+    bufPut(tmp, tx, 0, ' ' + t + ' ', p.bfcolor, p.bcolor);
+  }
+
+  // Close button [■]
+  bufPut(tmp, 2, 0, '[ ]', p.bfcolor, p.bcolor);
+  bufPut(tmp, 3, 0, '■', DT.wauxfcolor, p.bcolor);
+
+  // Max/restore button
+  if (p.chsize) {
+    bufPut(tmp, p.vwidth-3, 0, '[ ]', p.bfcolor, p.bcolor);
+    bufPut(tmp, p.vwidth-2, 0, wn.ismaxim ? '↕' : '↑', DT.wauxfcolor, p.bcolor);
+    // Resize handle
+    bufPut(tmp, p.vwidth+1, p.vheigth+1, '◘', p.bfcolor, p.bcolor);
+  }
+
+  // Scrollbars
+  if (p.rwidth > p.vwidth) {
+    const bw = p.vwidth - 4;
+    bufPut(tmp, 2, p.vheigth+1, '◄', p.bfcolor, p.bcolor);
+    for (let i = 0; i < bw; i++) bufPut(tmp, 3+i, p.vheigth+1, '░', p.bfcolor, p.bcolor);
+    bufPut(tmp, 3+bw, p.vheigth+1, '►', p.bfcolor, p.bcolor);
+    const pw = Math.max(1, (bw * p.vwidth / p.rwidth) | 0);
+    const px = (bw * wn.xbuf / p.rwidth) | 0;
+    for (let i = 0; i < pw; i++) bufPut(tmp, 3+Math.min(px+i, bw-1), p.vheigth+1, '█', p.bfcolor, p.bcolor);
+  }
+  if (p.rheigth > p.vheigth) {
+    const bh = p.vheigth - 2;
+    bufPut(tmp, p.vwidth+1, 1, '▲', p.bfcolor, p.bcolor);
+    for (let i = 0; i < bh; i++) bufPut(tmp, p.vwidth+1, 2+i, '░', p.bfcolor, p.bcolor);
+    bufPut(tmp, p.vwidth+1, p.vheigth, '▼', p.bfcolor, p.bcolor);
+    const ph = Math.max(1, (bh * p.vheigth / p.rheigth) | 0);
+    const py = (bh * wn.ybuf / p.rheigth) | 0;
+    for (let i = 0; i < ph; i++) bufPut(tmp, p.vwidth+1, 2+Math.min(py+i, bh-1), '█', p.bfcolor, p.bcolor);
+  }
+
+  // Blit window frame to desktop buffer
+  const dx = p.x - 1, dy = p.y - 1;
+  bufBlit(tmp, destBuf, 0, 0, tw, th, dx, dy);
+
+  // Blit window content
+  if (wn.content) {
+    for (let row = 0; row < p.vheigth && row+wn.ybuf < wn.content.h; row++) {
+      for (let col = 0; col < p.vwidth && col+wn.xbuf < wn.content.w; col++) {
+        const si = (wn.ybuf+row)*wn.content.w + (wn.xbuf+col);
+        const di = (dy+1+row)*destBuf.w + (dx+1+col);
+        if (di >= 0 && di < destBuf.cells.length)
+          destBuf.cells[di] = { ...wn.content.cells[si] };
+      }
+    }
+  }
+
+  // Drop shadow
+  bufChangeColor(destBuf, p.x, p.y+p.vheigth+1, p.vwidth+2, 1, DARKGRAY, BLACK);
+  bufChangeColor(destBuf, p.x+p.vwidth+1, p.y, 2, p.vheigth+1, DARKGRAY, BLACK);
+}
+
+// ═══ Desktop refresh — port of dtRefresh() ═══
+function dtRefresh() {
+  bufClear(DT.back, DT.nfcolor, DT.nbcolor, DT.node);
+  // Back to front (excluding front window)
+  for (let i = DT.windows.length - 1; i > 0; i--) {
+    if (DT.windows[i].active) wnDump(DT.windows[i], DT.back, false);
+  }
+  bufBlit(DT.back, DT.desk, 0, 0, DT.w, DT.h, 0, 0);
+  // Front window
+  if (DT.windows.length > 0 && DT.windows[0].active) {
+    wnDump(DT.windows[0], DT.desk, true);
+  }
+  // Render full screen
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, PX_W, PX_H);
+  renderBuffer(DT.desk, DT.x, DT.y);
+}
+
+// ═══ Window creation — port of wnInit + wnActive ═══
+function createWin(opts) {
+  const p = {
+    x: opts.x ?? 10, y: opts.y ?? 3,
+    vheigth: opts.vh ?? 8, vwidth: opts.vw ?? 30,
+    rheigth: opts.rh ?? 11, rwidth: opts.rw ?? 35,
+    tfcolor: opts.tfcolor ?? WHITE, bcolor: opts.bcolor ?? BLUE, bfcolor: opts.bfcolor ?? WHITE,
+    title: opts.title ?? null, chsize: opts.chsize ?? true,
+  };
+  const content = createBuffer(p.rwidth, p.rheigth, 0, p.bcolor);
+  bufClear(content, 0, p.bcolor);
+  const wn = { id: opts.id, active: true, ismaxim: false, props: p, content,
+               xbuf: 0, ybuf: 0, savedVH: p.vheigth, savedVW: p.vwidth, savedX: p.x, savedY: p.y };
+  DT.windows.unshift(wn);  // add to front
+  return wn;
+}
+
+// ═══ Window operations ═══
+function wnToFront(idx) {
+  if (idx > 0 && idx < DT.windows.length) {
+    const [wn] = DT.windows.splice(idx, 1);
+    DT.windows.unshift(wn);
+    dtRefresh();
+  }
+}
+
+// ═══ Mouse event handling — port of dtAction() ═══
+let drag = null;  // { type, wn, offsetX, offsetY }
+
+function getCellPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: ((e.clientX - r.left) / scl / CELL_W) | 0, y: ((e.clientY - r.top) / scl / CELL_H) | 0 };
+}
+
+function hitTest(mx, my) {
+  for (let i = 0; i < DT.windows.length; i++) {
+    const wn = DT.windows[i]; if (!wn.active) continue;
+    const p = wn.props;
+    const ax = p.x + DT.x - 1, ay = p.y + DT.y - 1;
+    const aw = p.vwidth + 2, ah = p.vheigth + 2;
+    if (mx >= ax && mx < ax+aw && my >= ay && my < ay+ah) {
+      return { idx: i, wn, lx: mx - ax, ly: my - ay };
+    }
+  }
+  return null;
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  const pos = getCellPos(e);
+  const hit = hitTest(pos.x, pos.y);
+  if (!hit) return;
+
+  // Bring to front if not already
+  if (hit.idx > 0) { wnToFront(hit.idx); hit.idx = 0; }
+
+  const wn = hit.wn, p = wn.props;
+  const lx = hit.lx, ly = hit.ly;
+
+  // Close button: [■] at lx=2..4, ly=0
+  if (ly === 0 && lx >= 2 && lx <= 4) {
+    wn.active = false;
+    DT.windows.splice(0, 1);
+    dtRefresh(); return;
+  }
+
+  // Max/restore button
+  if (p.chsize && ly === 0 && lx >= p.vwidth-3 && lx <= p.vwidth-1) {
+    if (wn.ismaxim) {
+      wn.props.vheigth = wn.savedVH; wn.props.vwidth = wn.savedVW;
+      wn.props.x = wn.savedX; wn.props.y = wn.savedY;
+      wn.ismaxim = false;
+    } else {
+      wn.savedVH = p.vheigth; wn.savedVW = p.vwidth; wn.savedX = p.x; wn.savedY = p.y;
+      wn.props.vheigth = Math.min(p.rheigth, DT.h-2);
+      wn.props.vwidth = Math.min(p.rwidth, DT.w-2);
+      wn.props.x = 1; wn.props.y = 1;
+      wn.ismaxim = true;
+    }
+    dtRefresh(); return;
+  }
+
+  // Resize handle (bottom-right corner)
+  if (p.chsize && ly === p.vheigth+1 && lx === p.vwidth+1) {
+    drag = { type: 'resize', wn, startX: pos.x, startY: pos.y, origVW: p.vwidth, origVH: p.vheigth };
+    return;
+  }
+
+  // Scroll bar buttons and bars
+  if (p.rwidth > p.vwidth && ly === p.vheigth+1) {
+    if (lx === 2) { wn.xbuf = Math.max(0, wn.xbuf-1); dtRefresh(); }
+    else if (lx === p.vwidth-1+2) { wn.xbuf = Math.min(p.rwidth-p.vwidth, wn.xbuf+1); dtRefresh(); }
+    else if (lx > 2 && lx < p.vwidth) { drag = { type: 'hbar', wn }; }
+    return;
+  }
+  if (p.rheigth > p.vheigth && lx === p.vwidth+1) {
+    if (ly === 1) { wn.ybuf = Math.max(0, wn.ybuf-1); dtRefresh(); }
+    else if (ly === p.vheigth) { wn.ybuf = Math.min(p.rheigth-p.vheigth, wn.ybuf+1); dtRefresh(); }
+    else if (ly > 1 && ly < p.vheigth) { drag = { type: 'vbar', wn }; }
+    return;
+  }
+
+  // Title bar drag
+  if (ly === 0) {
+    drag = { type: 'move', wn, offsetX: lx - 1, offsetY: 0 };
+    return;
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!drag) return;
+  const pos = getCellPos(e);
+  const wn = drag.wn, p = wn.props;
+
+  if (drag.type === 'move') {
+    p.x = Math.max(1, pos.x - DT.x - drag.offsetX);
+    p.y = Math.max(1, pos.y - DT.y + 1);
+    dtRefresh();
+  } else if (drag.type === 'resize') {
+    const nw = Math.max(20, Math.min(p.rwidth, drag.origVW + (pos.x - drag.startX)));
+    const nh = Math.max(1, Math.min(p.rheigth, drag.origVH + (pos.y - drag.startY)));
+    p.vwidth = nw; p.vheigth = nh;
+    if (wn.xbuf + nw > p.rwidth) wn.xbuf = p.rwidth - nw;
+    if (wn.ybuf + nh > p.rheigth) wn.ybuf = p.rheigth - nh;
+    dtRefresh();
+  } else if (drag.type === 'hbar') {
+    const ax = p.x + DT.x - 1 + 3;
+    const bw = p.vwidth - 4;
+    const rel = Math.max(0, Math.min(bw-1, pos.x - ax));
+    wn.xbuf = Math.min(p.rwidth - p.vwidth, (rel * p.rwidth / bw) | 0);
+    dtRefresh();
+  } else if (drag.type === 'vbar') {
+    const ay = p.y + DT.y - 1 + 2;
+    const bh = p.vheigth - 2;
+    const rel = Math.max(0, Math.min(bh-1, pos.y - ay));
+    wn.ybuf = Math.min(p.rheigth - p.vheigth, (rel * p.rheigth / bh) | 0);
+    dtRefresh();
+  }
+});
+
+canvas.addEventListener('mouseup', () => { drag = null; });
+
+// ═══ MAIN — port of main() from WIN6C.C ═══
+dtInit();
+
+const w1 = createWin({ id:1, x:10, y:3, vh:8, vw:30, rh:11, rw:35, bcolor:RED, title:'Ventana 1' });
+const w2 = createWin({ id:2, x:15, y:5, vh:8, vw:30, rh:11, rw:35, bcolor:GREEN, title:'Ventana 2' });
+const w3 = createWin({ id:3, x:20, y:7, vh:8, vw:30, rh:11, rw:35, bcolor:BLUE, title:'Ventana 3', chsize:false });
+const w4 = createWin({ id:4, x:10, y:10, vh:7, vw:30, rh:VIDEO_HEIGTH-8, rw:VIDEO_WIDTH-15,
+                        bcolor:CYAN, title:'Ventana número cuatro' });
+
+// Fill window 4 with Lorem Ipsum text
+const lorem = [
+  '',
+  '  Lorem ipsum dolor sit amet, consectetur adipiscing',
+  '  elit, sed do eiusmod tempor incididunt ut labore et',
+  '  dolore magna aliqua. Ut enim ad minim veniam, quis',
+  '  nostrud exercitation ullamco laboris nisi ut aliquip',
+  '  ex ea commodo consequat. Duis aute irure dolor in',
+  '  reprehenderit in voluptate velit esse cillum dolore',
+  '  eu fugiat nulla pariatur. Excepteur sint occaecat',
+  '  cupidatat non proident, sunt in culpa qui officia',
+  '  deserunt mollit anim id est laborum.',
+  '',
+  '  Sed ut perspiciatis unde omnis iste natus error sit',
+  '  voluptatem accusantium doloremque laudantium, totam',
+  '  rem aperiam, eaque ipsa quae ab illo inventore',
+  '  veritatis et quasi architecto beatae vitae dicta',
+  '  sunt explicabo. Nemo enim ipsam voluptatem quia',
+  '  voluptas sit aspernatur aut odit aut fugit.',
+];
+for (let i = 0; i < lorem.length; i++) {
+  bufPut(w4.content, 0, i, lorem[i], i >= 11 ? BLUE : WHITE, CYAN);
+}
+
+dtRefresh();
+</script>
+</body>
+</html>

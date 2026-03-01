@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WISY — Port of DOS Windowing System by Jorge Pereira</title>
+<style>
+  * { margin: 0; padding: 0; }
+  body { background: #222; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: monospace; overflow: hidden; }
+  canvas { cursor: default; border: 2px solid #444; image-rendering: pixelated; }
+  #info { color: #9c9; font-size: 11px; margin-bottom: 6px; text-align: center; line-height: 1.5; }
+  #info b { color: #cc4; }
+</style>
+</head>
+<body>
+<div id="info"><b>WISY</b> — Windowing System (DOS, ~1996) by Jorge Pereira — Direct C++-to-JS port<br>Drag title bars to move, drag borders to resize, click buttons</div>
+<canvas id="screen"></canvas>
+<script>
+// ================================================================
+//  WISY — Cross-compiled from C++/GRX to JavaScript/Canvas2D
+//  Original files: CREGION, CLIST, CRECT, CBUFFER, CSCR, WINDOW, BUTTON, MAIN
+// ================================================================
+
+// ═══ VGA 256-color palette (first 16) ═══
+const PAL = [
+  '#000000','#0000AA','#00AA00','#00AAAA','#AA0000','#AA00AA','#AA5500','#AAAAAA',
+  '#555555','#5555FF','#55FF55','#55FFFF','#FF5555','#FF55FF','#FFFF55','#FFFFFF'
+];
+
+// ═══ Constants from WINDOW.H / BUTTON.H / CSCR.H ═══
+const BORDER_W = 4, TITLE_H = 18, CORNER_W = 20;
+const MIN_WINDOW_W = 100, MIN_WINDOW_H = 40;
+const SF_W = 8, SF_H = 14;
+const ZOOM_STEPS = 16;
+const SCR_W = 800, SCR_H = 600;
+const DEF_MAINRECT_COLOR = 8;
+
+// ═══ Message IDs from CMSG.H ═══
+const MSG_RESIZE = 4, MSG_CREATE = 5, MSG_DESTROY = 6, MSG_PAINT = 7;
+const MSG_MOUSE = 8, MSG_HIDE = 9, MSG_COMMAND = 10, MSG_SHOW = 11;
+const M_LEFT_DOWN = 1, M_LEFT_UP = 2, M_MOTION = 4;
+
+// ═══ Window flags ═══
+const FP_TOFRONT = 1, FP_SIZE = 2, FP_ZOOMBOX = 8, FP_KILL = 16, FP_TITLE = 32;
+const FP_3DBORDER = 1, FP_CLEAR = 2, FP_BORDER = 4, FP_CAPTION = 1;
+const FLG_MOVING = 1, FLG_LEFT_DOWN = 2, FLG_TITLE = 4;
+const FLG_LB = 8, FLG_RB = 16, FLG_TB = 32, FLG_BB = 64, FLG_WNDMAX = 128;
+
+// ═══ Canvas setup ═══
+const canvas = document.getElementById('screen');
+canvas.width = SCR_W; canvas.height = SCR_H;
+const scl = Math.min((innerWidth * 0.95) / SCR_W, (innerHeight * 0.85) / SCR_H, 1.5);
+canvas.style.width = (SCR_W * scl) + 'px'; canvas.style.height = (SCR_H * scl) + 'px';
+const ctx = canvas.getContext('2d');
+ctx.font = SF_H + 'px monospace';
+ctx.textBaseline = 'top';
+
+// ═══ Drawing helpers (replacing GRX primitives) ═══
+function grFilledBox(x1, y1, x2, y2, col) {
+  ctx.fillStyle = PAL[col] || col;
+  ctx.fillRect(x1, y1, x2 - x1 + 1, y2 - y1 + 1);
+}
+function grBox(x1, y1, x2, y2, col) {
+  ctx.strokeStyle = PAL[col] || col;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x1 + 0.5, y1 + 0.5, x2 - x1, y2 - y1);
+}
+function grLine(x1, y1, x2, y2, col) {
+  ctx.strokeStyle = PAL[col] || col;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x1 + 0.5, y1 + 0.5); ctx.lineTo(x2 + 0.5, y2 + 0.5); ctx.stroke();
+}
+function grText(text, x, y, fg, bg) {
+  if (bg !== undefined) { ctx.fillStyle = PAL[bg] || bg; ctx.fillRect(x, y, text.length * SF_W, SF_H); }
+  ctx.fillStyle = PAL[fg] || fg;
+  ctx.fillText(text, x, y + 1);
+}
+function grBox3d(x1, y1, x2, y2, c1, c2, c3, c4, w) {
+  grLine(x1, y1, x2, y1, c1);  // top
+  grLine(x1, y1, x1, y2, c2);  // left
+  grLine(x2, y1, x2, y2, c3);  // right
+  grLine(x1, y2, x2, y2, c4);  // bottom
+  if (w >= 2) {
+    grLine(x1+1, y1+1, x2-1, y1+1, c1);
+    grLine(x1+1, y1+1, x1+1, y2-1, c2);
+    grLine(x2-1, y1+1, x2-1, y2-1, c3);
+    grLine(x1+1, y2-1, x2-1, y2-1, c4);
+  }
+}
+
+// ═══ cregion — port of CREGION.H/CC ═══
+class cregion {
+  constructor(x=0, y=0, cx=0, cy=0) { this.x=x; this.y=y; this.cx=cx; this.cy=cy; }
+  empty() { return this.cx <= 0 || this.cy <= 0; }
+  resize(x, y, cx, cy) { this.x=x; this.y=y; this.cx=cx; this.cy=cy; }
+  clone() { return new cregion(this.x, this.y, this.cx, this.cy); }
+  inregion(x, y) { return x >= this.x && y >= this.y && x <= this.x+this.cx-1 && y <= this.y+this.cy; }
+  intersect(op2) {  // operator& from original
+    const r = new cregion();
+    if (op2.x >= this.x+this.cx || op2.x+op2.cx <= this.x) return r;
+    if (op2.y >= this.y+this.cy || op2.y+op2.cy <= this.y) return r;
+    const maxx1 = Math.max(op2.x, this.x), minx2 = Math.min(op2.x+op2.cx-1, this.x+this.cx-1);
+    const maxy1 = Math.max(op2.y, this.y), miny2 = Math.min(op2.y+op2.cy-1, this.y+this.cy-1);
+    r.x = maxx1; r.y = maxy1; r.cx = minx2-maxx1+1; r.cy = miny2-maxy1+1;
+    return r;
+  }
+}
+
+// ═══ crect — port of CRECT.H/CC ═══
+class crect {
+  constructor(x, y, cx, cy) {
+    this.region = new cregion(x, y, cx, cy);
+    this.children = [];  // replaces rlist
+    this.parent = null;
+    this.color = 8;
+    this.active = 0;
+    this.objproc = null;
+    this.userproc = null;
+    this.objdata = null;
+  }
+  add(child) { child.parent = this; this.children.unshift(child); return child; }  // push to front
+  del(child) { const i = this.children.indexOf(child); if (i >= 0) this.children.splice(i, 1); }
+}
+
+// ═══ Region utility functions — port of CRECT.CC non-members ═══
+function rgsize(pr) { return new cregion(0, 0, pr.region.cx, pr.region.cy); }
+
+function rgtoscr(pr, prg) {
+  for (let p = pr; p; p = p.parent) { prg.x += p.region.x; prg.y += p.region.y; }
+}
+
+function rgclip(pr, prg) {
+  if (prg.x >= pr.region.cx || prg.y >= pr.region.cy || prg.x+prg.cx <= 0 || prg.y+prg.cy <= 0)
+    { prg.cx = prg.cy = 0; return; }
+  if (prg.x < 0) { prg.cx += prg.x; prg.x = 0; }
+  if (prg.y < 0) { prg.cy += prg.y; prg.y = 0; }
+  if (prg.x+prg.cx > pr.region.cx) prg.cx = pr.region.cx - prg.x;
+  if (prg.y+prg.cy > pr.region.cy) prg.cy = pr.region.cy - prg.y;
+}
+
+function rgscrclip(pr, prg) {
+  for (let p = pr; p; p = p.parent) {
+    rgclip(p, prg);
+    if (prg.empty()) return;
+    prg.x += p.region.x; prg.y += p.region.y;
+  }
+}
+
+function rgpoint(pr, x, y) {
+  for (let p = pr; p; p = p.parent) { x -= p.region.x; y -= p.region.y; }
+  return { x, y };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  WISY Window Manager — replaces cscr + full repaint approach
+// ═══════════════════════════════════════════════════════════════════
+const wm = {
+  mainrect: null,
+  bully: null,
+  dragging: null,  // current drag state
+  windows: [],     // all top-level windows for easy iteration
+
+  init() {
+    this.mainrect = new crect(0, 0, SCR_W, SCR_H);
+    this.mainrect.color = DEF_MAINRECT_COLOR;
+    this.mainrect.active = 1;
+    this.repaint();
+  },
+
+  // ── Full repaint (painter's algorithm: back to front) ──
+  repaint() {
+    // Desktop
+    grFilledBox(0, 0, SCR_W-1, SCR_H-1, this.mainrect.color);
+
+    // Draw children back to front (children[0] is frontmost, so reverse)
+    const kids = this.mainrect.children;
+    for (let i = kids.length - 1; i >= 0; i--) {
+      if (kids[i].active) this.paintRect(kids[i], 0, 0);
+    }
+  },
+
+  // ── Paint a single rect and its children recursively ──
+  paintRect(r, ox, oy) {
+    if (!r.active) return;
+    const sx = ox + r.region.x, sy = oy + r.region.y;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(sx, sy, r.region.cx, r.region.cy);
+    ctx.clip();
+
+    if (r.objproc) r.objproc({ id: MSG_PAINT, region: rgsize(r) }, r.objdata, sx, sy);
+
+    // Children (back to front)
+    for (let i = r.children.length - 1; i >= 0; i--) {
+      if (r.children[i].active) this.paintRect(r.children[i], sx, sy);
+    }
+    ctx.restore();
+  },
+
+  // ── Bring rect to front ──
+  tofront(r) {
+    if (!r.parent) return;
+    const idx = r.parent.children.indexOf(r);
+    if (idx > 0) {
+      r.parent.children.splice(idx, 1);
+      r.parent.children.unshift(r);
+      this.repaint();
+    }
+  },
+
+  // ── Find rect under mouse (front to back, recursive) ──
+  hitTest(r, x, y) {
+    if (this.bully) return this.bully;
+    return this._hitR(this.mainrect, x, y);
+  },
+  _hitR(r, x, y) {
+    const lx = x - r.region.x, ly = y - r.region.y;
+    for (const child of r.children) {
+      if (child.active && child.region.inregion(lx, ly)) {
+        return this._hitR(child, lx, ly);
+      }
+    }
+    return r;
+  },
+
+  // ── Zoom box animation — port of cbuffer::zoombox ──
+  zoombox(r1, r2, callback) {
+    const dx = (r2.x-r1.x)/ZOOM_STEPS, dy = (r2.y-r1.y)/ZOOM_STEPS;
+    const dcx = (r2.cx-r1.cx)/ZOOM_STEPS, dcy = (r2.cy-r1.cy)/ZOOM_STEPS;
+    let step = 0;
+    const t = { x: r1.x, y: r1.y, cx: r1.cx, cy: r1.cy };
+    const anim = () => {
+      this.repaint();
+      ctx.strokeStyle = PAL[15]; ctx.lineWidth = 2;
+      ctx.strokeRect(t.x, t.y, t.cx, t.cy);
+      t.x += dx; t.y += dy; t.cx += dcx; t.cy += dcy;
+      if (++step < ZOOM_STEPS) requestAnimationFrame(anim);
+      else { this.repaint(); if (callback) callback(); }
+    };
+    anim();
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  Window — port of WINDOW.H/CC (getwindow, wndproc, paintevent, titleevent)
+// ═══════════════════════════════════════════════════════════════════
+function createWindow(opts = {}) {
+  const x = opts.x ?? 10, y = opts.y ?? 10, w = opts.w ?? 300, h = opts.h ?? 200;
+  const props = opts.props ?? (FP_TOFRONT | FP_SIZE | FP_ZOOMBOX | FP_KILL);
+  const ttlcolor = opts.ttlcolor ?? 1;
+  const title = opts.title ?? '';
+  const clprops = opts.clprops ?? FP_CLEAR;
+  const userproc = opts.userproc ?? null;
+
+  // ── Window rect ──
+  const r = new crect(x, y, w, h);
+  const data = {
+    r, props, ttlcolor, title, flags: 0, clprops,
+    movrg: null, movx: 0, movy: 0,
+    sizereg: new cregion(x, y, w, h),
+    client: null, bclose: null, bsize: null, userproc,
+    lines: [],  // for the line generator demo
+  };
+  r.objdata = data;
+  r.objproc = wndObjProc;
+  r.userproc = userproc;
+
+  // ── Client rect ──
+  const cl = new crect(BORDER_W, BORDER_W*2+TITLE_H, w-BORDER_W*2, h-BORDER_W*3-TITLE_H);
+  cl.color = opts.clcolor ?? 7;
+  cl.active = 1;
+  cl.objproc = clientObjProc;
+  cl.objdata = { r: cl, props: clprops, parentData: data };
+  r.add(cl);
+  data.client = cl;
+
+  // ── Close button ──
+  const bc = new crect(BORDER_W, BORDER_W, TITLE_H, TITLE_H);
+  bc.active = 1;
+  bc.objdata = { r: bc, id: 'close', parentWnd: r, parentData: data, flags: 0 };
+  bc.objproc = buttonObjProc;
+  r.add(bc);
+  data.bclose = bc;
+
+  // ── Size button ──
+  if (props & FP_SIZE) {
+    const bs = new crect(w - TITLE_H - BORDER_W, BORDER_W, TITLE_H, TITLE_H);
+    bs.active = 1;
+    bs.objdata = { r: bs, id: 'size', parentWnd: r, parentData: data, flags: 0 };
+    bs.objproc = buttonObjProc;
+    r.add(bs);
+    data.bsize = bs;
+  }
+
+  // Add to mainrect
+  wm.mainrect.add(r);
+  r.active = 1;
+  wm.windows.push(r);
+
+  // Zoom animation on show
+  if (props & FP_ZOOMBOX) {
+    const center = new cregion(x + w/2, y + h/2, 1, 1);
+    const target = new cregion(x, y, w, h);
+    wm.zoombox(center, target);
+  } else {
+    wm.repaint();
+  }
+
+  return r;
+}
+
+// ── Window object procedure — port of wndproc() ──
+function wndObjProc(msg, data, sx, sy) {
+  if (msg.id === MSG_PAINT) {
+    const r = data.r, w = r.region.cx, h = r.region.cy;
+
+    // Borders (gray)
+    grFilledBox(sx, sy, sx+BORDER_W-1, sy+h-1, 7);
+    grFilledBox(sx, sy, sx+w-1, sy+BORDER_W*2+TITLE_H-1, 7);
+    grFilledBox(sx+w-BORDER_W, sy, sx+w-1, sy+h-1, 7);
+    grFilledBox(sx, sy+h-BORDER_W, sx+w-1, sy+h-1, 7);
+
+    // Title bar
+    const tx = BORDER_W*2+TITLE_H-2;
+    const tw = (data.props & FP_SIZE) ? w-BORDER_W*2-TITLE_H*2-4 : w-BORDER_W*2-TITLE_H-2;
+    grFilledBox(sx+tx, sy+BORDER_W, sx+tx+tw-1, sy+BORDER_W+TITLE_H-1, data.ttlcolor);
+
+    // Title text
+    if (data.props & FP_TITLE) {
+      grText(data.title, sx+BORDER_W+TITLE_H+6, sy+BORDER_W+2, 15, undefined);
+    }
+
+    // 3D border (outer)
+    grBox3d(sx, sy, sx+w-1, sy+h-1, 15, 15, 8, 8, 1);
+  }
+}
+
+// ── Client rect procedure — port of clientproc() ──
+function clientObjProc(msg, data, sx, sy) {
+  if (msg.id === MSG_PAINT) {
+    const r = data.r;
+    if (data.props & FP_CLEAR) grFilledBox(sx, sy, sx+r.region.cx-1, sy+r.region.cy-1, r.color);
+    if (data.props & FP_3DBORDER) grBox3d(sx, sy, sx+r.region.cx-1, sy+r.region.cy-1, 8, 8, 15, 15, 1);
+
+    // Draw user content (lines for the demo)
+    const pd = data.parentData;
+    if (pd && pd.lines) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(sx+1, sy+1, r.region.cx-2, r.region.cy-2); ctx.clip();
+      for (const l of pd.lines) {
+        grLine(sx+l.x, sy+l.y, sx+l.x2, sy+l.y2, 0);
+      }
+      ctx.restore();
+    }
+  }
+}
+
+// ── Button procedure — port of buttproc/paintbutt ──
+function buttonObjProc(msg, data, sx, sy) {
+  if (msg.id === MSG_PAINT) {
+    const r = data.r, w = r.region.cx, h = r.region.cy;
+    const pressed = data.flags & FLG_LEFT_DOWN;
+    const d = pressed ? 1 : 0;
+
+    // Surface
+    grFilledBox(sx, sy, sx+w-1, sy+h-1, 7);
+
+    // 3D border
+    if (pressed) grBox3d(sx+1, sy+1, sx+w-2, sy+h-2, 8, 8, 7, 7, 1);
+    else grBox3d(sx+1, sy+1, sx+w-2, sy+h-2, 15, 15, 8, 8, 2);
+    grBox(sx, sy, sx+w-1, sy+h-1, 0);
+
+    // Content
+    if (data.id === 'close') {
+      // X mark
+      grLine(sx+5+d, sy+5+d, sx+w-6+d, sy+h-6+d, 0);
+      grLine(sx+6+d, sy+5+d, sx+w-5+d, sy+h-6+d, 0);
+      grLine(sx+w-6+d, sy+5+d, sx+5+d, sy+h-6+d, 0);
+      grLine(sx+w-5+d, sy+5+d, sx+6+d, sy+h-6+d, 0);
+    } else if (data.id === 'size') {
+      const wdata = data.parentData;
+      if (wdata && (wdata.flags & FLG_WNDMAX))
+        grBox(sx+7+d, sy+7+d, sx+w-8+d, sy+h-8+d, 0);
+      else
+        grBox(sx+5+d, sy+5+d, sx+w-6+d, sy+h-6+d, 0);
+    } else if (data.caption) {
+      const tw = data.caption.length * SF_W;
+      const tx = ((w - tw) >> 1) + d;
+      const ty = ((h - SF_H) >> 1) + d;
+      grText(data.caption, sx+tx, sy+ty, 0, undefined);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  User button (for the demo app) — port of getbutton
+// ═══════════════════════════════════════════════════════════════════
+function createButton(parentClient, opts = {}) {
+  const b = new crect(opts.x ?? 10, opts.y ?? 10, opts.w ?? 100, opts.h ?? 30);
+  b.active = 1;
+  b.objdata = { r: b, id: opts.id ?? 0, flags: 0, props: FP_BORDER | (opts.caption ? FP_CAPTION : 0),
+                caption: opts.caption ?? '', parentData: opts.parentData };
+  b.objproc = buttonObjProc;
+  parentClient.add(b);
+  return b;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Mouse event handling — port of cscr::run() + titleevent()
+// ═══════════════════════════════════════════════════════════════════
+let mouseDown = false;
+let dragState = null;  // { wnd, data, startX, startY, movrg, flags }
+
+function getScreenPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: (e.clientX - rect.left) / scl, y: (e.clientY - rect.top) / scl };
+}
+
+// Convert screen coords to local rect coords
+function screenToLocal(r, sx, sy) {
+  let lx = sx, ly = sy;
+  // Walk up from mainrect to find the rect's screen position
+  const chain = [];
+  for (let p = r; p; p = p.parent) chain.push(p);
+  for (let i = chain.length - 1; i >= 0; i--) {
+    lx -= chain[i].region.x;
+    ly -= chain[i].region.y;
+  }
+  // Actually we need the offset, let me compute screen pos of r
+  let ox = 0, oy = 0;
+  for (let p = r; p; p = p.parent) { ox += p.region.x; oy += p.region.y; }
+  return { x: sx - ox, y: sy - oy };
+}
+
+function getScreenPosOfRect(r) {
+  let ox = 0, oy = 0;
+  for (let p = r; p; p = p.parent) { ox += p.region.x; oy += p.region.y; }
+  return { x: ox, y: oy };
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  const pos = getScreenPos(e);
+  mouseDown = true;
+
+  const hit = wm.hitTest(wm.mainrect, pos.x, pos.y);
+  if (!hit || hit === wm.mainrect) return;
+
+  // Find the top-level window this rect belongs to
+  let topWnd = hit;
+  while (topWnd.parent && topWnd.parent !== wm.mainrect) topWnd = topWnd.parent;
+
+  const wndData = topWnd.objdata;
+
+  // Bring to front
+  if (wndData && (wndData.props & FP_TOFRONT)) wm.tofront(topWnd);
+
+  // Check if we clicked a button
+  if (hit.objdata && (hit.objdata.id === 'close' || hit.objdata.id === 'size')) {
+    hit.objdata.flags |= FLG_LEFT_DOWN;
+    wm.bully = hit;
+    wm.repaint();
+    return;
+  }
+
+  // Check if clicked a user button
+  if (hit.objdata && hit.objdata.caption !== undefined && hit.objdata.id !== 'close' && hit.objdata.id !== 'size') {
+    hit.objdata.flags |= FLG_LEFT_DOWN;
+    wm.bully = hit;
+    wm.repaint();
+    return;
+  }
+
+  // Check if in title/border region of the window
+  if (wndData && topWnd !== wm.mainrect) {
+    const local = screenToLocal(topWnd, pos.x, pos.y);
+    const lx = local.x, ly = local.y;
+    const w = topWnd.region.cx, h = topWnd.region.cy;
+
+    // Determine drag type
+    let flags = 0;
+    const titleRg = new cregion(BORDER_W+1, BORDER_W+1, w-(BORDER_W+1)*2, TITLE_H);
+    if (titleRg.inregion(lx, ly)) flags |= FLG_TITLE;
+    if (lx <= BORDER_W && (wndData.props & FP_SIZE)) flags |= FLG_LB;
+    if (lx >= w - BORDER_W && (wndData.props & FP_SIZE)) flags |= FLG_RB;
+    if (ly <= BORDER_W && (wndData.props & FP_SIZE)) flags |= FLG_TB;
+    if (ly >= h - BORDER_W && (wndData.props & FP_SIZE)) flags |= FLG_BB;
+
+    if (flags) {
+      const sp = getScreenPosOfRect(topWnd);
+      dragState = {
+        wnd: topWnd, data: wndData, flags,
+        startMouseX: pos.x, startMouseY: pos.y,
+        origX: sp.x - (topWnd.parent ? getScreenPosOfRect(topWnd.parent).x + topWnd.parent.region.x : 0),
+        origY: sp.y - (topWnd.parent ? getScreenPosOfRect(topWnd.parent).y + topWnd.parent.region.y : 0),
+        origReg: topWnd.region.clone(),
+        localX: lx, localY: ly,
+      };
+      // Actually just store the original region position relative to parent
+      dragState.origX = topWnd.region.x;
+      dragState.origY = topWnd.region.y;
+      wm.bully = topWnd;
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!mouseDown || !dragState) return;
+  const pos = getScreenPos(e);
+  const ds = dragState;
+  const dx = pos.x - ds.startMouseX, dy = pos.y - ds.startMouseY;
+
+  if (ds.flags & FLG_TITLE) {
+    ds.wnd.region.x = ds.origX + dx;
+    ds.wnd.region.y = ds.origY + dy;
+  }
+  if (ds.flags & FLG_RB) ds.wnd.region.cx = Math.max(MIN_WINDOW_W, ds.origReg.cx + dx);
+  if (ds.flags & FLG_BB) ds.wnd.region.cy = Math.max(MIN_WINDOW_H, ds.origReg.cy + dy);
+  if (ds.flags & FLG_LB) {
+    const newX = ds.origX + dx;
+    const newW = ds.origReg.cx - dx;
+    if (newW >= MIN_WINDOW_W) { ds.wnd.region.x = newX; ds.wnd.region.cx = newW; }
+  }
+  if (ds.flags & FLG_TB) {
+    const newY = ds.origY + dy;
+    const newH = ds.origReg.cy - dy;
+    if (newH >= MIN_WINDOW_H) { ds.wnd.region.y = newY; ds.wnd.region.cy = newH; }
+  }
+
+  // Resize client and size button
+  resizeWindowParts(ds.wnd, ds.data);
+  wm.repaint();
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  const pos = getScreenPos(e);
+  mouseDown = false;
+
+  // Button release
+  if (wm.bully && wm.bully.objdata) {
+    const bd = wm.bully.objdata;
+
+    if (bd.id === 'close') {
+      bd.flags &= ~FLG_LEFT_DOWN;
+      const wd = bd.parentData;
+      const wnd = bd.parentWnd;
+      // Close window
+      if (wd.props & FP_ZOOMBOX) {
+        const sp = getScreenPosOfRect(wnd);
+        const from = new cregion(sp.x, sp.y, wnd.region.cx, wnd.region.cy);
+        const to = new cregion(sp.x+wnd.region.cx/2, sp.y+wnd.region.cy/2, 1, 1);
+        wnd.active = 0;
+        wm.zoombox(from, to);
+      } else {
+        wnd.active = 0;
+        wm.repaint();
+      }
+      if (wd.props & FP_KILL) {
+        const idx = wm.mainrect.children.indexOf(wnd);
+        if (idx >= 0) wm.mainrect.children.splice(idx, 1);
+      }
+    }
+
+    else if (bd.id === 'size') {
+      bd.flags &= ~FLG_LEFT_DOWN;
+      const wd = bd.parentData;
+      const wnd = bd.parentWnd;
+      if (wd.flags & FLG_WNDMAX) {
+        // Restore
+        wd.flags &= ~FLG_WNDMAX;
+        wnd.region.x = wd.sizereg.x; wnd.region.y = wd.sizereg.y;
+        wnd.region.cx = wd.sizereg.cx; wnd.region.cy = wd.sizereg.cy;
+      } else {
+        // Maximize
+        wd.flags |= FLG_WNDMAX;
+        wd.sizereg = wnd.region.clone();
+        wnd.region.x = 0; wnd.region.y = 0;
+        wnd.region.cx = SCR_W; wnd.region.cy = SCR_H;
+      }
+      resizeWindowParts(wnd, wd);
+      wm.repaint();
+    }
+
+    else if (bd.caption !== undefined && bd.flags & FLG_LEFT_DOWN) {
+      bd.flags &= ~FLG_LEFT_DOWN;
+      // Fire command to parent window
+      if (bd.parentData && bd.parentData.userproc) {
+        bd.parentData.userproc({ id: MSG_COMMAND, from: bd.id }, bd.parentData);
+      }
+      wm.repaint();
+    }
+  }
+
+  dragState = null;
+  wm.bully = null;
+  if (!mouseDown) wm.repaint();
+});
+
+function resizeWindowParts(wnd, wd) {
+  if (!wd) return;
+  // Client
+  if (wd.client) {
+    wd.client.region.cx = wnd.region.cx - BORDER_W * 2;
+    wd.client.region.cy = wnd.region.cy - BORDER_W * 3 - TITLE_H;
+  }
+  // Size button
+  if (wd.bsize) {
+    wd.bsize.region.x = wnd.region.cx - TITLE_H - BORDER_W;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MAIN.CC — Demo application
+// ═══════════════════════════════════════════════════════════════════
+wm.init();
+
+// Random windows (like the original's for loop with numv)
+const numv = 3;
+for (let i = 0; i < numv; i++) {
+  const x = Math.random() * 400 | 0;
+  const y = Math.random() * 300 | 0;
+  createWindow({
+    x, y, w: 100 + (Math.random() * 300 | 0), h: 100 + (Math.random() * 200 | 0),
+    props: FP_TOFRONT | FP_SIZE | FP_ZOOMBOX | FP_KILL,
+    ttlcolor: [1, 2, 4, 5, 9][i % 5],
+  });
+}
+
+// "Generador de lineas aleatorias 1.0" window
+const lineGenWnd = createWindow({
+  x: 10, y: 20, w: 380, h: 260,
+  props: FP_TITLE | FP_SIZE | FP_ZOOMBOX | FP_TOFRONT | FP_KILL,
+  clprops: FP_3DBORDER | FP_CLEAR,
+  title: 'Generador de lineas aleatorias 1.0',
+  ttlcolor: 1,
+  userproc: (msg, data) => {
+    if (msg.id === MSG_COMMAND && msg.from === 100) {
+      // Add a random line to the window's client area
+      const cl = data.client;
+      if (!data.lines) data.lines = [];
+      if (data.lines.length < 100) {
+        data.lines.push({
+          x: Math.random() * cl.region.cx | 0,
+          y: Math.random() * cl.region.cy | 0,
+          x2: Math.random() * cl.region.cx | 0,
+          y2: Math.random() * cl.region.cy | 0,
+        });
+        wm.repaint();
+      }
+    }
+  }
+});
+
+// "Nueva linea" button inside the line generator's client
+const lgData = lineGenWnd.objdata;
+createButton(lgData.client, {
+  x: 10, y: 10, w: 150, h: 30,
+  id: 100, caption: 'Nueva linea',
+  parentData: lgData,
+});
+
+// ── 3D Wireframe Cube Window ──
+const cubeAngle = { x: 0, y: 0 };
+const CUBE_VERTS = [
+  [-1,-1,-1], [1,-1,-1], [1,1,-1], [-1,1,-1],
+  [-1,-1, 1], [1,-1, 1], [1,1, 1], [-1,1, 1]
+];
+const CUBE_EDGES = [
+  [0,1],[1,2],[2,3],[3,0],  // back face
+  [4,5],[5,6],[6,7],[7,4],  // front face
+  [0,4],[1,5],[2,6],[3,7]   // connecting edges
+];
+
+const cubeWnd = createWindow({
+  x: 420, y: 300, w: 240, h: 200,
+  props: FP_TITLE | FP_SIZE | FP_ZOOMBOX | FP_TOFRONT | FP_KILL,
+  clprops: FP_3DBORDER | FP_CLEAR,
+  title: 'Cubo 3D',
+  ttlcolor: 4,
+  clcolor: 0,
+});
+
+const cubeClient = cubeWnd.objdata.client;
+cubeClient.objproc = function(msg, data, sx, sy) {
+  if (msg.id === MSG_PAINT) {
+    const r = data.r;
+    const w = r.region.cx, h = r.region.cy;
+    grFilledBox(sx, sy, sx+w-1, sy+h-1, 0);
+    if (data.props & FP_3DBORDER) grBox3d(sx, sy, sx+w-1, sy+h-1, 8, 8, 15, 15, 1);
+
+    const cx = w / 2, cy = h / 2;
+    const scale = Math.min(w, h) * 0.45;
+    const cosX = Math.cos(cubeAngle.x), sinX = Math.sin(cubeAngle.x);
+    const cosY = Math.cos(cubeAngle.y), sinY = Math.sin(cubeAngle.y);
+
+    const projected = CUBE_VERTS.map(([x, y, z]) => {
+      // Rotate Y then X
+      const x1 = x * cosY - z * sinY;
+      const z1 = x * sinY + z * cosY;
+      const y1 = y * cosX - z1 * sinX;
+      const z2 = y * sinX + z1 * cosX;
+      const d = 3.5 + z2;
+      return [cx + (x1 / d) * scale * 2, cy + (y1 / d) * scale * 2];
+    });
+
+    for (const [a, b] of CUBE_EDGES) {
+      grLine(sx + projected[a][0] | 0, sy + projected[a][1] | 0,
+             sx + projected[b][0] | 0, sy + projected[b][1] | 0, 10);
+    }
+  }
+};
+
+// ── Bouncing Line Window ──
+const bounce = {
+  x1: 30, y1: 20, x2: 80, y2: 60,
+  dx1: 2.3, dy1: 1.7, dx2: -1.9, dy2: 2.1,
+  trails: [], maxTrails: 40, hue: 0,
+};
+
+const bounceWnd = createWindow({
+  x: 30, y: 320, w: 280, h: 220,
+  props: FP_TITLE | FP_SIZE | FP_ZOOMBOX | FP_TOFRONT | FP_KILL,
+  clprops: FP_3DBORDER | FP_CLEAR,
+  title: 'Lineas Rebotando',
+  ttlcolor: 5,
+  clcolor: 0,
+});
+
+const bounceClient = bounceWnd.objdata.client;
+bounceClient.objproc = function(msg, data, sx, sy) {
+  if (msg.id === MSG_PAINT) {
+    const r = data.r;
+    const w = r.region.cx, h = r.region.cy;
+    grFilledBox(sx, sy, sx+w-1, sy+h-1, 0);
+    if (data.props & FP_3DBORDER) grBox3d(sx, sy, sx+w-1, sy+h-1, 8, 8, 15, 15, 1);
+
+    // Draw trails oldest to newest, fading from dark to light gray
+    for (let i = 0; i < bounce.trails.length; i++) {
+      const fade = i / bounce.trails.length;
+      if (fade > 0.1) {
+        const gray = Math.floor(40 + fade * 180);
+        const col = `rgb(${gray},${gray},${gray})`;
+        grLine(sx + bounce.trails[i].x1 | 0, sy + bounce.trails[i].y1 | 0,
+               sx + bounce.trails[i].x2 | 0, sy + bounce.trails[i].y2 | 0, col);
+      }
+    }
+
+    // Draw current line bright white
+    grLine(sx + bounce.x1 | 0, sy + bounce.y1 | 0,
+           sx + bounce.x2 | 0, sy + bounce.y2 | 0, 15);
+  }
+};
+
+function tickBounce() {
+  const cl = bounceClient;
+  const w = cl.region.cx - 4, h = cl.region.cy - 4;
+  if (w < 10 || h < 10) return;
+
+  bounce.x1 += bounce.dx1; bounce.y1 += bounce.dy1;
+  bounce.x2 += bounce.dx2; bounce.y2 += bounce.dy2;
+
+  if (bounce.x1 <= 2 || bounce.x1 >= w) { bounce.dx1 = -bounce.dx1; bounce.x1 = Math.max(2, Math.min(w, bounce.x1)); }
+  if (bounce.y1 <= 2 || bounce.y1 >= h) { bounce.dy1 = -bounce.dy1; bounce.y1 = Math.max(2, Math.min(h, bounce.y1)); }
+  if (bounce.x2 <= 2 || bounce.x2 >= w) { bounce.dx2 = -bounce.dx2; bounce.x2 = Math.max(2, Math.min(w, bounce.x2)); }
+  if (bounce.y2 <= 2 || bounce.y2 >= h) { bounce.dy2 = -bounce.dy2; bounce.y2 = Math.max(2, Math.min(h, bounce.y2)); }
+
+  bounce.trails.push({ x1: bounce.x1, y1: bounce.y1, x2: bounce.x2, y2: bounce.y2, col: bounce.hue });
+  if (bounce.trails.length > bounce.maxTrails) bounce.trails.shift();
+  bounce.hue++;
+}
+
+// ── Starfield Window ──
+const stars = [];
+const NUM_STARS = 120;
+for (let i = 0; i < NUM_STARS; i++) {
+  stars.push({
+    x: (Math.random() - 0.5) * 2,
+    y: (Math.random() - 0.5) * 2,
+    z: Math.random() * 4,
+  });
+}
+
+const starWnd = createWindow({
+  x: 500, y: 50, w: 260, h: 220,
+  props: FP_TITLE | FP_SIZE | FP_ZOOMBOX | FP_TOFRONT | FP_KILL,
+  clprops: FP_3DBORDER | FP_CLEAR,
+  title: 'Campo de Estrellas',
+  ttlcolor: 9,
+  clcolor: 0,
+});
+
+const starClient = starWnd.objdata.client;
+starClient.objproc = function(msg, data, sx, sy) {
+  if (msg.id === MSG_PAINT) {
+    const r = data.r;
+    const w = r.region.cx, h = r.region.cy;
+    grFilledBox(sx, sy, sx+w-1, sy+h-1, 0);
+    if (data.props & FP_3DBORDER) grBox3d(sx, sy, sx+w-1, sy+h-1, 8, 8, 15, 15, 1);
+
+    const cx = w / 2, cy = h / 2;
+    for (const s of stars) {
+      const px = cx + (s.x / s.z) * w * 0.8;
+      const py = cy + (s.y / s.z) * h * 0.8;
+      // Previous position for streak
+      const pz = s.z + 0.06;
+      const ox = cx + (s.x / pz) * w * 0.8;
+      const oy = cy + (s.y / pz) * h * 0.8;
+
+      if (px >= 0 && px < w && py >= 0 && py < h) {
+        // Brightness based on depth — closer = brighter
+        const brightness = 1 - (s.z / 4);
+        let col;
+        if (brightness > 0.7) col = 15;       // white
+        else if (brightness > 0.4) col = 7;   // light gray
+        else col = 8;                          // dark gray
+
+        // Draw streak line for close stars, dot for far ones
+        if (s.z < 1.5) {
+          grLine(sx + ox | 0, sy + oy | 0, sx + px | 0, sy + py | 0, col);
+        } else {
+          ctx.fillStyle = PAL[col];
+          ctx.fillRect((sx + px | 0), (sy + py | 0), 1, 1);
+        }
+      }
+    }
+  }
+};
+
+function tickStars() {
+  for (const s of stars) {
+    s.z -= 0.03;
+    if (s.z <= 0.05) {
+      s.x = (Math.random() - 0.5) * 2;
+      s.y = (Math.random() - 0.5) * 2;
+      s.z = 3.5 + Math.random() * 0.5;
+    }
+  }
+}
+
+// Animation loop — ticks all animated windows and repaints
+(function animate() {
+  cubeAngle.x += 0.02;
+  cubeAngle.y += 0.03;
+  tickBounce();
+  tickStars();
+  wm.repaint();
+  requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>
