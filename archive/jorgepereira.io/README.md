@@ -25,6 +25,16 @@ Open http://localhost:3000 in your browser to test the site.
 
 ACME/Let's Encrypt errors in the logs are expected locally since Caddy cannot obtain a certificate without a public-facing domain. The site still works over HTTP.
 
+If your browser redirects `localhost:3000` to HTTPS, use an incognito/private window.
+
+### Redeploy locally after changes
+
+```bash
+docker rm -f jorgepereira-io
+docker build -t jorgepereira-io .
+docker run -d -p 3000:80 --name jorgepereira-io jorgepereira-io
+```
+
 ## Pushing updates
 
 When you make changes to the site, commit and push to `main`. The Docker image is hosted on GitHub Container Registry at `ghcr.io/jorgeper/jorgepereira-io:latest`.
