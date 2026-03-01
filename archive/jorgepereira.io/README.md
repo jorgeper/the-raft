@@ -30,9 +30,7 @@ If your browser redirects `localhost:3000` to HTTPS, use an incognito/private wi
 ### Redeploy locally after changes
 
 ```bash
-docker rm -f jorgepereira-io
-docker build -t jorgepereira-io .
-docker run -d -p 3000:80 --name jorgepereira-io jorgepereira-io
+docker rm -f jorgepereira-io && docker build -t jorgepereira-io . && docker run -d -p 3000:80 --name jorgepereira-io jorgepereira-io
 ```
 
 ## Pushing updates
