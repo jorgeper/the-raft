@@ -1,5 +1,7 @@
 # WISY
 
+![WISY screenshot](wisy.png)
+
 A graphical windowing system written in C++ for DOS, circa 1996. It uses the GRX graphics library to draw at 800x600 resolution.
 
 The system implements a small widget toolkit with 3D-bordered windows, title bars, close and maximize buttons, resizable borders, and client areas that can host child controls like buttons. Windows support drag-to-move, border-drag-to-resize, maximize/restore, and an animated zoom effect on open and close.
