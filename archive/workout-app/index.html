@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Workout Book</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============ Screen: Day (primary) ============ -->
+  <div id="screen-day" class="screen active">
+    <div class="page-content">
+      <div class="day-nav">
+        <button id="btn-day-prev" class="btn-icon">&#9664;</button>
+        <div class="day-nav-center">
+          <h1 id="day-date" class="date-heading"></h1>
+          <button id="btn-go-today" class="btn-today hidden">Today</button>
+        </div>
+        <button id="btn-day-next" class="btn-icon">&#9654;</button>
+      </div>
+
+      <div class="workout-actions">
+        <button id="btn-load-workout" class="btn btn-secondary btn-sm">Load Workout</button>
+        <button id="btn-save-workout" class="btn btn-secondary btn-sm">Save Workout</button>
+      </div>
+      <p id="day-workout-name" class="workout-name-label hidden"></p>
+
+      <div id="day-exercises" class="exercise-list"></div>
+
+      <p id="day-empty-msg" class="empty-message">No exercises yet.</p>
+
+      <button id="btn-add-exercise" class="btn btn-secondary">+ Add Exercise</button>
+
+      <div id="timer-section" class="timer-section">
+        <div id="timer-display" class="timer-display">00:00:00</div>
+        <div id="timer-controls" class="timer-controls">
+          <button id="btn-timer-start" class="btn-timer btn-timer-start">Start</button>
+          <button id="btn-timer-stop" class="btn-timer btn-timer-stop hidden">Stop</button>
+          <button id="btn-timer-reset" class="btn-timer btn-timer-reset hidden">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-screen="day">Today</button>
+      <button class="nav-item" data-screen="workouts">Workouts</button>
+      <button class="nav-item" data-screen="settings">Settings</button>
+    </nav>
+  </div>
+
+  <!-- ============ Modal: Add Exercise ============ -->
+  <div id="modal-add-exercise" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Add Exercise</h2>
+      <input id="exercise-search" type="text" class="input" placeholder="Search exercises..." autocomplete="off">
+      <div id="exercise-suggestions" class="suggestions-list"></div>
+      <button id="btn-create-exercise" class="btn btn-secondary">Create new exercise</button>
+      <button id="btn-cancel-exercise" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============ Modal: Load Workout ============ -->
+  <div id="modal-load-workout" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Load Workout</h2>
+      <div id="load-workout-list" class="workout-picker-list"></div>
+      <p id="load-workout-empty" class="empty-message hidden">No saved workouts yet.</p>
+      <button id="btn-cancel-load-workout" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============ Modal: Save Workout ============ -->
+  <div id="modal-save-workout" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Save as Workout</h2>
+      <input id="save-workout-name" type="text" class="input" placeholder="Workout name (e.g. Push Day 1)">
+      <div class="btn-row">
+        <button id="btn-confirm-save-workout" class="btn btn-primary">Save</button>
+        <button id="btn-cancel-save-workout" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Screen: Workouts ============ -->
+  <div id="screen-workouts" class="screen">
+    <div class="page-content">
+      <h1 class="date-heading">My Workouts</h1>
+
+      <div id="workouts-list" class="templates-manage-list"></div>
+
+      <button id="btn-create-workout" class="btn btn-secondary">+ Create New Workout</button>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-item" data-screen="day">Today</button>
+      <button class="nav-item active" data-screen="workouts">Workouts</button>
+      <button class="nav-item" data-screen="settings">Settings</button>
+    </nav>
+  </div>
+
+  <!-- ============ Modal: Edit Workout ============ -->
+  <div id="modal-edit-workout" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2 id="edit-workout-title">Edit Workout</h2>
+      <input id="edit-workout-name" type="text" class="input" placeholder="Workout name">
+      <div id="edit-workout-exercises" class="edit-exercise-list"></div>
+      <button id="btn-edit-workout-add" class="btn btn-secondary">+ Add Exercise</button>
+      <div class="btn-row">
+        <button id="btn-edit-workout-save" class="btn btn-primary">Save</button>
+        <button id="btn-edit-workout-cancel" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Modal: Add Exercise to Workout ============ -->
+  <div id="modal-workout-exercise" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Add Exercise</h2>
+      <input id="workout-exercise-search" type="text" class="input" placeholder="Exercise name..." autocomplete="off">
+      <div id="workout-exercise-suggestions" class="suggestions-list"></div>
+      <button id="btn-workout-exercise-create" class="btn btn-secondary">Add as new exercise</button>
+      <button id="btn-workout-exercise-cancel" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============ Screen: Settings ============ -->
+  <div id="screen-settings" class="screen">
+    <div class="page-content">
+      <h1 class="date-heading">Settings</h1>
+
+      <div class="settings-card">
+        <div class="setting-row">
+          <span class="setting-label">Weight Unit</span>
+          <div class="toggle-group">
+            <button id="btn-unit-lb" class="toggle-btn active">lb</button>
+            <button id="btn-unit-kg" class="toggle-btn">kg</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-item" data-screen="day">Today</button>
+      <button class="nav-item" data-screen="workouts">Workouts</button>
+      <button class="nav-item active" data-screen="settings">Settings</button>
+    </nav>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
