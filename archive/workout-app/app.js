@@ -26,7 +26,7 @@
   let state = {
     days: [],            // Array of DayRecord objects
     savedWorkouts: [],   // Array of SavedWorkout objects
-    settings: { weightUnit: 'lb', theme: 'dark' },
+    settings: { weightUnit: 'lb', theme: 'dark', devMode: false },
     currentDate: null,   // YYYY-MM-DD string for the day screen
     timerInterval: null,
     editingWorkout: null,           // saved workout being edited
@@ -810,6 +810,9 @@
     $('btn-theme-dark').classList.toggle('active', state.settings.theme !== 'light');
     $('btn-unit-lb').classList.toggle('active', state.settings.weightUnit === 'lb');
     $('btn-unit-kg').classList.toggle('active', state.settings.weightUnit === 'kg');
+    $('btn-devmode-on').classList.toggle('active', state.settings.devMode === true);
+    $('btn-devmode-off').classList.toggle('active', state.settings.devMode !== true);
+    $('dev-tools-panel').classList.toggle('hidden', !state.settings.devMode);
     showScreen('settings');
   }
 
@@ -817,6 +820,214 @@
   // Render: Analytics
   // ========================================
   const CHART_COLORS = ['#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#a855f7', '#ec4899'];
+
+  // ========================================
+  // Exercise Library (for test data generation)
+  // ========================================
+  const EXERCISE_LIBRARY = [
+    // Chest
+    { name: 'Bench Press', category: 'chest', weightRange: { min: 95, max: 315 } },
+    { name: 'Incline Bench Press', category: 'chest', weightRange: { min: 75, max: 255 } },
+    { name: 'Decline Bench Press', category: 'chest', weightRange: { min: 85, max: 275 } },
+    { name: 'Dumbbell Bench Press', category: 'chest', weightRange: { min: 30, max: 120 } },
+    { name: 'Incline Dumbbell Press', category: 'chest', weightRange: { min: 25, max: 100 } },
+    { name: 'Cable Fly', category: 'chest', weightRange: { min: 15, max: 60 } },
+    { name: 'Chest Dip', category: 'chest', weightRange: { min: 0, max: 90 } },
+    { name: 'Machine Chest Press', category: 'chest', weightRange: { min: 50, max: 250 } },
+    // Back
+    { name: 'Barbell Row', category: 'back', weightRange: { min: 95, max: 275 } },
+    { name: 'Deadlift', category: 'back', weightRange: { min: 135, max: 495 } },
+    { name: 'Pull-Up', category: 'back', weightRange: { min: 0, max: 90 } },
+    { name: 'Lat Pulldown', category: 'back', weightRange: { min: 60, max: 220 } },
+    { name: 'Seated Cable Row', category: 'back', weightRange: { min: 60, max: 200 } },
+    { name: 'Dumbbell Row', category: 'back', weightRange: { min: 30, max: 120 } },
+    { name: 'T-Bar Row', category: 'back', weightRange: { min: 45, max: 225 } },
+    { name: 'Face Pull', category: 'back', weightRange: { min: 20, max: 70 } },
+    { name: 'Rack Pull', category: 'back', weightRange: { min: 135, max: 405 } },
+    // Shoulders
+    { name: 'Overhead Press', category: 'shoulders', weightRange: { min: 65, max: 185 } },
+    { name: 'Dumbbell Shoulder Press', category: 'shoulders', weightRange: { min: 25, max: 90 } },
+    { name: 'Lateral Raise', category: 'shoulders', weightRange: { min: 10, max: 40 } },
+    { name: 'Front Raise', category: 'shoulders', weightRange: { min: 10, max: 40 } },
+    { name: 'Reverse Fly', category: 'shoulders', weightRange: { min: 10, max: 35 } },
+    { name: 'Arnold Press', category: 'shoulders', weightRange: { min: 20, max: 70 } },
+    { name: 'Upright Row', category: 'shoulders', weightRange: { min: 40, max: 120 } },
+    { name: 'Machine Shoulder Press', category: 'shoulders', weightRange: { min: 40, max: 180 } },
+    // Legs
+    { name: 'Squat', category: 'legs', weightRange: { min: 95, max: 405 } },
+    { name: 'Front Squat', category: 'legs', weightRange: { min: 75, max: 315 } },
+    { name: 'Leg Press', category: 'legs', weightRange: { min: 180, max: 800 } },
+    { name: 'Romanian Deadlift', category: 'legs', weightRange: { min: 95, max: 315 } },
+    { name: 'Leg Curl', category: 'legs', weightRange: { min: 40, max: 160 } },
+    { name: 'Leg Extension', category: 'legs', weightRange: { min: 40, max: 180 } },
+    { name: 'Bulgarian Split Squat', category: 'legs', weightRange: { min: 20, max: 80 } },
+    { name: 'Calf Raise', category: 'legs', weightRange: { min: 50, max: 300 } },
+    { name: 'Hip Thrust', category: 'legs', weightRange: { min: 95, max: 365 } },
+    { name: 'Walking Lunge', category: 'legs', weightRange: { min: 20, max: 80 } },
+    // Arms
+    { name: 'Barbell Curl', category: 'arms', weightRange: { min: 30, max: 120 } },
+    { name: 'Dumbbell Curl', category: 'arms', weightRange: { min: 15, max: 55 } },
+    { name: 'Hammer Curl', category: 'arms', weightRange: { min: 15, max: 55 } },
+    { name: 'Tricep Pushdown', category: 'arms', weightRange: { min: 30, max: 100 } },
+    { name: 'Skull Crusher', category: 'arms', weightRange: { min: 30, max: 100 } },
+    { name: 'Overhead Tricep Extension', category: 'arms', weightRange: { min: 20, max: 80 } },
+    { name: 'Preacher Curl', category: 'arms', weightRange: { min: 25, max: 90 } },
+    { name: 'Cable Curl', category: 'arms', weightRange: { min: 20, max: 70 } },
+    { name: 'Close-Grip Bench Press', category: 'arms', weightRange: { min: 75, max: 225 } },
+    // Core
+    { name: 'Plank', category: 'core', weightRange: { min: 0, max: 0 } },
+    { name: 'Cable Crunch', category: 'core', weightRange: { min: 40, max: 150 } },
+    { name: 'Hanging Leg Raise', category: 'core', weightRange: { min: 0, max: 25 } },
+    { name: 'Ab Rollout', category: 'core', weightRange: { min: 0, max: 0 } },
+    { name: 'Russian Twist', category: 'core', weightRange: { min: 10, max: 50 } },
+    { name: 'Decline Sit-Up', category: 'core', weightRange: { min: 0, max: 45 } },
+  ];
+
+  const DEV_WORKOUT_TEMPLATES = [
+    {
+      name: 'Push Day',
+      exercises: ['Bench Press', 'Incline Dumbbell Press', 'Overhead Press', 'Lateral Raise', 'Tricep Pushdown', 'Cable Fly'],
+    },
+    {
+      name: 'Pull Day',
+      exercises: ['Deadlift', 'Barbell Row', 'Lat Pulldown', 'Face Pull', 'Barbell Curl', 'Hammer Curl'],
+    },
+    {
+      name: 'Leg Day',
+      exercises: ['Squat', 'Romanian Deadlift', 'Leg Press', 'Leg Curl', 'Leg Extension', 'Calf Raise'],
+    },
+    {
+      name: 'Upper Body',
+      exercises: ['Bench Press', 'Barbell Row', 'Dumbbell Shoulder Press', 'Lat Pulldown', 'Dumbbell Curl', 'Tricep Pushdown'],
+    },
+    {
+      name: 'Lower Body',
+      exercises: ['Squat', 'Hip Thrust', 'Bulgarian Split Squat', 'Leg Curl', 'Calf Raise', 'Walking Lunge'],
+    },
+    {
+      name: 'Full Body',
+      exercises: ['Squat', 'Bench Press', 'Barbell Row', 'Overhead Press', 'Romanian Deadlift', 'Pull-Up'],
+    },
+  ];
+
+  // ========================================
+  // Dev Mode: Test data generation
+  // ========================================
+  function generateTestDays(startDateStr, numDays) {
+    const splits = [
+      { name: 'Push', categories: ['chest', 'shoulders', 'arms'] },
+      { name: 'Pull', categories: ['back', 'arms'] },
+      { name: 'Legs', categories: ['legs', 'core'] },
+    ];
+    const isKg = state.settings.weightUnit === 'kg';
+    const roundTo = isKg ? 2.5 : 5;
+
+    function roundWeight(w) {
+      return Math.round(w / roundTo) * roundTo;
+    }
+
+    function pickRandom(arr, count) {
+      const shuffled = arr.slice().sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, count);
+    }
+
+    const startDate = new Date(startDateStr + 'T12:00:00');
+    let splitIdx = 0;
+
+    for (let i = 0; i < numDays; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      const dateStr = toDateStr(d);
+
+      // ~30% rest day chance
+      if (Math.random() < 0.3) continue;
+
+      const split = splits[splitIdx % splits.length];
+      splitIdx++;
+
+      // Get exercises for this split's categories
+      const pool = EXERCISE_LIBRARY.filter(e => split.categories.includes(e.category));
+      const chosen = pickRandom(pool, 5 + Math.floor(Math.random() * 2)); // 5-6 exercises
+
+      // Progress factor: 0 at start, 1 at end of period
+      const progress = numDays > 1 ? i / (numDays - 1) : 0.5;
+
+      const exercises = chosen.map(ex => {
+        const numSets = 3 + Math.floor(Math.random() * 2); // 3-4 sets
+        const { min, max } = ex.weightRange;
+        // Start at 40-60% of range, trend toward 60-85%
+        const lowPct = 0.4 + progress * 0.2;
+        const highPct = 0.6 + progress * 0.25;
+        const basePct = lowPct + Math.random() * (highPct - lowPct);
+        let baseWeight = min + (max - min) * basePct;
+        if (isKg) baseWeight = baseWeight * 0.453592;
+        baseWeight = roundWeight(baseWeight);
+        if (baseWeight <= 0 && max > 0) baseWeight = roundTo;
+
+        const sets = [];
+        for (let s = 0; s < numSets; s++) {
+          const reps = Math.max(6, Math.round(12 - s * 1.5 + (Math.random() * 2 - 1)));
+          sets.push({ weight: baseWeight, reps });
+        }
+        return {
+          id: uuid(),
+          exerciseName: ex.name,
+          sets,
+        };
+      });
+
+      // Timer data: random 30-75 min
+      const durationMs = (30 + Math.floor(Math.random() * 46)) * 60 * 1000;
+
+      // Overwrite or create the day record
+      const existing = state.days.findIndex(day => day.date === dateStr);
+      const dayRecord = {
+        id: existing >= 0 ? state.days[existing].id : uuid(),
+        date: dateStr,
+        workoutName: split.name + ' Day',
+        exercises,
+        timerState: 'stopped',
+        timerStartedAt: null,
+        timerElapsedMs: durationMs,
+        timerStoppedAt: new Date(d.getTime() + durationMs).toISOString(),
+      };
+      if (existing >= 0) {
+        state.days[existing] = dayRecord;
+      } else {
+        state.days.push(dayRecord);
+      }
+    }
+
+    // Sort days by date
+    state.days.sort((a, b) => a.date.localeCompare(b.date));
+    save();
+  }
+
+  function generateSavedWorkouts() {
+    let count = 0;
+    DEV_WORKOUT_TEMPLATES.forEach(tpl => {
+      const exists = state.savedWorkouts.some(w => w.name.toLowerCase() === tpl.name.toLowerCase());
+      if (!exists) {
+        state.savedWorkouts.push({
+          id: uuid(),
+          name: tpl.name,
+          exercises: [...tpl.exercises],
+        });
+        count++;
+      }
+    });
+    save();
+    return count;
+  }
+
+  function resetAllData() {
+    localStorage.removeItem(KEYS.days);
+    localStorage.removeItem(KEYS.savedWorkouts);
+    localStorage.removeItem(KEYS.settings);
+    localStorage.removeItem(OLD_KEYS.workouts);
+    localStorage.removeItem(OLD_KEYS.templates);
+    window.location.reload();
+  }
 
   function renderAnalytics() {
     const stats = getWorkoutStats();
@@ -1350,6 +1561,63 @@
       state.settings.weightUnit = 'kg';
       save();
       renderSettings();
+    });
+
+    // --- Dev Mode ---
+    $('btn-devmode-on').addEventListener('click', () => {
+      state.settings.devMode = true;
+      save();
+      renderSettings();
+    });
+
+    $('btn-devmode-off').addEventListener('click', () => {
+      state.settings.devMode = false;
+      save();
+      renderSettings();
+    });
+
+    $('btn-dev-generate-days').addEventListener('click', () => {
+      const numDays = 14;
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - numDays);
+      $('input-gen-days-count').value = numDays;
+      $('input-gen-days-start').value = toDateStr(startDate);
+      showModal('modal-generate-days');
+    });
+
+    $('btn-confirm-generate-days').addEventListener('click', () => {
+      const count = parseInt($('input-gen-days-count').value) || 14;
+      const startDate = $('input-gen-days-start').value;
+      if (!startDate) return;
+      generateTestDays(startDate, Math.min(90, Math.max(1, count)));
+      hideModal('modal-generate-days');
+      renderDay(state.currentDate);
+    });
+
+    $('btn-cancel-generate-days').addEventListener('click', () => {
+      hideModal('modal-generate-days');
+    });
+
+    $('btn-dev-generate-workouts').addEventListener('click', () => {
+      const count = generateSavedWorkouts();
+      $('btn-dev-generate-workouts').textContent = count > 0
+        ? `Added ${count} workout${count > 1 ? 's' : ''}!`
+        : 'Already up to date!';
+      setTimeout(() => {
+        $('btn-dev-generate-workouts').textContent = 'Generate Saved Workouts';
+      }, 1500);
+    });
+
+    $('btn-dev-reset').addEventListener('click', () => {
+      showModal('modal-confirm-reset');
+    });
+
+    $('btn-confirm-reset').addEventListener('click', () => {
+      resetAllData();
+    });
+
+    $('btn-cancel-reset').addEventListener('click', () => {
+      hideModal('modal-confirm-reset');
     });
   }
 

@@ -211,6 +211,24 @@
             <button id="btn-unit-kg" class="toggle-btn">kg</button>
           </div>
         </div>
+        <div class="setting-row" style="border-top: 1px solid var(--border);">
+          <span class="setting-label">Developer Mode</span>
+          <div class="toggle-group">
+            <button id="btn-devmode-off" class="toggle-btn active">Off</button>
+            <button id="btn-devmode-on" class="toggle-btn">On</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="dev-tools-panel" class="settings-card hidden">
+        <div class="setting-row" style="border-bottom: none;">
+          <span class="setting-label" style="color: var(--warm); font-weight: 600;">Developer Tools</span>
+        </div>
+        <div style="padding: 0 0 14px;">
+          <button id="btn-dev-generate-days" class="btn btn-secondary" style="margin-bottom: 10px;">Generate Test Days</button>
+          <button id="btn-dev-generate-workouts" class="btn btn-secondary" style="margin-bottom: 10px;">Generate Saved Workouts</button>
+          <button id="btn-dev-reset" class="btn btn-danger">Reset All Data</button>
+        </div>
       </div>
     </div>
 
@@ -220,6 +238,36 @@
       <button class="nav-item" data-screen="analytics">Analytics</button>
       <button class="nav-item active" data-screen="settings">Settings</button>
     </nav>
+  </div>
+
+  <!-- ============ Modal: Generate Test Days ============ -->
+  <div id="modal-generate-days" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Generate Test Days</h2>
+      <label style="font-size: 0.875rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Number of days</label>
+      <input id="input-gen-days-count" type="number" class="input" value="14" min="1" max="90" inputmode="numeric">
+      <label style="font-size: 0.875rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Start date</label>
+      <input id="input-gen-days-start" type="date" class="input">
+      <p class="hint-text" style="margin-bottom: 12px;">Existing data on matching dates will be overwritten.</p>
+      <div class="btn-row">
+        <button id="btn-confirm-generate-days" class="btn btn-primary">Generate</button>
+        <button id="btn-cancel-generate-days" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Modal: Confirm Reset ============ -->
+  <div id="modal-confirm-reset" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Reset All Data</h2>
+      <p style="color: var(--text-secondary); font-size: 0.9375rem; margin-bottom: 16px;">This will permanently delete all workout days, saved workouts, and settings. This cannot be undone.</p>
+      <div class="btn-row">
+        <button id="btn-confirm-reset" class="btn btn-danger">Yes, Reset Everything</button>
+        <button id="btn-cancel-reset" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
