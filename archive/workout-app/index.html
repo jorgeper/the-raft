@@ -4,8 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#09090b">
   <title>Workout Book</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -194,6 +198,13 @@
 
       <div class="settings-card">
         <div class="setting-row">
+          <span class="setting-label">Theme</span>
+          <div class="toggle-group">
+            <button id="btn-theme-light" class="toggle-btn">Light</button>
+            <button id="btn-theme-dark" class="toggle-btn active">Dark</button>
+          </div>
+        </div>
+        <div class="setting-row" style="border-top: 1px solid var(--border);">
           <span class="setting-label">Weight Unit</span>
           <div class="toggle-group">
             <button id="btn-unit-lb" class="toggle-btn active">lb</button>

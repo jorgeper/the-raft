@@ -26,7 +26,7 @@
   let state = {
     days: [],            // Array of DayRecord objects
     savedWorkouts: [],   // Array of SavedWorkout objects
-    settings: { weightUnit: 'lb' },
+    settings: { weightUnit: 'lb', theme: 'dark' },
     currentDate: null,   // YYYY-MM-DD string for the day screen
     timerInterval: null,
     editingWorkout: null,           // saved workout being edited
@@ -113,6 +113,18 @@
       groups.push({ weight: currentWeight, reps: currentReps });
     }
     return groups.map(g => `${g.weight} ${unit()} &times; ${g.reps.join(', ')}`).join(' &nbsp;|&nbsp; ');
+  }
+
+  // ========================================
+  // Theme
+  // ========================================
+  function applyTheme() {
+    const theme = state.settings.theme || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute('content', theme === 'light' ? '#f6f4f0' : '#09090b');
+    }
   }
 
   // ========================================
@@ -794,6 +806,8 @@
   // Settings
   // ========================================
   function renderSettings() {
+    $('btn-theme-light').classList.toggle('active', state.settings.theme === 'light');
+    $('btn-theme-dark').classList.toggle('active', state.settings.theme !== 'light');
     $('btn-unit-lb').classList.toggle('active', state.settings.weightUnit === 'lb');
     $('btn-unit-kg').classList.toggle('active', state.settings.weightUnit === 'kg');
     showScreen('settings');
@@ -802,7 +816,7 @@
   // ========================================
   // Render: Analytics
   // ========================================
-  const CHART_COLORS = ['#007aff', '#ff9500', '#34c759', '#ff3b30', '#af52de', '#5ac8fa'];
+  const CHART_COLORS = ['#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#a855f7', '#ec4899'];
 
   function renderAnalytics() {
     const stats = getWorkoutStats();
@@ -852,7 +866,7 @@
     container.innerHTML = state.analyticsExercises.map((name, idx) => {
       const color = CHART_COLORS[idx % CHART_COLORS.length];
       return `<span class="exercise-chip">
-        <span class="chip-dot" style="background:${color}"></span>
+        <span class="chip-dot" style="background:${color};box-shadow:0 0 6px ${color}"></span>
         ${name}
         <button class="chip-remove" data-name="${name}">&times;</button>
       </span>`;
@@ -934,15 +948,30 @@
       return PAD.top + plotH - ((val - minVal) / range) * plotH;
     }
 
+    // Gradient definitions for area fills
+    let defs = '<defs>';
+    allData.forEach((d, idx) => {
+      defs += `<linearGradient id="area-${valueKey}-${idx}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${d.color}" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="${d.color}" stop-opacity="0"/>
+      </linearGradient>`;
+    });
+    defs += '</defs>';
+
     let html = '';
+
+    // Read theme-aware colors from CSS variables
+    const cs = getComputedStyle(document.documentElement);
+    const gridColor = cs.getPropertyValue('--border').trim() || 'rgba(255,255,255,0.06)';
+    const labelColor = cs.getPropertyValue('--text-tertiary').trim() || '#52525b';
 
     // Grid lines
     const gridCount = 4;
     for (let i = 0; i <= gridCount; i++) {
       const val = minVal + (maxVal - minVal) * (i / gridCount);
       const y = yPos(val);
-      html += `<line x1="${PAD.left}" y1="${y}" x2="${W - PAD.right}" y2="${y}" stroke="#e5e5ea" stroke-width="0.5"/>`;
-      html += `<text x="${PAD.left - 4}" y="${y + 3}" text-anchor="end" font-size="8" fill="#6e6e73">${Math.round(val)}</text>`;
+      html += `<line x1="${PAD.left}" y1="${y}" x2="${W - PAD.right}" y2="${y}" stroke="${gridColor}" stroke-width="0.5"/>`;
+      html += `<text x="${PAD.left - 4}" y="${y + 3}" text-anchor="end" font-size="8" fill="${labelColor}">${Math.round(val)}</text>`;
     }
 
     // X-axis labels
@@ -951,22 +980,35 @@
     for (let i = 0; i < allDates.length; i += step) {
       const d = new Date(allDates[i] + 'T12:00:00');
       const label = (d.getMonth() + 1) + '/' + d.getDate();
-      html += `<text x="${xPos(allDates[i])}" y="${H - 8}" text-anchor="middle" font-size="8" fill="#6e6e73">${label}</text>`;
+      html += `<text x="${xPos(allDates[i])}" y="${H - 8}" text-anchor="middle" font-size="8" fill="${labelColor}">${label}</text>`;
     }
 
-    // Lines and dots per exercise
-    allData.forEach(d => {
+    // Area fills, lines, and dots per exercise
+    const baseY = PAD.top + plotH;
+    allData.forEach((d, idx) => {
       const pts = d.history.map(h => ({ x: xPos(h.date), y: yPos(h[valueKey]) }));
+
+      // Gradient area fill under line
+      if (pts.length > 1) {
+        const areaPath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
+          + ` L${pts[pts.length - 1].x},${baseY} L${pts[0].x},${baseY} Z`;
+        html += `<path d="${areaPath}" fill="url(#area-${valueKey}-${idx})"/>`;
+      }
+
+      // Line
       if (pts.length > 1) {
         const polyline = pts.map(p => `${p.x},${p.y}`).join(' ');
         html += `<polyline points="${polyline}" fill="none" stroke="${d.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
       }
+
+      // Dots with soft glow halo
       pts.forEach(p => {
+        html += `<circle cx="${p.x}" cy="${p.y}" r="6" fill="${d.color}" opacity="0.15"/>`;
         html += `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="${d.color}"/>`;
       });
     });
 
-    svg.innerHTML = html;
+    svg.innerHTML = defs + html;
   }
 
   // ========================================
@@ -1284,6 +1326,20 @@
     });
 
     // --- Settings ---
+    $('btn-theme-light').addEventListener('click', () => {
+      state.settings.theme = 'light';
+      save();
+      applyTheme();
+      renderSettings();
+    });
+
+    $('btn-theme-dark').addEventListener('click', () => {
+      state.settings.theme = 'dark';
+      save();
+      applyTheme();
+      renderSettings();
+    });
+
     $('btn-unit-lb').addEventListener('click', () => {
       state.settings.weightUnit = 'lb';
       save();
@@ -1302,6 +1358,7 @@
   // ========================================
   function init() {
     load();
+    applyTheme();
     bindEvents();
     state.currentDate = todayStr();
     renderDay(state.currentDate);
