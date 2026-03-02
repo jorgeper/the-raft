@@ -47,6 +47,7 @@
     <nav class="bottom-nav">
       <button class="nav-item active" data-screen="day">Today</button>
       <button class="nav-item" data-screen="workouts">Workouts</button>
+      <button class="nav-item" data-screen="analytics">Analytics</button>
       <button class="nav-item" data-screen="settings">Settings</button>
     </nav>
   </div>
@@ -100,6 +101,7 @@
     <nav class="bottom-nav">
       <button class="nav-item" data-screen="day">Today</button>
       <button class="nav-item active" data-screen="workouts">Workouts</button>
+      <button class="nav-item" data-screen="analytics">Analytics</button>
       <button class="nav-item" data-screen="settings">Settings</button>
     </nav>
   </div>
@@ -131,6 +133,60 @@
     </div>
   </div>
 
+  <!-- ============ Screen: Analytics ============ -->
+  <div id="screen-analytics" class="screen">
+    <div class="page-content">
+      <h1 class="date-heading">Analytics</h1>
+
+      <div id="analytics-summary" class="analytics-summary"></div>
+
+      <div class="analytics-section">
+        <h2 class="analytics-section-title">Personal Records</h2>
+        <div id="analytics-records-list"></div>
+      </div>
+
+      <div class="analytics-section">
+        <h2 class="analytics-section-title">Exercise Progression</h2>
+        <div id="analytics-chips" class="exercise-chips"></div>
+        <button id="btn-add-analytics-exercise" class="btn btn-secondary btn-sm analytics-add-btn">+ Add Exercise</button>
+
+        <div id="chart-weight" class="chart-container">
+          <h3 class="chart-title">Max Weight (<span class="chart-unit">lb</span>)</h3>
+          <div class="chart-wrapper">
+            <svg id="svg-weight" class="chart-svg" viewBox="0 0 320 200" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <p id="chart-weight-empty" class="chart-empty">Select exercises to see weight trends</p>
+        </div>
+
+        <div id="chart-volume" class="chart-container">
+          <h3 class="chart-title">Volume (weight &times; reps)</h3>
+          <div class="chart-wrapper">
+            <svg id="svg-volume" class="chart-svg" viewBox="0 0 320 200" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <p id="chart-volume-empty" class="chart-empty">Select exercises to see volume trends</p>
+        </div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-item" data-screen="day">Today</button>
+      <button class="nav-item" data-screen="workouts">Workouts</button>
+      <button class="nav-item active" data-screen="analytics">Analytics</button>
+      <button class="nav-item" data-screen="settings">Settings</button>
+    </nav>
+  </div>
+
+  <!-- ============ Modal: Analytics Exercise Picker ============ -->
+  <div id="modal-analytics-exercise" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Add Exercise</h2>
+      <input id="analytics-exercise-search" type="text" class="input" placeholder="Search exercises..." autocomplete="off">
+      <div id="analytics-exercise-suggestions" class="suggestions-list"></div>
+      <button id="btn-cancel-analytics-exercise" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+
   <!-- ============ Screen: Settings ============ -->
   <div id="screen-settings" class="screen">
     <div class="page-content">
@@ -150,6 +206,7 @@
     <nav class="bottom-nav">
       <button class="nav-item" data-screen="day">Today</button>
       <button class="nav-item" data-screen="workouts">Workouts</button>
+      <button class="nav-item" data-screen="analytics">Analytics</button>
       <button class="nav-item active" data-screen="settings">Settings</button>
     </nav>
   </div>

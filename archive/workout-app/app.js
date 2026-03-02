@@ -31,6 +31,7 @@
     timerInterval: null,
     editingWorkout: null,           // saved workout being edited
     editingWorkoutExercises: [],    // exercises while editing
+    analyticsExercises: [],          // selected exercises for analytics charts
   };
 
   // ========================================
@@ -254,6 +255,74 @@
       });
     });
     return Array.from(names.values());
+  }
+
+  // ========================================
+  // Analytics data helpers
+  // ========================================
+  function getExerciseHistory(exerciseName) {
+    const name = exerciseName.toLowerCase();
+    const history = [];
+    state.days.forEach(day => {
+      const ex = day.exercises.find(e => e.exerciseName.toLowerCase() === name);
+      if (ex && ex.sets.length > 0) {
+        const maxWeight = Math.max(...ex.sets.map(s => s.weight));
+        const totalVolume = ex.sets.reduce((sum, s) => sum + s.weight * s.reps, 0);
+        history.push({ date: day.date, maxWeight, totalVolume });
+      }
+    });
+    history.sort((a, b) => a.date.localeCompare(b.date));
+    return history;
+  }
+
+  function getPersonalRecords() {
+    const records = new Map();
+    state.days.forEach(day => {
+      day.exercises.forEach(ex => {
+        if (ex.sets.length === 0) return;
+        const maxWeight = Math.max(...ex.sets.map(s => s.weight));
+        const name = ex.exerciseName;
+        const lower = name.toLowerCase();
+        if (!records.has(lower) || maxWeight > records.get(lower).maxWeight) {
+          records.set(lower, { name, maxWeight });
+        }
+      });
+    });
+    return Array.from(records.values())
+      .sort((a, b) => b.maxWeight - a.maxWeight)
+      .slice(0, 5);
+  }
+
+  function getWorkoutStats() {
+    const datesWithExercises = [];
+    const exerciseNames = new Set();
+    state.days.forEach(day => {
+      if (day.exercises.length > 0) {
+        datesWithExercises.push(day.date);
+        day.exercises.forEach(ex => exerciseNames.add(ex.exerciseName.toLowerCase()));
+      }
+    });
+    datesWithExercises.sort();
+
+    let bestStreak = 0;
+    let currentStreak = 0;
+    for (let i = 0; i < datesWithExercises.length; i++) {
+      if (i === 0) {
+        currentStreak = 1;
+      } else {
+        const prev = new Date(datesWithExercises[i - 1] + 'T12:00:00');
+        const curr = new Date(datesWithExercises[i] + 'T12:00:00');
+        const diffDays = (curr - prev) / 86400000;
+        currentStreak = diffDays === 1 ? currentStreak + 1 : 1;
+      }
+      bestStreak = Math.max(bestStreak, currentStreak);
+    }
+
+    return {
+      totalDays: datesWithExercises.length,
+      uniqueExercises: exerciseNames.size,
+      bestStreak,
+    };
   }
 
   function unit() {
@@ -731,6 +800,208 @@
   }
 
   // ========================================
+  // Render: Analytics
+  // ========================================
+  const CHART_COLORS = ['#007aff', '#ff9500', '#34c759', '#ff3b30', '#af52de', '#5ac8fa'];
+
+  function renderAnalytics() {
+    const stats = getWorkoutStats();
+    renderSummaryCards(stats);
+    renderPersonalRecords(getPersonalRecords());
+    renderExerciseChips();
+    renderCharts();
+    document.querySelectorAll('#screen-analytics .chart-unit').forEach(el => {
+      el.textContent = unit();
+    });
+    showScreen('analytics');
+  }
+
+  function renderSummaryCards(stats) {
+    $('analytics-summary').innerHTML = `
+      <div class="summary-card">
+        <div class="summary-value">${stats.totalDays}</div>
+        <div class="summary-label">Workouts</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-value">${stats.uniqueExercises}</div>
+        <div class="summary-label">Exercises</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-value">${stats.bestStreak}</div>
+        <div class="summary-label">Best Streak</div>
+      </div>
+    `;
+  }
+
+  function renderPersonalRecords(records) {
+    const list = $('analytics-records-list');
+    if (records.length === 0) {
+      list.innerHTML = '<p class="empty-message">No records yet.</p>';
+      return;
+    }
+    list.innerHTML = '<div class="pr-list">' + records.map(r => `
+      <div class="pr-row">
+        <span class="pr-name">${r.name}</span>
+        <span class="pr-value">${r.maxWeight} ${unit()}</span>
+      </div>
+    `).join('') + '</div>';
+  }
+
+  function renderExerciseChips() {
+    const container = $('analytics-chips');
+    container.innerHTML = state.analyticsExercises.map((name, idx) => {
+      const color = CHART_COLORS[idx % CHART_COLORS.length];
+      return `<span class="exercise-chip">
+        <span class="chip-dot" style="background:${color}"></span>
+        ${name}
+        <button class="chip-remove" data-name="${name}">&times;</button>
+      </span>`;
+    }).join('');
+  }
+
+  function renderCharts() {
+    const svgWeight = $('svg-weight');
+    const svgVolume = $('svg-volume');
+    const exercises = state.analyticsExercises;
+
+    if (exercises.length === 0) {
+      svgWeight.innerHTML = '';
+      svgVolume.innerHTML = '';
+      $('chart-weight-empty').classList.remove('hidden');
+      $('chart-volume-empty').classList.remove('hidden');
+      document.querySelector('#chart-weight .chart-wrapper').classList.add('hidden');
+      document.querySelector('#chart-volume .chart-wrapper').classList.add('hidden');
+      return;
+    }
+
+    const allData = exercises.map((name, idx) => ({
+      name,
+      color: CHART_COLORS[idx % CHART_COLORS.length],
+      history: getExerciseHistory(name),
+    })).filter(d => d.history.length > 0);
+
+    if (allData.length === 0) {
+      svgWeight.innerHTML = '';
+      svgVolume.innerHTML = '';
+      $('chart-weight-empty').classList.remove('hidden');
+      $('chart-volume-empty').classList.remove('hidden');
+      document.querySelector('#chart-weight .chart-wrapper').classList.add('hidden');
+      document.querySelector('#chart-volume .chart-wrapper').classList.add('hidden');
+      return;
+    }
+
+    $('chart-weight-empty').classList.add('hidden');
+    $('chart-volume-empty').classList.add('hidden');
+    document.querySelector('#chart-weight .chart-wrapper').classList.remove('hidden');
+    document.querySelector('#chart-volume .chart-wrapper').classList.remove('hidden');
+
+    buildChart(svgWeight, allData, 'maxWeight');
+    buildChart(svgVolume, allData, 'totalVolume');
+  }
+
+  function buildChart(svg, allData, valueKey) {
+    const PAD = { left: 40, right: 10, top: 10, bottom: 30 };
+    const W = 320, H = 200;
+    const plotW = W - PAD.left - PAD.right;
+    const plotH = H - PAD.top - PAD.bottom;
+
+    const dateSet = new Set();
+    allData.forEach(d => d.history.forEach(h => dateSet.add(h.date)));
+    const allDates = Array.from(dateSet).sort();
+
+    if (allDates.length === 0) { svg.innerHTML = ''; return; }
+
+    const minDate = new Date(allDates[0] + 'T12:00:00');
+    const maxDate = new Date(allDates[allDates.length - 1] + 'T12:00:00');
+    const dateRange = Math.max(1, (maxDate - minDate) / 86400000);
+
+    let minVal = Infinity, maxVal = -Infinity;
+    allData.forEach(d => d.history.forEach(h => {
+      minVal = Math.min(minVal, h[valueKey]);
+      maxVal = Math.max(maxVal, h[valueKey]);
+    }));
+    const valPad = (maxVal - minVal) * 0.1 || 10;
+    minVal = Math.max(0, minVal - valPad);
+    maxVal = maxVal + valPad;
+
+    function xPos(dateStr) {
+      if (allDates.length === 1) return PAD.left + plotW / 2;
+      const d = new Date(dateStr + 'T12:00:00');
+      return PAD.left + ((d - minDate) / 86400000 / dateRange) * plotW;
+    }
+    function yPos(val) {
+      const range = maxVal - minVal || 1;
+      return PAD.top + plotH - ((val - minVal) / range) * plotH;
+    }
+
+    let html = '';
+
+    // Grid lines
+    const gridCount = 4;
+    for (let i = 0; i <= gridCount; i++) {
+      const val = minVal + (maxVal - minVal) * (i / gridCount);
+      const y = yPos(val);
+      html += `<line x1="${PAD.left}" y1="${y}" x2="${W - PAD.right}" y2="${y}" stroke="#e5e5ea" stroke-width="0.5"/>`;
+      html += `<text x="${PAD.left - 4}" y="${y + 3}" text-anchor="end" font-size="8" fill="#6e6e73">${Math.round(val)}</text>`;
+    }
+
+    // X-axis labels
+    const maxLabels = 5;
+    const step = Math.max(1, Math.ceil(allDates.length / maxLabels));
+    for (let i = 0; i < allDates.length; i += step) {
+      const d = new Date(allDates[i] + 'T12:00:00');
+      const label = (d.getMonth() + 1) + '/' + d.getDate();
+      html += `<text x="${xPos(allDates[i])}" y="${H - 8}" text-anchor="middle" font-size="8" fill="#6e6e73">${label}</text>`;
+    }
+
+    // Lines and dots per exercise
+    allData.forEach(d => {
+      const pts = d.history.map(h => ({ x: xPos(h.date), y: yPos(h[valueKey]) }));
+      if (pts.length > 1) {
+        const polyline = pts.map(p => `${p.x},${p.y}`).join(' ');
+        html += `<polyline points="${polyline}" fill="none" stroke="${d.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+      }
+      pts.forEach(p => {
+        html += `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="${d.color}"/>`;
+      });
+    });
+
+    svg.innerHTML = html;
+  }
+
+  // ========================================
+  // Analytics Exercise Picker
+  // ========================================
+  function openAnalyticsExercisePicker() {
+    $('analytics-exercise-search').value = '';
+    renderAnalyticsExerciseSuggestions('');
+    showModal('modal-analytics-exercise');
+    setTimeout(() => $('analytics-exercise-search').focus(), 100);
+  }
+
+  function renderAnalyticsExerciseSuggestions(query) {
+    const allNames = getAllExerciseNames();
+    const q = query.toLowerCase().trim();
+    const selectedSet = new Set(state.analyticsExercises.map(n => n.toLowerCase()));
+    let filtered = allNames.filter(n => !selectedSet.has(n.toLowerCase()));
+    if (q) {
+      filtered = filtered.filter(n => n.toLowerCase().includes(q));
+    }
+    const container = $('analytics-exercise-suggestions');
+    if (filtered.length === 0) {
+      container.innerHTML = q
+        ? '<p class="hint-text">No matching exercises.</p>'
+        : '<p class="hint-text">No exercises available.</p>';
+      return;
+    }
+    container.innerHTML = filtered.map(name => `
+      <div class="suggestion-item" data-name="${name}">
+        <span class="suggestion-name">${name}</span>
+      </div>
+    `).join('');
+  }
+
+  // ========================================
   // Event Binding
   // ========================================
   function bindEvents() {
@@ -743,6 +1014,8 @@
           renderDay(state.currentDate);
         } else if (screen === 'workouts') {
           renderWorkouts();
+        } else if (screen === 'analytics') {
+          renderAnalytics();
         } else if (screen === 'settings') {
           renderSettings();
         }
@@ -978,6 +1251,36 @@
 
     $('btn-workout-exercise-cancel').addEventListener('click', () => {
       hideModal('modal-workout-exercise');
+    });
+
+    // --- Analytics ---
+    $('btn-add-analytics-exercise').addEventListener('click', openAnalyticsExercisePicker);
+
+    $('analytics-chips').addEventListener('click', (e) => {
+      const btn = e.target.closest('.chip-remove');
+      if (btn) {
+        state.analyticsExercises = state.analyticsExercises.filter(n => n !== btn.dataset.name);
+        renderExerciseChips();
+        renderCharts();
+      }
+    });
+
+    $('analytics-exercise-search').addEventListener('input', (e) => {
+      renderAnalyticsExerciseSuggestions(e.target.value);
+    });
+
+    $('analytics-exercise-suggestions').addEventListener('click', (e) => {
+      const item = e.target.closest('.suggestion-item');
+      if (item) {
+        state.analyticsExercises.push(item.dataset.name);
+        hideModal('modal-analytics-exercise');
+        renderExerciseChips();
+        renderCharts();
+      }
+    });
+
+    $('btn-cancel-analytics-exercise').addEventListener('click', () => {
+      hideModal('modal-analytics-exercise');
     });
 
     // --- Settings ---
