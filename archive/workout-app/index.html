@@ -17,34 +17,55 @@
   <!-- ============ Screen: Day (primary) ============ -->
   <div id="screen-day" class="screen active">
     <div class="page-content">
-      <div class="day-nav">
-        <button id="btn-day-prev" class="btn-icon">&#9664;</button>
-        <div class="day-nav-center">
-          <h1 id="day-date" class="date-heading"></h1>
-          <button id="btn-go-today" class="btn-today hidden">Today</button>
+      <!-- Day View -->
+      <div id="day-view">
+        <div class="day-nav">
+          <button id="btn-day-prev" class="btn-icon">&#9664;</button>
+          <div class="day-nav-center">
+            <h1 id="day-date" class="date-heading"></h1>
+            <button id="btn-go-today" class="btn-today hidden">Today</button>
+          </div>
+          <button id="btn-day-next" class="btn-icon">&#9654;</button>
         </div>
-        <button id="btn-day-next" class="btn-icon">&#9654;</button>
+
+        <div class="view-toggle-row">
+          <button id="btn-show-month" class="btn-view-toggle">Month View</button>
+        </div>
+
+        <div class="workout-actions">
+          <button id="btn-load-workout" class="btn btn-secondary btn-sm">Load Workout</button>
+          <button id="btn-save-workout" class="btn btn-secondary btn-sm">Save Workout</button>
+        </div>
+        <p id="day-workout-name" class="workout-name-label hidden"></p>
+
+        <div id="day-exercises" class="exercise-list"></div>
+
+        <p id="day-empty-msg" class="empty-message">No exercises yet.</p>
+
+        <button id="btn-add-exercise" class="btn btn-secondary">+ Add Exercise</button>
+
+        <div id="timer-section" class="timer-section">
+          <div id="timer-display" class="timer-display">00:00:00</div>
+          <div id="timer-controls" class="timer-controls">
+            <button id="btn-timer-start" class="btn-timer btn-timer-start">Start</button>
+            <button id="btn-timer-stop" class="btn-timer btn-timer-stop hidden">Stop</button>
+            <button id="btn-timer-reset" class="btn-timer btn-timer-reset hidden">Reset</button>
+          </div>
+        </div>
       </div>
 
-      <div class="workout-actions">
-        <button id="btn-load-workout" class="btn btn-secondary btn-sm">Load Workout</button>
-        <button id="btn-save-workout" class="btn btn-secondary btn-sm">Save Workout</button>
-      </div>
-      <p id="day-workout-name" class="workout-name-label hidden"></p>
-
-      <div id="day-exercises" class="exercise-list"></div>
-
-      <p id="day-empty-msg" class="empty-message">No exercises yet.</p>
-
-      <button id="btn-add-exercise" class="btn btn-secondary">+ Add Exercise</button>
-
-      <div id="timer-section" class="timer-section">
-        <div id="timer-display" class="timer-display">00:00:00</div>
-        <div id="timer-controls" class="timer-controls">
-          <button id="btn-timer-start" class="btn-timer btn-timer-start">Start</button>
-          <button id="btn-timer-stop" class="btn-timer btn-timer-stop hidden">Stop</button>
-          <button id="btn-timer-reset" class="btn-timer btn-timer-reset hidden">Reset</button>
+      <!-- Month View -->
+      <div id="month-view" class="hidden">
+        <div class="month-nav">
+          <button id="btn-month-prev" class="btn-icon">&#9664;</button>
+          <h1 id="month-title" class="date-heading"></h1>
+          <button id="btn-month-next" class="btn-icon">&#9654;</button>
         </div>
+        <div class="month-actions">
+          <button id="btn-month-today" class="btn-today">Today</button>
+          <button id="btn-show-day" class="btn-view-toggle">Day View</button>
+        </div>
+        <div id="month-grid" class="month-grid"></div>
       </div>
     </div>
 
@@ -191,13 +212,71 @@
     </div>
   </div>
 
+  <!-- ============ Screen: Exercise Library Browser ============ -->
+  <div id="screen-library" class="screen">
+    <div class="page-content">
+      <div class="library-header">
+        <button id="btn-library-back" class="btn-icon">&#9664;</button>
+        <h1 class="date-heading">Exercise Library</h1>
+        <span id="library-count" class="library-count"></span>
+      </div>
+
+      <input id="library-search" type="text" class="input" placeholder="Search exercises..." autocomplete="off" style="margin-bottom: 12px;">
+
+      <div id="library-filters" class="library-filters">
+        <div class="filter-row">
+          <div id="filter-movement" class="filter-chips" data-filter="movementPattern"></div>
+        </div>
+        <div class="filter-row">
+          <div id="filter-muscle" class="filter-chips" data-filter="muscleGroup"></div>
+        </div>
+        <div class="filter-row">
+          <div id="filter-type" class="filter-chips" data-filter="exerciseType"></div>
+        </div>
+        <div class="filter-row">
+          <div id="filter-equipment" class="filter-chips" data-filter="equipment"></div>
+        </div>
+        <div class="filter-row">
+          <div id="filter-calisthenics" class="filter-chips" data-filter="calisthenics"></div>
+        </div>
+      </div>
+
+      <div id="library-list" class="library-list"></div>
+      <p id="library-empty" class="empty-message hidden">No exercises match your filters.</p>
+    </div>
+  </div>
+
+  <!-- ============ Screen: Exercise Detail ============ -->
+  <div id="screen-exercise-detail" class="screen">
+    <div class="page-content">
+      <div class="library-header">
+        <button id="btn-detail-back" class="btn-icon">&#9664;</button>
+        <h1 id="detail-exercise-name" class="date-heading"></h1>
+      </div>
+
+      <div class="exercise-detail-card">
+        <p id="detail-description" class="detail-description"></p>
+        <div id="detail-pills" class="detail-pills"></div>
+      </div>
+
+      <div id="detail-alternatives" class="detail-section">
+        <h2 class="analytics-section-title">Alternatives</h2>
+        <div id="detail-alternatives-list" class="detail-alternatives-list"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ Screen: Settings ============ -->
   <div id="screen-settings" class="screen">
     <div class="page-content">
       <h1 class="date-heading">Settings</h1>
 
       <div class="settings-card">
-        <div class="setting-row">
+        <div class="setting-row" id="btn-browse-library" style="cursor: pointer;">
+          <span class="setting-label">Exercise Library</span>
+          <span class="setting-chevron" style="color: var(--text-tertiary);">&#9654;</span>
+        </div>
+        <div class="setting-row" style="border-top: 1px solid var(--border);">
           <span class="setting-label">Theme</span>
           <div class="toggle-group">
             <button id="btn-theme-light" class="toggle-btn">Light</button>
@@ -217,6 +296,17 @@
             <button id="btn-devmode-off" class="toggle-btn active">Off</button>
             <button id="btn-devmode-on" class="toggle-btn">On</button>
           </div>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <div class="setting-row" style="border-bottom: none; flex-direction: column; align-items: stretch; gap: 10px;">
+          <span class="setting-label">Library Management</span>
+          <div style="display: flex; gap: 10px;">
+            <button id="btn-import-library" class="btn btn-secondary btn-sm" style="flex:1;">Import Library</button>
+            <button id="btn-export-library" class="btn btn-secondary btn-sm" style="flex:1;">Export Library</button>
+          </div>
+          <input type="file" id="library-file-input" accept=".json" class="hidden">
         </div>
       </div>
 

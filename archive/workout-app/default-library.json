@@ -1,0 +1,1035 @@
+{
+  "version": "1.0.0",
+  "exercises": [
+    {
+      "name": "Barbell Bench Press",
+      "description": "Lie flat on a bench, grip the bar slightly wider than shoulder-width, lower to mid-chest and press up to full lockout.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Dumbbell Bench Press", "Machine Chest Press", "Push-Up", "Decline Bench Press"]
+    },
+    {
+      "name": "Dumbbell Bench Press",
+      "description": "Lie flat on a bench with a dumbbell in each hand, press up from chest level to full extension while keeping a slight arch in your back.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Barbell Bench Press", "Machine Chest Press", "Incline Dumbbell Press", "Dumbbell Flye"]
+    },
+    {
+      "name": "Incline Barbell Bench Press",
+      "description": "Set the bench to 30-45 degrees, grip the bar shoulder-width apart, lower to upper chest and press to lockout.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Incline Dumbbell Press", "Barbell Bench Press", "Machine Chest Press", "Cable Flye"]
+    },
+    {
+      "name": "Incline Dumbbell Press",
+      "description": "Set the bench to 30-45 degrees, press dumbbells from shoulder level to full extension, squeezing the chest at the top.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Incline Barbell Bench Press", "Dumbbell Bench Press", "Cable Flye", "Arnold Press"]
+    },
+    {
+      "name": "Decline Bench Press",
+      "description": "Lie on a decline bench, grip the bar shoulder-width apart, lower to the lower chest and press to lockout, emphasizing the lower pecs.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Barbell Bench Press", "Chest Dip", "Dumbbell Bench Press", "Machine Chest Press"]
+    },
+    {
+      "name": "Cable Flye",
+      "description": "Stand between cable pulleys set at shoulder height, bring handles together in a wide arc, squeezing the chest at the midline.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Isolation",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Dumbbell Flye", "Machine Chest Press", "Incline Dumbbell Press", "Push-Up"]
+    },
+    {
+      "name": "Dumbbell Flye",
+      "description": "Lie flat on a bench with arms extended above the chest, lower the dumbbells in a wide arc with a slight bend in the elbows, then squeeze back to the top.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Isolation",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Cable Flye", "Dumbbell Bench Press", "Machine Chest Press", "Incline Dumbbell Press"]
+    },
+    {
+      "name": "Machine Chest Press",
+      "description": "Sit in the machine with handles at chest height, press forward to full extension and return under control.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Compound",
+      "equipment": "Machine",
+      "calisthenics": false,
+      "alternatives": ["Barbell Bench Press", "Dumbbell Bench Press", "Push-Up", "Cable Flye"]
+    },
+    {
+      "name": "Push-Up",
+      "description": "Start in a plank position with hands slightly wider than shoulder-width, lower your chest to the floor keeping your body rigid, then push back up.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Barbell Bench Press", "Dumbbell Bench Press", "Diamond Push-Up", "Archer Push-Up"]
+    },
+    {
+      "name": "Chest Dip",
+      "description": "Lean forward on parallel bars, lower your body until you feel a stretch in the chest, then press back up while maintaining the forward lean.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Decline Bench Press", "Push-Up", "Dumbbell Bench Press", "Tricep Dip"]
+    },
+    {
+      "name": "Barbell Row",
+      "description": "Hinge at the hips with a flat back, pull the barbell to your lower ribcage, squeezing your shoulder blades together at the top.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Dumbbell Row", "T-Bar Row", "Cable Row", "Seated Cable Row"]
+    },
+    {
+      "name": "Dumbbell Row",
+      "description": "Place one hand and knee on a bench, row the dumbbell to your hip with a neutral grip, keeping your elbow close to your body.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Barbell Row", "Cable Row", "T-Bar Row", "Inverted Row"]
+    },
+    {
+      "name": "Pull-Up",
+      "description": "Hang from a bar with an overhand grip slightly wider than shoulder-width, pull your chin above the bar by driving your elbows down and back.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Chin-Up", "Lat Pulldown", "Inverted Row", "Muscle-Up"]
+    },
+    {
+      "name": "Chin-Up",
+      "description": "Hang from a bar with an underhand shoulder-width grip, pull your chin above the bar, engaging both lats and biceps.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Pull-Up", "Lat Pulldown", "Inverted Row", "Cable Row"]
+    },
+    {
+      "name": "Lat Pulldown",
+      "description": "Sit at a pulldown machine, grip the bar wide, pull it to your upper chest while leaning slightly back and squeezing the lats.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Pull-Up", "Chin-Up", "Straight-Arm Pulldown", "Seated Cable Row"]
+    },
+    {
+      "name": "Cable Row",
+      "description": "Sit upright at a low cable station, pull the handle to your midsection while keeping your torso stable and squeezing your back.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Seated Cable Row", "Barbell Row", "Dumbbell Row", "T-Bar Row"]
+    },
+    {
+      "name": "T-Bar Row",
+      "description": "Straddle a T-bar or landmine, hinge forward and row the weight to your chest, keeping your back flat and core braced.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Barbell Row", "Dumbbell Row", "Cable Row", "Seated Cable Row"]
+    },
+    {
+      "name": "Seated Cable Row",
+      "description": "Sit with feet on the platform, pull a close-grip handle to your abdomen while keeping your chest up and shoulders back.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Cable Row", "Barbell Row", "Dumbbell Row", "T-Bar Row"]
+    },
+    {
+      "name": "Face Pull",
+      "description": "Set a cable at head height with a rope attachment, pull toward your face with elbows high, externally rotating at the end.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Isolation",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Rear Delt Flye", "Inverted Row", "Cable Row", "Lateral Raise"]
+    },
+    {
+      "name": "Inverted Row",
+      "description": "Hang under a bar set at waist height, keep your body straight and pull your chest to the bar by retracting your shoulder blades.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Pull-Up", "Dumbbell Row", "Barbell Row", "Cable Row"]
+    },
+    {
+      "name": "Deadlift",
+      "description": "Stand with feet hip-width apart, hinge to grip the bar, then drive through the floor extending hips and knees simultaneously to stand tall.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Romanian Deadlift", "Sumo Deadlift", "Barbell Row", "Good Morning"]
+    },
+    {
+      "name": "Straight-Arm Pulldown",
+      "description": "Stand facing a high cable with straight arms, push the bar down to your thighs in an arc, squeezing your lats at the bottom.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Isolation",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Lat Pulldown", "Pull-Up", "Dumbbell Row", "Cable Row"]
+    },
+    {
+      "name": "Overhead Press",
+      "description": "Stand with the barbell at shoulder height, press it straight overhead to full lockout while bracing your core and keeping your ribs down.",
+      "movementPattern": "Push",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Dumbbell Shoulder Press", "Arnold Press", "Handstand Push-Up", "Pike Push-Up"]
+    },
+    {
+      "name": "Dumbbell Shoulder Press",
+      "description": "Sit or stand with dumbbells at shoulder level, press overhead to full extension, keeping your core tight and avoiding excessive arching.",
+      "movementPattern": "Push",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Overhead Press", "Arnold Press", "Machine Chest Press", "Handstand Push-Up"]
+    },
+    {
+      "name": "Lateral Raise",
+      "description": "Stand with dumbbells at your sides, raise them out to shoulder height with a slight bend in the elbows, leading with your pinkies.",
+      "movementPattern": "Push",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Isolation",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Cable Lateral Raise", "Front Raise", "Upright Row", "Overhead Press"]
+    },
+    {
+      "name": "Front Raise",
+      "description": "Stand holding dumbbells in front of your thighs, raise one or both arms straight ahead to shoulder height, then lower under control.",
+      "movementPattern": "Push",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Isolation",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Lateral Raise", "Overhead Press", "Arnold Press", "Cable Lateral Raise"]
+    },
+    {
+      "name": "Rear Delt Flye",
+      "description": "Bend forward at the hips, raise dumbbells out to the sides with slightly bent elbows, squeezing the rear delts at the top.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Isolation",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Face Pull", "Cable Lateral Raise", "Inverted Row", "Lateral Raise"]
+    },
+    {
+      "name": "Arnold Press",
+      "description": "Start with dumbbells at chin height palms facing you, rotate your palms outward as you press overhead to full lockout.",
+      "movementPattern": "Push",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Dumbbell Shoulder Press", "Overhead Press", "Lateral Raise", "Front Raise"]
+    },
+    {
+      "name": "Cable Lateral Raise",
+      "description": "Stand sideways to a low cable, raise the handle out to shoulder height across your body, controlling the negative on the way down.",
+      "movementPattern": "Push",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Isolation",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Lateral Raise", "Front Raise", "Upright Row", "Rear Delt Flye"]
+    },
+    {
+      "name": "Upright Row",
+      "description": "Hold a barbell or dumbbells with a narrow grip, pull straight up along your body to chin height, leading with the elbows.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Lateral Raise", "Cable Lateral Raise", "Overhead Press", "Face Pull"]
+    },
+    {
+      "name": "Handstand Push-Up",
+      "description": "Kick up into a handstand against a wall, lower your head toward the floor by bending your elbows, then press back to full lockout.",
+      "movementPattern": "Push",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Pike Push-Up", "Overhead Press", "Dumbbell Shoulder Press", "Arnold Press"]
+    },
+    {
+      "name": "Pike Push-Up",
+      "description": "Start in a downward-dog position with hips high, bend your elbows to lower your head toward the floor, then push back up.",
+      "movementPattern": "Push",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Handstand Push-Up", "Overhead Press", "Dumbbell Shoulder Press", "Push-Up"]
+    },
+    {
+      "name": "Barbell Curl",
+      "description": "Stand holding a barbell with an underhand grip at arm's length, curl the bar to shoulder height while keeping your elbows pinned to your sides.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Biceps",
+      "exerciseType": "Isolation",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["EZ-Bar Curl", "Dumbbell Curl", "Cable Curl", "Preacher Curl"]
+    },
+    {
+      "name": "Dumbbell Curl",
+      "description": "Stand with dumbbells at your sides, curl them up by flexing at the elbow, supinating your wrists as you lift.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Biceps",
+      "exerciseType": "Isolation",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Barbell Curl", "Hammer Curl", "Incline Dumbbell Curl", "Concentration Curl"]
+    },
+    {
+      "name": "Hammer Curl",
+      "description": "Stand with dumbbells in a neutral grip (palms facing each other), curl up while maintaining the neutral wrist position throughout.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Biceps",
+      "exerciseType": "Isolation",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Dumbbell Curl", "Barbell Curl", "Cable Curl", "EZ-Bar Curl"]
+    },
+    {
+      "name": "Preacher Curl",
+      "description": "Sit at a preacher bench with your upper arms flat on the pad, curl the bar or dumbbells up, preventing any shoulder movement.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Biceps",
+      "exerciseType": "Isolation",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Concentration Curl", "Barbell Curl", "EZ-Bar Curl", "Cable Curl"]
+    },
+    {
+      "name": "Concentration Curl",
+      "description": "Sit on a bench with your elbow braced against your inner thigh, curl the dumbbell to your shoulder with strict form.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Biceps",
+      "exerciseType": "Isolation",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Preacher Curl", "Dumbbell Curl", "Incline Dumbbell Curl", "Cable Curl"]
+    },
+    {
+      "name": "Cable Curl",
+      "description": "Stand facing a low cable with a straight or EZ-bar attachment, curl the handle to shoulder height while keeping your elbows stationary.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Biceps",
+      "exerciseType": "Isolation",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Barbell Curl", "Dumbbell Curl", "EZ-Bar Curl", "Hammer Curl"]
+    },
+    {
+      "name": "Incline Dumbbell Curl",
+      "description": "Sit on an incline bench set to 45 degrees, let dumbbells hang at full extension and curl up, getting a deep stretch at the bottom.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Biceps",
+      "exerciseType": "Isolation",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Dumbbell Curl", "Concentration Curl", "Barbell Curl", "Preacher Curl"]
+    },
+    {
+      "name": "EZ-Bar Curl",
+      "description": "Stand holding an EZ-bar on the angled grips, curl to shoulder height keeping your wrists in a comfortable semi-supinated position.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Biceps",
+      "exerciseType": "Isolation",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Barbell Curl", "Dumbbell Curl", "Cable Curl", "Preacher Curl"]
+    },
+    {
+      "name": "Tricep Pushdown",
+      "description": "Stand at a high cable with a bar or rope attachment, press down by extending your elbows while keeping your upper arms glued to your sides.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Triceps",
+      "exerciseType": "Isolation",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Cable Overhead Extension", "Skull Crusher", "Overhead Tricep Extension", "Tricep Kickback"]
+    },
+    {
+      "name": "Overhead Tricep Extension",
+      "description": "Hold a dumbbell or EZ-bar overhead with both hands, lower it behind your head by bending at the elbows, then extend back to the top.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Triceps",
+      "exerciseType": "Isolation",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Cable Overhead Extension", "Skull Crusher", "Tricep Pushdown", "Close-Grip Bench Press"]
+    },
+    {
+      "name": "Skull Crusher",
+      "description": "Lie on a bench holding an EZ-bar or dumbbells above your chest, lower the weight toward your forehead by bending at the elbows, then press back up.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Triceps",
+      "exerciseType": "Isolation",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Overhead Tricep Extension", "Tricep Pushdown", "Close-Grip Bench Press", "Cable Overhead Extension"]
+    },
+    {
+      "name": "Close-Grip Bench Press",
+      "description": "Lie on a flat bench with hands shoulder-width apart on the bar, lower to your chest and press up, keeping elbows close to your body.",
+      "movementPattern": "Push",
+      "muscleGroup": "Triceps",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Skull Crusher", "Tricep Dip", "Diamond Push-Up", "Tricep Pushdown"]
+    },
+    {
+      "name": "Diamond Push-Up",
+      "description": "Perform a push-up with your hands close together forming a diamond shape under your chest, keeping elbows tight to your body.",
+      "movementPattern": "Push",
+      "muscleGroup": "Triceps",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Close-Grip Bench Press", "Tricep Dip", "Push-Up", "Tricep Pushdown"]
+    },
+    {
+      "name": "Tricep Dip",
+      "description": "Support yourself on parallel bars with arms straight, lower by bending your elbows to 90 degrees while keeping your torso upright, then press back up.",
+      "movementPattern": "Push",
+      "muscleGroup": "Triceps",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Diamond Push-Up", "Close-Grip Bench Press", "Chest Dip", "Tricep Pushdown"]
+    },
+    {
+      "name": "Cable Overhead Extension",
+      "description": "Face away from a high cable with a rope attachment, extend your arms overhead by straightening your elbows while keeping upper arms fixed.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Triceps",
+      "exerciseType": "Isolation",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Overhead Tricep Extension", "Tricep Pushdown", "Skull Crusher", "Tricep Kickback"]
+    },
+    {
+      "name": "Tricep Kickback",
+      "description": "Hinge forward with a dumbbell, pin your upper arm to your side and extend the forearm back until your arm is fully straight.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Triceps",
+      "exerciseType": "Isolation",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Tricep Pushdown", "Cable Overhead Extension", "Overhead Tricep Extension", "Skull Crusher"]
+    },
+    {
+      "name": "Barbell Back Squat",
+      "description": "Place the bar on your upper traps, squat down by pushing your hips back and bending your knees until your thighs are at least parallel, then drive up.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Front Squat", "Leg Press", "Goblet Squat", "Hack Squat"]
+    },
+    {
+      "name": "Front Squat",
+      "description": "Rest the bar on your front delts with elbows high, squat down keeping your torso upright, then drive up through your heels.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Barbell Back Squat", "Goblet Squat", "Leg Press", "Hack Squat"]
+    },
+    {
+      "name": "Leg Press",
+      "description": "Sit in the leg press machine with feet shoulder-width on the platform, lower the sled by bending your knees to 90 degrees, then press back up.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Machine",
+      "calisthenics": false,
+      "alternatives": ["Barbell Back Squat", "Hack Squat", "Front Squat", "Goblet Squat"]
+    },
+    {
+      "name": "Leg Extension",
+      "description": "Sit in the leg extension machine with the pad on your shins, extend your legs to full lockout, squeezing the quads at the top.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Quads",
+      "exerciseType": "Isolation",
+      "equipment": "Machine",
+      "calisthenics": false,
+      "alternatives": ["Barbell Back Squat", "Front Squat", "Bulgarian Split Squat", "Sissy Squat"]
+    },
+    {
+      "name": "Bulgarian Split Squat",
+      "description": "Stand in a lunge position with your rear foot elevated on a bench, lower until your front thigh is parallel, then drive up through the front heel.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Walking Lunge", "Goblet Squat", "Front Squat", "Pistol Squat"]
+    },
+    {
+      "name": "Goblet Squat",
+      "description": "Hold a dumbbell or kettlebell at chest height, squat down between your legs keeping your torso upright, then stand back up.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Barbell Back Squat", "Front Squat", "Bulgarian Split Squat", "Leg Press"]
+    },
+    {
+      "name": "Hack Squat",
+      "description": "Stand on the hack squat machine platform with your back against the pad, squat down to parallel and press back up.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Machine",
+      "calisthenics": false,
+      "alternatives": ["Leg Press", "Barbell Back Squat", "Front Squat", "Goblet Squat"]
+    },
+    {
+      "name": "Walking Lunge",
+      "description": "Step forward into a lunge, lowering your back knee toward the floor, then drive through the front foot and step the rear leg forward into the next rep.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Bulgarian Split Squat", "Goblet Squat", "Step-Up", "Barbell Back Squat"]
+    },
+    {
+      "name": "Pistol Squat",
+      "description": "Stand on one leg with the other extended in front, squat all the way down on the standing leg, then press back up without assistance.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Bulgarian Split Squat", "Sissy Squat", "Goblet Squat", "Walking Lunge"]
+    },
+    {
+      "name": "Sissy Squat",
+      "description": "Stand upright, lean back at the knees while rising onto your toes, lowering your knees forward and down, then return to standing.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Leg Extension", "Pistol Squat", "Goblet Squat", "Bulgarian Split Squat"]
+    },
+    {
+      "name": "Romanian Deadlift",
+      "description": "Hold a barbell at hip height, push your hips back with a slight knee bend, lowering the bar along your legs until you feel a deep hamstring stretch, then drive hips forward.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Hamstrings",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Stiff-Leg Deadlift", "Single-Leg Romanian Deadlift", "Good Morning", "Lying Leg Curl"]
+    },
+    {
+      "name": "Lying Leg Curl",
+      "description": "Lie face down on the leg curl machine, curl the pad toward your glutes by flexing your knees, squeezing the hamstrings at the top.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Hamstrings",
+      "exerciseType": "Isolation",
+      "equipment": "Machine",
+      "calisthenics": false,
+      "alternatives": ["Seated Leg Curl", "Romanian Deadlift", "Nordic Hamstring Curl", "Stiff-Leg Deadlift"]
+    },
+    {
+      "name": "Seated Leg Curl",
+      "description": "Sit in the leg curl machine with the pad behind your ankles, curl it down and back by flexing your knees against the resistance.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Hamstrings",
+      "exerciseType": "Isolation",
+      "equipment": "Machine",
+      "calisthenics": false,
+      "alternatives": ["Lying Leg Curl", "Romanian Deadlift", "Nordic Hamstring Curl", "Good Morning"]
+    },
+    {
+      "name": "Stiff-Leg Deadlift",
+      "description": "Stand with a barbell and keep your legs nearly straight, hinge at the hips lowering the bar toward the floor, then return to standing.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Hamstrings",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Romanian Deadlift", "Good Morning", "Single-Leg Romanian Deadlift", "Lying Leg Curl"]
+    },
+    {
+      "name": "Good Morning",
+      "description": "Place a barbell on your upper back, hinge forward at the hips with a slight knee bend until your torso is near parallel, then return upright.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Hamstrings",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Romanian Deadlift", "Stiff-Leg Deadlift", "Glute-Ham Raise", "Kettlebell Swing"]
+    },
+    {
+      "name": "Nordic Hamstring Curl",
+      "description": "Kneel with your feet anchored, slowly lower your body forward under control using your hamstrings, then curl back up or push off the floor to reset.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Hamstrings",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Lying Leg Curl", "Seated Leg Curl", "Glute-Ham Raise", "Romanian Deadlift"]
+    },
+    {
+      "name": "Kettlebell Swing",
+      "description": "Hinge at the hips and swing a kettlebell between your legs, then explosively drive your hips forward to propel the bell to chest height.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Hamstrings",
+      "exerciseType": "Compound",
+      "equipment": "Kettlebell",
+      "calisthenics": false,
+      "alternatives": ["Romanian Deadlift", "Good Morning", "Hip Thrust", "Stiff-Leg Deadlift"]
+    },
+    {
+      "name": "Single-Leg Romanian Deadlift",
+      "description": "Stand on one leg, hinge forward while extending the free leg behind you for balance, lowering the weight until you feel a hamstring stretch, then return.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Hamstrings",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Romanian Deadlift", "Stiff-Leg Deadlift", "Bulgarian Split Squat", "Good Morning"]
+    },
+    {
+      "name": "Hip Thrust",
+      "description": "Sit with your upper back on a bench and a barbell across your hips, drive your hips up until your thighs are parallel to the floor, squeezing the glutes hard at the top.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Glutes",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Barbell Glute Bridge", "Single-Leg Hip Thrust", "Cable Kickback", "Frog Pump"]
+    },
+    {
+      "name": "Barbell Glute Bridge",
+      "description": "Lie on the floor with a barbell over your hips, feet flat, drive your hips up squeezing your glutes at the top, then lower back down.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Glutes",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Hip Thrust", "Single-Leg Hip Thrust", "Frog Pump", "Cable Kickback"]
+    },
+    {
+      "name": "Cable Kickback",
+      "description": "Attach an ankle strap to a low cable, face the machine and kick one leg straight back by extending at the hip, squeezing the glute at full extension.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Glutes",
+      "exerciseType": "Isolation",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Hip Thrust", "Barbell Glute Bridge", "Step-Up", "Single-Leg Hip Thrust"]
+    },
+    {
+      "name": "Step-Up",
+      "description": "Stand in front of a box or bench holding dumbbells, step up driving through the lead foot, fully extend at the top, then step back down.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Glutes",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Walking Lunge", "Bulgarian Split Squat", "Hip Thrust", "Cable Kickback"]
+    },
+    {
+      "name": "Sumo Deadlift",
+      "description": "Stand with a wide stance and toes pointed out, grip the bar inside your knees, drive through the floor to stand tall by extending hips and knees.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Glutes",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Deadlift", "Hip Thrust", "Romanian Deadlift", "Barbell Glute Bridge"]
+    },
+    {
+      "name": "Glute-Ham Raise",
+      "description": "Lock your feet in a GHD machine, lower your torso forward under control, then curl back up using your hamstrings and glutes.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Glutes",
+      "exerciseType": "Compound",
+      "equipment": "Machine",
+      "calisthenics": false,
+      "alternatives": ["Nordic Hamstring Curl", "Hip Thrust", "Romanian Deadlift", "Good Morning"]
+    },
+    {
+      "name": "Single-Leg Hip Thrust",
+      "description": "Set up like a hip thrust but extend one leg out, drive through the planted foot to lift your hips, squeezing the working glute at the top.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Glutes",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Hip Thrust", "Barbell Glute Bridge", "Frog Pump", "Cable Kickback"]
+    },
+    {
+      "name": "Frog Pump",
+      "description": "Lie on your back with soles of your feet together and knees flared out, drive your hips up squeezing your glutes, then lower back down.",
+      "movementPattern": "Hinge",
+      "muscleGroup": "Glutes",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Barbell Glute Bridge", "Hip Thrust", "Single-Leg Hip Thrust", "Cable Kickback"]
+    },
+    {
+      "name": "Plank",
+      "description": "Hold a push-up position on your forearms, keeping your body in a straight line from head to heels while bracing your core.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Hollow Body Hold", "Ab Wheel Rollout", "L-Sit", "Dragon Flag"]
+    },
+    {
+      "name": "Hanging Leg Raise",
+      "description": "Hang from a pull-up bar with straight arms, raise your legs to parallel or higher by flexing at the hips, then lower under control.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Toes-to-Bar", "L-Sit", "Cable Crunch", "Dragon Flag"]
+    },
+    {
+      "name": "Ab Wheel Rollout",
+      "description": "Kneel holding an ab wheel, roll forward extending your body as far as you can while maintaining a braced core, then roll back to the start.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Plank", "Dragon Flag", "Hollow Body Hold", "Cable Crunch"]
+    },
+    {
+      "name": "Cable Crunch",
+      "description": "Kneel in front of a high cable with a rope attachment behind your head, crunch downward by flexing your spine, bringing your elbows toward your knees.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Hanging Leg Raise", "Ab Wheel Rollout", "Russian Twist", "Bicycle Crunch"]
+    },
+    {
+      "name": "Russian Twist",
+      "description": "Sit with knees bent and feet off the floor, lean back slightly and rotate your torso side to side, optionally holding a weight.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Cable Crunch", "Bicycle Crunch", "Hanging Leg Raise", "Plank"]
+    },
+    {
+      "name": "L-Sit",
+      "description": "Support yourself on parallel bars or the floor with straight arms, hold your legs extended straight in front of you parallel to the ground.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Hanging Leg Raise", "Dragon Flag", "Hollow Body Hold", "Toes-to-Bar"]
+    },
+    {
+      "name": "Dragon Flag",
+      "description": "Lie on a bench gripping behind your head, lift your entire body as a rigid lever, then lower under control without letting your hips sag.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["L-Sit", "Ab Wheel Rollout", "Hanging Leg Raise", "Hollow Body Hold"]
+    },
+    {
+      "name": "Hollow Body Hold",
+      "description": "Lie on your back, press your lower back into the floor, extend your arms overhead and legs out, holding a curved position with everything off the ground.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Plank", "L-Sit", "Dragon Flag", "Ab Wheel Rollout"]
+    },
+    {
+      "name": "Bicycle Crunch",
+      "description": "Lie on your back with hands behind your head, alternate bringing each elbow to the opposite knee in a pedaling motion.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Russian Twist", "Cable Crunch", "Hanging Leg Raise", "Plank"]
+    },
+    {
+      "name": "Toes-to-Bar",
+      "description": "Hang from a pull-up bar and swing your legs up until your toes touch the bar, using a controlled kip or strict hip flexion.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Hanging Leg Raise", "L-Sit", "Dragon Flag", "Ab Wheel Rollout"]
+    },
+    {
+      "name": "Standing Calf Raise",
+      "description": "Stand on a calf raise machine or step with the balls of your feet on the edge, raise up onto your toes as high as possible, then lower for a full stretch.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Calves",
+      "exerciseType": "Isolation",
+      "equipment": "Machine",
+      "calisthenics": false,
+      "alternatives": ["Seated Calf Raise", "Donkey Calf Raise", "Single-Leg Calf Raise"]
+    },
+    {
+      "name": "Seated Calf Raise",
+      "description": "Sit in a seated calf raise machine with the pad on your knees, press up through the balls of your feet and squeeze at the top.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Calves",
+      "exerciseType": "Isolation",
+      "equipment": "Machine",
+      "calisthenics": false,
+      "alternatives": ["Standing Calf Raise", "Donkey Calf Raise", "Single-Leg Calf Raise"]
+    },
+    {
+      "name": "Donkey Calf Raise",
+      "description": "Bend forward at the hips with your toes on a raised surface, rise up onto your toes with a deep stretch at the bottom of each rep.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Calves",
+      "exerciseType": "Isolation",
+      "equipment": "Machine",
+      "calisthenics": false,
+      "alternatives": ["Standing Calf Raise", "Seated Calf Raise", "Single-Leg Calf Raise"]
+    },
+    {
+      "name": "Single-Leg Calf Raise",
+      "description": "Stand on one foot on a step or platform edge, perform a calf raise through full range of motion, using a wall for balance if needed.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Calves",
+      "exerciseType": "Isolation",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Standing Calf Raise", "Seated Calf Raise", "Donkey Calf Raise"]
+    },
+    {
+      "name": "Muscle-Up",
+      "description": "Hang from a bar, perform an explosive pull-up transitioning above the bar into a dip, finishing with arms fully extended on top.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Pull-Up", "Chin-Up", "Chest Dip", "Lat Pulldown"]
+    },
+    {
+      "name": "Burpee",
+      "description": "Drop into a squat, kick your feet back into a push-up position, perform a push-up, jump your feet forward, and explosively jump up.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Barbell Back Squat", "Walking Lunge", "Kettlebell Swing", "Push-Up"]
+    },
+    {
+      "name": "Turkish Get-Up",
+      "description": "Lie on the floor holding a weight overhead with one arm, stand up through a sequence of movements while keeping the weight locked out above you.",
+      "movementPattern": "Push",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Compound",
+      "equipment": "Kettlebell",
+      "calisthenics": false,
+      "alternatives": ["Overhead Press", "Dumbbell Shoulder Press", "Farmer's Walk", "Goblet Squat"]
+    },
+    {
+      "name": "Farmer's Walk",
+      "description": "Pick up heavy dumbbells or kettlebells in each hand, walk with tall posture and braced core for distance or time.",
+      "movementPattern": "Carry",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Deadlift", "Barbell Row", "Turkish Get-Up", "Kettlebell Swing"]
+    },
+    {
+      "name": "Front Lever",
+      "description": "Hang from a bar and hold your body horizontal face-up with straight arms, engaging your lats and core to maintain the position.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Core",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Dragon Flag", "Pull-Up", "Hanging Leg Raise", "Back Lever"]
+    },
+    {
+      "name": "Back Lever",
+      "description": "Hang from a bar and rotate your body to a horizontal face-down position with straight arms, holding using your shoulders and back.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Front Lever", "Pull-Up", "Inverted Row", "Muscle-Up"]
+    },
+    {
+      "name": "Planche Push-Up",
+      "description": "From a planche or tuck planche position with hands by your hips, lower and press your body while keeping your feet off the ground.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Push-Up", "Archer Push-Up", "Diamond Push-Up", "Chest Dip"]
+    },
+    {
+      "name": "Archer Push-Up",
+      "description": "Start in a wide push-up position, shift your weight to one arm as you lower, keeping the other arm straight out to the side, then press back up.",
+      "movementPattern": "Push",
+      "muscleGroup": "Chest",
+      "exerciseType": "Compound",
+      "equipment": "Bodyweight",
+      "calisthenics": true,
+      "alternatives": ["Push-Up", "Planche Push-Up", "Diamond Push-Up", "Dumbbell Bench Press"]
+    },
+    {
+      "name": "Band Pull-Apart",
+      "description": "Hold a resistance band in front of you at shoulder height, pull it apart by squeezing your rear delts and retracting your shoulder blades.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Isolation",
+      "equipment": "Band",
+      "calisthenics": false,
+      "alternatives": ["Face Pull", "Rear Delt Flye", "Cable Lateral Raise", "Inverted Row"]
+    },
+    {
+      "name": "Band Assisted Pull-Up",
+      "description": "Loop a resistance band over the bar and under your foot, perform a pull-up with the band assisting the hardest part of the movement.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Band",
+      "calisthenics": false,
+      "alternatives": ["Pull-Up", "Lat Pulldown", "Chin-Up", "Inverted Row"]
+    },
+    {
+      "name": "Dumbbell Pullover",
+      "description": "Lie across a bench holding a dumbbell overhead with both hands, lower it behind your head in an arc, then pull it back over your chest.",
+      "movementPattern": "Pull",
+      "muscleGroup": "Back",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Straight-Arm Pulldown", "Lat Pulldown", "Dumbbell Flye", "Cable Row"]
+    },
+    {
+      "name": "Landmine Press",
+      "description": "Hold the end of a barbell anchored at the floor at shoulder height, press it up and forward at an angle, alternating arms or using both.",
+      "movementPattern": "Push",
+      "muscleGroup": "Shoulders",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Overhead Press", "Dumbbell Shoulder Press", "Arnold Press", "Incline Barbell Bench Press"]
+    },
+    {
+      "name": "Reverse Lunge",
+      "description": "Stand holding dumbbells, step one foot backward and lower until both knees are at 90 degrees, then drive through the front foot to return.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Dumbbell",
+      "calisthenics": false,
+      "alternatives": ["Walking Lunge", "Bulgarian Split Squat", "Step-Up", "Goblet Squat"]
+    },
+    {
+      "name": "Zercher Squat",
+      "description": "Hold a barbell in the crook of your elbows against your torso, squat down to depth keeping your chest up, then stand back up.",
+      "movementPattern": "Squat",
+      "muscleGroup": "Quads",
+      "exerciseType": "Compound",
+      "equipment": "Barbell",
+      "calisthenics": false,
+      "alternatives": ["Front Squat", "Goblet Squat", "Barbell Back Squat", "Hack Squat"]
+    },
+    {
+      "name": "Pallof Press",
+      "description": "Stand sideways to a cable set at chest height, hold the handle at your chest and press it straight out, resisting the rotational pull.",
+      "movementPattern": "Isolation",
+      "muscleGroup": "Core",
+      "exerciseType": "Isolation",
+      "equipment": "Cable",
+      "calisthenics": false,
+      "alternatives": ["Plank", "Russian Twist", "Cable Crunch", "Hollow Body Hold"]
+    }
+  ]
+}

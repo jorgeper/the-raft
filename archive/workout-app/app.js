@@ -28,7 +28,12 @@
     savedWorkouts: [],   // Array of SavedWorkout objects
     settings: { weightUnit: 'lb', theme: 'dark', devMode: false },
     currentDate: null,   // YYYY-MM-DD string for the day screen
+    monthViewDate: null, // YYYY-MM-DD anchoring the displayed month
+    viewMode: 'day',     // 'day' or 'month'
     timerInterval: null,
+    library: [],                     // loaded exercise library
+    libraryFilters: {},              // active filters { movementPattern: 'Push', muscleGroup: null, ... }
+    librarySearch: '',               // search query for library browser
     editingWorkout: null,           // saved workout being edited
     editingWorkoutExercises: [],    // exercises while editing
     analyticsExercises: [],          // selected exercises for analytics charts
@@ -258,6 +263,14 @@
 
   function getAllExerciseNames() {
     const names = new Map();
+    // Include library exercises first
+    state.library.forEach(e => {
+      const lower = e.name.toLowerCase();
+      if (!names.has(lower)) {
+        names.set(lower, e.name);
+      }
+    });
+    // Then user's logged exercises
     state.days.forEach(d => {
       d.exercises.forEach(e => {
         const lower = e.exerciseName.toLowerCase();
@@ -414,9 +427,12 @@
     const screen = $('screen-' + name);
     if (screen) screen.classList.add('active');
 
+    // Map sub-screens to their parent nav item
+    const navMap = { 'library': 'settings', 'exercise-detail': 'settings' };
+    const navTarget = navMap[name] || name;
     document.querySelectorAll('.nav-item').forEach(btn => {
       const target = btn.dataset.screen;
-      btn.classList.toggle('active', target === name || (target === 'day' && name === 'day'));
+      btn.classList.toggle('active', target === navTarget);
     });
   }
 
@@ -479,6 +495,9 @@
           </div>
         `).join('');
 
+        const libEx = getLibraryExercise(ex.exerciseName);
+        const pillsHtml = libEx ? `<div class="exercise-pills">${renderPills(libEx)}</div>` : '';
+
         return `
           <div class="exercise-card" data-ex="${exIdx}">
             <div class="exercise-header">
@@ -489,6 +508,7 @@
                 <button class="exercise-remove" data-ex="${exIdx}">&times;</button>
               </div>
             </div>
+            ${pillsHtml}
             <div class="exercise-last">${lastText} ${trendHtml}</div>
             <div class="sets-list">${setsHtml}</div>
             <button class="btn-add-set" data-ex="${exIdx}">+ Add Set</button>
@@ -505,6 +525,7 @@
       startTimerInterval();
     }
 
+    showDayView();
     showScreen('day');
   }
 
@@ -537,6 +558,274 @@
         btnReset.classList.remove('hidden');
         break;
     }
+  }
+
+  // ========================================
+  // Month View
+  // ========================================
+  function showDayView() {
+    state.viewMode = 'day';
+    $('day-view').classList.remove('hidden');
+    $('month-view').classList.add('hidden');
+  }
+
+  function showMonthView() {
+    state.viewMode = 'month';
+    state.monthViewDate = state.currentDate || todayStr();
+    $('day-view').classList.add('hidden');
+    $('month-view').classList.remove('hidden');
+    renderMonth();
+    showScreen('day');
+  }
+
+  function renderMonth() {
+    const anchor = state.monthViewDate || todayStr();
+    const anchorDate = new Date(anchor + 'T12:00:00');
+    const year = anchorDate.getFullYear();
+    const month = anchorDate.getMonth();
+
+    // Title
+    const monthName = new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    $('month-title').textContent = monthName;
+
+    // Build set of dates that have workouts
+    const workoutDates = new Set();
+    state.days.forEach(d => {
+      if (d.exercises && d.exercises.length > 0) {
+        workoutDates.add(d.date);
+      }
+    });
+
+    const today = todayStr();
+    const selected = state.currentDate;
+
+    // First day of month & padding
+    const firstOfMonth = new Date(year, month, 1);
+    const startDow = firstOfMonth.getDay(); // 0=Sun
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    // Previous month padding
+    const prevMonthDays = new Date(year, month, 0).getDate();
+
+    // Build grid
+    let html = '';
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    dayNames.forEach(d => {
+      html += `<div class="month-grid-header">${d}</div>`;
+    });
+
+    // Previous month trailing days
+    for (let i = startDow - 1; i >= 0; i--) {
+      const dayNum = prevMonthDays - i;
+      const dateStr = toDateStr(new Date(year, month - 1, dayNum));
+      const hasDot = workoutDates.has(dateStr);
+      html += `<div class="month-day other-month" data-date="${dateStr}">
+        <span class="month-day-number">${dayNum}</span>
+        ${hasDot ? '<span class="month-day-dot"></span>' : ''}
+      </div>`;
+    }
+
+    // Current month days
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = toDateStr(new Date(year, month, d));
+      const isToday = dateStr === today;
+      const isSelected = dateStr === selected;
+      const hasDot = workoutDates.has(dateStr);
+      const classes = ['month-day'];
+      if (isToday) classes.push('is-today');
+      if (isSelected) classes.push('is-selected');
+
+      html += `<div class="${classes.join(' ')}" data-date="${dateStr}">
+        <span class="month-day-number">${d}</span>
+        ${hasDot ? '<span class="month-day-dot"></span>' : ''}
+      </div>`;
+    }
+
+    // Next month padding (fill to complete last row)
+    const totalCells = startDow + daysInMonth;
+    const remainder = totalCells % 7;
+    if (remainder > 0) {
+      for (let d = 1; d <= 7 - remainder; d++) {
+        const dateStr = toDateStr(new Date(year, month + 1, d));
+        const hasDot = workoutDates.has(dateStr);
+        html += `<div class="month-day other-month" data-date="${dateStr}">
+          <span class="month-day-number">${d}</span>
+          ${hasDot ? '<span class="month-day-dot"></span>' : ''}
+        </div>`;
+      }
+    }
+
+    $('month-grid').innerHTML = html;
+
+    // Hide "Today" button if current month already contains today
+    const todayDate = new Date(today + 'T12:00:00');
+    const isCurrentMonth = todayDate.getFullYear() === year && todayDate.getMonth() === month;
+    $('btn-month-today').classList.toggle('hidden', isCurrentMonth);
+  }
+
+  // ========================================
+  // Exercise Library
+  // ========================================
+
+  const LIBRARY_STORAGE_KEY = 'wb_exercise_library';
+
+  function loadDefaultLibrary() {
+    return fetch('default-library.json')
+      .then(r => r.json())
+      .then(data => {
+        state.library = data.exercises || [];
+        localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(data));
+      })
+      .catch(() => {
+        state.library = [];
+      });
+  }
+
+  function loadLibrary() {
+    try {
+      const stored = localStorage.getItem(LIBRARY_STORAGE_KEY);
+      if (stored) {
+        const data = JSON.parse(stored);
+        state.library = data.exercises || [];
+        return true;
+      }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  function getLibraryExercise(name) {
+    return state.library.find(e => e.name.toLowerCase() === name.toLowerCase()) || null;
+  }
+
+  function renderPills(exercise) {
+    let html = '';
+    if (exercise.movementPattern) html += `<span class="pill pill-movement">${exercise.movementPattern}</span>`;
+    if (exercise.muscleGroup) html += `<span class="pill pill-muscle">${exercise.muscleGroup}</span>`;
+    if (exercise.exerciseType) html += `<span class="pill pill-type">${exercise.exerciseType}</span>`;
+    if (exercise.equipment) html += `<span class="pill pill-equipment">${exercise.equipment}</span>`;
+    if (exercise.calisthenics) html += `<span class="pill pill-calisthenics">Calisthenics</span>`;
+    return html;
+  }
+
+  // ========================================
+  // Library Browser
+  // ========================================
+
+  function renderLibrary() {
+    // Build filter chips
+    renderLibraryFilters();
+    renderLibraryList();
+    showScreen('library');
+  }
+
+  function renderLibraryFilters() {
+    const movements = [...new Set(state.library.map(e => e.movementPattern).filter(Boolean))].sort();
+    const muscles = [...new Set(state.library.map(e => e.muscleGroup).filter(Boolean))].sort();
+    const types = [...new Set(state.library.map(e => e.exerciseType).filter(Boolean))].sort();
+    const equipment = [...new Set(state.library.map(e => e.equipment).filter(Boolean))].sort();
+
+    const f = state.libraryFilters;
+
+    $('filter-movement').innerHTML = movements.map(v =>
+      `<button class="filter-chip${f.movementPattern === v ? ' active' : ''}" data-category="movementPattern" data-value="${v}">${v}</button>`
+    ).join('');
+
+    $('filter-muscle').innerHTML = muscles.map(v =>
+      `<button class="filter-chip${f.muscleGroup === v ? ' active' : ''}" data-category="muscleGroup" data-value="${v}">${v}</button>`
+    ).join('');
+
+    $('filter-type').innerHTML = types.map(v =>
+      `<button class="filter-chip${f.exerciseType === v ? ' active' : ''}" data-category="exerciseType" data-value="${v}">${v}</button>`
+    ).join('');
+
+    $('filter-equipment').innerHTML = equipment.map(v =>
+      `<button class="filter-chip${f.equipment === v ? ' active' : ''}" data-category="equipment" data-value="${v}">${v}</button>`
+    ).join('');
+
+    $('filter-calisthenics').innerHTML =
+      `<button class="filter-chip${f.calisthenics === true ? ' active' : ''}" data-category="calisthenics" data-value="true">Calisthenics</button>`;
+  }
+
+  function renderLibraryList() {
+    const q = state.librarySearch.toLowerCase().trim();
+    const f = state.libraryFilters;
+
+    let exercises = state.library.filter(ex => {
+      if (q && !ex.name.toLowerCase().includes(q)) return false;
+      if (f.movementPattern && ex.movementPattern !== f.movementPattern) return false;
+      if (f.muscleGroup && ex.muscleGroup !== f.muscleGroup) return false;
+      if (f.exerciseType && ex.exerciseType !== f.exerciseType) return false;
+      if (f.equipment && ex.equipment !== f.equipment) return false;
+      if (f.calisthenics === true && !ex.calisthenics) return false;
+      return true;
+    });
+
+    exercises.sort((a, b) => a.name.localeCompare(b.name));
+
+    $('library-count').textContent = exercises.length + ' exercise' + (exercises.length !== 1 ? 's' : '');
+    $('library-empty').classList.toggle('hidden', exercises.length > 0);
+
+    $('library-list').innerHTML = exercises.map(ex => `
+      <div class="library-item" data-name="${ex.name}">
+        <div class="library-item-name">${ex.name}</div>
+        <div class="library-item-pills">${renderPills(ex)}</div>
+      </div>
+    `).join('');
+  }
+
+  function renderExerciseDetail(name) {
+    const ex = getLibraryExercise(name);
+    if (!ex) return;
+
+    $('detail-exercise-name').textContent = ex.name;
+    $('detail-description').textContent = ex.description || '';
+    $('detail-pills').innerHTML = renderPills(ex);
+
+    const altList = $('detail-alternatives-list');
+    if (ex.alternatives && ex.alternatives.length > 0) {
+      $('detail-alternatives').classList.remove('hidden');
+      altList.innerHTML = ex.alternatives.map(alt => {
+        const altEx = getLibraryExercise(alt);
+        const inLibrary = !!altEx;
+        return `<div class="detail-alt-item${inLibrary ? '' : ' no-link'}" data-name="${alt}">
+          <span class="detail-alt-name">${alt}</span>
+          ${inLibrary ? '<span class="detail-alt-chevron">&#9654;</span>' : ''}
+        </div>`;
+      }).join('');
+    } else {
+      $('detail-alternatives').classList.add('hidden');
+      altList.innerHTML = '';
+    }
+
+    showScreen('exercise-detail');
+  }
+
+  function importLibrary(file) {
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (data.exercises && Array.isArray(data.exercises)) {
+          state.library = data.exercises;
+          localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(data));
+        }
+      } catch (err) {
+        // invalid file
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function exportLibrary() {
+    const stored = localStorage.getItem(LIBRARY_STORAGE_KEY);
+    const data = stored || JSON.stringify({ version: '1.0.0', exercises: state.library });
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'exercise-library.json';
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ========================================
@@ -584,9 +873,14 @@
       const meta = last
         ? `${last.weight} ${unit()} ${getTrendArrow(name, state.currentDate)}`
         : '';
+      const libEx = getLibraryExercise(name);
+      const pillsRow = libEx ? `<div class="suggestion-pills">${renderPills(libEx)}</div>` : '';
       return `
         <div class="suggestion-item" data-name="${name}">
-          <span class="suggestion-name">${name}</span>
+          <div class="suggestion-item-info">
+            <span class="suggestion-name">${name}</span>
+            ${pillsRow}
+          </div>
           <span class="suggestion-meta">${meta}</span>
         </div>
       `;
@@ -1288,6 +1582,46 @@
       renderDay(todayStr());
     });
 
+    // --- Month / Day view toggle ---
+    $('btn-show-month').addEventListener('click', () => {
+      showMonthView();
+    });
+
+    $('btn-show-day').addEventListener('click', () => {
+      renderDay(state.currentDate);
+    });
+
+    // --- Month navigation ---
+    $('btn-month-prev').addEventListener('click', () => {
+      const d = new Date(state.monthViewDate + 'T12:00:00');
+      d.setMonth(d.getMonth() - 1);
+      state.monthViewDate = toDateStr(d);
+      renderMonth();
+    });
+
+    $('btn-month-next').addEventListener('click', () => {
+      const d = new Date(state.monthViewDate + 'T12:00:00');
+      d.setMonth(d.getMonth() + 1);
+      state.monthViewDate = toDateStr(d);
+      renderMonth();
+    });
+
+    $('btn-month-today').addEventListener('click', () => {
+      const today = todayStr();
+      state.currentDate = today;
+      state.monthViewDate = today;
+      renderMonth();
+    });
+
+    // --- Month grid day click ---
+    $('month-grid').addEventListener('click', (e) => {
+      const dayEl = e.target.closest('.month-day');
+      if (dayEl && dayEl.dataset.date) {
+        state.currentDate = dayEl.dataset.date;
+        renderDay(state.currentDate);
+      }
+    });
+
     // --- Day screen actions ---
     $('btn-load-workout').addEventListener('click', openLoadWorkout);
     $('btn-save-workout').addEventListener('click', openSaveWorkout);
@@ -1619,6 +1953,71 @@
     $('btn-cancel-reset').addEventListener('click', () => {
       hideModal('modal-confirm-reset');
     });
+
+    // --- Exercise Library ---
+    $('btn-browse-library').addEventListener('click', () => {
+      state.libraryFilters = {};
+      state.librarySearch = '';
+      $('library-search').value = '';
+      renderLibrary();
+    });
+
+    $('btn-library-back').addEventListener('click', () => {
+      renderSettings();
+    });
+
+    $('library-search').addEventListener('input', (e) => {
+      state.librarySearch = e.target.value;
+      renderLibraryList();
+    });
+
+    // Filter chips (delegated)
+    $('library-filters').addEventListener('click', (e) => {
+      const chip = e.target.closest('.filter-chip');
+      if (!chip) return;
+      const category = chip.dataset.category;
+      const value = chip.dataset.value;
+
+      if (category === 'calisthenics') {
+        state.libraryFilters.calisthenics = state.libraryFilters.calisthenics === true ? null : true;
+      } else {
+        state.libraryFilters[category] = state.libraryFilters[category] === value ? null : value;
+      }
+      renderLibraryFilters();
+      renderLibraryList();
+    });
+
+    // Library list item click
+    $('library-list').addEventListener('click', (e) => {
+      const item = e.target.closest('.library-item');
+      if (item) renderExerciseDetail(item.dataset.name);
+    });
+
+    // Exercise detail
+    $('btn-detail-back').addEventListener('click', () => {
+      renderLibrary();
+    });
+
+    $('detail-alternatives-list').addEventListener('click', (e) => {
+      const item = e.target.closest('.detail-alt-item');
+      if (item && !item.classList.contains('no-link')) {
+        renderExerciseDetail(item.dataset.name);
+      }
+    });
+
+    // Import / Export library
+    $('btn-import-library').addEventListener('click', () => {
+      $('library-file-input').click();
+    });
+
+    $('library-file-input').addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        importLibrary(e.target.files[0]);
+        e.target.value = '';
+      }
+    });
+
+    $('btn-export-library').addEventListener('click', exportLibrary);
   }
 
   // ========================================
@@ -1629,6 +2028,15 @@
     applyTheme();
     bindEvents();
     state.currentDate = todayStr();
+
+    // Load exercise library (from localStorage or default file)
+    if (!loadLibrary()) {
+      loadDefaultLibrary().then(() => {
+        // Re-render if on day screen to pick up library exercise names
+        if (state.viewMode === 'day') renderDay(state.currentDate);
+      });
+    }
+
     renderDay(state.currentDate);
   }
 
