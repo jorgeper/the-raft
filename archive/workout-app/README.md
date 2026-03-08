@@ -52,25 +52,13 @@ In the Hostinger Docker Manager, create a container:
 | **Container name** | `workout-app` |
 | **Image** | `ghcr.io/jorgeper/workout-app:latest` |
 | **Port** | `80:80/tcp` |
+| **Port** | `443:443/tcp` |
+| **Volume** | `/root/caddy_data:/data` |
 | **Restart policy** | `unless-stopped` |
 
+The Caddyfile already includes a `workout.jorgepereira.io` domain block. Point your DNS A record to the VPS IP and Caddy handles HTTPS automatically via Let's Encrypt. The `/root/caddy_data` bind mount stores certificates so they persist across restarts.
+
 To redeploy after pushing a new image, pull the latest image and restart the container from Hostinger's Docker Manager.
-
-### Custom domain with HTTPS
-
-If you want to serve under a domain (e.g. `workout.jorgepereira.io`):
-
-1. Point the DNS A record to your Hostinger VPS IP
-2. Update the `Caddyfile` to add the domain block:
-
-```
-workout.jorgepereira.io {
-    root * /srv
-    file_server
-}
-```
-
-3. Map port `443:443/tcp` and add a volume `caddy_data:/data` in the Docker Manager so Caddy can store Let's Encrypt certificates.
 
 ## iPhone usage
 

@@ -2,3 +2,8 @@
     root * /srv
     file_server
 }
+
+workout.jorgepereira.io {
+    root * /srv
+    file_server
+}
