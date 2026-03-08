@@ -51,14 +51,16 @@ In the Hostinger Docker Manager, create a container:
 | **Project name** | `workout-app` |
 | **Container name** | `workout-app` |
 | **Image** | `ghcr.io/jorgeper/workout-app:latest` |
-| **Port** | `80:80/tcp` |
-| **Port** | `443:443/tcp` |
-| **Volume** | `/root/caddy_data:/data` |
+| **Port** | `8080:80/tcp` |
 | **Restart policy** | `unless-stopped` |
 
-The Caddyfile already includes a `workout.jorgepereira.io` domain block. Point your DNS A record to the VPS IP and Caddy handles HTTPS automatically via Let's Encrypt. The `/root/caddy_data` bind mount stores certificates so they persist across restarts.
+Access at `http://your-vps-ip:8080`.
 
 To redeploy after pushing a new image, pull the latest image and restart the container from Hostinger's Docker Manager.
+
+> **Note:** The app currently runs on port 8080 over plain HTTP because ports 80/443 are already used by the `jorgepereira-io` container on the same VPS.
+>
+> **TODO:** Serve the app at `workout.jorgepereira.io` with HTTPS. This requires merging both sites into a single Caddy container that owns ports 80/443 and serves both `jorgepereira.io` and `workout.jorgepereira.io` from one Caddyfile. The domain block is already in the Caddyfile — it just can't work as a separate container while the other one holds the ports.
 
 ## iPhone usage
 
