@@ -2,6 +2,8 @@
 
 A chat bot powered by Claude with two interfaces — Telegram and email. Send a message on Telegram or email `hank@hank.jorgepereira.io` and get a reply from "Hank", a friendly chat buddy.
 
+You can also email `remember@hank.jorgepereira.io` to save things — Hank stores the email content as markdown files on disk.
+
 Deployed at `hank.jorgepereira.io`. For deployment instructions, see the [parent README](../README.md).
 
 ## Setting Up a Telegram Bot
@@ -150,6 +152,31 @@ You should see the inbound email logged and a reply sent back to your inbox.
 - **No email received by Mailgun?** DNS records haven't propagated. Check Mailgun's domain verification page.
 - **Mailgun posts but gets 403?** The signature verification is failing — make sure `MAILGUN_API_KEY` in `.env.cloud` matches the key Mailgun is signing with.
 - **Reply lands in spam?** SPF and DKIM DNS records may not be set up correctly. Check Mailgun's domain page for verification status.
+
+## Remember Feature
+
+Email `remember@hank.jorgepereira.io` to save things. Hank stores the email content as markdown files organized by date.
+
+**How to use:**
+- Forward an email, send a link, jot down a note — anything you want to save
+- Hank replies "Got it, I'll remember that."
+- Content is saved to `data/memories/YYYY-MM-DD/<timestamp>_<subject-slug>.md`
+
+**Email routing:**
+
+| Recipient | What happens |
+|-----------|-------------|
+| `hank@hank.jorgepereira.io` | Chat with Hank (Claude) |
+| `remember@hank.jorgepereira.io` | Save to disk |
+
+Both addresses use the same Mailgun inbound route (`.*@hank.jorgepereira.io` → `/email`). The app routes internally based on the recipient.
+
+**Storage:** Memories are stored in a Docker volume (`hank_memories`) so they persist across container rebuilds. To browse saved memories on the VPS:
+
+```bash
+docker-compose exec hank ls data/memories/
+docker-compose exec hank cat data/memories/2026-04-05/2026-04-05T21-33-02_wifi-password.md
+```
 
 ## Security
 

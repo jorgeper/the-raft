@@ -1,16 +1,11 @@
 """Mailgun inbound email handler.
 
-Receives emails forwarded by Mailgun as HTTP POST webhooks, routes them
-through the same processor as Telegram messages, and sends replies via
-the Mailgun API.
+Receives emails forwarded by Mailgun as HTTP POST webhooks and routes them
+to different processors based on the recipient address:
+- hank@hank.jorgepereira.io    → chat processor (Claude by default)
+- remember@hank.jorgepereira.io → remember processor (saves to disk)
 
-Flow:
-1. Someone emails hank@hank.jorgepereira.io
-2. Mailgun receives it (MX records point to Mailgun)
-3. Mailgun POSTs the email to https://hank.jorgepereira.io/email
-4. We verify the Mailgun signature, strip reply quotes, extract the body
-5. Body goes through the processor (same as Telegram messages)
-6. We send the reply back via Mailgun's send API
+Replies are sent back via the Mailgun API.
 """
 
 import hashlib
@@ -28,16 +23,23 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# The processor instance, set by main.py during startup.
-# Same instance used by both Telegram and email — messages go through
-# the exact same processing logic regardless of channel.
-_processor: Processor | None = None
+# Processors injected by main.py during startup.
+# _chat_processor handles normal conversation (hank@).
+# _remember_processor handles memory saving (remember@).
+_chat_processor: Processor | None = None
+_remember_processor: Processor | None = None
 
 
-def set_processor(processor: Processor) -> None:
-    """Inject the processor instance. Called once during app startup."""
-    global _processor
-    _processor = processor
+def set_chat_processor(processor: Processor) -> None:
+    """Inject the chat processor (for hank@ emails)."""
+    global _chat_processor
+    _chat_processor = processor
+
+
+def set_remember_processor(processor: Processor) -> None:
+    """Inject the remember processor (for remember@ emails)."""
+    global _remember_processor
+    _remember_processor = processor
 
 
 def _email_chat_id(email: str) -> int:
@@ -66,7 +68,21 @@ def _strip_reply_quotes(body: str) -> str:
     return body.strip()
 
 
-async def _send_reply(to: str, subject: str, body: str) -> None:
+def _extract_recipient_local(recipient: str) -> str:
+    """Extract the local part (before @) from an email address.
+
+    "remember@hank.jorgepereira.io" → "remember"
+    "Hank <hank@hank.jorgepereira.io>" → "hank"
+    """
+    # Handle "Name <email>" format
+    match = re.search(r"<([^>]+)>", recipient)
+    if match:
+        recipient = match.group(1)
+    local = recipient.split("@")[0].lower().strip()
+    return local
+
+
+async def _send_reply(to: str, subject: str, body: str, from_addr: str | None = None) -> None:
     """Send a reply email via the Mailgun API.
 
     Uses the Mailgun HTTP API (not SMTP) to send the reply. This is simpler
@@ -74,7 +90,8 @@ async def _send_reply(to: str, subject: str, body: str) -> None:
     """
     domain = os.environ["MAILGUN_DOMAIN"]
     api_key = os.environ["MAILGUN_API_KEY"]
-    from_addr = os.getenv("MAILGUN_FROM", f"Hank <hank@{domain}>")
+    if from_addr is None:
+        from_addr = os.getenv("MAILGUN_FROM", f"Hank <hank@{domain}>")
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -105,13 +122,26 @@ def _verify_mailgun_signature(token: str, timestamp: str, signature: str) -> boo
     expected = hmac.HMAC(
         signing_key.encode(), f"{timestamp}{token}".encode(), hashlib.sha256
     ).hexdigest()
-    logger.info("Mailgun sig check: key_len=%d, expected=%s..., got=%s...", len(signing_key), expected[:16], signature[:16])
     return hmac.compare_digest(expected, signature)
+
+
+def _format_memory(sender: str, subject: str, body: str) -> str:
+    """Format an email into a markdown memory file.
+
+    Returns a markdown string with the subject as the title,
+    metadata (sender, date), and the email body.
+    """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    title = subject or "Untitled"
+
+    return f"# {title}\n\n**From:** {sender}\n**Date:** {now}\n\n---\n\n{body}\n"
 
 
 @router.post("/email")
 async def handle_email(
     sender: str = Form(...),
+    recipient: str = Form(default=""),
     subject: str = Form(default=""),
     body_plain: str = Form(default="", alias="body-plain"),
     token: str = Form(...),
@@ -120,8 +150,9 @@ async def handle_email(
 ):
     """Receive an inbound email from Mailgun.
 
-    Mailgun sends the email as form data with fields like sender, subject,
-    body-plain, plus a signature (token + timestamp + signature) for verification.
+    Routes to different processors based on the recipient address:
+    - remember@... → RememberProcessor (saves to disk)
+    - anything else → chat processor (Claude by default)
     """
     # Verify the request is actually from Mailgun
     try:
@@ -133,7 +164,7 @@ async def handle_email(
         logger.warning("Invalid Mailgun signature from %s", sender)
         raise HTTPException(status_code=403, detail="Invalid signature")
 
-    logger.info("Email from %s, subject: %s", sender, subject)
+    logger.info("Email from %s to %s, subject: %s", sender, recipient, subject)
 
     # Check sender allowlist — if configured, only accept emails from these addresses.
     allowed_senders_str = os.getenv("ALLOWED_EMAIL_SENDERS", "")
@@ -148,13 +179,23 @@ async def handle_email(
         logger.info("Empty email body, skipping")
         return {"status": "skipped"}
 
-    # Route through the processor — same path as Telegram messages.
-    # Each sender gets their own conversation history (keyed by hashed email).
-    chat_id = _email_chat_id(sender)
-    reply = await _processor.process(chat_id, text)
+    # Route based on recipient address
+    local_part = _extract_recipient_local(recipient)
 
-    # Send the reply back via Mailgun
-    reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
-    await _send_reply(sender, reply_subject, reply)
+    if local_part == "remember":
+        # Remember processor — save the email content as a markdown file
+        logger.info("Routing to remember processor")
+        memory_text = _format_memory(sender, subject, text)
+        chat_id = _email_chat_id(sender)
+        reply = await _remember_processor.process(chat_id, memory_text)
+        reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
+        await _send_reply(sender, reply_subject, reply,
+                          from_addr=f"Hank <remember@{os.environ['MAILGUN_DOMAIN']}>")
+    else:
+        # Default: chat processor (Claude)
+        chat_id = _email_chat_id(sender)
+        reply = await _chat_processor.process(chat_id, text)
+        reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
+        await _send_reply(sender, reply_subject, reply)
 
     return {"status": "ok"}

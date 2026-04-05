@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 
 from app.bot import create_app as create_telegram_app
-from app.email_handler import router as email_router, set_processor as set_email_processor
+from app.email_handler import router as email_router, set_chat_processor, set_remember_processor
 from app.processor import Processor
 
 # Load .env.local for direct (non-Docker) runs.
@@ -47,9 +47,11 @@ def _load_processors() -> dict[str, type[Processor]]:
     """
     from app.processors.claude import ClaudeProcessor
     from app.processors.helloworld import HelloWorldProcessor
+    from app.processors.remember import RememberProcessor
     return {
         "claude": ClaudeProcessor,
         "helloworld": HelloWorldProcessor,
+        "remember": RememberProcessor,
     }
 
 
@@ -128,14 +130,16 @@ async def _stop_telegram() -> None:
 # Email setup
 # ---------------------------------------------------------------------------
 
-def _start_email(processor: Processor) -> None:
-    """Inject the processor into the email handler.
+def _start_email(chat_processor: Processor, remember_processor: Processor) -> None:
+    """Inject processors into the email handler.
 
-    The email handler is a FastAPI router — it starts receiving requests
-    as soon as the server is up. We just need to give it the processor.
+    The email handler routes by recipient address:
+    - hank@... → chat_processor (Claude)
+    - remember@... → remember_processor (saves to disk)
     """
-    set_email_processor(processor)
-    logger.info("Email handler ready (POST /email)")
+    set_chat_processor(chat_processor)
+    set_remember_processor(remember_processor)
+    logger.info("Email handler ready (POST /email) — chat + remember processors")
 
 
 # ---------------------------------------------------------------------------
@@ -154,12 +158,15 @@ async def lifespan(app: FastAPI):
     Shutdown:
     1. Gracefully stop the Telegram bot
     """
-    # Create the shared processor — both channels use the same instance
-    processor = _create_processor()
+    # Create processors
+    chat_processor = _create_processor()
+
+    from app.processors.remember import RememberProcessor
+    remember_processor = RememberProcessor()
 
     # Wire up both channels
-    _start_email(processor)
-    await _start_telegram(processor)
+    _start_email(chat_processor, remember_processor)
+    await _start_telegram(chat_processor)
 
     logger.info("Hank is ready")
     yield  # Server is running — handle requests until shutdown

@@ -20,6 +20,9 @@ services:
     build: hank
     env_file: ${ENV_FILE:-hank/.env.local}
     restart: unless-stopped
+    volumes:
+      - hank_memories:/app/data/memories
 
 volumes:
   caddy_data:
+  hank_memories:

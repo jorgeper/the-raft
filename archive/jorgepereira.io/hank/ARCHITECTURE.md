@@ -22,9 +22,13 @@ Email sender  → Mailgun       → Caddy (HTTPS) → POST /email    → Process
 
 - Mailgun receives email at `hank@hank.jorgepereira.io` (MX records point to Mailgun)
 - Mailgun forwards to `https://hank.jorgepereira.io/email` as a POST with form data
-- Bot verifies the Mailgun signature, strips reply quotes, routes body through processor
+- Bot verifies the Mailgun signature, strips reply quotes
+- Routes to different processors based on recipient address:
+  - `hank@` → chat processor (Claude) — conversation with Hank
+  - `remember@` → remember processor — saves email content as markdown files to disk
 - Replies via Mailgun send API — lands in sender's inbox
-- Conversation history per sender (keyed by hashed email address), same 1-hour expiry
+- Chat conversations: per-sender history (keyed by hashed email address), 1-hour expiry
+- Remember: saves to `data/memories/YYYY-MM-DD/` as markdown files (Docker volume)
 
 ### Shared behavior
 
@@ -53,6 +57,7 @@ Message processing is abstracted behind the `Processor` base class (`app/process
 |--------------|------------------------|---------------------------------|---------------------|
 | `claude`     | `ClaudeProcessor`      | `app/processors/claude.py`      | `ANTHROPIC_API_KEY` |
 | `helloworld` | `HelloWorldProcessor`  | `app/processors/helloworld.py`  | Nothing             |
+| `remember`   | `RememberProcessor`    | `app/processors/remember.py`    | Nothing             |
 
 ### Adding a new processor
 
