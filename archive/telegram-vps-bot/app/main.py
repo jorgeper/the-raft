@@ -7,9 +7,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 
 from app.bot import create_app
-from app.email_handler import router as email_router
+from app.email_handler import router as email_router, set_processor
+from app.processor import Processor
 
-load_dotenv()
+load_dotenv(".env.local")  # fallback for direct (non-Docker) runs
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -17,15 +18,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+PROCESSORS: dict[str, type[Processor]] = {}
+
+
+def _load_processors() -> dict[str, type[Processor]]:
+    from app.processors.claude import ClaudeProcessor
+    from app.processors.helloworld import HelloWorldProcessor
+    return {
+        "claude": ClaudeProcessor,
+        "helloworld": HelloWorldProcessor,
+    }
+
+
 telegram_app = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global telegram_app
+    global telegram_app, PROCESSORS
+    PROCESSORS = _load_processors()
+
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     mode = os.getenv("MODE", "polling")
-    telegram_app = create_app(token)
+    processor_name = os.getenv("PROCESSOR", "claude")
+
+    processor_cls = PROCESSORS.get(processor_name)
+    if not processor_cls:
+        raise ValueError(f"Unknown processor: {processor_name}. Available: {list(PROCESSORS.keys())}")
+
+    processor = processor_cls()
+    logger.info("Using processor: %s", processor_name)
+    set_processor(processor)
+    telegram_app = create_app(token, processor)
 
     await telegram_app.initialize()
     await telegram_app.start()

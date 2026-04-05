@@ -7,11 +7,19 @@ import re
 import httpx
 from fastapi import APIRouter, Form, HTTPException
 
-from app.processor import process
+from app.processor import Processor
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Set by main.py during startup
+_processor: Processor | None = None
+
+
+def set_processor(processor: Processor) -> None:
+    global _processor
+    _processor = processor
 
 
 def _email_chat_id(email: str) -> int:
@@ -80,7 +88,7 @@ async def handle_email(
         return {"status": "skipped"}
 
     chat_id = _email_chat_id(sender)
-    reply = await process(chat_id, text)
+    reply = await _processor.process(chat_id, text)
 
     reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
     await _send_reply(sender, reply_subject, reply)

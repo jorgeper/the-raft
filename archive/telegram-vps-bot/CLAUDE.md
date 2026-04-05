@@ -60,10 +60,36 @@ Each entry in `LOG.md` follows this format:
 - All config from environment variables (never hardcode secrets)
 - Keep it simple — no premature abstractions
 
+## Processor Architecture
+
+Message processing is abstracted behind the `Processor` base class (`app/processor.py`). The bot doesn't know which processor it's using — it receives one via dependency injection at startup.
+
+### How it works
+
+1. `app/main.py` reads the `PROCESSOR` env var (default: `claude`)
+2. It instantiates the matching `Processor` subclass
+3. It passes the instance to `app/bot.py`'s `create_app()`
+4. The bot calls `processor.process(chat_id, text)` for every incoming message
+
+### Available processors
+
+| Name         | Class                  | File                            | Requires           |
+|--------------|------------------------|---------------------------------|---------------------|
+| `claude`     | `ClaudeProcessor`      | `app/processors/claude.py`      | `ANTHROPIC_API_KEY` |
+| `helloworld` | `HelloWorldProcessor`  | `app/processors/helloworld.py`  | Nothing             |
+
+### Adding a new processor
+
+1. Create a file in `app/processors/`
+2. Subclass `Processor` and implement `async def process(self, chat_id: int, text: str) -> str`
+3. Register it in `_load_processors()` in `app/main.py`
+
 ## Key Files
 
 - `PLAN.md` — phases, architecture, status tracking
 - `LOG.md` — session-by-session progress log
-- `app/main.py` — entrypoint
-- `app/bot.py` — Telegram bot setup
-- `app/processor.py` — message processing logic
+- `app/main.py` — entrypoint, processor selection, FastAPI server
+- `app/bot.py` — Telegram bot setup, receives a Processor via DI
+- `app/processor.py` — abstract Processor base class
+- `app/processors/claude.py` — Claude API processor (Hank personality)
+- `app/processors/helloworld.py` — echo processor for testing
