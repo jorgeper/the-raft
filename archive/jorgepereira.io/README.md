@@ -126,13 +126,16 @@ This starts all three services. Locally, Caddy won't be able to get certificates
 
 ## VPS deployment (Hostinger)
 
-### Prerequisites
+### One-time setup
 
+Do this once to get the VPS ready.
+
+**Prerequisites:**
 - Hostinger VPS with SSH access
 - Docker and Docker Compose installed
 - DNS: `jorgepereira.io` and `hank.jorgepereira.io` A records pointing to your VPS IP
 
-### 1. Clone the repo
+**1. Clone the repo:**
 
 ```bash
 ssh jorge@<your-vps-ip>
@@ -141,7 +144,7 @@ sudo chown -R jorge:jorge /opt/sandbox
 cd /opt/sandbox/jorgepereira.io
 ```
 
-### 2. Configure the bot environment
+**2. Configure the bot environment:**
 
 ```bash
 cp hank/.env.cloud.example hank/.env.cloud
@@ -163,43 +166,75 @@ Generate a random secret:
 openssl rand -hex 32
 ```
 
-### 3. Start everything
+**3. Set the default env file** so you don't have to pass `ENV_FILE=` on every command:
 
 ```bash
-ENV_FILE=hank/.env.cloud docker-compose up -d --build
+echo "ENV_FILE=hank/.env.cloud" > .env
+```
+
+**4. Start everything:**
+
+```bash
+docker-compose up -d --build
 ```
 
 Caddy will automatically obtain Let's Encrypt certificates for both domains.
 
-### 4. Verify
+**5. Verify:**
 
 ```bash
-# Check all services are running
 docker-compose ps
-
-# Check logs
-docker-compose logs -f
-
-# Test the site
 curl https://jorgepereira.io
-
-# Test the bot health endpoint
 curl https://hank.jorgepereira.io/health
 ```
 
-### 5. Updating
+---
+
+### Deploying site changes
+
+After pushing HTML changes to `main`:
 
 ```bash
+ssh jorge@<your-vps-ip>
 cd /opt/sandbox/jorgepereira.io
 git pull
-ENV_FILE=hank/.env.cloud docker-compose up -d --build
+docker-compose up -d --build site
 ```
 
-### Stopping a single service
+### Deploying bot changes
+
+After pushing bot code changes to `main`:
 
 ```bash
-docker-compose restart hank    # restart just the bot
-docker-compose logs -f caddy   # check Caddy logs
+ssh jorge@<your-vps-ip>
+cd /opt/sandbox/jorgepereira.io
+git pull
+docker-compose up -d --build hank
+```
+
+### Deploying Caddy config changes
+
+After pushing Caddyfile changes to `main`:
+
+```bash
+ssh jorge@<your-vps-ip>
+cd /opt/sandbox/jorgepereira.io
+git pull
+docker-compose restart caddy
+```
+
+---
+
+### Useful commands
+
+```bash
+docker-compose ps                  # status of all services
+docker-compose logs -f hank        # follow bot logs
+docker-compose logs -f site        # follow site logs
+docker-compose logs -f caddy       # follow Caddy logs
+docker-compose restart hank        # restart just the bot
+docker-compose stop hank           # stop the bot (site stays up)
+docker-compose start hank          # start it again
 ```
 
 ## Adding a new service
