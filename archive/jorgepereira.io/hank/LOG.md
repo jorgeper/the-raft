@@ -44,3 +44,48 @@
 - [step] Added MAILGUN_API_KEY, MAILGUN_DOMAIN, MAILGUN_FROM to `.env.example`
 - [note] Email conversations get their own history (keyed by hashed email address), same 1-hour expiry as Telegram.
 - [note] Phase 3 complete. To test email: configure Mailgun inbound routes to POST to `https://your-vps/email`.
+
+## Phase 4 — Processor abstraction and DI
+
+### Session 2026-04-05
+
+- [step] Extracted `Processor` ABC into `app/processor.py`
+- [step] Moved Claude logic to `app/processors/claude.py` as `ClaudeProcessor`
+- [step] Created `app/processors/helloworld.py` — `HelloWorldProcessor` echoes messages back
+- [step] Updated `app/bot.py` — `create_app()` now accepts a `Processor` instance via DI
+- [step] Updated `app/email_handler.py` — receives processor via `set_processor()` at startup
+- [step] Updated `app/main.py` — reads `PROCESSOR` env var, instantiates and injects the processor
+- [step] Split `.env` into `.env.local` (polling) and `.env.cloud` (webhook) with separate example templates
+- [step] Updated `docker-compose.yml` to default to `.env.local`, override with `ENV_FILE=`
+- [step] Added docstrings to all processor-related files
+- [step] Documented processor architecture in `CLAUDE.md`
+- [note] Phase 4 complete. Set `PROCESSOR=helloworld` to test without API keys.
+
+## Phase 5 — Infrastructure restructure
+
+### Session 2026-04-05
+
+- [step] Moved `telegram-vps-bot/` to `jorgepereira.io/hank/`
+- [step] Moved `jorgepereira.io/html/` to `jorgepereira.io/site/html/`
+- [step] Switched site Dockerfile from Caddy to nginx (Caddy is now shared)
+- [step] Created shared `Caddyfile` routing `jorgepereira.io` → site:80 and `hank.jorgepereira.io` → hank:8000
+- [step] Created parent `docker-compose.yml` with three services: caddy, site, hank
+- [step] Removed ghcr.io GitHub Actions workflow — now build on VPS via git clone
+- [step] Wrote comprehensive `jorgepereira.io/README.md` with architecture, HTTPS explanation, deploy guide
+- [step] Deployed to Hostinger VPS — all three services running
+- [step] Configured DNS for `hank.jorgepereira.io` A record in Porkbun
+- [step] Caddy obtained Let's Encrypt certificates automatically
+- [note] Deploy flow: `git pull && docker-compose up -d --build`
+- [note] Phase 5 complete. Both `jorgepereira.io` and `hank.jorgepereira.io` live.
+
+## Phase 6 — Security: user allowlist
+
+### Session 2026-04-05
+
+- [step] Added `ALLOWED_USER_IDS` env var — comma-separated list of Telegram user IDs
+- [step] Updated `app/bot.py` — `create_app()` accepts `allowed_users` set, handler filters unauthorized users
+- [step] Updated `app/main.py` — parses `ALLOWED_USER_IDS` from env and passes to bot
+- [step] Added to `.env.example` and `.env.cloud.example`
+- [step] Documented two security layers (webhook secret + user allowlist) in hank README
+- [note] Blocked users are silently ignored with a warning in logs.
+- [note] Phase 6 complete.
