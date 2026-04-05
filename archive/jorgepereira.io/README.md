@@ -1,143 +1,218 @@
 # jorgepereira.io
 
+Everything that runs under the `jorgepereira.io` domain — the main website and the Hank Telegram bot.
+
+## Architecture
+
+```
+Internet
+  │
+  ▼
+┌─────────────────────────────────────────────┐
+│  Caddy (ports 80 + 443)                     │
+│  Automatic HTTPS via Let's Encrypt          │
+│                                             │
+│  jorgepereira.io      → site container :80  │
+│  hank.jorgepereira.io → hank container :8000│
+└─────────────────────────────────────────────┘
+```
+
+Three Docker containers managed by docker-compose:
+
+| Service | What it does | Internal port |
+|---------|-------------|---------------|
+| **caddy** | Reverse proxy + HTTPS termination | 80, 443 (exposed) |
+| **site** | Static website (nginx) | 80 (internal) |
+| **hank** | Telegram bot (FastAPI) | 8000 (internal) |
+
+## How HTTPS and the reverse proxy work
+
+HTTPS encrypts traffic between the browser and the server. To prove the server is legitimate, it needs a **certificate** signed by a trusted authority (like Let's Encrypt).
+
+**Caddy** is a web server that handles all of this automatically:
+1. It requests a certificate from Let's Encrypt for each domain in the Caddyfile
+2. It proves ownership by responding to a challenge on port 80
+3. It serves traffic over HTTPS on port 443
+4. It renews certificates before they expire
+
+**Reverse proxy** means Caddy sits in front of the other containers and forwards requests based on the domain name:
+
+```
+Browser → https://jorgepereira.io → Caddy → (decrypts) → site:80 (plain HTTP)
+Browser → https://hank.jorgepereira.io → Caddy → (decrypts) → hank:8000 (plain HTTP)
+```
+
+The site and bot containers never deal with HTTPS — they serve plain HTTP internally. Caddy handles all the encryption. This is configured in the `Caddyfile`:
+
+```
+jorgepereira.io {
+    reverse_proxy site:80
+}
+
+hank.jorgepereira.io {
+    reverse_proxy hank:8000
+}
+```
+
+Docker networking lets Caddy reach the other containers by service name (`site`, `hank`).
+
 ## Project structure
 
 ```
 jorgepereira.io/
-  Caddyfile        # Caddy web server config
-  Dockerfile       # Builds the container image
-  html/            # Website content served by Caddy
-    index.html
-    demos.html
-    wind.html
-    wisy.html
+├── Caddyfile              # Shared Caddy config — routes domains to services
+├── docker-compose.yml     # All three services
+├── site/                  # jorgepereira.io static website
+│   ├── Dockerfile         # nginx serving static files
+│   └── html/
+│       ├── index.html
+│       ├── demos.html
+│       ├── wind.html
+│       └── wisy.html
+└── hank/                  # hank.jorgepereira.io Telegram bot
+    ├── Dockerfile
+    ├── requirements.txt
+    ├── CLAUDE.md
+    ├── PLAN.md
+    ├── LOG.md
+    ├── README.md          # Hank-specific docs (setup, processors, testing)
+    ├── .env.example
+    ├── .env.local.example
+    ├── .env.cloud.example
+    └── app/
+        ├── main.py
+        ├── bot.py
+        ├── processor.py
+        ├── email_handler.py
+        └── processors/
+            ├── claude.py
+            └── helloworld.py
 ```
 
-## Build and run locally
+## Local development
+
+### Run the site only
 
 ```bash
-cd jorgepereira.io
-docker build -t jorgepereira-io .
-docker run -d -p 3000:80 --name jorgepereira-io jorgepereira-io
+cd site
+docker build -t jorgepereira-site .
+docker run -d -p 3000:80 --name jorgepereira-site jorgepereira-site
 ```
 
-Open http://localhost:3000 in your browser to test the site.
+Open http://localhost:3000
 
-ACME/Let's Encrypt errors in the logs are expected locally since Caddy cannot obtain a certificate without a public-facing domain. The site still works over HTTP.
-
-If your browser redirects `localhost:3000` to HTTPS, use an incognito/private window.
-
-### Redeploy locally after changes
+### Run the bot only
 
 ```bash
-docker rm -f jorgepereira-io && docker build -t jorgepereira-io . && docker run -d -p 3000:80 --name jorgepereira-io jorgepereira-io
+cd hank
+cp .env.local.example .env.local
+# Edit .env.local — set TELEGRAM_BOT_TOKEN and ANTHROPIC_API_KEY
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m app.main
 ```
 
-## Pushing updates
-
-When you make changes to the site, commit and push to `main`. The Docker image is hosted on GitHub Container Registry at `ghcr.io/jorgeper/jorgepereira-io:latest`.
-
-A GitHub Actions workflow automatically builds and pushes a new image when files in `jorgepereira.io/` change on the `main` branch. You can also trigger it manually:
-
-### Option 1: From the CLI
+### Run everything with docker-compose
 
 ```bash
-gh workflow run docker-publish.yml
+cp hank/.env.local.example hank/.env.local
+# Edit hank/.env.local — set TELEGRAM_BOT_TOKEN and ANTHROPIC_API_KEY
+docker-compose up --build
 ```
 
-Watch the progress:
+This starts all three services. Locally, Caddy won't be able to get certificates (no public domain), but the site and bot still work:
+- Site: http://localhost:80
+- Bot: communicates via Telegram polling (no web access needed)
+
+## VPS deployment (Hostinger)
+
+### Prerequisites
+
+- Hostinger VPS with SSH access
+- Docker and Docker Compose installed
+- DNS: `jorgepereira.io` and `hank.jorgepereira.io` A records pointing to your VPS IP
+
+### 1. Clone the repo
 
 ```bash
-gh run watch
+ssh jorge@<your-vps-ip>
+sudo git clone https://github.com/jorgeper/sandbox.git /opt/sandbox
+sudo chown -R jorge:jorge /opt/sandbox
+cd /opt/sandbox/jorgepereira.io
 ```
 
-### Option 2: From the GitHub UI
+### 2. Configure the bot environment
 
-1. Go to **github.com/jorgeper/sandbox**
-2. Click the **Actions** tab
-3. Select **"Build and push Docker image"** on the left
-4. Click **"Run workflow"** on the right
-5. Select the `main` branch and click **"Run workflow"**
-
-### After the image is published
-
-Make sure the package is public so Hostinger can pull it:
-
-1. Go to **github.com/jorgeper?tab=packages**
-2. Click **jorgepereira-io**
-3. Go to **Package settings** > change visibility to **Public**
-
-This only needs to be done once.
-
-## Deploy on Hostinger VPS
-
-In the Hostinger Docker Manager, create a container with these settings:
-
-| Field | Value |
-|---|---|
-| **Project name** | `jorgepereira-io` |
-| **Container name** | `jorgepereira-io` |
-| **Image** | `ghcr.io/jorgeper/jorgepereira-io:latest` |
-| **Port** | `80:80/tcp` |
-| **Port** | `443:443/tcp` |
-| **Volume** | `caddy_data:/data` |
-| **Restart policy** | `unless-stopped` |
-
-Leave **Container dependency** empty.
-
-The `caddy_data` volume stores the Let's Encrypt certificates so they persist across restarts.
-
-To redeploy after pushing a new image, pull the latest image and restart the container from Hostinger's Docker Manager.
-
-## HTTPS
-
-HTTPS is handled automatically by Caddy via Let's Encrypt. Make sure your domain's DNS A record points to your Hostinger VPS IP address before deploying. Caddy will obtain and renew certificates automatically.
-
-## How it all works
-
-The HTML files are the actual website. They get packaged into a Docker container image along with Caddy (the web server). From there, the image can go two ways: run locally for testing, or pushed to a registry and deployed to the VPS for production.
-
-```
-                        ┌─────────────────┐
-                        │   HTML files +  │
-                        │   Caddyfile +   │
-                        │   Dockerfile    │
-                        └────────┬────────┘
-                                 │
-                           docker build
-                                 │
-                                 ▼
-                        ┌─────────────────┐
-                        │  Docker Image   │
-                        │ jorgepereira-io │
-                        └───────┬─┬───────┘
-                                │ │
-                 ┌──────────────┘ └─────────x──────┐
-                 │                                │
-          LOCAL TESTING                    PRODUCTION
-                 │                                │
-          docker run                     git push to main
-          -p 3000:80                              │
-                 │                                ▼
-                 ▼                  ┌──────────────────────┐
-        ┌─────────────────┐         │   GitHub Actions     │
-        │ localhost:3000  │         │   builds & pushes to │
-        │ (HTTP only)     │         │   GitHub Container   │
-        └─────────────────┘         │   Registry (ghcr.io) │
-                                    └──────────┬───────────┘
-                                               │
-                                          docker pull
-                                               │
-                                               ▼
-                                    ┌──────────────────────┐
-                                    │   Hostinger VPS      │
-                                    │   ports 80 + 443     │
-                                    │   Caddy auto-HTTPS   │
-                                    │                      │
-                                    │   jorgepereira.io    │
-                                    └──────────────────────┘
+```bash
+cp hank/.env.cloud.example hank/.env.cloud
+nano hank/.env.cloud
 ```
 
-**Local flow:** Edit HTML → `docker build` → `docker run` → test at `localhost:3000`. No registry involved, the image stays on your machine.
+Set these values:
+```
+TELEGRAM_BOT_TOKEN=<your-bot-token>
+ANTHROPIC_API_KEY=<your-api-key>
+MODE=webhook
+PROCESSOR=claude
+WEBHOOK_BASE_URL=https://hank.jorgepereira.io
+TELEGRAM_WEBHOOK_SECRET=<generate-a-random-string>
+```
 
-**Production flow:** Edit HTML → `git push` → GitHub Actions builds the image and pushes it to `ghcr.io` → pull the new image on the Hostinger VPS → restart the container. Caddy handles HTTPS automatically.
+Generate a random secret:
+```bash
+openssl rand -hex 32
+```
+
+### 3. Start everything
+
+```bash
+ENV_FILE=hank/.env.cloud docker-compose up -d --build
+```
+
+Caddy will automatically obtain Let's Encrypt certificates for both domains.
+
+### 4. Verify
+
+```bash
+# Check all services are running
+docker-compose ps
+
+# Check logs
+docker-compose logs -f
+
+# Test the site
+curl https://jorgepereira.io
+
+# Test the bot health endpoint
+curl https://hank.jorgepereira.io/health
+```
+
+### 5. Updating
+
+```bash
+cd /opt/sandbox/jorgepereira.io
+git pull
+ENV_FILE=hank/.env.cloud docker-compose up -d --build
+```
+
+### Stopping a single service
+
+```bash
+docker-compose restart hank    # restart just the bot
+docker-compose logs -f caddy   # check Caddy logs
+```
+
+## Adding a new service
+
+To add another subdomain (e.g. `foo.jorgepereira.io`):
+
+1. Create a `foo/` directory with a Dockerfile
+2. Add the service to `docker-compose.yml`
+3. Add a block to the `Caddyfile`:
+   ```
+   foo.jorgepereira.io {
+       reverse_proxy foo:<port>
+   }
+   ```
+4. Add a DNS A record for `foo.jorgepereira.io` pointing to the VPS
+5. Redeploy — Caddy will automatically get a certificate for the new domain

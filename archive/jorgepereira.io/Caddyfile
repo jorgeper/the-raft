@@ -1,9 +1,7 @@
 jorgepereira.io {
-    root * /srv
-    file_server
+	reverse_proxy site:80
 }
 
-:80 {
-    root * /srv
-    file_server
+hank.jorgepereira.io {
+	reverse_proxy hank:8000
 }

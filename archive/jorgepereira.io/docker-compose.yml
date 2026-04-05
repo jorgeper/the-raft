@@ -1,0 +1,25 @@
+services:
+  caddy:
+    image: caddy:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    depends_on:
+      - site
+      - hank
+
+  site:
+    build: site
+    restart: unless-stopped
+
+  hank:
+    build: hank
+    env_file: ${ENV_FILE:-hank/.env.local}
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
