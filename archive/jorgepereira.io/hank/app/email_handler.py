@@ -68,21 +68,17 @@ def _extract_recipient_local(recipient: str) -> str:
     return recipient.split("@")[0].lower().strip()
 
 
-async def _format_email_as_markdown(sender: str, subject: str, body_plain: str, body_html: str = "") -> str:
-    """Format a full email as markdown for storage or processing.
+async def _format_email_for_storage(sender: str, subject: str, body_plain: str, body_html: str = "") -> tuple[str, str | None]:
+    """Format a full email for storage.
 
-    If HTML body is available, converts it to markdown with images inlined
-    as base64. Falls back to plain text body if no HTML.
+    Returns:
+        (markdown_text, html_content) — markdown is always returned (for the processor
+        and plain text previews). html_content is the raw HTML if available (saved
+        alongside as a .html file for full fidelity).
     """
     title = subject or "Untitled"
-
-    if body_html:
-        from app.html_to_markdown import convert_html_to_markdown
-        body = await convert_html_to_markdown(body_html)
-    else:
-        body = body_plain
-
-    return f"# {title}\n\n**From:** {sender}\n\n{body}"
+    md = f"# {title}\n\n**From:** {sender}\n\n{body_plain}"
+    return md, body_html or None
 
 
 async def _send_reply(to: str, subject: str, body: str, from_addr: str | None = None, html: bool = False) -> None:
@@ -181,12 +177,12 @@ async def handle_email(
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply, html=is_html)
     elif local_part == "remember":
-        # remember@ shortcut — save the full email as markdown, no LLM.
-        # Use HTML body if available for richer content with inlined images.
+        # remember@ shortcut — save the full email, no LLM.
         logger.info("remember@ shortcut — saving directly")
-        full_email = await _format_email_as_markdown(sender, subject, text, body_html)
+        md_text, html_content = await _format_email_for_storage(sender, subject, text, body_html)
         meta = MemoryMetadata(medium="email-remember", source=sender)
-        response = await _processor.process(chat_id, full_email, intent="remember", metadata=meta)
+        meta.html_content = html_content
+        response = await _processor.process(chat_id, md_text, intent="remember", metadata=meta)
         reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply,
@@ -194,9 +190,10 @@ async def handle_email(
                           html=is_html)
     else:
         # Default: let HankProcessor detect the intent (chat or remember).
-        # Use HTML body for richer markdown conversion with inlined images.
         meta = MemoryMetadata(medium="email", source=sender)
-        full_email = await _format_email_as_markdown(sender, subject, text, body_html)
+        md_text, html_content = await _format_email_for_storage(sender, subject, text, body_html)
+        meta.html_content = html_content
+        full_email = md_text
         response = await _processor.process(chat_id, full_email, metadata=meta)
         reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"

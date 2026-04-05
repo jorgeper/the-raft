@@ -42,6 +42,7 @@ class MemoryMetadata:
     source: str = "unknown"         # email address or "Name (id=123)"
     content_type: str | None = None # "url", "note" — auto-detected if None
     tags: list[str] = field(default_factory=list)
+    html_content: str | None = None # raw HTML from email (saved as .html alongside .md)
 
 
 def detect_content_type(text: str) -> str:
@@ -132,6 +133,13 @@ async def save_memory(content: str, metadata: MemoryMetadata | None = None) -> s
 
     with open(filepath, "w") as f:
         f.write(full_content)
+
+    # Save raw HTML alongside if available (full fidelity of email content)
+    if metadata.html_content:
+        html_filepath = filepath.replace(".md", ".html")
+        with open(html_filepath, "w") as f:
+            f.write(metadata.html_content)
+        logger.info("Saved HTML to %s", html_filepath)
 
     logger.info("Saved memory to %s (type=%s, medium=%s)", filepath, metadata.content_type, metadata.medium)
 
