@@ -136,10 +136,10 @@ Do this once to get the VPS ready.
 
 **1. Configure DNS:**
 
-Add an A record for `hank.jorgepereira.io` in your domain registrar (Hostinger):
+Add an A record for `hank.jorgepereira.io` in Porkbun:
 
-1. Go to [hpanel.hostinger.com](https://hpanel.hostinger.com)
-2. Select `jorgepereira.io` → **DNS / Nameservers** → **DNS Records**
+1. Go to [porkbun.com](https://porkbun.com) → **Domain Management**
+2. Click **DNS** next to `jorgepereira.io`
 3. Add a new record:
    - **Type:** `A`
    - **Name:** `hank`
