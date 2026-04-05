@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 COMMANDS: dict[str, tuple] = {
     "echo": (echo_handler, "/echo <text> — Echo back the text"),
     "help": (help_handler, "/help — Show available commands"),
-    "memory": (memory_handler, "/memory [today|yesterday|YYYY-MM-DD] — List saved memories"),
+    "memory": (memory_handler, "/memory [today|yesterday|YYYY-MM-DD|last] — List or inspect memories"),
 }
 
 
