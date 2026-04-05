@@ -1,4 +1,4 @@
-"""Memory command — list and inspect saved memories.
+"""Memory command — list, inspect, and manage saved memories.
 
 Usage:
     /memory              — list today's memories
@@ -6,10 +6,14 @@ Usage:
     /memory yesterday    — list yesterday's memories
     /memory 2026-04-05   — list memories from a specific date
     /memory last         — show the last saved memory with full metadata
+    /memory wipe         — delete ALL memories
+    /memory today wipe   — delete today's memories
+    /memory 2026-04-05 wipe — delete memories for a specific date
 """
 
 import os
 import re
+import shutil
 from datetime import datetime, timedelta, timezone
 
 from app.actions.remember import MEMORIES_DIR
@@ -165,21 +169,61 @@ def _render_last_memory(filepath: str, channel: str) -> str:
         return "\n".join(lines)
 
 
-async def memory_handler(args: str, chat_id: int, channel: str) -> Message:
-    """List saved memories or show the last one."""
-    args_lower = args.strip().lower()
+def _wipe_date(date_str: str) -> tuple[int, str]:
+    """Delete all memories for a specific date. Returns (count, message)."""
+    day_dir = os.path.join(MEMORIES_DIR, date_str)
+    if not os.path.isdir(day_dir):
+        return 0, f"No memories for {date_str}."
 
-    # /memory last — show the most recent memory with full metadata
-    if args_lower == "last":
+    files = [f for f in os.listdir(day_dir) if f.endswith(".md")]
+    count = len(files)
+    shutil.rmtree(day_dir)
+    return count, f"Deleted {count} {'memory' if count == 1 else 'memories'} for {date_str}."
+
+
+def _wipe_all() -> tuple[int, str]:
+    """Delete ALL memories. Returns (count, message)."""
+    if not os.path.isdir(MEMORIES_DIR):
+        return 0, "No memories to delete."
+
+    total = 0
+    for day_dir in os.listdir(MEMORIES_DIR):
+        full_dir = os.path.join(MEMORIES_DIR, day_dir)
+        if os.path.isdir(full_dir):
+            total += len([f for f in os.listdir(full_dir) if f.endswith(".md")])
+            shutil.rmtree(full_dir)
+
+    return total, f"Deleted all memories ({total} files)."
+
+
+async def memory_handler(args: str, chat_id: int, channel: str) -> Message:
+    """List, inspect, or wipe saved memories."""
+    parts = args.strip().lower().split()
+
+    # /memory last
+    if parts == ["last"]:
         filepath = _find_last_memory()
         if not filepath:
             return TextMessage("No memories saved yet.")
         return TextMessage(_render_last_memory(filepath, channel))
 
+    # /memory wipe — delete ALL memories
+    if parts == ["wipe"]:
+        _, msg = _wipe_all()
+        return TextMessage(msg)
+
+    # /memory <date> wipe — delete memories for a specific date
+    if len(parts) == 2 and parts[1] == "wipe":
+        date_str = _parse_date(parts[0])
+        if not date_str:
+            return TextMessage(f"Invalid date: {parts[0]}")
+        _, msg = _wipe_date(date_str)
+        return TextMessage(msg)
+
     # /memory [today|yesterday|YYYY-MM-DD] — list memories for a date
     date_str = _parse_date(args)
     if not date_str:
-        return TextMessage(f"Invalid date: {args}\n\nUsage: /memory [today|yesterday|YYYY-MM-DD|last]")
+        return TextMessage(f"Invalid date: {args}\n\nUsage: /memory [today|yesterday|YYYY-MM-DD|last|wipe]")
 
     day_dir = os.path.join(MEMORIES_DIR, date_str)
 
