@@ -62,6 +62,21 @@ def detect_content_type(text: str) -> str:
     return "note"
 
 
+def _linkify_urls(text: str) -> str:
+    """Convert bare URLs to markdown links.
+
+    Turns https://example.com into [https://example.com](https://example.com).
+    Skips URLs that are already inside markdown link syntax [text](url) or ![alt](url).
+    """
+    # Match bare URLs not already inside markdown links.
+    # Negative lookbehind: not preceded by ]( or ](  — means it's already a markdown link.
+    return re.sub(
+        r'(?<!\]\()(?<!\]\( )(https?://\S+)',
+        lambda m: f'[{m.group(1)}]({m.group(1)})',
+        text,
+    )
+
+
 def _slugify(text: str, max_length: int = 50) -> str:
     """Turn a string into a filename-safe slug."""
     slug = text.lower().strip()
@@ -72,7 +87,7 @@ def _slugify(text: str, max_length: int = 50) -> str:
     return slug[:max_length] or "memory"
 
 
-def _build_frontmatter(metadata: MemoryMetadata, now: datetime) -> str:
+def _build_frontmatter(metadata: MemoryMetadata, now: datetime, html_filename: str | None = None) -> str:
     """Build YAML frontmatter string from metadata."""
     content_type = metadata.content_type or "note"
     tags_str = ", ".join(f'"{t}"' for t in metadata.tags) if metadata.tags else ""
@@ -85,8 +100,10 @@ def _build_frontmatter(metadata: MemoryMetadata, now: datetime) -> str:
         f"type: {content_type}",
         f"source: {metadata.source}",
         f"tags: [{tags_str}]",
-        "---",
     ]
+    if html_filename:
+        lines.append(f"html: {html_filename}")
+    lines.append("---")
     return "\n".join(lines)
 
 
@@ -116,30 +133,34 @@ async def save_memory(content: str, metadata: MemoryMetadata | None = None) -> s
     title = first_line[:80] or "Memory"
     slug = _slugify(first_line)
 
-    # Build the full markdown file: frontmatter + title + body
-    frontmatter = _build_frontmatter(metadata, now)
-    # If content already has a # title, use it. Otherwise, add one.
-    if content.strip().startswith("# "):
-        full_content = f"{frontmatter}\n\n{content}"
-    else:
-        full_content = f"{frontmatter}\n\n# {title}\n\n{content}\n"
-
-    # Create the day folder and write the file
+    # Create the day folder and determine filenames
     day_dir = os.path.join(MEMORIES_DIR, date_str)
     os.makedirs(day_dir, exist_ok=True)
 
     filename = f"{time_str}_{slug}.md"
     filepath = os.path.join(day_dir, filename)
 
-    with open(filepath, "w") as f:
-        f.write(full_content)
-
     # Save raw HTML alongside if available (full fidelity of email content)
+    html_filename = None
     if metadata.html_content:
-        html_filepath = filepath.replace(".md", ".html")
+        html_filename = filename.replace(".md", ".html")
+        html_filepath = os.path.join(day_dir, html_filename)
         with open(html_filepath, "w") as f:
             f.write(metadata.html_content)
         logger.info("Saved HTML to %s", html_filepath)
+
+    # Linkify bare URLs in the content: https://example.com → [https://example.com](https://example.com)
+    content = _linkify_urls(content)
+
+    # Build the full markdown file: frontmatter + title + body
+    frontmatter = _build_frontmatter(metadata, now, html_filename=html_filename)
+    if content.strip().startswith("# "):
+        full_content = f"{frontmatter}\n\n{content}"
+    else:
+        full_content = f"{frontmatter}\n\n# {title}\n\n{content}\n"
+
+    with open(filepath, "w") as f:
+        f.write(full_content)
 
     logger.info("Saved memory to %s (type=%s, medium=%s)", filepath, metadata.content_type, metadata.medium)
 
