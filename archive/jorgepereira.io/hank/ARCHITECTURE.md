@@ -102,14 +102,28 @@ Hank runs as one service in a three-service docker-compose setup (see `../docker
 
 Caddy routes by domain name. Services communicate over a Docker network by service name.
 
+## Slash Commands
+
+Messages starting with `/` bypass the processor entirely and go through a separate
+command router (`app/commands/`). No LLM involved — instant response, zero cost.
+
+- **Telegram:** python-telegram-bot routes `/commands` to the command handler
+- **Email:** if the first line of the body starts with `/`, it's treated as a command
+
+Commands are registered in `app/commands/__init__.py`. Each command is an async handler
+function that receives `(args, chat_id)` and returns a reply string.
+
 ## Key Files
 
 - `app/main.py` — entrypoint, processor selection, FastAPI server, Telegram lifecycle
-- `app/bot.py` — Telegram bot setup, user allowlist, receives Processor via DI
-- `app/email_handler.py` — Mailgun inbound webhook, recipient-based routing, reply sending
+- `app/bot.py` — Telegram bot setup, command handlers, user allowlist
+- `app/email_handler.py` — Mailgun inbound webhook, recipient/command routing, reply sending
 - `app/processor.py` — abstract Processor base class
 - `app/processors/hank.py` — HankProcessor: intent detection + routing to actions
 - `app/processors/helloworld.py` — echo processor for testing
+- `app/commands/__init__.py` — command registry and router
+- `app/commands/echo.py` — /echo command
+- `app/commands/help.py` — /help command (auto-generated from registry)
 - `app/actions/chat.py` — Claude API conversation with Hank personality
 - `app/actions/remember.py` — saves markdown files to `data/memories/`
 - `LOG.md` — session-by-session progress log

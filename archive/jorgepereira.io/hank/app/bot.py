@@ -1,59 +1,79 @@
 """Telegram bot setup.
 
 Creates a python-telegram-bot Application wired to a Processor instance.
-The processor is injected at creation time — the bot doesn't know or care
-which processor implementation it's using.
+Slash commands (e.g. /echo, /help) are handled by the command router
+and bypass the processor entirely — no LLM, instant response.
+Regular text messages go through the processor (HankProcessor by default).
 """
 
 import logging
 
 from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 
+from app.commands import handle_command, COMMANDS
 from app.processor import Processor
 
 logger = logging.getLogger(__name__)
 
 
 def create_app(token: str, processor: Processor, allowed_users: set[int] | None = None) -> Application:
-    """Build a Telegram Application that routes text messages to the given processor.
+    """Build a Telegram Application with command handlers and a message handler.
 
     Args:
         token: Telegram bot token from @BotFather.
-        processor: The processor instance to handle messages (e.g. ClaudeProcessor).
+        processor: The processor instance to handle regular messages.
         allowed_users: Set of Telegram user IDs allowed to use the bot.
                        If None, all users are allowed.
     """
 
-    async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle an incoming text message from Telegram.
+    def _check_allowed(user) -> bool:
+        """Check if a user is in the allowlist."""
+        if allowed_users and user.id not in allowed_users:
+            logger.warning("Blocked message from %s (id=%s)", user.first_name, user.id)
+            return False
+        return True
 
-        This is called for every non-command text message. It:
-        1. Checks if the sender is in the allowlist (if configured)
-        2. Passes the message text to the processor
-        3. Sends the processor's reply back to the user
-        """
+    async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle regular text messages — routed through the processor."""
         if not update.message or not update.message.text:
+            return
+        if not _check_allowed(update.message.from_user):
             return
 
         user = update.message.from_user
-
-        # Check allowlist — silently drop messages from unauthorized users.
-        # We log a warning so the bot owner can see blocked attempts.
-        if allowed_users and user.id not in allowed_users:
-            logger.warning("Blocked message from %s (id=%s)", user.first_name, user.id)
-            return
-
         logger.info("Message from %s (id=%s): %s", user.first_name, user.id, update.message.text)
 
-        # Send the message through the processor and reply with the result.
-        # The processor is injected — could be Claude, helloworld, or anything else.
         reply = await processor.process(update.message.chat_id, update.message.text)
         logger.info("Reply to %s: %s", user.first_name, reply[:100])
         await update.message.reply_text(reply)
 
-    # Build the Telegram Application and register our message handler.
-    # filters.TEXT matches text messages, ~filters.COMMAND excludes /commands.
+    async def handle_slash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle slash commands — routed through the command router, no LLM."""
+        if not update.message or not update.message.text:
+            return
+        if not _check_allowed(update.message.from_user):
+            return
+
+        user = update.message.from_user
+        logger.info("Command from %s (id=%s): %s", user.first_name, user.id, update.message.text)
+
+        reply = await handle_command(update.message.text, update.message.chat_id)
+        logger.info("Command reply to %s: %s", user.first_name, reply[:100])
+        await update.message.reply_text(reply)
+
     app = Application.builder().token(token).build()
+
+    # Register a CommandHandler for each registered slash command.
+    # This ensures python-telegram-bot routes /echo, /help, etc. to our handler
+    # instead of dropping them (the old ~filters.COMMAND filter excluded them).
+    for cmd_name in COMMANDS:
+        app.add_handler(CommandHandler(cmd_name, handle_slash_command))
+
+    # Catch-all for unknown commands — any /something not in the registry
+    app.add_handler(MessageHandler(filters.COMMAND, handle_slash_command))
+
+    # Regular text messages go through the processor
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
     return app

@@ -146,11 +146,19 @@ async def handle_email(
         logger.info("Empty email body, skipping")
         return {"status": "skipped"}
 
-    # Determine intent based on recipient address
+    # Determine routing based on recipient address and message content
     local_part = _extract_recipient_local(recipient)
     chat_id = _email_chat_id(sender)
 
-    if local_part == "remember":
+    # Check if the first line is a slash command (e.g. "/echo hello")
+    first_line = text.split("\n")[0].strip()
+    if first_line.startswith("/"):
+        from app.commands import handle_command
+        logger.info("Email contains slash command: %s", first_line)
+        reply = await handle_command(first_line, chat_id)
+        reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
+        await _send_reply(sender, reply_subject, reply)
+    elif local_part == "remember":
         # remember@ shortcut — skip intent detection, save directly.
         # Format the email as markdown before passing to the processor.
         logger.info("remember@ shortcut — saving directly")
