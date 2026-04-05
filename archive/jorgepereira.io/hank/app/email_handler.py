@@ -135,6 +135,13 @@ async def handle_email(
 
     logger.info("Email from %s, subject: %s", sender, subject)
 
+    # Check sender allowlist — if configured, only accept emails from these addresses.
+    allowed_senders_str = os.getenv("ALLOWED_EMAIL_SENDERS", "")
+    allowed_senders = {s.strip().lower() for s in allowed_senders_str.split(",") if s.strip()}
+    if allowed_senders and sender.lower() not in allowed_senders:
+        logger.warning("Blocked email from %s (not in ALLOWED_EMAIL_SENDERS)", sender)
+        return {"status": "blocked"}
+
     # Strip quoted reply text — we only want the new content
     text = _strip_reply_quotes(body_plain)
     if not text:

@@ -163,7 +163,10 @@ You should see the inbound email logged and a reply sent back to your inbox.
 
 **Mailgun signature verification**: Every inbound email webhook includes a cryptographic signature. The bot verifies it using HMAC-SHA256 with the Mailgun API key, rejecting forged requests. This prevents anyone from POSTing fake emails to the `/email` endpoint.
 
-**Sender allowlist**: Not yet implemented. Anyone who knows the email address can email Hank. Could add an `ALLOWED_EMAIL_SENDERS` env var later if needed.
+**Sender allowlist** (`ALLOWED_EMAIL_SENDERS`): Comma-separated list of email addresses allowed to email Hank. If empty or not set, anyone can email. Blocked senders are silently ignored with a warning in the logs.
+```
+ALLOWED_EMAIL_SENDERS=you@gmail.com,friend@example.com
+```
 
 ### Configuring allowed users
 
