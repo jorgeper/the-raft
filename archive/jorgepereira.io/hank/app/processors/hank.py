@@ -35,8 +35,10 @@ Given a user message, classify the intent as one of:
 Respond with ONLY a JSON object, no other text:
 {"intent": "remember" or "chat", "save_content": "the content to save (only if remember, otherwise null)"}
 
-For "remember": extract the actual content to save. Strip out the instruction part (e.g. remove "remember this:" or "save this for me") and keep the valuable content.
-For "chat": set save_content to null."""
+For "remember": set save_content to "full" (the system will save the complete original message).
+For "chat": set save_content to null.
+
+Note: the message may be truncated. Focus on the first few lines to determine intent."""
 
 
 class HankProcessor(Processor):
@@ -56,16 +58,26 @@ class HankProcessor(Processor):
     async def _detect_intent(self, text: str) -> dict:
         """Ask Claude to classify the message intent.
 
+        Only sends the first ~500 chars to Claude for classification.
+        The intent is always at the top of the message ("remember this",
+        "save this for me"), so we don't need to send the entire body.
+        This saves tokens on long forwarded emails.
+
         Returns a dict with:
         - "intent": "chat" or "remember"
         - "save_content": content to save (if remember), or None
         """
-        logger.info("Detecting intent for message (%d chars)", len(text))
+        # Truncate for intent detection — the intent is in the first few lines
+        snippet = text[:500]
+        if len(text) > 500:
+            snippet += "\n\n[... message truncated for classification]"
+
+        logger.info("Detecting intent for message (%d chars, snippet %d chars)", len(text), len(snippet))
         message = await self._client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=256,
             system=INTENT_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": text}],
+            messages=[{"role": "user", "content": snippet}],
         )
 
         raw = message.content[0].text.strip()
@@ -90,26 +102,22 @@ class HankProcessor(Processor):
             text: The message text.
             intent: Pre-determined intent (skips detection). Used by remember@ shortcut.
         """
-        save_content = text  # default: save the full text (for remember@ shortcut)
-
         if intent is None:
             # No pre-determined intent — ask Claude to classify
             detected = await self._detect_intent(text)
             intent = detected["intent"]
-            if detected["save_content"]:
-                save_content = detected["save_content"]
 
         logger.info("Intent: %s", intent)
 
         if intent == "remember":
-            # Format the content as markdown and save to disk
-            now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-            title = save_content.split("\n")[0].strip()[:80] or "Memory"
-            # If it's already formatted markdown (from email handler), save as-is.
-            # Otherwise, wrap it in a simple markdown format.
-            if not save_content.startswith("# "):
-                save_content = f"# {title}\n\n**Date:** {now}\n\n---\n\n{save_content}\n"
-            return await save_memory(save_content)
+            # Save the full original text to disk.
+            # If it's already formatted markdown (from email handler remember@ shortcut),
+            # save as-is. Otherwise, wrap it in a simple markdown format.
+            if not text.startswith("# "):
+                now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                title = text.split("\n")[0].strip()[:80] or "Memory"
+                text = f"# {title}\n\n**Date:** {now}\n\n---\n\n{text}\n"
+            return await save_memory(text)
 
         # Default: chat
         return await self._chat.run(chat_id, text)
