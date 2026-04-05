@@ -171,12 +171,24 @@ Tell Hank to remember something — via Telegram or email — and he saves it as
 - If "chat": normal conversation
 - The `remember@` shortcut skips intent detection entirely — everything sent to that address gets saved
 
-**Storage:** Memories are markdown files in `data/memories/YYYY-MM-DD/`. Stored in a Docker volume (`hank_memories`) so they persist across container rebuilds.
+**Storage:** Memories are markdown files with YAML frontmatter (Obsidian-style) in `data/memories/YYYY-MM-DD/`. Stored in a Docker volume (`hank_memories`) so they persist across container rebuilds. URL memories are post-processed to fetch the page title.
 
 ```bash
 # Browse saved memories on the VPS
 docker-compose exec hank ls data/memories/
 docker-compose exec hank cat data/memories/2026-04-05/2026-04-05T21-33-02_wifi-password.md
+```
+
+### Downloading memories
+
+To download all memories to your local machine:
+
+```bash
+# On the VPS: copy from container to a temp directory
+docker cp $(docker ps -q --filter name=hank):/app/data/memories /tmp/memories
+
+# On your local machine: download via scp
+scp -r jorge@<your-vps-ip>:/tmp/memories ./memories
 ```
 
 ## Security
