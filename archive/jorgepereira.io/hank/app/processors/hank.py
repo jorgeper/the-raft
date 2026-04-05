@@ -6,14 +6,13 @@ and routes to the appropriate action.
 
 Intents:
 - "chat"     — normal conversation, routed to ChatAction (Claude API)
-- "remember" — save content to disk, routed to save_memory()
+- "remember" — save content to disk with metadata, routed to save_memory()
 """
 
 import logging
-from datetime import datetime, timezone
 
 from app.actions.chat import ChatAction
-from app.actions.remember import save_memory
+from app.actions.remember import MemoryMetadata, save_memory
 from app.intent import resolve_intent
 from app.processor import Processor
 
@@ -32,26 +31,26 @@ class HankProcessor(Processor):
     def __init__(self) -> None:
         self._chat = ChatAction()
 
-    async def process(self, chat_id: int, text: str, intent: str | None = None) -> str:
+    async def process(
+        self,
+        chat_id: int,
+        text: str,
+        intent: str | None = None,
+        metadata: MemoryMetadata | None = None,
+    ) -> str:
         """Process a message by resolving intent and routing to the right action.
 
         Args:
             chat_id: Unique ID for the conversation (Telegram chat or hashed email).
             text: The message text.
             intent: Pre-determined intent (skips detection). Used by remember@ shortcut.
+            metadata: Memory metadata from the channel layer (medium, source, etc.).
         """
         # Resolve intent — cheap heuristics first, LLM only if needed
         intent = await resolve_intent(text, explicit_intent=intent)
 
         if intent == "remember":
-            # Save the full original text to disk.
-            # If it's already formatted markdown (from email handler remember@ shortcut),
-            # save as-is. Otherwise, wrap it in a simple markdown format.
-            if not text.startswith("# "):
-                now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-                title = text.split("\n")[0].strip()[:80] or "Memory"
-                text = f"# {title}\n\n**Date:** {now}\n\n---\n\n{text}\n"
-            return await save_memory(text)
+            return await save_memory(text, metadata=metadata)
 
         # Default: chat
         return await self._chat.run(chat_id, text)

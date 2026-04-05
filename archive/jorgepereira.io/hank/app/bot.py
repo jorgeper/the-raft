@@ -11,6 +11,7 @@ import logging
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 
+from app.actions.remember import MemoryMetadata
 from app.commands import handle_command, COMMANDS
 from app.message import render_response
 from app.processor import Processor
@@ -45,7 +46,12 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
         user = update.message.from_user
         logger.info("Message from %s (id=%s): %s", user.first_name, user.id, update.message.text)
 
-        response = await processor.process(update.message.chat_id, update.message.text)
+        # Build metadata for potential memory saving
+        meta = MemoryMetadata(
+            medium="telegram",
+            source=f"{user.first_name} (id={user.id})",
+        )
+        response = await processor.process(update.message.chat_id, update.message.text, metadata=meta)
         reply, _ = render_response(response, "telegram")
         logger.info("Reply to %s: %s", user.first_name, reply[:100])
         await update.message.reply_text(reply)

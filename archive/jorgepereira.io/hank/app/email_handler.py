@@ -13,11 +13,11 @@ import hmac
 import logging
 import os
 import re
-from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Form, HTTPException
 
+from app.actions.remember import MemoryMetadata
 from app.message import render_response
 from app.processor import Processor
 
@@ -66,13 +66,6 @@ def _extract_recipient_local(recipient: str) -> str:
     if match:
         recipient = match.group(1)
     return recipient.split("@")[0].lower().strip()
-
-
-def _format_memory(sender: str, subject: str, body: str) -> str:
-    """Format an email into a markdown memory file."""
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    title = subject or "Untitled"
-    return f"# {title}\n\n**From:** {sender}\n**Date:** {now}\n\n---\n\n{body}\n"
 
 
 async def _send_reply(to: str, subject: str, body: str, from_addr: str | None = None, html: bool = False) -> None:
@@ -172,8 +165,8 @@ async def handle_email(
     elif local_part == "remember":
         # remember@ shortcut — skip intent detection, save directly.
         logger.info("remember@ shortcut — saving directly")
-        memory_text = _format_memory(sender, subject, text)
-        response = await _processor.process(chat_id, memory_text, intent="remember")
+        meta = MemoryMetadata(medium="email-remember", source=sender)
+        response = await _processor.process(chat_id, text, intent="remember", metadata=meta)
         reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply,
@@ -181,7 +174,8 @@ async def handle_email(
                           html=is_html)
     else:
         # Default: let HankProcessor detect the intent (chat or remember)
-        response = await _processor.process(chat_id, text)
+        meta = MemoryMetadata(medium="email", source=sender)
+        response = await _processor.process(chat_id, text, metadata=meta)
         reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply, html=is_html)

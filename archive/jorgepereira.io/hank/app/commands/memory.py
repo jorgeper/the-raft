@@ -38,7 +38,8 @@ def _parse_date(args: str) -> str:
 def _extract_preview(filepath: str, max_length: int = 60) -> str:
     """Read a memory file and extract a short preview of the body.
 
-    Skips the title line and metadata, returns the first line of actual content.
+    Skips YAML frontmatter, the title line, and blank lines.
+    Returns the first line of actual body content.
     """
     try:
         with open(filepath, "r") as f:
@@ -46,32 +47,60 @@ def _extract_preview(filepath: str, max_length: int = 60) -> str:
     except OSError:
         return "(unreadable)"
 
-    # Skip title (# ...), blank lines, metadata (**From:**, **Date:**), and ---
-    body_started = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped == "---":
-            body_started = True
+    # Skip YAML frontmatter
+    i = 0
+    if lines and lines[0].strip() == "---":
+        i = 1
+        while i < len(lines) and lines[i].strip() != "---":
+            i += 1
+        i += 1  # skip closing ---
+
+    # Skip title (# ...) and blank lines, find first body line
+    past_title = False
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not stripped:
+            i += 1
             continue
-        if body_started and stripped:
-            # Truncate long previews
-            if len(stripped) > max_length:
-                return stripped[:max_length] + "..."
-            return stripped
+        if stripped.startswith("# ") and not past_title:
+            past_title = True
+            i += 1
+            continue
+        # Found a body line
+        if len(stripped) > max_length:
+            return stripped[:max_length] + "..."
+        return stripped
+        i += 1
 
     return "(empty)"
 
 
 def _extract_title(filepath: str) -> str:
-    """Read the title (first # line) from a memory file."""
+    """Read the title (first # line) from a memory file, skipping frontmatter."""
     try:
         with open(filepath, "r") as f:
-            first_line = f.readline().strip()
-            if first_line.startswith("# "):
-                return first_line[2:]
-            return first_line
+            lines = f.readlines()
     except OSError:
         return "(unreadable)"
+
+    # Skip YAML frontmatter (--- ... ---)
+    i = 0
+    if lines and lines[0].strip() == "---":
+        i = 1
+        while i < len(lines) and lines[i].strip() != "---":
+            i += 1
+        i += 1  # skip closing ---
+
+    # Find the first # title after frontmatter
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if stripped.startswith("# "):
+            return stripped[2:]
+        if stripped:  # non-empty, non-title line
+            return stripped[:60]
+        i += 1
+
+    return "(untitled)"
 
 
 async def memory_handler(args: str, chat_id: int, channel: str) -> Message:
