@@ -80,45 +80,63 @@ class TableMessage(Message):
         return "\n".join(lines)
 
     def _render_email(self) -> str:
-        """Full markdown table for email's wider layout."""
-        lines = [self.title, ""]
+        """HTML table for email — renders nicely in Gmail and other clients."""
+        import html as html_mod
 
         if not self.rows:
-            lines.append("(none)")
+            body = "<p>(none)</p>"
         else:
-            # Calculate column widths
-            widths = [len(h) for h in self.headers]
-            for row in self.rows:
-                for i, cell in enumerate(row):
-                    if i < len(widths):
-                        widths[i] = max(widths[i], len(cell))
+            # Build HTML table with inline styles (email clients ignore <style> blocks)
+            header_cells = "".join(
+                f'<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #ddd;'
+                f'color:#555;font-size:13px;font-weight:600;">{html_mod.escape(h)}</th>'
+                for h in self.headers
+            )
 
-            # Header row
-            header = "| " + " | ".join(h.ljust(widths[i]) for i, h in enumerate(self.headers)) + " |"
-            separator = "|" + "|".join("-" * (w + 2) for w in widths) + "|"
-            lines.append(header)
-            lines.append(separator)
+            data_rows = []
+            for i, row in enumerate(self.rows):
+                bg = "#f9f9f9" if i % 2 == 0 else "#ffffff"
+                cells = "".join(
+                    f'<td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;">'
+                    f'{html_mod.escape(cell)}</td>'
+                    for cell in row
+                )
+                data_rows.append(f'<tr style="background:{bg};">{cells}</tr>')
 
-            # Data rows
-            for row in self.rows:
-                cells = []
-                for i, cell in enumerate(row):
-                    w = widths[i] if i < len(widths) else len(cell)
-                    cells.append(cell.ljust(w))
-                lines.append("| " + " | ".join(cells) + " |")
+            body = (
+                f'<table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;">'
+                f'<thead><tr style="background:#f5f5f5;">{header_cells}</tr></thead>'
+                f'<tbody>{"".join(data_rows)}</tbody>'
+                f'</table>'
+            )
 
-        if self.footer:
-            lines.extend(["", self.footer])
+        footer_html = f'<p style="color:#888;font-size:13px;margin-top:12px;">{html_mod.escape(self.footer)}</p>' if self.footer else ""
 
-        return "\n".join(lines)
+        return (
+            f'<div style="font-family:Arial,sans-serif;">'
+            f'<h2 style="margin:0 0 16px 0;font-size:18px;color:#333;">{html_mod.escape(self.title)}</h2>'
+            f'{body}'
+            f'{footer_html}'
+            f'</div>'
+        )
+
+    @property
+    def is_html(self) -> bool:
+        """Whether the email rendering is HTML (used by email handler to send as html)."""
+        return True
 
 
-def render_response(response: str | Message, channel: str) -> str:
+def render_response(response: str | Message, channel: str) -> tuple[str, bool]:
     """Render a response for the given channel.
 
-    Handles both plain strings (returned as-is) and Message objects
-    (rendered for the channel). Use this in bot.py and email_handler.py.
+    Handles both plain strings and Message objects.
+
+    Returns:
+        (rendered_text, is_html) — is_html is True when the email channel
+        produces HTML output (so the email handler can send it as html).
     """
     if isinstance(response, Message):
-        return response.render(channel)
-    return response
+        text = response.render(channel)
+        is_html = channel == "email" and hasattr(response, "is_html") and response.is_html
+        return text, is_html
+    return response, False

@@ -46,7 +46,7 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
         logger.info("Message from %s (id=%s): %s", user.first_name, user.id, update.message.text)
 
         response = await processor.process(update.message.chat_id, update.message.text)
-        reply = render_response(response, "telegram")
+        reply, _ = render_response(response, "telegram")
         logger.info("Reply to %s: %s", user.first_name, reply[:100])
         await update.message.reply_text(reply)
 
@@ -61,7 +61,7 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
         logger.info("Command from %s (id=%s): %s", user.first_name, user.id, update.message.text)
 
         response = await handle_command(update.message.text, update.message.chat_id, channel="telegram")
-        reply = render_response(response, "telegram")
+        reply, _ = render_response(response, "telegram")
         logger.info("Command reply to %s: %s", user.first_name, reply[:100])
         await update.message.reply_text(reply)
 

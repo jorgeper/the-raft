@@ -75,26 +75,35 @@ def _format_memory(sender: str, subject: str, body: str) -> str:
     return f"# {title}\n\n**From:** {sender}\n**Date:** {now}\n\n---\n\n{body}\n"
 
 
-async def _send_reply(to: str, subject: str, body: str, from_addr: str | None = None) -> None:
-    """Send a reply email via the Mailgun API."""
+async def _send_reply(to: str, subject: str, body: str, from_addr: str | None = None, html: bool = False) -> None:
+    """Send a reply email via the Mailgun API.
+
+    Args:
+        html: If True, send body as HTML instead of plain text.
+    """
     domain = os.environ["MAILGUN_DOMAIN"]
     api_key = os.environ["MAILGUN_API_KEY"]
     if from_addr is None:
         from_addr = os.getenv("MAILGUN_FROM", f"Hank <hank@{domain}>")
 
+    data = {
+        "from": from_addr,
+        "to": to,
+        "subject": subject,
+    }
+    if html:
+        data["html"] = body
+    else:
+        data["text"] = body
+
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"https://api.mailgun.net/v3/{domain}/messages",
             auth=("api", api_key),
-            data={
-                "from": from_addr,
-                "to": to,
-                "subject": subject,
-                "text": body,
-            },
+            data=data,
         )
         resp.raise_for_status()
-        logger.info("Sent reply email to %s", to)
+        logger.info("Sent reply email to %s (html=%s)", to, html)
 
 
 def _verify_mailgun_signature(token: str, timestamp: str, signature: str) -> bool:
@@ -157,24 +166,24 @@ async def handle_email(
         from app.commands import handle_command
         logger.info("Email contains slash command: %s", first_line)
         response = await handle_command(first_line, chat_id, channel="email")
-        reply = render_response(response, "email")
+        reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
-        await _send_reply(sender, reply_subject, reply)
+        await _send_reply(sender, reply_subject, reply, html=is_html)
     elif local_part == "remember":
         # remember@ shortcut — skip intent detection, save directly.
-        # Format the email as markdown before passing to the processor.
         logger.info("remember@ shortcut — saving directly")
         memory_text = _format_memory(sender, subject, text)
         response = await _processor.process(chat_id, memory_text, intent="remember")
-        reply = render_response(response, "email")
+        reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply,
-                          from_addr=f"Hank <remember@{os.environ['MAILGUN_DOMAIN']}>")
+                          from_addr=f"Hank <remember@{os.environ['MAILGUN_DOMAIN']}>",
+                          html=is_html)
     else:
         # Default: let HankProcessor detect the intent (chat or remember)
         response = await _processor.process(chat_id, text)
-        reply = render_response(response, "email")
+        reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
-        await _send_reply(sender, reply_subject, reply)
+        await _send_reply(sender, reply_subject, reply, html=is_html)
 
     return {"status": "ok"}
