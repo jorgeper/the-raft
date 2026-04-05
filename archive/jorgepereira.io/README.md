@@ -133,9 +133,27 @@ Do this once to get the VPS ready.
 **Prerequisites:**
 - Hostinger VPS with SSH access
 - Docker and Docker Compose installed
-- DNS: `jorgepereira.io` and `hank.jorgepereira.io` A records pointing to your VPS IP
 
-**1. Clone the repo:**
+**1. Configure DNS:**
+
+Add an A record for `hank.jorgepereira.io` in your domain registrar (Hostinger):
+
+1. Go to [hpanel.hostinger.com](https://hpanel.hostinger.com)
+2. Select `jorgepereira.io` → **DNS / Nameservers** → **DNS Records**
+3. Add a new record:
+   - **Type:** `A`
+   - **Name:** `hank`
+   - **Points to:** your VPS IP address (same IP as `jorgepereira.io`)
+   - **TTL:** 14400 (default)
+4. Save and wait for propagation (usually a few minutes, can take up to 24 hours)
+
+Verify it's working:
+```bash
+dig hank.jorgepereira.io +short
+# Should return your VPS IP
+```
+
+**2. Clone the repo:**
 
 ```bash
 ssh jorge@<your-vps-ip>
@@ -144,7 +162,7 @@ sudo chown -R jorge:jorge /opt/sandbox
 cd /opt/sandbox/jorgepereira.io
 ```
 
-**2. Configure the bot environment:**
+**3. Configure the bot environment:**
 
 ```bash
 cp hank/.env.cloud.example hank/.env.cloud
@@ -166,13 +184,13 @@ Generate a random secret:
 openssl rand -hex 32
 ```
 
-**3. Set the default env file** so you don't have to pass `ENV_FILE=` on every command:
+**4. Set the default env file** so you don't have to pass `ENV_FILE=` on every command:
 
 ```bash
 echo "ENV_FILE=hank/.env.cloud" > .env
 ```
 
-**4. Start everything:**
+**5. Start everything:**
 
 ```bash
 docker-compose up -d --build
@@ -180,7 +198,7 @@ docker-compose up -d --build
 
 Caddy will automatically obtain Let's Encrypt certificates for both domains.
 
-**5. Verify:**
+**6. Verify:**
 
 ```bash
 docker-compose ps
