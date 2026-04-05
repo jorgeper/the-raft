@@ -12,5 +12,5 @@ from app.processor import Processor
 class HelloWorldProcessor(Processor):
     """Echoes back the user's message. No external dependencies."""
 
-    async def process(self, chat_id: int, text: str) -> str:
+    async def process(self, chat_id: int, text: str, intent: str | None = None) -> str:
         return f"Hello! You said: {text}"

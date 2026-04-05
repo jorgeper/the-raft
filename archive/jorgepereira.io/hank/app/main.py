@@ -1,7 +1,7 @@
 """Hank entrypoint.
 
 This is the main application file. It wires everything together:
-- Selects which processor to use (claude, helloworld, etc.) based on PROCESSOR env var
+- Selects which processor to use (hank, helloworld) based on PROCESSOR env var
 - Injects the processor into both the Telegram bot and the email handler
 - Starts the FastAPI server with endpoints for both channels:
   - POST /telegram — receives Telegram updates (webhook mode)
@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 
 from app.bot import create_app as create_telegram_app
-from app.email_handler import router as email_router, set_chat_processor, set_remember_processor
+from app.email_handler import router as email_router, set_processor as set_email_processor
 from app.processor import Processor
 
 # Load .env.local for direct (non-Docker) runs.
@@ -45,13 +45,11 @@ def _load_processors() -> dict[str, type[Processor]]:
     To add a new processor, import it here and add it to the dict.
     The key becomes the value you set in the PROCESSOR env var.
     """
-    from app.processors.claude import ClaudeProcessor
+    from app.processors.hank import HankProcessor
     from app.processors.helloworld import HelloWorldProcessor
-    from app.processors.remember import RememberProcessor
     return {
-        "claude": ClaudeProcessor,
+        "hank": HankProcessor,
         "helloworld": HelloWorldProcessor,
-        "remember": RememberProcessor,
     }
 
 
@@ -60,7 +58,7 @@ def _create_processor() -> Processor:
     global PROCESSORS
     PROCESSORS = _load_processors()
 
-    processor_name = os.getenv("PROCESSOR", "claude")
+    processor_name = os.getenv("PROCESSOR", "hank")
     processor_cls = PROCESSORS.get(processor_name)
     if not processor_cls:
         raise ValueError(f"Unknown processor: {processor_name}. Available: {list(PROCESSORS.keys())}")
@@ -130,16 +128,17 @@ async def _stop_telegram() -> None:
 # Email setup
 # ---------------------------------------------------------------------------
 
-def _start_email(chat_processor: Processor, remember_processor: Processor) -> None:
-    """Inject processors into the email handler.
+def _start_email(processor: Processor) -> None:
+    """Inject the processor into the email handler.
 
     The email handler routes by recipient address:
-    - hank@... → chat_processor (Claude)
-    - remember@... → remember_processor (saves to disk)
+    - hank@... → processor with no intent (HankProcessor detects it)
+    - remember@... → processor with intent="remember" (skips detection)
+
+    Both use the same processor instance.
     """
-    set_chat_processor(chat_processor)
-    set_remember_processor(remember_processor)
-    logger.info("Email handler ready (POST /email) — chat + remember processors")
+    set_email_processor(processor)
+    logger.info("Email handler ready (POST /email)")
 
 
 # ---------------------------------------------------------------------------
@@ -151,22 +150,19 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle for the FastAPI server.
 
     Startup:
-    1. Create the shared processor
+    1. Create the processor (HankProcessor by default)
     2. Wire it into both Telegram and email channels
     3. Start the Telegram bot
 
     Shutdown:
     1. Gracefully stop the Telegram bot
     """
-    # Create processors
-    chat_processor = _create_processor()
-
-    from app.processors.remember import RememberProcessor
-    remember_processor = RememberProcessor()
+    # Create the processor — same instance for all channels
+    processor = _create_processor()
 
     # Wire up both channels
-    _start_email(chat_processor, remember_processor)
-    await _start_telegram(chat_processor)
+    _start_email(processor)
+    await _start_telegram(processor)
 
     logger.info("Hank is ready")
     yield  # Server is running — handle requests until shutdown
@@ -175,7 +171,6 @@ async def lifespan(app: FastAPI):
 
 
 # Create the FastAPI app and mount the email router.
-# The Telegram webhook is defined below as a route on the server.
 server = FastAPI(lifespan=lifespan)
 server.include_router(email_router)
 

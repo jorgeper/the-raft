@@ -155,25 +155,26 @@ You should see the inbound email logged and a reply sent back to your inbox.
 
 ## Remember Feature
 
-Email `remember@hank.jorgepereira.io` to save things. Hank stores the email content as markdown files organized by date.
+Tell Hank to remember something — via Telegram or email — and he saves it as a markdown file on disk.
 
-**How to use:**
-- Forward an email, send a link, jot down a note — anything you want to save
-- Hank replies "Got it, I'll remember that."
-- Content is saved to `data/memories/YYYY-MM-DD/<timestamp>_<subject-slug>.md`
+**Ways to trigger remember:**
 
-**Email routing:**
+| Channel | How | Intent detection |
+|---------|-----|-----------------|
+| Telegram | "Remember this: wifi password is trout42" | Claude detects "remember" intent |
+| Email to `hank@` | "Remember this email" + forwarded content | Claude detects "remember" intent |
+| Email to `remember@` | Just send/forward — everything gets saved | Shortcut, no LLM needed |
 
-| Recipient | What happens |
-|-----------|-------------|
-| `hank@hank.jorgepereira.io` | Chat with Hank (Claude) |
-| `remember@hank.jorgepereira.io` | Save to disk |
+**How it works:**
+- Hank uses Claude to classify every message as "chat" or "remember"
+- If "remember": extracts the content to save, writes it to disk, replies "Got it, I'll remember that."
+- If "chat": normal conversation
+- The `remember@` shortcut skips intent detection entirely — everything sent to that address gets saved
 
-Both addresses use the same Mailgun inbound route (`.*@hank.jorgepereira.io` → `/email`). The app routes internally based on the recipient.
-
-**Storage:** Memories are stored in a Docker volume (`hank_memories`) so they persist across container rebuilds. To browse saved memories on the VPS:
+**Storage:** Memories are markdown files in `data/memories/YYYY-MM-DD/`. Stored in a Docker volume (`hank_memories`) so they persist across container rebuilds.
 
 ```bash
+# Browse saved memories on the VPS
 docker-compose exec hank ls data/memories/
 docker-compose exec hank cat data/memories/2026-04-05/2026-04-05T21-33-02_wifi-password.md
 ```

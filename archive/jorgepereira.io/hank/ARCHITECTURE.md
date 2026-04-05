@@ -42,28 +42,43 @@ The processor doesn't know or care which channel the message came from.
 
 ## Processor Architecture
 
-Message processing is abstracted behind the `Processor` base class (`app/processor.py`). The bot doesn't know which processor it's using — it receives one via dependency injection at startup.
+Message processing is abstracted behind the `Processor` base class (`app/processor.py`). Both Telegram and email use the same processor instance, injected at startup.
 
-### How it works
+### HankProcessor (default)
 
-1. `app/main.py` reads the `PROCESSOR` env var (default: `claude`)
-2. It instantiates the matching `Processor` subclass
-3. It passes the instance to `app/bot.py` and `app/email_handler.py`
-4. Both channels call `processor.process(chat_id, text)` for every incoming message
+The main processor (`app/processors/hank.py`) is a smart orchestrator:
+
+1. Receives a message with an optional pre-determined `intent`
+2. If no intent: asks Claude to classify as "chat" or "remember"
+3. Routes to the appropriate action module:
+   - **chat** → `app/actions/chat.py` — Claude API conversation with Hank personality
+   - **remember** → `app/actions/remember.py` — saves content as markdown files to disk
+
+```
+Message → HankProcessor → detect intent (Claude) → action module → reply
+                          ↑
+          remember@ shortcut: intent="remember" (skips detection)
+```
 
 ### Available processors
 
 | Name         | Class                  | File                            | Requires           |
 |--------------|------------------------|---------------------------------|---------------------|
-| `claude`     | `ClaudeProcessor`      | `app/processors/claude.py`      | `ANTHROPIC_API_KEY` |
+| `hank`       | `HankProcessor`        | `app/processors/hank.py`       | `ANTHROPIC_API_KEY` |
 | `helloworld` | `HelloWorldProcessor`  | `app/processors/helloworld.py`  | Nothing             |
-| `remember`   | `RememberProcessor`    | `app/processors/remember.py`    | Nothing             |
 
-### Adding a new processor
+### Action modules
 
-1. Create a file in `app/processors/`
-2. Subclass `Processor` and implement `async def process(self, chat_id: int, text: str) -> str`
-3. Register it in `_load_processors()` in `app/main.py`
+| Action     | File                      | What it does                              |
+|------------|---------------------------|-------------------------------------------|
+| `chat`     | `app/actions/chat.py`     | Claude API conversation with history       |
+| `remember` | `app/actions/remember.py` | Saves markdown files to `data/memories/`   |
+
+### Adding a new intent
+
+1. Create an action module in `app/actions/`
+2. Add the intent to the detection prompt in `app/processors/hank.py`
+3. Add routing logic in `HankProcessor.process()`
 
 ## Security
 
@@ -75,7 +90,7 @@ Message processing is abstracted behind the `Processor` base class (`app/process
 ### Email
 
 1. **Mailgun signature** (`MAILGUN_API_KEY`) — every inbound webhook includes a signature (token + timestamp + signature). The handler verifies it using HMAC-SHA256, rejecting forged requests. Checked in `app/email_handler.py`.
-2. **Sender allowlist** — not yet implemented. Anyone who knows the email address can email Hank.
+2. **Sender allowlist** (`ALLOWED_EMAIL_SENDERS`) — restricts which email addresses can email Hank. Checked in `app/email_handler.py`. Empty = anyone.
 
 ## Infrastructure
 
@@ -91,9 +106,11 @@ Caddy routes by domain name. Services communicate over a Docker network by servi
 
 - `app/main.py` — entrypoint, processor selection, FastAPI server, Telegram lifecycle
 - `app/bot.py` — Telegram bot setup, user allowlist, receives Processor via DI
-- `app/email_handler.py` — Mailgun inbound webhook, signature verification, reply sending
+- `app/email_handler.py` — Mailgun inbound webhook, recipient-based routing, reply sending
 - `app/processor.py` — abstract Processor base class
-- `app/processors/claude.py` — Claude API processor (Hank personality, conversation history)
+- `app/processors/hank.py` — HankProcessor: intent detection + routing to actions
 - `app/processors/helloworld.py` — echo processor for testing
+- `app/actions/chat.py` — Claude API conversation with Hank personality
+- `app/actions/remember.py` — saves markdown files to `data/memories/`
 - `LOG.md` — session-by-session progress log
-- `plans/` — feature PRDs and designs (e.g. `plans/MEMORY.md`)
+- `plans/` — feature PRDs and designs
