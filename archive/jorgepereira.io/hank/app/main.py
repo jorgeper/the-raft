@@ -49,7 +49,13 @@ async def lifespan(app: FastAPI):
     processor = processor_cls()
     logger.info("Using processor: %s", processor_name)
     set_processor(processor)
-    telegram_app = create_app(token, processor)
+
+    allowed_users_str = os.getenv("ALLOWED_USER_IDS", "")
+    allowed_users = {int(uid.strip()) for uid in allowed_users_str.split(",") if uid.strip()} or None
+    if allowed_users:
+        logger.info("Restricting to user IDs: %s", allowed_users)
+
+    telegram_app = create_app(token, processor, allowed_users)
 
     await telegram_app.initialize()
     await telegram_app.start()

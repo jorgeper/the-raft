@@ -74,6 +74,40 @@ Uses polling mode — no public URL needed.
 - **`401 Unauthorized`** — your `TELEGRAM_BOT_TOKEN` is wrong. Regenerate it via @BotFather (`/mybots` → your bot → API Token → Revoke).
 - **Claude errors** — verify your `ANTHROPIC_API_KEY` is valid and has credits at [console.anthropic.com](https://console.anthropic.com/).
 
+## Security
+
+The bot has two layers of protection:
+
+**Layer 1 — Webhook secret** (`TELEGRAM_WEBHOOK_SECRET`): Verifies that incoming HTTP requests to `hank.jorgepereira.io/telegram` actually come from Telegram. Without this, anyone who knows the URL could send fake message payloads to your server. Telegram includes this secret in a header with every request, and the bot rejects anything that doesn't match.
+
+**Layer 2 — User allowlist** (`ALLOWED_USER_IDS`): Controls who can chat with the bot through Telegram. Even with a valid webhook secret (the request is genuinely from Telegram), anyone who finds your bot on Telegram can message it. The allowlist restricts it to specific Telegram accounts.
+
+### Configuring allowed users
+
+1. **Find your Telegram user ID** — message the bot and check the logs:
+   ```bash
+   docker-compose logs -f hank
+   ```
+   You'll see: `Message from Jorge (id=123456789)` — that number is your ID.
+
+2. **Add it to your env file** — set `ALLOWED_USER_IDS` as a comma-separated list:
+   ```
+   ALLOWED_USER_IDS=123456789
+   ```
+   To allow multiple users:
+   ```
+   ALLOWED_USER_IDS=123456789,987654321
+   ```
+
+3. **Restart the bot** to apply:
+   ```bash
+   docker-compose up -d --build hank
+   ```
+
+If `ALLOWED_USER_IDS` is empty or not set, the bot accepts messages from anyone.
+
+Blocked users are silently ignored — the bot logs a warning but doesn't reply.
+
 ## Stack
 
 Python 3.12 · python-telegram-bot · anthropic · FastAPI

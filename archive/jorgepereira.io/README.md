@@ -216,6 +216,7 @@ After pushing HTML changes to `main`:
 ssh jorge@<your-vps-ip>
 cd /opt/sandbox/jorgepereira.io
 git pull
+docker rm -f $(docker ps -aq --filter name=site)
 docker-compose up -d --build site
 ```
 
@@ -227,6 +228,7 @@ After pushing bot code changes to `main`:
 ssh jorge@<your-vps-ip>
 cd /opt/sandbox/jorgepereira.io
 git pull
+docker rm -f $(docker ps -aq --filter name=hank)
 docker-compose up -d --build hank
 ```
 
