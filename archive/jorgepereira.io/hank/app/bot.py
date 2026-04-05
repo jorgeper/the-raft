@@ -1,7 +1,7 @@
 """Telegram bot setup.
 
 Creates a python-telegram-bot Application wired to a Processor instance.
-Slash commands (e.g. /echo, /help) are handled by the command router
+Slash commands (e.g. /echo, /help, /memory) are handled by the command router
 and bypass the processor entirely — no LLM, instant response.
 Regular text messages go through the processor (HankProcessor by default).
 """
@@ -12,6 +12,7 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 
 from app.commands import handle_command, COMMANDS
+from app.message import render_response
 from app.processor import Processor
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,8 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
         user = update.message.from_user
         logger.info("Message from %s (id=%s): %s", user.first_name, user.id, update.message.text)
 
-        reply = await processor.process(update.message.chat_id, update.message.text)
+        response = await processor.process(update.message.chat_id, update.message.text)
+        reply = render_response(response, "telegram")
         logger.info("Reply to %s: %s", user.first_name, reply[:100])
         await update.message.reply_text(reply)
 
@@ -58,19 +60,18 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
         user = update.message.from_user
         logger.info("Command from %s (id=%s): %s", user.first_name, user.id, update.message.text)
 
-        reply = await handle_command(update.message.text, update.message.chat_id)
+        response = await handle_command(update.message.text, update.message.chat_id, channel="telegram")
+        reply = render_response(response, "telegram")
         logger.info("Command reply to %s: %s", user.first_name, reply[:100])
         await update.message.reply_text(reply)
 
     app = Application.builder().token(token).build()
 
     # Register a CommandHandler for each registered slash command.
-    # This ensures python-telegram-bot routes /echo, /help, etc. to our handler
-    # instead of dropping them (the old ~filters.COMMAND filter excluded them).
     for cmd_name in COMMANDS:
         app.add_handler(CommandHandler(cmd_name, handle_slash_command))
 
-    # Catch-all for unknown commands — any /something not in the registry
+    # Catch-all for unknown commands
     app.add_handler(MessageHandler(filters.COMMAND, handle_slash_command))
 
     # Regular text messages go through the processor

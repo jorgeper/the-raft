@@ -1,9 +1,8 @@
 """Help command — lists all available commands."""
 
 
-async def help_handler(args: str, chat_id: int) -> str:
+async def help_handler(args: str, chat_id: int, channel: str) -> str:
     """List all available slash commands with descriptions."""
-    # Import here to avoid circular import (COMMANDS imports help_handler)
     from app.commands import COMMANDS
 
     lines = ["Available commands:", ""]

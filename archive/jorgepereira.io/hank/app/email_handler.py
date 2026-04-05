@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 import httpx
 from fastapi import APIRouter, Form, HTTPException
 
+from app.message import render_response
 from app.processor import Processor
 
 logger = logging.getLogger(__name__)
@@ -155,7 +156,8 @@ async def handle_email(
     if first_line.startswith("/"):
         from app.commands import handle_command
         logger.info("Email contains slash command: %s", first_line)
-        reply = await handle_command(first_line, chat_id)
+        response = await handle_command(first_line, chat_id, channel="email")
+        reply = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply)
     elif local_part == "remember":
@@ -163,13 +165,15 @@ async def handle_email(
         # Format the email as markdown before passing to the processor.
         logger.info("remember@ shortcut — saving directly")
         memory_text = _format_memory(sender, subject, text)
-        reply = await _processor.process(chat_id, memory_text, intent="remember")
+        response = await _processor.process(chat_id, memory_text, intent="remember")
+        reply = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply,
                           from_addr=f"Hank <remember@{os.environ['MAILGUN_DOMAIN']}>")
     else:
         # Default: let HankProcessor detect the intent (chat or remember)
-        reply = await _processor.process(chat_id, text)
+        response = await _processor.process(chat_id, text)
+        reply = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply)
 
