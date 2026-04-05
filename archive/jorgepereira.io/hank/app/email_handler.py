@@ -68,6 +68,16 @@ def _extract_recipient_local(recipient: str) -> str:
     return recipient.split("@")[0].lower().strip()
 
 
+def _format_email_as_markdown(sender: str, subject: str, body: str) -> str:
+    """Format a full email as markdown for storage or processing.
+
+    Includes the subject as a title and the sender, preserving
+    the full email content without any LLM processing.
+    """
+    title = subject or "Untitled"
+    return f"# {title}\n\n**From:** {sender}\n\n{body}"
+
+
 async def _send_reply(to: str, subject: str, body: str, from_addr: str | None = None, html: bool = False) -> None:
     """Send a reply email via the Mailgun API.
 
@@ -163,19 +173,23 @@ async def handle_email(
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply, html=is_html)
     elif local_part == "remember":
-        # remember@ shortcut — skip intent detection, save directly.
+        # remember@ shortcut — save the full email as markdown, no LLM.
         logger.info("remember@ shortcut — saving directly")
+        full_email = _format_email_as_markdown(sender, subject, text)
         meta = MemoryMetadata(medium="email-remember", source=sender)
-        response = await _processor.process(chat_id, text, intent="remember", metadata=meta)
+        response = await _processor.process(chat_id, full_email, intent="remember", metadata=meta)
         reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply,
                           from_addr=f"Hank <remember@{os.environ['MAILGUN_DOMAIN']}>",
                           html=is_html)
     else:
-        # Default: let HankProcessor detect the intent (chat or remember)
+        # Default: let HankProcessor detect the intent (chat or remember).
+        # Pass the full email content so if intent is "remember", the full
+        # email (subject + body) gets saved, not just the body.
         meta = MemoryMetadata(medium="email", source=sender)
-        response = await _processor.process(chat_id, text, metadata=meta)
+        full_email = _format_email_as_markdown(sender, subject, text)
+        response = await _processor.process(chat_id, full_email, metadata=meta)
         reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply, html=is_html)
