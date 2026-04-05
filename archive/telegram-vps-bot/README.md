@@ -138,10 +138,10 @@ docker-compose down
 SSH into your VPS and clone:
 
 ```bash
-ssh root@<your-vps-ip>
-cd /opt
-git clone https://github.com/jorgeper/sandbox.git
-cd sandbox/telegram-vps-bot
+ssh jorge@<your-vps-ip>
+sudo git clone https://github.com/jorgeper/sandbox.git /opt/sandbox
+sudo chown -R jorge:jorge /opt/sandbox
+cd /opt/sandbox/telegram-vps-bot
 ```
 
 ### 2. Configure environment
