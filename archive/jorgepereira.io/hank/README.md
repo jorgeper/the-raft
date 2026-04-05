@@ -1,17 +1,17 @@
-# Telegram VPS Bot
+# Hank — Telegram Bot
 
-Telegram bot running in Docker on a VPS. Receives messages, processes them via Claude API, and replies. The bot is "Hank" — a friendly chat buddy powered by Claude.
+Telegram bot powered by Claude. Receives messages, processes them via the Anthropic API, and replies as "Hank" — a friendly chat buddy.
+
+Deployed at `hank.jorgepereira.io`. For deployment instructions, see the [parent README](../README.md).
 
 ## Setting Up a Telegram Bot
 
 1. Open Telegram and message [@BotFather](https://t.me/BotFather)
 2. Send `/newbot`
-3. Choose a display name (e.g. "My VPS Bot")
-4. Choose a username — must end in `bot` (e.g. `my_vps_bot`)
+3. Choose a display name (e.g. "Hank")
+4. Choose a username — must end in `bot` (e.g. `hank_chat_bot`)
 5. BotFather replies with your **bot token** — copy it
-6. Paste the token into your `.env` file as `TELEGRAM_BOT_TOKEN`
-7. Search for your bot's username in Telegram and start a chat with it
-8. Run the app — any message you send to the bot should get a reply
+6. Paste the token into your `.env.local` file as `TELEGRAM_BOT_TOKEN`
 
 To reset or manage your bot later, message @BotFather and use `/mybots`.
 
@@ -20,42 +20,26 @@ To reset or manage your bot later, message @BotFather and use `/mybots`.
 1. Go to [console.anthropic.com](https://console.anthropic.com/)
 2. Sign up or log in
 3. Go to **API Keys** and create a new key
-4. Paste it into your `.env` file as `ANTHROPIC_API_KEY`
+4. Paste it into your `.env.local` file as `ANTHROPIC_API_KEY`
 
-The bot uses `claude-sonnet-4-20250514` by default. You can change the model in `app/processor.py`.
+The bot uses `claude-sonnet-4-20250514` by default. You can change the model in `app/processors/claude.py`.
 
 ## Environment Configuration
 
-There are two separate env files — one for local dev, one for cloud:
-
-| File          | Example template      | Used for                                       |
-|---------------|-----------------------|------------------------------------------------|
-| `.env.local`  | `.env.local.example`  | Local dev & local Docker (polling)               |
-| `.env.cloud`  | `.env.cloud.example`  | VPS deployment (webhook)                       |
-
-Set them up:
-```bash
-cp .env.local.example .env.local   # local dev
-cp .env.cloud.example .env.cloud   # cloud deploy
-```
-
-Docker Compose defaults to `.env.local`. To use `.env.cloud`:
-```bash
-ENV_FILE=.env.cloud docker-compose up -d
-```
+| File              | Example template       | Used for              |
+|-------------------|------------------------|-----------------------|
+| `.env.local`      | `.env.local.example`   | Local dev (polling)   |
+| `.env.cloud`      | `.env.cloud.example`   | VPS (webhook)         |
 
 Both files are gitignored. See `.env.example` for a full reference of all variables.
-
-## Stack
-
-Python 3.12 · python-telegram-bot · anthropic · Docker
 
 ## Local Dev
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+cd hank
 cp .env.local.example .env.local
 # Edit .env.local — set TELEGRAM_BOT_TOKEN and ANTHROPIC_API_KEY
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m app.main
 ```
@@ -64,9 +48,9 @@ Uses polling mode — no public URL needed.
 
 ## Testing Locally via Telegram
 
-1. **Create the bot** — message [@BotFather](https://t.me/BotFather) on Telegram, send `/newbot`, and follow the prompts (see "Setting Up a Telegram Bot" above)
-2. **Get a Claude API key** — create one at [console.anthropic.com](https://console.anthropic.com/) (see "Setting Up the Claude API" above)
-3. **Configure `.env.local`** — copy the example and fill in your keys:
+1. **Create the bot** — see "Setting Up a Telegram Bot" above
+2. **Get a Claude API key** — see "Setting Up the Claude API" above
+3. **Configure `.env.local`**:
    ```bash
    cp .env.local.example .env.local
    ```
@@ -76,15 +60,9 @@ Uses polling mode — no public URL needed.
    ANTHROPIC_API_KEY=<your-anthropic-api-key>
    MODE=polling
    ```
-4. **Start the bot** — either directly or with Docker:
+4. **Start the bot**:
    ```bash
-   # Direct
-   python3 -m venv .venv && source .venv/bin/activate
-   pip install -r requirements.txt
    python -m app.main
-
-   # Or with Docker
-   docker-compose up --build
    ```
 5. **Open Telegram** — search for your bot's username and open a chat with it
 6. **Send a message** — type anything (e.g. "Hello!") and you should get a reply from Hank
@@ -96,118 +74,9 @@ Uses polling mode — no public URL needed.
 - **`401 Unauthorized`** — your `TELEGRAM_BOT_TOKEN` is wrong. Regenerate it via @BotFather (`/mybots` → your bot → API Token → Revoke).
 - **Claude errors** — verify your `ANTHROPIC_API_KEY` is valid and has credits at [console.anthropic.com](https://console.anthropic.com/).
 
-## Local Docker
+## Stack
 
-```bash
-cp .env.local.example .env.local
-# Edit .env.local — set TELEGRAM_BOT_TOKEN and ANTHROPIC_API_KEY
-docker-compose up --build
-```
-
-This builds the image and runs the bot in polling mode inside Docker. No public URL or HTTPS needed.
-
-To run in the background:
-
-```bash
-docker-compose up --build -d
-```
-
-View logs:
-
-```bash
-docker-compose logs -f
-```
-
-Stop:
-
-```bash
-docker-compose down
-```
-
-## VPS Deployment (Hostinger)
-
-### Prerequisites
-
-- Hostinger VPS with SSH access
-- Docker and Docker Compose installed
-- Caddy installed (for HTTPS)
-- DNS: `hank.jorgepereira.io` A record pointing to your VPS IP
-
-### 1. Clone the repo
-
-SSH into your VPS and clone:
-
-```bash
-ssh jorge@<your-vps-ip>
-sudo git clone https://github.com/jorgeper/sandbox.git /opt/sandbox
-sudo chown -R jorge:jorge /opt/sandbox
-cd /opt/sandbox/telegram-vps-bot
-```
-
-### 2. Configure environment
-
-```bash
-cp .env.cloud.example .env.cloud
-nano .env.cloud
-```
-
-Set these values:
-```
-TELEGRAM_BOT_TOKEN=<your-bot-token>
-ANTHROPIC_API_KEY=<your-api-key>
-MODE=webhook
-PROCESSOR=claude
-WEBHOOK_BASE_URL=https://hank.jorgepereira.io
-TELEGRAM_WEBHOOK_SECRET=<generate-a-random-string>
-```
-
-Generate a random secret:
-```bash
-openssl rand -hex 32
-```
-
-### 3. Configure Caddy
-
-Add a reverse proxy block to your Caddyfile (usually `/etc/caddy/Caddyfile`):
-
-```
-hank.jorgepereira.io {
-    reverse_proxy localhost:8000
-}
-```
-
-Reload Caddy:
-```bash
-sudo systemctl reload caddy
-```
-
-Caddy handles HTTPS automatically — it will provision a Let's Encrypt certificate for `hank.jorgepereira.io`.
-
-### 4. Start the bot
-
-```bash
-ENV_FILE=.env.cloud docker-compose up -d --build
-```
-
-Verify it's running:
-```bash
-docker-compose logs -f
-```
-
-Check the health endpoint:
-```bash
-curl https://hank.jorgepereira.io/health
-```
-
-### 5. Updating
-
-Pull the latest code and restart:
-
-```bash
-cd /opt/sandbox/telegram-vps-bot
-git pull
-ENV_FILE=.env.cloud docker-compose up -d --build
-```
+Python 3.12 · python-telegram-bot · anthropic · FastAPI
 
 ## Building with Claude Code
 
