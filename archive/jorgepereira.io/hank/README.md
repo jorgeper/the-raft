@@ -1,6 +1,6 @@
-# Hank — Telegram Bot
+# Hank
 
-Telegram bot powered by Claude. Receives messages, processes them via the Anthropic API, and replies as "Hank" — a friendly chat buddy.
+A chat bot powered by Claude with two interfaces — Telegram and email. Send a message on Telegram or email `hank@hank.jorgepereira.io` and get a reply from "Hank", a friendly chat buddy.
 
 Deployed at `hank.jorgepereira.io`. For deployment instructions, see the [parent README](../README.md).
 
@@ -74,13 +74,96 @@ Uses polling mode — no public URL needed.
 - **`401 Unauthorized`** — your `TELEGRAM_BOT_TOKEN` is wrong. Regenerate it via @BotFather (`/mybots` → your bot → API Token → Revoke).
 - **Claude errors** — verify your `ANTHROPIC_API_KEY` is valid and has credits at [console.anthropic.com](https://console.anthropic.com/).
 
+## Setting Up Mailgun (Email)
+
+This lets people email `hank@hank.jorgepereira.io` and get a reply. The code is already built — this is just configuration.
+
+### 1. Create a Mailgun account
+
+1. Sign up at [mailgun.com](https://www.mailgun.com/)
+2. Go to **Sending** → **Domains** → **Add New Domain**
+3. Add `hank.jorgepereira.io`
+
+### 2. Configure DNS records in Porkbun
+
+Mailgun will show you the DNS records to add. Go to [porkbun.com](https://porkbun.com) → **Domain Management** → **DNS** next to `jorgepereira.io` and add them:
+
+**MX records** (so Mailgun receives email for this domain):
+
+| Type | Name | Priority | Value |
+|------|------|----------|-------|
+| MX | `hank` | 10 | `mxa.mailgun.org` |
+| MX | `hank` | 10 | `mxb.mailgun.org` |
+
+**TXT records** (so replies don't land in spam):
+
+| Type | Name | Value |
+|------|------|-------|
+| TXT | `hank` | `v=spf1 include:mailgun.org ~all` |
+| TXT | `mailo._domainkey.hank` | *(DKIM key from Mailgun — long string)* |
+
+Mailgun will verify these automatically. Check the domain page — all records should show green.
+
+### 3. Set up inbound routing
+
+In Mailgun, go to **Receiving** → **Create Route**:
+
+| Field | Value |
+|-------|-------|
+| **Expression Type** | Match Recipient |
+| **Recipient** | `.*@hank.jorgepereira.io` |
+| **Action** | Forward to `https://hank.jorgepereira.io/email` |
+
+This tells Mailgun: when anyone emails `*@hank.jorgepereira.io`, POST the email to our webhook endpoint.
+
+### 4. Add env vars
+
+Add these to your `.env.cloud` on the VPS:
+
+```
+MAILGUN_API_KEY=<your-mailgun-api-key>
+MAILGUN_WEBHOOK_SIGNING_KEY=<your-webhook-signing-key>
+MAILGUN_DOMAIN=hank.jorgepereira.io
+MAILGUN_FROM=Hank <hank@hank.jorgepereira.io>
+```
+
+Find both keys in Mailgun under **Settings** → **API Keys**:
+- **API Key** — used to send emails via the Mailgun API
+- **Webhook Signing Key** — used to verify inbound webhook signatures (different from the API key)
+
+### 5. Deploy and test
+
+```bash
+docker rm -f $(docker ps -aq --filter name=hank)
+docker-compose up -d --build hank
+```
+
+Send an email to `hank@hank.jorgepereira.io` and check the logs:
+
+```bash
+docker-compose logs -f hank
+```
+
+You should see the inbound email logged and a reply sent back to your inbox.
+
+**Troubleshooting:**
+- **No email received by Mailgun?** DNS records haven't propagated. Check Mailgun's domain verification page.
+- **Mailgun posts but gets 403?** The signature verification is failing — make sure `MAILGUN_API_KEY` in `.env.cloud` matches the key Mailgun is signing with.
+- **Reply lands in spam?** SPF and DKIM DNS records may not be set up correctly. Check Mailgun's domain page for verification status.
+
 ## Security
 
-The bot has two layers of protection:
+### Telegram
 
-**Layer 1 — Webhook secret** (`TELEGRAM_WEBHOOK_SECRET`): Verifies that incoming HTTP requests to `hank.jorgepereira.io/telegram` actually come from Telegram. Without this, anyone who knows the URL could send fake message payloads to your server. Telegram includes this secret in a header with every request, and the bot rejects anything that doesn't match.
+**Layer 1 — Webhook secret** (`TELEGRAM_WEBHOOK_SECRET`): Verifies that incoming HTTP requests to `/telegram` actually come from Telegram. Without this, anyone who knows the URL could send fake message payloads. Telegram includes this secret in a header with every request, and the bot rejects anything that doesn't match.
 
-**Layer 2 — User allowlist** (`ALLOWED_USER_IDS`): Controls who can chat with the bot through Telegram. Even with a valid webhook secret (the request is genuinely from Telegram), anyone who finds your bot on Telegram can message it. The allowlist restricts it to specific Telegram accounts.
+**Layer 2 — User allowlist** (`ALLOWED_USER_IDS`): Controls who can chat with the bot. Even with a valid webhook secret, anyone who finds your bot on Telegram can message it. The allowlist restricts it to specific Telegram accounts.
+
+### Email
+
+**Mailgun signature verification**: Every inbound email webhook includes a cryptographic signature. The bot verifies it using HMAC-SHA256 with the Mailgun API key, rejecting forged requests. This prevents anyone from POSTing fake emails to the `/email` endpoint.
+
+**Sender allowlist**: Not yet implemented. Anyone who knows the email address can email Hank. Could add an `ALLOWED_EMAIL_SENDERS` env var later if needed.
 
 ### Configuring allowed users
 
@@ -114,10 +197,16 @@ Python 3.12 · python-telegram-bot · anthropic · FastAPI
 
 ## Building with Claude Code
 
-This project is built one phase at a time using Claude Code. Three files drive the workflow:
+This project is built using Claude Code. Key files:
 
-- **`PLAN.md`** — architecture, phases, and their status (`NOT STARTED` / `IN PROGRESS` / `DONE`)
-- **`LOG.md`** — what was done each session, decisions made, blockers hit
 - **`CLAUDE.md`** — instructions for Claude on how to work on this project
+- **`ARCHITECTURE.md`** — technical architecture details
+- **`LOG.md`** — what was done each session, decisions made, blockers hit
+- **`plans/<FEATURE>.md`** — feature requirements (e.g. `memory.prd.md`)
+- **`plans/<FEATURE>.design.md`** — technical design for a feature
 
-To continue building, open Claude Code in this directory and say "continue building". Claude reads all three files and picks up where it left off.
+### Feature workflow
+
+1. **PRD** — write `plans/<FEATURE>.md` defining what to build, iterate until happy
+2. **Design** — write `plans/<FEATURE>.design.md` defining how to build it, iterate until happy
+3. **Build** — implement the feature, log progress in `LOG.md`
