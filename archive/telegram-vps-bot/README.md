@@ -28,10 +28,10 @@ The bot uses `claude-sonnet-4-20250514` by default. You can change the model in 
 
 There are two separate env files — one for local dev, one for cloud:
 
-| File          | Example template      | Used for                          |
-|---------------|-----------------------|-----------------------------------|
-| `.env.local`  | `.env.local.example`  | Local dev & local Docker (polling)|
-| `.env.cloud`  | `.env.cloud.example`  | VPS deployment (webhook)          |
+| File          | Example template      | Used for                                       |
+|---------------|-----------------------|------------------------------------------------|
+| `.env.local`  | `.env.local.example`  | Local dev & local Docker (polling)               |
+| `.env.cloud`  | `.env.cloud.example`  | VPS deployment (webhook)                       |
 
 Set them up:
 ```bash
@@ -124,15 +124,90 @@ Stop:
 docker-compose down
 ```
 
-## VPS Deployment
+## VPS Deployment (Hostinger)
+
+### Prerequisites
+
+- Hostinger VPS with SSH access
+- Docker and Docker Compose installed
+- Caddy installed (for HTTPS)
+- DNS: `hank.jorgepereira.io` A record pointing to your VPS IP
+
+### 1. Clone the repo
+
+SSH into your VPS and clone:
+
+```bash
+ssh root@<your-vps-ip>
+cd /opt
+git clone https://github.com/jorgeper/sandbox.git
+cd sandbox/telegram-vps-bot
+```
+
+### 2. Configure environment
 
 ```bash
 cp .env.cloud.example .env.cloud
-# Edit .env.cloud — set TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY, WEBHOOK_BASE_URL, TELEGRAM_WEBHOOK_SECRET
-ENV_FILE=.env.cloud docker-compose up -d
+nano .env.cloud
 ```
 
-Requires HTTPS (nginx + Let's Encrypt) in front of the container.
+Set these values:
+```
+TELEGRAM_BOT_TOKEN=<your-bot-token>
+ANTHROPIC_API_KEY=<your-api-key>
+MODE=webhook
+PROCESSOR=claude
+WEBHOOK_BASE_URL=https://hank.jorgepereira.io
+TELEGRAM_WEBHOOK_SECRET=<generate-a-random-string>
+```
+
+Generate a random secret:
+```bash
+openssl rand -hex 32
+```
+
+### 3. Configure Caddy
+
+Add a reverse proxy block to your Caddyfile (usually `/etc/caddy/Caddyfile`):
+
+```
+hank.jorgepereira.io {
+    reverse_proxy localhost:8000
+}
+```
+
+Reload Caddy:
+```bash
+sudo systemctl reload caddy
+```
+
+Caddy handles HTTPS automatically — it will provision a Let's Encrypt certificate for `hank.jorgepereira.io`.
+
+### 4. Start the bot
+
+```bash
+ENV_FILE=.env.cloud docker-compose up -d --build
+```
+
+Verify it's running:
+```bash
+docker-compose logs -f
+```
+
+Check the health endpoint:
+```bash
+curl https://hank.jorgepereira.io/health
+```
+
+### 5. Updating
+
+Pull the latest code and restart:
+
+```bash
+cd /opt/sandbox/telegram-vps-bot
+git pull
+ENV_FILE=.env.cloud docker-compose up -d --build
+```
 
 ## Building with Claude Code
 
