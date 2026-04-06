@@ -43,13 +43,19 @@ def create_app(token: str, processor: Processor, registry: IdentityRegistry | No
     def _check_allowed(user) -> bool:
         """Check if a user has a registered identity (or if no registry, allow all)."""
         if not registry:
+            logger.info("No identity registry — allowing all users")
             return True
-        return registry.resolve_telegram(user.id) is not None
+        result = registry.resolve_telegram(user.id)
+        if not result:
+            logger.warning("Blocked %s (id=%s) — not in registry (has %d telegram mappings: %s)",
+                           user.first_name, user.id, len(registry._by_telegram_id), list(registry._by_telegram_id.keys()))
+        return result is not None
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle regular text messages — routed through the processor."""
         if not update.message or not update.message.text:
             return
+        logger.info("Incoming message from %s (id=%s)", update.message.from_user.first_name, update.message.from_user.id)
         if not _check_allowed(update.message.from_user):
             return
 
