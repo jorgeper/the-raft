@@ -1,0 +1,14 @@
+[
+  {
+    "id": "jorge",
+    "name": "Jorge",
+    "telegram_ids": [123456789],
+    "emails": ["jorge@example.com"]
+  },
+  {
+    "id": "alex",
+    "name": "Alex",
+    "telegram_ids": [987654321],
+    "emails": ["alex@example.com"]
+  }
+]
