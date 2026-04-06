@@ -40,12 +40,21 @@ async def describe_image(filepath: str, metadata: MemoryMetadata) -> None:
 
     # Read and encode the image
     with open(image_path, "rb") as f:
-        image_data = base64.b64encode(f.read()).decode("ascii")
+        image_bytes = f.read()
+    image_data = base64.b64encode(image_bytes).decode("ascii")
 
-    # Determine media type from extension
-    ext = os.path.splitext(image_path)[1].lower()
-    media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
-    media_type = media_types.get(ext, "image/png")
+    # Detect media type from file magic bytes, not extension
+    # (Telegram sends JPEGs even when we save as .png)
+    if image_bytes[:3] == b'\xff\xd8\xff':
+        media_type = "image/jpeg"
+    elif image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+        media_type = "image/png"
+    elif image_bytes[:4] == b'GIF8':
+        media_type = "image/gif"
+    elif image_bytes[:4] == b'RIFF' and image_bytes[8:12] == b'WEBP':
+        media_type = "image/webp"
+    else:
+        media_type = "image/jpeg"  # safe default for Telegram
 
     logger.info("Sending image to Claude Vision: %s (%s)", image_path, media_type)
 

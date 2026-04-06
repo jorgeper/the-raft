@@ -102,11 +102,27 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
         day_dir = os.path.join(MEMORIES_DIR, date_str)
         os.makedirs(day_dir, exist_ok=True)
 
-        image_filename = f"{time_str}_{slug}.png"
-        image_path = os.path.join(day_dir, image_filename)
+        # Download to a temp path first to detect the actual format
+        temp_path = os.path.join(day_dir, f"{time_str}_{slug}.tmp")
+        await file.download_to_drive(temp_path)
 
-        # Download the image from Telegram
-        await file.download_to_drive(image_path)
+        # Detect actual image format from magic bytes
+        with open(temp_path, "rb") as f:
+            header = f.read(12)
+        if header[:3] == b'\xff\xd8\xff':
+            ext = ".jpg"
+        elif header[:8] == b'\x89PNG\r\n\x1a\n':
+            ext = ".png"
+        elif header[:4] == b'GIF8':
+            ext = ".gif"
+        elif header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+            ext = ".webp"
+        else:
+            ext = ".jpg"  # safe default for Telegram
+
+        image_filename = f"{time_str}_{slug}{ext}"
+        image_path = os.path.join(day_dir, image_filename)
+        os.rename(temp_path, image_path)
         logger.info("Downloaded photo to %s", image_path)
 
         # Build the markdown content — caption or a placeholder
