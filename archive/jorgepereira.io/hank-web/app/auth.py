@@ -8,7 +8,7 @@ Flow:
 2. Google redirects back to /auth/callback with a code
 3. We exchange the code for tokens, verify the email
 4. Set a signed session cookie
-5. All /api/* and /app/* routes check the cookie
+5. All /api/* and /app routes check the cookie
 """
 
 import os
@@ -42,16 +42,12 @@ oauth.register(
 
 
 def get_current_user(request: Request) -> str | None:
-    """Extract the authenticated email from the session cookie.
-
-    Returns the email string or None if not authenticated.
-    """
+    """Extract the authenticated email from the session cookie."""
     cookie = request.cookies.get(COOKIE_NAME)
     if not cookie:
         return None
     try:
-        email = _serializer.loads(cookie, max_age=SESSION_MAX_AGE)
-        return email
+        return _serializer.loads(cookie, max_age=SESSION_MAX_AGE)
     except Exception:
         return None
 
@@ -90,7 +86,6 @@ async def auth_callback(request: Request):
 
     logger.info("OAuth: logged in as %s", email)
 
-    # Set signed session cookie and redirect to the app
     response = RedirectResponse(url="/app")
     cookie_value = _serializer.dumps(email)
     response.set_cookie(

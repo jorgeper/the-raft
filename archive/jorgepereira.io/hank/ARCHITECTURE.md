@@ -123,10 +123,11 @@ https://example.com
 
 After saving, post-processors run based on content type:
 
-| Type   | Processor          | What it does                           |
-|--------|--------------------|----------------------------------------|
-| `url`  | `fetch_url_title`  | Fetches page `<title>`, adds to frontmatter |
-| `note` | (none)             |                                        |
+| Type    | Processor          | What it does                                    |
+|---------|--------------------|-------------------------------------------------|
+| `url`   | `fetch_url_title`  | Fetches page `<title>`, adds to frontmatter     |
+| `image` | `describe_image`   | Sends to Claude Vision, appends AI analysis     |
+| `note`  | (none)             |                                                 |
 
 Runs synchronously for now. To add a new post-processor: create a function in `post_processors/` and register it in `POST_PROCESSORS` by content type.
 
@@ -157,15 +158,26 @@ Commands are registered in `app/commands/__init__.py`. Each handler receives `(a
 1. **Mailgun signature** (`MAILGUN_WEBHOOK_SIGNING_KEY`) — HMAC-SHA256 verification of inbound webhooks.
 2. **Sender allowlist** (`ALLOWED_EMAIL_SENDERS`) — restricts which email addresses can email Hank.
 
+### Web UI
+
+1. **Google OAuth** (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) — users sign in with Google.
+2. **Email allowlist** (`ALLOWED_EMAIL`) — only the specified email can access the web UI.
+3. **Signed session cookie** (`SESSION_SECRET`) — session persists for 7 days.
+
 ## Infrastructure
 
-Three-service docker-compose setup (see `../docker-compose.yml`):
+Four-service docker-compose setup (see `../docker-compose.yml`):
 
 - **caddy** — shared reverse proxy, ports 80/443, auto HTTPS via Let's Encrypt
 - **site** — `jorgepereira.io` static website (nginx)
-- **hank** — `hank.jorgepereira.io` (FastAPI + uvicorn on port 8000)
+- **hank** — `hank.jorgepereira.io` bot (FastAPI + uvicorn on port 8000)
+- **hank-web** — `hank.jorgepereira.io` web UI (FastAPI + uvicorn on port 8001)
 
-Caddy routes by domain name. Services communicate over a Docker network by service name.
+Caddy routes `hank.jorgepereira.io` by path:
+- `/telegram`, `/email`, `/health` → hank (bot)
+- Everything else (`/app`, `/api/*`, `/login`, `/auth/*`) → hank-web (web UI)
+
+Both `hank` and `hank-web` mount the `hank_memories` Docker volume. Hank writes memories, hank-web reads them (read-only mount).
 
 ## Key Files
 
@@ -186,3 +198,10 @@ Caddy routes by domain name. Services communicate over a Docker network by servi
 - `app/actions/post_processors/` — post-processor registry and implementations
 - `LOG.md` — session-by-session progress log
 - `plans/` — feature PRDs and designs
+
+### hank-web/ (separate container)
+
+- `app/main.py` — FastAPI server, serves frontend, mounts auth + API routers
+- `app/auth.py` — Google OAuth login/callback/logout, session cookies
+- `app/api.py` — REST API for listing/viewing memories
+- `app/static/app.html` — single-page frontend (vanilla JS)

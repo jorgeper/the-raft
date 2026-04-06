@@ -1,10 +1,12 @@
 # Hank
 
-A chat bot powered by Claude with two interfaces — Telegram and email. Send a message on Telegram or email `hank@hank.jorgepereira.io` and get a reply from "Hank", a friendly chat buddy.
+A chat bot powered by Claude with three interfaces — Telegram, email, and a web UI. Send a message on Telegram or email `hank@hank.jorgepereira.io` and get a reply from "Hank", a friendly chat buddy.
 
-You can also email `remember@hank.jorgepereira.io` to save things — Hank stores the email content as markdown files on disk.
+You can also email `remember@hank.jorgepereira.io` to save things — Hank stores the email content as markdown files on disk. Browse saved memories at `https://hank.jorgepereira.io/app` (Google OAuth required).
 
 Deployed at `hank.jorgepereira.io`. For deployment instructions, see the [parent README](../README.md).
+
+The web UI runs as a separate container (`hank-web/`) — see the [parent README](../README.md) for architecture details.
 
 ## Setting Up a Telegram Bot
 
@@ -234,9 +236,94 @@ If `ALLOWED_USER_IDS` is empty or not set, the bot accepts messages from anyone.
 
 Blocked users are silently ignored — the bot logs a warning but doesn't reply.
 
+## Setting Up Google OAuth (Web UI)
+
+The web UI at `hank.jorgepereira.io/app` requires Google OAuth for authentication. This is configured in the `hank-web` container.
+
+### 1. Create a Google Cloud project
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. Create a new project (e.g. "Hank") or use an existing one
+3. Go to **APIs & Services → OAuth consent screen**
+4. Choose **External** user type
+5. Fill in the app name ("Hank"), your email for support contact
+6. Add your email to **Test users** (required while in testing mode)
+7. Save
+
+### 2. Create OAuth credentials
+
+1. Go to **APIs & Services → Credentials**
+2. Click **Create Credentials → OAuth 2.0 Client ID**
+3. Application type: **Web application**
+4. Name: "Hank Web"
+5. **Authorized JavaScript origins:** `https://hank.jorgepereira.io`
+6. **Authorized redirect URIs:** `https://hank.jorgepereira.io/auth/callback`
+7. Click **Create** and copy the **Client ID** and **Client Secret**
+
+### 3. Configure hank-web
+
+On the VPS, create `hank-web/.env.cloud`:
+
+```bash
+cp hank-web/.env.cloud.example hank-web/.env.cloud
+nano hank-web/.env.cloud
+```
+
+Set:
+```
+GOOGLE_CLIENT_ID=<your-client-id>.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=<your-client-secret>
+ALLOWED_EMAIL=jorgeper@gmail.com
+SESSION_SECRET=<run: openssl rand -hex 32>
+```
+
+### 4. Deploy
+
+```bash
+docker rm -f $(docker ps -aq --filter name=hank-web)
+docker-compose up -d --build hank-web
+```
+
+Visit `https://hank.jorgepereira.io` — it'll redirect to Google login.
+
 ## Stack
 
 Python 3.12 · python-telegram-bot · anthropic · FastAPI
+
+## Cleanup
+
+If you want to fully tear down Hank, here's everything to clean up:
+
+### VPS (Hostinger)
+```bash
+cd /opt/sandbox/jorgepereira.io
+docker-compose down -v  # -v removes volumes (deletes all memories!)
+```
+
+### DNS (Porkbun)
+- Delete the `hank` A record
+- Delete the MX records for `hank` (mxa.mailgun.org, mxb.mailgun.org)
+- Delete the TXT records for `hank` (SPF, DKIM, DMARC)
+
+### Telegram
+- Message [@BotFather](https://t.me/BotFather) → `/deletebot` → select your bot
+
+### Mailgun
+- Go to [mailgun.com](https://www.mailgun.com) → **Sending → Domains**
+- Delete `hank.jorgepereira.io`
+- Go to **Receiving** → delete the inbound route
+
+### Google Cloud
+- Go to [console.cloud.google.com](https://console.cloud.google.com) → **APIs & Services → Credentials**
+- Delete the OAuth 2.0 Client ID for "Hank Web"
+- Optionally delete the project if it was created just for Hank
+
+### Anthropic
+- Go to [console.anthropic.com](https://console.anthropic.com) → **API Keys**
+- Revoke the key used for Hank (if it's dedicated to Hank)
+
+### GitHub
+- The code stays in the repo — no cleanup needed unless you want to delete the `hank/` and `hank-web/` directories
 
 ## Building with Claude Code
 

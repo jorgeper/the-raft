@@ -24,6 +24,7 @@ Three Docker containers managed by docker-compose:
 | **caddy** | Reverse proxy + HTTPS termination | 80, 443 (exposed) |
 | **site** | Static website (nginx) | 80 (internal) |
 | **hank** | Telegram bot (FastAPI) | 8000 (internal) |
+| **hank-web** | Memory browser web UI (FastAPI) | 8001 (internal) |
 
 ## How HTTPS and the reverse proxy work
 
@@ -39,7 +40,8 @@ HTTPS encrypts traffic between the browser and the server. To prove the server i
 
 ```
 Browser → https://jorgepereira.io → Caddy → (decrypts) → site:80 (plain HTTP)
-Browser → https://hank.jorgepereira.io → Caddy → (decrypts) → hank:8000 (plain HTTP)
+Browser → https://hank.jorgepereira.io/telegram → Caddy → hank:8000 (bot endpoints)
+Browser → https://hank.jorgepereira.io/app → Caddy → hank-web:8001 (web UI)
 ```
 
 The site and bot containers never deal with HTTPS — they serve plain HTTP internally. Caddy handles all the encryption. This is configured in the `Caddyfile`:
@@ -50,7 +52,9 @@ jorgepereira.io {
 }
 
 hank.jorgepereira.io {
-    reverse_proxy hank:8000
+    @bot path /telegram /email /health
+    reverse_proxy @bot hank:8000
+    reverse_proxy hank-web:8001
 }
 ```
 
@@ -184,13 +188,28 @@ Generate a random secret:
 openssl rand -hex 32
 ```
 
-**4. Set the default env file** so you don't have to pass `ENV_FILE=` on every command:
+**4. Configure the web UI environment:**
 
 ```bash
-echo "ENV_FILE=hank/.env.cloud" > .env
+cp hank-web/.env.cloud.example hank-web/.env.cloud
+nano hank-web/.env.cloud
 ```
 
-**5. Start everything:**
+Set these values (see [hank README](hank/README.md#setting-up-google-oauth-web-ui) for Google OAuth setup):
+```
+GOOGLE_CLIENT_ID=<your-client-id>.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=<your-client-secret>
+ALLOWED_EMAIL=jorgeper@gmail.com
+SESSION_SECRET=<run: openssl rand -hex 32>
+```
+
+**5. Set the default env files:**
+
+```bash
+echo -e "ENV_FILE=hank/.env.cloud\nWEB_ENV_FILE=hank-web/.env.cloud" > .env
+```
+
+**6. Start everything:**
 
 ```bash
 docker-compose up -d --build
@@ -198,7 +217,7 @@ docker-compose up -d --build
 
 Caddy will automatically obtain Let's Encrypt certificates for both domains.
 
-**6. Verify:**
+**7. Verify:**
 
 ```bash
 docker-compose ps
@@ -232,6 +251,18 @@ docker rm -f $(docker ps -aq --filter name=hank)
 docker-compose up -d --build hank
 ```
 
+### Deploying web UI changes
+
+After pushing hank-web code changes to `main`:
+
+```bash
+ssh jorge@<your-vps-ip>
+cd /opt/sandbox/jorgepereira.io
+git pull
+docker rm -f $(docker ps -aq --filter name=hank-web)
+docker-compose up -d --build hank-web
+```
+
 ### Deploying Caddy config changes
 
 After pushing Caddyfile changes to `main`:
@@ -250,6 +281,7 @@ docker-compose restart caddy
 ```bash
 docker-compose ps                  # status of all services
 docker-compose logs -f hank        # follow bot logs
+docker-compose logs -f hank-web    # follow web UI logs
 docker-compose logs -f site        # follow site logs
 docker-compose logs -f caddy       # follow Caddy logs
 docker-compose restart hank        # restart just the bot

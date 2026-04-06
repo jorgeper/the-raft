@@ -17,13 +17,9 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 
-from starlette.middleware.sessions import SessionMiddleware
-
 from app.bot import create_app as create_telegram_app
 from app.email_handler import router as email_router, set_processor as set_email_processor
 from app.processor import Processor
-from app.web.auth import router as auth_router
-from app.web.api import router as api_router
 
 # Load .env.local for direct (non-Docker) runs.
 # In Docker, env vars are injected via docker-compose env_file, so this is a no-op.
@@ -92,11 +88,7 @@ def _parse_allowed_users() -> set[int] | None:
 
 
 async def _start_telegram(processor: Processor) -> None:
-    """Initialize and start the Telegram bot.
-
-    In polling mode, the bot reaches out to Telegram to fetch updates.
-    In webhook mode, we tell Telegram to push updates to our public URL.
-    """
+    """Initialize and start the Telegram bot."""
     global telegram_app
 
     token = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -133,14 +125,7 @@ async def _stop_telegram() -> None:
 # ---------------------------------------------------------------------------
 
 def _start_email(processor: Processor) -> None:
-    """Inject the processor into the email handler.
-
-    The email handler routes by recipient address:
-    - hank@... → processor with no intent (HankProcessor detects it)
-    - remember@... → processor with intent="remember" (skips detection)
-
-    Both use the same processor instance.
-    """
+    """Inject the processor into the email handler."""
     set_email_processor(processor)
     logger.info("Email handler ready (POST /email)")
 
@@ -151,48 +136,17 @@ def _start_email(processor: Processor) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown lifecycle for the FastAPI server.
-
-    Startup:
-    1. Create the processor (HankProcessor by default)
-    2. Wire it into both Telegram and email channels
-    3. Start the Telegram bot
-
-    Shutdown:
-    1. Gracefully stop the Telegram bot
-    """
-    # Create the processor — same instance for all channels
+    """Startup and shutdown lifecycle."""
     processor = _create_processor()
-
-    # Wire up both channels
     _start_email(processor)
     await _start_telegram(processor)
-
     logger.info("Hank is ready")
-    yield  # Server is running — handle requests until shutdown
-
+    yield
     await _stop_telegram()
 
 
-# Create the FastAPI app and mount all routers.
 server = FastAPI(lifespan=lifespan)
-
-# Session middleware required by authlib for OAuth state
-server.add_middleware(
-    SessionMiddleware,
-    secret_key=os.getenv("SESSION_SECRET", "change-me-in-production"),
-)
-
 server.include_router(email_router)
-server.include_router(auth_router)
-server.include_router(api_router)
-
-
-@server.get("/")
-async def root():
-    """Redirect root to the app."""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/app")
 
 
 @server.get("/health")
@@ -201,36 +155,15 @@ async def health():
     return {"status": "ok"}
 
 
-@server.get("/app")
-async def app_page(request: Request):
-    """Serve the memories browser frontend. Requires authentication."""
-    from app.web.auth import get_current_user
-    if not get_current_user(request):
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/login")
-
-    from fastapi.responses import FileResponse
-    import pathlib
-    static_dir = pathlib.Path(__file__).parent / "web" / "static"
-    return FileResponse(static_dir / "app.html")
-
-
 @server.post("/telegram")
 async def telegram_webhook(request: Request):
-    """Receive Telegram updates in webhook mode.
-
-    Telegram sends a JSON payload for every message/event. We verify the
-    webhook secret header to ensure the request actually came from Telegram,
-    then pass the update to python-telegram-bot for processing.
-    """
-    # Verify the webhook secret — reject requests that don't match.
+    """Receive Telegram updates in webhook mode."""
     secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
     header = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
     if secret and header != secret:
         logger.warning("Invalid Telegram webhook secret")
         raise HTTPException(status_code=403, detail="Invalid secret")
 
-    # Parse the Telegram Update and hand it off to python-telegram-bot.
     from telegram import Update
     data = await request.json()
     update = Update.de_json(data, telegram_app.bot)

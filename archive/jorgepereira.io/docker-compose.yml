@@ -11,6 +11,7 @@ services:
     depends_on:
       - site
       - hank
+      - hank-web
 
   site:
     build: site
@@ -22,6 +23,13 @@ services:
     restart: unless-stopped
     volumes:
       - hank_memories:/app/data/memories
+
+  hank-web:
+    build: hank-web
+    env_file: ${WEB_ENV_FILE:-hank-web/.env.local}
+    restart: unless-stopped
+    volumes:
+      - hank_memories:/app/data/memories:ro
 
 volumes:
   caddy_data:

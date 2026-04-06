@@ -3,5 +3,12 @@ jorgepereira.io {
 }
 
 hank.jorgepereira.io {
-	reverse_proxy hank:8000
+	# Bot endpoints — telegram webhook, email webhook, health check
+	@bot {
+		path /telegram /email /health
+	}
+	reverse_proxy @bot hank:8000
+
+	# Web UI — everything else (login, auth, app, api)
+	reverse_proxy hank-web:8001
 }

@@ -1,6 +1,7 @@
 """API endpoints for browsing memories.
 
 All endpoints require authentication via Google OAuth session cookie.
+Reads memory files from data/memories/ (shared Docker volume with hank bot).
 """
 
 import os
@@ -8,11 +9,13 @@ import logging
 import re
 
 from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import FileResponse
 
-from app.actions.remember import MEMORIES_DIR
-from app.web.auth import require_auth
+from app.auth import require_auth
 
 logger = logging.getLogger(__name__)
+
+MEMORIES_DIR = os.getenv("MEMORIES_DIR", "data/memories")
 
 router = APIRouter(prefix="/api")
 
@@ -46,7 +49,6 @@ def _extract_body(filepath: str) -> str:
     except OSError:
         return ""
 
-    # Skip frontmatter
     if content.startswith("---"):
         end = content.find("---", 3)
         if end != -1:
@@ -85,11 +87,9 @@ async def list_memories_for_date(date: str, request: Request):
         filepath = os.path.join(day_dir, filename)
         meta = _parse_frontmatter(filepath)
 
-        # Extract time from filename
         time_match = re.search(r"T(\d{2})-(\d{2})-(\d{2})", filename)
         time_str = f"{time_match.group(1)}:{time_match.group(2)}:{time_match.group(3)}" if time_match else ""
 
-        # Extract title from body
         body = _extract_body(filepath)
         title = ""
         for line in body.split("\n"):
@@ -122,7 +122,6 @@ async def get_memory(date: str, filename: str, request: Request):
     meta = _parse_frontmatter(filepath)
     body = _extract_body(filepath)
 
-    # Check if there's an associated HTML or image file
     has_html = os.path.exists(filepath.replace(".md", ".html"))
     image_file = meta.get("image")
 
@@ -138,7 +137,7 @@ async def get_memory(date: str, filename: str, request: Request):
 
 @router.get("/memories/{date}/{filename}/html")
 async def get_memory_html(date: str, filename: str, request: Request):
-    """Get the raw HTML version of a memory (if available)."""
+    """Get the raw HTML version of a memory."""
     require_auth(request)
 
     html_path = os.path.join(MEMORIES_DIR, date, filename.replace(".md", ".html"))
@@ -163,5 +162,4 @@ async def get_memory_image(date: str, filename: str, request: Request):
     if not os.path.exists(image_path):
         raise HTTPException(status_code=404, detail="Image file not found")
 
-    from fastapi.responses import FileResponse
     return FileResponse(image_path)
