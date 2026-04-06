@@ -1,7 +1,8 @@
 """Post-processor registry.
 
 After a memory is saved, post-processors run based on the content type.
-Each processor can modify the saved file (e.g. add fetched URL title to frontmatter).
+Each processor can modify the saved file (e.g. add fetched URL title,
+describe an image via Claude Vision).
 
 To add a new post-processor:
 1. Create a file in this directory with an async function
@@ -23,12 +24,14 @@ async def run_post_processors(filepath: str, metadata: MemoryMetadata) -> None:
         metadata: The memory's metadata (used to look up processors by type).
     """
     from app.actions.post_processors.url import fetch_url_title
+    from app.actions.post_processors.image import describe_image
 
     # Registry: content type → list of post-processor functions.
     # Each function signature: async def processor(filepath: str, metadata: MemoryMetadata) -> None
     POST_PROCESSORS: dict[str, list] = {
         "url": [fetch_url_title],
         "note": [],
+        "image": [describe_image],
     }
 
     processors = POST_PROCESSORS.get(metadata.content_type or "note", [])

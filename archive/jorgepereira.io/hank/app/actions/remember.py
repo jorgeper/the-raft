@@ -40,9 +40,10 @@ class MemoryMetadata:
     """
     medium: str = "unknown"         # "telegram", "email", "email-remember"
     source: str = "unknown"         # email address or "Name (id=123)"
-    content_type: str | None = None # "url", "note" — auto-detected if None
+    content_type: str | None = None # "url", "note", "image" — auto-detected if None
     tags: list[str] = field(default_factory=list)
     html_content: str | None = None # raw HTML from email (saved as .html alongside .md)
+    image_path: str | None = None   # path to saved image file (set by bot.py for photos)
 
 
 def detect_content_type(text: str) -> str:
@@ -103,6 +104,9 @@ def _build_frontmatter(metadata: MemoryMetadata, now: datetime, html_filename: s
     ]
     if html_filename:
         lines.append(f"html: {html_filename}")
+    if metadata.image_path:
+        image_filename = os.path.basename(metadata.image_path)
+        lines.append(f"image: {image_filename}")
     lines.append("---")
     return "\n".join(lines)
 

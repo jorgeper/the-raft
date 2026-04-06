@@ -7,11 +7,13 @@ Regular text messages go through the processor (HankProcessor by default).
 """
 
 import logging
+import os
+from datetime import datetime, timezone
 
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 
-from app.actions.remember import MemoryMetadata
+from app.actions.remember import MemoryMetadata, MEMORIES_DIR, _slugify
 from app.commands import handle_command, COMMANDS
 from app.message import render_response
 from app.processor import Processor
@@ -71,6 +73,58 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
         logger.info("Command reply to %s: %s", user.first_name, reply[:100])
         await update.message.reply_text(reply)
 
+    async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle incoming photos — download and save as a memory.
+
+        Photos are always treated as "remember" intent. The image is saved
+        as a .png file, and a .md file is created with metadata. A post-processor
+        then sends the image to Claude Vision for description.
+        """
+        if not update.message or not update.message.photo:
+            return
+        if not _check_allowed(update.message.from_user):
+            return
+
+        user = update.message.from_user
+        caption = update.message.caption or ""
+        logger.info("Photo from %s (id=%s), caption: %s", user.first_name, user.id, caption[:100])
+
+        # Telegram provides multiple sizes — grab the largest
+        photo = update.message.photo[-1]
+        file = await context.bot.get_file(photo.file_id)
+
+        # Save the image to the memories directory
+        now = datetime.now(timezone.utc)
+        date_str = now.strftime("%Y-%m-%d")
+        time_str = now.strftime("%Y-%m-%dT%H-%M-%S")
+        slug = _slugify(caption[:50]) if caption else "photo"
+
+        day_dir = os.path.join(MEMORIES_DIR, date_str)
+        os.makedirs(day_dir, exist_ok=True)
+
+        image_filename = f"{time_str}_{slug}.png"
+        image_path = os.path.join(day_dir, image_filename)
+
+        # Download the image from Telegram
+        await file.download_to_drive(image_path)
+        logger.info("Downloaded photo to %s", image_path)
+
+        # Build the markdown content — caption or a placeholder
+        content = f"# {caption or 'Photo'}\n\n![{caption or 'photo'}]({image_filename})"
+
+        meta = MemoryMetadata(
+            medium="telegram",
+            source=f"{user.first_name} (id={user.id})",
+            content_type="image",
+            image_path=image_path,
+        )
+
+        from app.actions.remember import save_memory
+        response = await save_memory(content, metadata=meta)
+        reply, _ = render_response(response, "telegram")
+        logger.info("Photo reply to %s: %s", user.first_name, reply[:100])
+        await update.message.reply_text(reply)
+
     app = Application.builder().token(token).build()
 
     # Register a CommandHandler for each registered slash command.
@@ -79,6 +133,9 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
 
     # Catch-all for unknown commands
     app.add_handler(MessageHandler(filters.COMMAND, handle_slash_command))
+
+    # Photos — always saved as memories
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
     # Regular text messages go through the processor
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
