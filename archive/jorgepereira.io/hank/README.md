@@ -224,17 +224,25 @@ Hank supports multiple users. Each user is an **identity** with their own isolat
    - `telegram_ids` — list of Telegram user IDs (find yours in the bot logs: `Message from Jorge (id=123456789)`)
    - `emails` — list of email addresses (used for email access and web UI OAuth)
 
-2. **Rebuild and deploy:**
+2. **Deploy to server:**
 
    ```bash
+   # Pull latest code (includes your updated identities.json baked into the image)
+   git pull
    docker-compose up -d --build
    ```
 
-   On first boot, the Dockerfile copies `identities.json` into the data volume. To force an update (if the file already exists in the volume):
+   On **first boot** (fresh volume), the Dockerfile auto-copies `identities.json` into the data volume. On subsequent deploys the file already exists, so you need to **push it manually**:
 
    ```bash
    docker-compose exec hank cp identities.json data/identities.json
    docker-compose restart hank hank-web
+   ```
+
+   **Verify it loaded correctly:**
+   ```bash
+   docker-compose logs hank 2>&1 | grep -i identit
+   docker-compose logs hank-web 2>&1 | grep -i identit
    ```
 
 3. **That's it.** The new user can now message the Telegram bot, email Hank, and log in to the web UI. Their data is fully isolated.
