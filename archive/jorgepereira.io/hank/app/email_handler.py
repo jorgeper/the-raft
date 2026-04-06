@@ -81,11 +81,19 @@ async def _format_email_for_storage(sender: str, subject: str, body_plain: str, 
     return md, body_html or None
 
 
-async def _send_reply(to: str, subject: str, body: str, from_addr: str | None = None, html: bool = False) -> None:
+async def _send_reply(
+    to: str,
+    subject: str,
+    body: str,
+    from_addr: str | None = None,
+    html: bool = False,
+    attachment_path: str | None = None,
+) -> None:
     """Send a reply email via the Mailgun API.
 
     Args:
         html: If True, send body as HTML instead of plain text.
+        attachment_path: Path to a file to attach (e.g. an image).
     """
     domain = os.environ["MAILGUN_DOMAIN"]
     api_key = os.environ["MAILGUN_API_KEY"]
@@ -102,14 +110,21 @@ async def _send_reply(to: str, subject: str, body: str, from_addr: str | None = 
     else:
         data["text"] = body
 
+    files = None
+    if attachment_path and os.path.exists(attachment_path):
+        filename = os.path.basename(attachment_path)
+        files = {"attachment": (filename, open(attachment_path, "rb"))}
+        logger.info("Attaching file: %s", attachment_path)
+
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"https://api.mailgun.net/v3/{domain}/messages",
             auth=("api", api_key),
             data=data,
+            files=files,
         )
         resp.raise_for_status()
-        logger.info("Sent reply email to %s (html=%s)", to, html)
+        logger.info("Sent reply email to %s (html=%s, attachment=%s)", to, html, attachment_path is not None)
 
 
 def _verify_mailgun_signature(token: str, timestamp: str, signature: str) -> bool:
@@ -196,11 +211,14 @@ async def handle_email(
         full_email = md_text
         response = await _processor.process(chat_id, full_email, metadata=meta)
 
-        # Handle RecallResult
+        # Handle RecallResult — may need to attach an image
         from app.actions.recall import RecallResult
         if isinstance(response, RecallResult):
             reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
-            await _send_reply(sender, reply_subject, response.reply)
+            await _send_reply(
+                sender, reply_subject, response.reply,
+                attachment_path=response.image_file,
+            )
         else:
             reply, is_html = render_response(response, "email")
             reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
