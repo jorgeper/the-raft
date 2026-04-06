@@ -123,4 +123,5 @@ class HankProcessor(Processor):
 
         # Default: chat
         self._pending_recall.discard(chat_id)
-        return await self._chat.run(chat_id, text)
+        image_path = metadata.image_path if metadata else None
+        return await self._chat.run(chat_id, text, image_path=image_path)

@@ -341,29 +341,11 @@ async def handle_email(request: Request):
     local_part = _extract_recipient_local(recipient)
     chat_id = _email_chat_id(sender)
 
-    # If we have an image attachment, save it as a memory (same as Telegram photos)
-    if image_path:
-        logger.info("Email has image attachment — saving as memory")
-        caption = text or subject or "Photo"
-        image_filename = os.path.basename(image_path)
-        content = f"# {caption}\n\n![{caption}]({image_filename})"
-        meta = MemoryMetadata(
-            medium="email" if local_part != "remember" else "email-remember",
-            source=sender,
-            content_type="image",
-            image_path=image_path,
-        )
-        response = await _processor.process(chat_id, content, intent="remember", metadata=meta)
-        reply, is_html = render_response(response, "email")
-        reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
-        from_addr = None
-        if local_part == "remember":
-            from_addr = f"Hank <remember@{os.environ['MAILGUN_DOMAIN']}>"
-        await _send_reply(sender, reply_subject, reply, from_addr=from_addr, html=is_html)
-        return {"status": "ok"}
-
     # Check if the first line is a slash command (e.g. "/echo hello")
-    first_line = text.split("\n")[0].strip()
+    if text:
+        first_line = text.split("\n")[0].strip()
+    else:
+        first_line = ""
     if first_line.startswith("/"):
         from app.commands import handle_command
         logger.info("Email contains slash command: %s", first_line)
@@ -371,25 +353,41 @@ async def handle_email(request: Request):
         reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply, html=is_html)
-    elif local_part == "remember":
-        # remember@ shortcut — save the full email, no LLM.
-        logger.info("remember@ shortcut — saving directly")
-        md_text, html_content = await _format_email_for_storage(sender, subject, text, body_html)
-        meta = MemoryMetadata(medium="email-remember", source=sender)
-        meta.html_content = html_content
-        response = await _processor.process(chat_id, md_text, intent="remember", metadata=meta)
+    elif local_part == "remember" or (image_path and not text):
+        # remember@ shortcut or image-only email (no text) — save directly.
+        logger.info("Saving as memory (remember@ or image-only)")
+        if image_path:
+            caption = text or subject or "Photo"
+            image_filename = os.path.basename(image_path)
+            content = f"# {caption}\n\n![{caption}]({image_filename})"
+            meta = MemoryMetadata(
+                medium="email" if local_part != "remember" else "email-remember",
+                source=sender,
+                content_type="image",
+                image_path=image_path,
+            )
+        else:
+            md_text, html_content = await _format_email_for_storage(sender, subject, text, body_html)
+            content = md_text
+            meta = MemoryMetadata(medium="email-remember", source=sender)
+            meta.html_content = html_content
+        response = await _processor.process(chat_id, content, intent="remember", metadata=meta)
         reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
-        await _send_reply(sender, reply_subject, reply,
-                          from_addr=f"Hank <remember@{os.environ['MAILGUN_DOMAIN']}>",
-                          html=is_html)
+        from_addr = None
+        if local_part == "remember":
+            from_addr = f"Hank <remember@{os.environ['MAILGUN_DOMAIN']}>"
+        await _send_reply(sender, reply_subject, reply, from_addr=from_addr, html=is_html)
     else:
-        # Default: let HankProcessor detect the intent (chat or remember).
+        # Default: let HankProcessor detect the intent.
+        # If there's an image, pass it via metadata so chat can use vision.
         meta = MemoryMetadata(medium="email", source=sender)
+        if image_path:
+            meta.content_type = "image"
+            meta.image_path = image_path
         md_text, html_content = await _format_email_for_storage(sender, subject, text, body_html)
         meta.html_content = html_content
-        full_email = md_text
-        response = await _processor.process(chat_id, full_email, metadata=meta)
+        response = await _processor.process(chat_id, md_text, metadata=meta)
 
         # Handle RecallResult — may need to attach an image
         from app.actions.recall import RecallResult

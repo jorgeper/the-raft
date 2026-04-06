@@ -4,6 +4,7 @@ Maintains per-chat conversation history with a 1-hour rolling window.
 Extracted from the old ClaudeProcessor so it can be called by HankProcessor.
 """
 
+import base64
 import logging
 import os
 import time
@@ -46,12 +47,50 @@ class ChatAction:
             (time.time(), {"role": role, "content": text})
         )
 
-    async def run(self, chat_id: int, text: str) -> str:
-        """Send a message to Claude and return the reply."""
-        self._append(chat_id, "user", text)
-        messages = self._get_messages(chat_id)
+    async def run(self, chat_id: int, text: str, image_path: str | None = None) -> str:
+        """Send a message to Claude and return the reply.
 
-        logger.info("Sending to Claude API (%d chars, %d messages in history)", len(text), len(messages))
+        Args:
+            chat_id: Conversation ID.
+            text: The user's message text.
+            image_path: Optional path to an image file to include via vision API.
+        """
+        # Build the user message content
+        if image_path and os.path.exists(image_path):
+            # Multi-modal: text + image
+            with open(image_path, "rb") as f:
+                image_bytes = f.read()
+            image_data = base64.b64encode(image_bytes).decode("ascii")
+
+            # Detect media type from magic bytes
+            if image_bytes[:3] == b'\xff\xd8\xff':
+                media_type = "image/jpeg"
+            elif image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+                media_type = "image/png"
+            elif image_bytes[:4] == b'GIF8':
+                media_type = "image/gif"
+            elif image_bytes[:4] == b'RIFF' and image_bytes[8:12] == b'WEBP':
+                media_type = "image/webp"
+            else:
+                media_type = "image/png"
+
+            content = [
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_data}},
+                {"type": "text", "text": text},
+            ]
+            # Store text-only version in history (images are too large to keep)
+            self._append(chat_id, "user", f"{text}\n[image attached]")
+        else:
+            content = text
+            self._append(chat_id, "user", text)
+
+        # Build messages: history + current (replace last entry with full content)
+        messages = self._get_messages(chat_id)
+        if messages:
+            messages[-1] = {"role": "user", "content": content}
+
+        logger.info("Sending to Claude API (%d chars, %d messages in history, image=%s)",
+                     len(text), len(messages), image_path is not None)
         message = await self._client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
