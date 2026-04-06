@@ -124,15 +124,21 @@ async def recall(chat_id: int, text: str, conversation_history: list[dict] | Non
     matches = result.get("matches", [])
     reply = result.get("reply", "I couldn't find that.")
 
-    # If found, resolve the memory file and check for associated files
+    # If found, resolve the memory file, read its full content, and check for associated files
     memory_file = None
     image_file = None
     if action == "found" and matches:
         memory_file = matches[0]
-        # Check if this memory has an image
         if os.path.exists(memory_file):
-            from app.memory_index import _parse_frontmatter
+            from app.memory_index import _parse_frontmatter, _extract_body
             meta = _parse_frontmatter(memory_file)
+
+            # Read the full body so the reply includes all content
+            full_body = _extract_body(memory_file)
+            if full_body and len(full_body) > len(reply):
+                # Replace Claude's partial reply with the full memory content
+                reply = f"Here's what I found:\n\n{full_body}"
+
             if meta.get("image"):
                 date_dir = os.path.dirname(memory_file)
                 img_path = os.path.join(date_dir, meta["image"])
