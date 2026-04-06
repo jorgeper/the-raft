@@ -228,6 +228,14 @@ async def handle_email(request: Request):
 
     logger.info("Email from %s to %s, subject: %s", sender, recipient, subject)
 
+    # Log all form field names and types for debugging attachment detection
+    for key in form:
+        value = form[key]
+        if isinstance(value, UploadFile):
+            logger.info("Form field %r: UploadFile(filename=%r, content_type=%r)", key, value.filename, value.content_type)
+        else:
+            logger.info("Form field %r: str (%d chars)", key, len(str(value)))
+
     # Check sender allowlist
     allowed_senders_str = os.getenv("ALLOWED_EMAIL_SENDERS", "")
     allowed_senders = {s.strip().lower() for s in allowed_senders_str.split(",") if s.strip()}
