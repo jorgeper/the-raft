@@ -13,11 +13,12 @@ import hmac
 import logging
 import os
 import re
+from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 
-from app.actions.remember import MemoryMetadata
+from app.actions.remember import MemoryMetadata, MEMORIES_DIR, _slugify
 from app.message import render_response
 from app.processor import Processor
 
@@ -136,23 +137,85 @@ def _verify_mailgun_signature(token: str, timestamp: str, signature: str) -> boo
     return hmac.compare_digest(expected, signature)
 
 
+_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+_EXT_BY_MAGIC = [
+    (b'\xff\xd8\xff', ".jpg"),
+    (b'\x89PNG\r\n\x1a\n', ".png"),
+    (b'GIF8', ".gif"),
+]
+
+
+def _detect_image_ext(header: bytes) -> str:
+    """Detect image extension from magic bytes."""
+    for magic, ext in _EXT_BY_MAGIC:
+        if header[:len(magic)] == magic:
+            return ext
+    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        return ".webp"
+    return ".jpg"
+
+
+async def _save_email_attachment(attachment: UploadFile) -> str | None:
+    """Save an image attachment to the memories directory.
+
+    Returns the file path on disk, or None if not an image.
+    """
+    if attachment.content_type not in _IMAGE_CONTENT_TYPES:
+        logger.info("Skipping non-image attachment: %s (%s)", attachment.filename, attachment.content_type)
+        return None
+
+    data = await attachment.read()
+    if not data:
+        return None
+
+    now = datetime.now(timezone.utc)
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%Y-%m-%dT%H-%M-%S")
+
+    # Use the original filename for the slug, fall back to "photo"
+    name = attachment.filename or "photo"
+    slug = _slugify(os.path.splitext(name)[0][:50]) or "photo"
+
+    ext = _detect_image_ext(data[:12])
+
+    day_dir = os.path.join(MEMORIES_DIR, date_str)
+    os.makedirs(day_dir, exist_ok=True)
+
+    image_filename = f"{time_str}_{slug}{ext}"
+    image_path = os.path.join(day_dir, image_filename)
+    with open(image_path, "wb") as f:
+        f.write(data)
+
+    logger.info("Saved email attachment to %s (%d bytes)", image_path, len(data))
+    return image_path
+
+
 @router.post("/email")
-async def handle_email(
-    sender: str = Form(...),
-    recipient: str = Form(default=""),
-    subject: str = Form(default=""),
-    body_plain: str = Form(default="", alias="body-plain"),
-    body_html: str = Form(default="", alias="body-html"),
-    token: str = Form(...),
-    timestamp: str = Form(...),
-    signature: str = Form(...),
-):
+async def handle_email(request: Request):
     """Receive an inbound email from Mailgun.
 
     Routes to the processor with different intents based on recipient:
     - remember@... → intent="remember" (skip detection, save directly)
     - anything else → intent=None (HankProcessor detects via Claude)
+
+    Mailgun sends multipart/form-data with file uploads for attachments.
+    We parse the whole form to extract both fields and attached images.
     """
+    form = await request.form()
+
+    sender = form.get("sender", "")
+    recipient = form.get("recipient", "")
+    subject = form.get("subject", "")
+    body_plain = form.get("body-plain", "")
+    body_html = form.get("body-html", "")
+    token = form.get("token", "")
+    timestamp = form.get("timestamp", "")
+    signature = form.get("signature", "")
+
+    if not sender or not token or not timestamp or not signature:
+        raise HTTPException(status_code=400, detail="Missing required fields")
+
     # Verify the request is actually from Mailgun
     try:
         sig_valid = _verify_mailgun_signature(token, timestamp, signature)
@@ -172,15 +235,47 @@ async def handle_email(
         logger.warning("Blocked email from %s (not in ALLOWED_EMAIL_SENDERS)", sender)
         return {"status": "blocked"}
 
+    # Extract image attachments from the form
+    # Mailgun sends attachments as file fields named "attachment-1", "attachment-2", etc.
+    image_path = None
+    for key in form:
+        value = form[key]
+        if isinstance(value, UploadFile):
+            saved = await _save_email_attachment(value)
+            if saved:
+                image_path = saved
+                break  # use the first image attachment
+
     # Strip quoted reply text
     text = _strip_reply_quotes(body_plain)
-    if not text:
-        logger.info("Empty email body, skipping")
+    if not text and not image_path:
+        logger.info("Empty email body and no image, skipping")
         return {"status": "skipped"}
 
     # Determine routing based on recipient address and message content
     local_part = _extract_recipient_local(recipient)
     chat_id = _email_chat_id(sender)
+
+    # If we have an image attachment, save it as a memory (same as Telegram photos)
+    if image_path:
+        logger.info("Email has image attachment — saving as memory")
+        caption = text or subject or "Photo"
+        image_filename = os.path.basename(image_path)
+        content = f"# {caption}\n\n![{caption}]({image_filename})"
+        meta = MemoryMetadata(
+            medium="email" if local_part != "remember" else "email-remember",
+            source=sender,
+            content_type="image",
+            image_path=image_path,
+        )
+        response = await _processor.process(chat_id, content, intent="remember", metadata=meta)
+        reply, is_html = render_response(response, "email")
+        reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
+        from_addr = None
+        if local_part == "remember":
+            from_addr = f"Hank <remember@{os.environ['MAILGUN_DOMAIN']}>"
+        await _send_reply(sender, reply_subject, reply, from_addr=from_addr, html=is_html)
+        return {"status": "ok"}
 
     # Check if the first line is a slash command (e.g. "/echo hello")
     first_line = text.split("\n")[0].strip()
