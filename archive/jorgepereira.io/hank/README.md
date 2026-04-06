@@ -173,12 +173,12 @@ Tell Hank to remember something — via Telegram or email — and he saves it as
 - If "chat": normal conversation
 - The `remember@` shortcut skips intent detection entirely — everything sent to that address gets saved
 
-**Storage:** Memories are markdown files with YAML frontmatter (Obsidian-style) in `data/memories/YYYY-MM-DD/`. Stored in a Docker volume (`hank_memories`) so they persist across container rebuilds. URL memories are post-processed to fetch the page title.
+**Storage:** Memories are markdown files with YAML frontmatter (Obsidian-style) in `data/{identity}/memories/YYYY-MM-DD/`. Stored in a Docker volume (`hank_data`) so they persist across container rebuilds. URL memories are post-processed to fetch the page title. Each user's memories are isolated by identity (see [Identities](#identities) below).
 
 ```bash
 # Browse saved memories on the VPS
-docker-compose exec hank ls data/memories/
-docker-compose exec hank cat data/memories/2026-04-05/2026-04-05T21-33-02_wifi-password.md
+docker-compose exec hank ls data/jorge/memories/
+docker-compose exec hank cat data/jorge/memories/2026-04-05/2026-04-05T21-33-02_wifi-password.md
 ```
 
 ### Downloading memories
@@ -193,48 +193,100 @@ docker cp $(docker ps -q --filter name=hank):/app/data/memories /tmp/memories
 scp -r jorge@<your-vps-ip>:/tmp/memories ./memories
 ```
 
+## Identities
+
+Hank supports multiple users. Each user is an **identity** with their own isolated memories, conversation history, and web UI access. Identities are defined in `identities.json`.
+
+### Adding a new user
+
+1. **Edit `hank/identities.json`** (gitignored — your real config):
+
+   ```json
+   [
+     {
+       "id": "jorge",
+       "name": "Jorge",
+       "telegram_ids": [123456789],
+       "emails": ["jorge@gmail.com"]
+     },
+     {
+       "id": "alex",
+       "name": "Alex",
+       "telegram_ids": [987654321],
+       "emails": ["alex@example.com"]
+     }
+   ]
+   ```
+
+   Each identity needs:
+   - `id` — unique slug, used as the data directory name (`data/jorge/memories/`)
+   - `name` — display name (for logs)
+   - `telegram_ids` — list of Telegram user IDs (find yours in the bot logs: `Message from Jorge (id=123456789)`)
+   - `emails` — list of email addresses (used for email access and web UI OAuth)
+
+2. **Rebuild and deploy:**
+
+   ```bash
+   docker-compose up -d --build
+   ```
+
+   On first boot, the Dockerfile copies `identities.json` into the data volume. To force an update (if the file already exists in the volume):
+
+   ```bash
+   docker-compose exec hank cp identities.json data/identities.json
+   docker-compose restart hank hank-web
+   ```
+
+3. **That's it.** The new user can now message the Telegram bot, email Hank, and log in to the web UI. Their data is fully isolated.
+
+See `identities.json.example` for the format reference.
+
+### How identity resolution works
+
+| Channel  | Lookup key | What happens if not found |
+|----------|-----------|---------------------------|
+| Telegram | User ID from the message | Message silently blocked |
+| Email    | Sender email address | Email silently blocked |
+| Web UI   | Email from Google OAuth | Login denied (403) |
+
+The identity registry replaces the old `ALLOWED_USER_IDS`, `ALLOWED_EMAIL_SENDERS`, and `ALLOWED_EMAIL` env vars — those are no longer used.
+
+### Data isolation
+
+Each identity gets its own directory under `data/`:
+
+```
+data/
+├── identities.json
+├── jorge/
+│   └── memories/
+│       ├── 2026-04-05/
+│       │   └── ...
+│       └── index.json
+└── alex/
+    └── memories/
+        └── ...
+```
+
+Memories, search indexes, and conversation history are all scoped per identity. Users cannot see each other's data.
+
 ## Security
 
 ### Telegram
 
 **Layer 1 — Webhook secret** (`TELEGRAM_WEBHOOK_SECRET`): Verifies that incoming HTTP requests to `/telegram` actually come from Telegram. Without this, anyone who knows the URL could send fake message payloads. Telegram includes this secret in a header with every request, and the bot rejects anything that doesn't match.
 
-**Layer 2 — User allowlist** (`ALLOWED_USER_IDS`): Controls who can chat with the bot. Even with a valid webhook secret, anyone who finds your bot on Telegram can message it. The allowlist restricts it to specific Telegram accounts.
+**Layer 2 — Identity registry**: Controls who can chat with the bot. Only Telegram users whose ID appears in `identities.json` can interact with Hank. Unknown users are silently ignored.
 
 ### Email
 
 **Mailgun signature verification**: Every inbound email webhook includes a cryptographic signature. The bot verifies it using HMAC-SHA256 with the Mailgun API key, rejecting forged requests. This prevents anyone from POSTing fake emails to the `/email` endpoint.
 
-**Sender allowlist** (`ALLOWED_EMAIL_SENDERS`): Comma-separated list of email addresses allowed to email Hank. If empty or not set, anyone can email. Blocked senders are silently ignored with a warning in the logs.
-```
-ALLOWED_EMAIL_SENDERS=you@gmail.com,friend@example.com
-```
+**Identity registry**: Only email addresses listed in `identities.json` are accepted. Emails from unknown senders are silently blocked.
 
-### Configuring allowed users
+### Web UI
 
-1. **Find your Telegram user ID** — message the bot and check the logs:
-   ```bash
-   docker-compose logs -f hank
-   ```
-   You'll see: `Message from Jorge (id=123456789)` — that number is your ID.
-
-2. **Add it to your env file** — set `ALLOWED_USER_IDS` as a comma-separated list:
-   ```
-   ALLOWED_USER_IDS=123456789
-   ```
-   To allow multiple users:
-   ```
-   ALLOWED_USER_IDS=123456789,987654321
-   ```
-
-3. **Restart the bot** to apply:
-   ```bash
-   docker-compose up -d --build hank
-   ```
-
-If `ALLOWED_USER_IDS` is empty or not set, the bot accepts messages from anyone.
-
-Blocked users are silently ignored — the bot logs a warning but doesn't reply.
+**Google OAuth + identity registry**: Users must authenticate via Google and their email must match an identity in `identities.json`. Each authenticated user only sees their own memories.
 
 ## Setting Up Google OAuth (Web UI)
 
@@ -273,9 +325,10 @@ Set:
 ```
 GOOGLE_CLIENT_ID=<your-client-id>.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=<your-client-secret>
-ALLOWED_EMAIL=jorgeper@gmail.com
 SESSION_SECRET=<run: openssl rand -hex 32>
 ```
+
+Access is controlled by `identities.json` (see [Identities](#identities)) — only users whose email matches an identity can log in.
 
 ### 4. Deploy
 
