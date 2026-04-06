@@ -52,14 +52,19 @@ def load_registry(path: str | None = None) -> IdentityRegistry:
     if path is None:
         path = os.environ.get("IDENTITIES_FILE", "data/identities.json")
 
+    abs_path = os.path.abspath(path)
+    logger.info("Loading identities from %s (abs: %s, exists: %s)", path, abs_path, os.path.exists(path))
+
     try:
         with open(path) as f:
-            raw = json.load(f)
+            raw_text = f.read()
+        logger.info("Raw identities file content (%d bytes): %s", len(raw_text), raw_text[:500])
+        raw = json.loads(raw_text)
     except FileNotFoundError:
-        logger.warning("Identities file not found: %s — all lookups will return None", path)
+        logger.warning("Identities file not found: %s — all lookups will return None", abs_path)
         return IdentityRegistry()
-    except json.JSONDecodeError:
-        logger.warning("Identities file is not valid JSON: %s", path)
+    except json.JSONDecodeError as e:
+        logger.warning("Identities file is not valid JSON: %s — %s", abs_path, e)
         return IdentityRegistry()
 
     identities = [
@@ -71,4 +76,11 @@ def load_registry(path: str | None = None) -> IdentityRegistry:
         )
         for entry in raw
     ]
-    return IdentityRegistry(identities)
+
+    registry = IdentityRegistry(identities)
+    for ident in identities:
+        logger.info("  Identity: id=%s name=%s telegram_ids=%s emails=%s memories_dir=%s",
+                     ident.id, ident.name, ident.telegram_ids, ident.emails, ident.memories_dir)
+    logger.info("Loaded %d identities, %d telegram mappings, %d email mappings",
+                len(identities), len(registry._by_telegram_id), len(registry._by_email))
+    return registry

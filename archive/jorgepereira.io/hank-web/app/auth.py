@@ -45,15 +45,24 @@ oauth.register(
 def _load_identities() -> dict:
     """Load identities and build email→identity lookup."""
     path = os.getenv("IDENTITIES_FILE", "data/identities.json")
+    abs_path = os.path.abspath(path)
+    logger.info("Loading identities from %s (abs: %s, exists: %s)", path, abs_path, os.path.exists(path))
     try:
         with open(path) as f:
-            entries = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+            raw = f.read()
+        logger.info("Raw identities (%d bytes): %s", len(raw), raw[:500])
+        entries = json.loads(raw)
+    except FileNotFoundError:
+        logger.warning("Identities file not found: %s", abs_path)
+        return {}
+    except json.JSONDecodeError as e:
+        logger.warning("Identities file not valid JSON: %s — %s", abs_path, e)
         return {}
     lookup = {}
     for entry in entries:
         for email in entry.get("emails", []):
             lookup[email.lower()] = entry
+    logger.info("Loaded %d identities, email lookup: %s", len(entries), list(lookup.keys()))
     return lookup
 
 
