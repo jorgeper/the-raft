@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, FileResponse
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.auth import router as auth_router, get_current_user
 from app.api import router as api_router
@@ -62,7 +63,9 @@ async def app_page(request: Request):
 
 def main() -> None:
     port = int(os.getenv("PORT", "8001"))
-    uvicorn.run(server, host="0.0.0.0", port=port)
+    # proxy_headers=True tells uvicorn to trust X-Forwarded-Proto from Caddy
+    # so redirect URIs use https:// instead of http://
+    uvicorn.run(server, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*")
 
 
 if __name__ == "__main__":
