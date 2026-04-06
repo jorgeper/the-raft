@@ -197,57 +197,76 @@ scp -r jorge@<your-vps-ip>:/tmp/memories ./memories
 
 Hank supports multiple users. Each user is an **identity** with their own isolated memories, conversation history, and web UI access. Identities are defined in `identities.json`.
 
-### Adding a new user
+### Identity format
 
-1. **Edit `hank/identities.json`** (gitignored — your real config):
+Edit `hank/identities.json` (gitignored — your real config):
 
-   ```json
-   [
-     {
-       "id": "jorge",
-       "name": "Jorge",
-       "telegram_ids": [123456789],
-       "emails": ["jorge@gmail.com"]
-     },
-     {
-       "id": "alex",
-       "name": "Alex",
-       "telegram_ids": [987654321],
-       "emails": ["alex@example.com"]
-     }
-   ]
-   ```
+```json
+[
+  {
+    "id": "jorge",
+    "name": "Jorge",
+    "telegram_ids": [123456789],
+    "emails": ["jorge@gmail.com"]
+  },
+  {
+    "id": "alex",
+    "name": "Alex",
+    "telegram_ids": [987654321],
+    "emails": ["alex@example.com"]
+  }
+]
+```
 
-   Each identity needs:
-   - `id` — unique slug, used as the data directory name (`data/jorge/memories/`)
-   - `name` — display name (for logs)
-   - `telegram_ids` — list of Telegram user IDs (find yours in the bot logs: `Message from Jorge (id=123456789)`)
-   - `emails` — list of email addresses (used for email access and web UI OAuth)
+Each identity needs:
+- `id` — unique slug, used as the data directory name (`data/jorge/memories/`)
+- `name` — display name (for logs)
+- `telegram_ids` — list of Telegram user IDs (find yours in the bot logs: `Message from Jorge (id=123456789)`)
+- `emails` — list of email addresses (used for email access and web UI OAuth)
 
-2. **Deploy to server:**
+See `identities.json.example` for a full example.
 
-   ```bash
-   # Pull latest code (includes your updated identities.json baked into the image)
-   git pull
-   docker-compose up -d --build
-   ```
+### First-time setup
 
-   On **first boot** (fresh volume), the Dockerfile auto-copies `identities.json` into the data volume. On subsequent deploys the file already exists, so you need to **push it manually**:
+On first boot with a fresh volume, the Dockerfile auto-copies `hank/identities.json` into the data volume:
+
+```bash
+docker-compose up -d --build
+```
+
+### Updating identities
+
+When you add, remove, or change a user:
+
+1. **Edit `hank/identities.json`** on the server (or locally and `scp`/`git pull` it)
+
+2. **Push the updated file into the running container** and restart:
 
    ```bash
    docker-compose exec hank cp identities.json data/identities.json
    docker-compose restart hank hank-web
    ```
 
-   **Verify it loaded correctly:**
+   The restart is needed because both hank and hank-web load identities at startup.
+
+3. **Verify it loaded correctly:**
+
    ```bash
    docker-compose logs hank 2>&1 | grep -i identit
    docker-compose logs hank-web 2>&1 | grep -i identit
    ```
 
-3. **That's it.** The new user can now message the Telegram bot, email Hank, and log in to the web UI. Their data is fully isolated.
+   You should see each identity listed with its Telegram IDs and emails.
 
-See `identities.json.example` for the format reference.
+### Finding a user's Telegram ID
+
+Have the user message the bot, then check the logs:
+
+```bash
+docker-compose logs -f hank
+```
+
+You'll see: `Incoming message from Jorge (id=123456789)` — that number is their Telegram user ID. Add it to `identities.json` and follow the update steps above.
 
 ### How identity resolution works
 
