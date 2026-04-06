@@ -12,7 +12,6 @@ import os
 from anthropic import AsyncAnthropic
 
 from app.actions.remember import MemoryMetadata
-from app.actions.post_processors.url import _add_frontmatter_field
 
 logger = logging.getLogger(__name__)
 
@@ -86,30 +85,16 @@ async def describe_image(filepath: str, metadata: MemoryMetadata) -> None:
         return
 
     response = message.content[0].text.strip()
-    logger.info("Vision response (full): %s", response)
+    logger.info("Vision response: %s", response[:300])
 
-    # Parse the structured response — handle both newline-separated and
-    # single-line responses from Claude.
-    # Look for "description:", "text:", "tags:" anywhere in the response.
-    import re
+    # Append the vision analysis to the markdown body (not frontmatter).
+    # Frontmatter can't handle multiline OCR text cleanly.
+    with open(filepath, "r") as f:
+        content = f.read()
 
-    desc_match = re.search(r'description:\s*(.+?)(?=\n\s*(?:text:|tags:)|$)', response, re.DOTALL)
-    text_match = re.search(r'text:\s*(.+?)(?=\n\s*(?:description:|tags:)|$)', response, re.DOTALL)
-    tags_match = re.search(r'tags:\s*(.+?)(?=\n\s*(?:description:|text:)|$)', response, re.DOTALL)
+    content += f"\n\n## AI Analysis\n\n{response}\n"
 
-    added = []
-    if desc_match:
-        desc = desc_match.group(1).strip()
-        _add_frontmatter_field(filepath, "description", desc)
-        added.append("description")
-    if text_match:
-        text = text_match.group(1).strip()
-        if text.lower() != "none":
-            _add_frontmatter_field(filepath, "ocr_text", text)
-            added.append("ocr_text")
-    if tags_match:
-        tags = tags_match.group(1).strip()
-        _add_frontmatter_field(filepath, "image_tags", tags)
-        added.append("image_tags")
+    with open(filepath, "w") as f:
+        f.write(content)
 
-    logger.info("Added vision metadata to %s: %s", filepath, added)
+    logger.info("Added vision analysis to %s", filepath)
