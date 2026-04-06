@@ -121,22 +121,18 @@ def _extract_title(filepath: str) -> str:
     return "(untitled)"
 
 
-def _find_last_memory() -> str | None:
-    """Find the most recent memory file across all date folders.
-
-    Returns the filepath or None if no memories exist.
-    """
-    if not os.path.isdir(MEMORIES_DIR):
+def _find_last_memory(mem_dir: str = MEMORIES_DIR) -> str | None:
+    """Find the most recent memory file across all date folders."""
+    if not os.path.isdir(mem_dir):
         return None
 
-    # Date folders are sorted alphabetically = chronologically
     day_dirs = sorted(
-        (d for d in os.listdir(MEMORIES_DIR) if os.path.isdir(os.path.join(MEMORIES_DIR, d))),
+        (d for d in os.listdir(mem_dir) if os.path.isdir(os.path.join(mem_dir, d))),
         reverse=True,
     )
 
     for day_dir in day_dirs:
-        full_dir = os.path.join(MEMORIES_DIR, day_dir)
+        full_dir = os.path.join(mem_dir, day_dir)
         files = sorted((f for f in os.listdir(full_dir) if f.endswith(".md")), reverse=True)
         if files:
             return os.path.join(full_dir, files[0])
@@ -169,9 +165,9 @@ def _render_last_memory(filepath: str, channel: str) -> str:
         return "\n".join(lines)
 
 
-def _wipe_date(date_str: str) -> tuple[int, str]:
+def _wipe_date(date_str: str, mem_dir: str = MEMORIES_DIR) -> tuple[int, str]:
     """Delete all memories for a specific date. Returns (count, message)."""
-    day_dir = os.path.join(MEMORIES_DIR, date_str)
+    day_dir = os.path.join(mem_dir, date_str)
     if not os.path.isdir(day_dir):
         return 0, f"No memories for {date_str}."
 
@@ -181,14 +177,14 @@ def _wipe_date(date_str: str) -> tuple[int, str]:
     return count, f"Deleted {count} {'memory' if count == 1 else 'memories'} for {date_str}."
 
 
-def _wipe_all() -> tuple[int, str]:
+def _wipe_all(mem_dir: str = MEMORIES_DIR) -> tuple[int, str]:
     """Delete ALL memories. Returns (count, message)."""
-    if not os.path.isdir(MEMORIES_DIR):
+    if not os.path.isdir(mem_dir):
         return 0, "No memories to delete."
 
     total = 0
-    for day_dir in os.listdir(MEMORIES_DIR):
-        full_dir = os.path.join(MEMORIES_DIR, day_dir)
+    for day_dir in os.listdir(mem_dir):
+        full_dir = os.path.join(mem_dir, day_dir)
         if os.path.isdir(full_dir):
             total += len([f for f in os.listdir(full_dir) if f.endswith(".md")])
             shutil.rmtree(full_dir)
@@ -196,20 +192,21 @@ def _wipe_all() -> tuple[int, str]:
     return total, f"Deleted all memories ({total} files)."
 
 
-async def memory_handler(args: str, chat_id: int, channel: str) -> Message:
+async def memory_handler(args: str, chat_id: int, channel: str, memories_dir: str | None = None) -> Message:
     """List, inspect, or wipe saved memories."""
+    mem_dir = memories_dir or MEMORIES_DIR
     parts = args.strip().lower().split()
 
     # /memory last
     if parts == ["last"]:
-        filepath = _find_last_memory()
+        filepath = _find_last_memory(mem_dir)
         if not filepath:
             return TextMessage("No memories saved yet.")
         return TextMessage(_render_last_memory(filepath, channel))
 
     # /memory wipe — delete ALL memories
     if parts == ["wipe"]:
-        _, msg = _wipe_all()
+        _, msg = _wipe_all(mem_dir)
         return TextMessage(msg)
 
     # /memory <date> wipe — delete memories for a specific date
@@ -217,7 +214,7 @@ async def memory_handler(args: str, chat_id: int, channel: str) -> Message:
         date_str = _parse_date(parts[0])
         if not date_str:
             return TextMessage(f"Invalid date: {parts[0]}")
-        _, msg = _wipe_date(date_str)
+        _, msg = _wipe_date(date_str, mem_dir)
         return TextMessage(msg)
 
     # /memory [today|yesterday|YYYY-MM-DD] — list memories for a date
@@ -225,7 +222,7 @@ async def memory_handler(args: str, chat_id: int, channel: str) -> Message:
     if not date_str:
         return TextMessage(f"Invalid date: {args}\n\nUsage: /memory [today|yesterday|YYYY-MM-DD|last|wipe]")
 
-    day_dir = os.path.join(MEMORIES_DIR, date_str)
+    day_dir = os.path.join(mem_dir, date_str)
 
     if not os.path.isdir(day_dir):
         return TextMessage(f"No memories for {date_str}.")

@@ -15,28 +15,36 @@ from telegram.ext import Application, MessageHandler, CommandHandler, filters, C
 
 from app.actions.remember import MemoryMetadata, MEMORIES_DIR, _slugify
 from app.commands import handle_command, COMMANDS
+from app.identity import Identity, IdentityRegistry
 from app.message import render_response
 from app.processor import Processor
 
 logger = logging.getLogger(__name__)
 
 
-def create_app(token: str, processor: Processor, allowed_users: set[int] | None = None) -> Application:
+def create_app(token: str, processor: Processor, registry: IdentityRegistry | None = None) -> Application:
     """Build a Telegram Application with command handlers and a message handler.
 
     Args:
         token: Telegram bot token from @BotFather.
         processor: The processor instance to handle regular messages.
-        allowed_users: Set of Telegram user IDs allowed to use the bot.
-                       If None, all users are allowed.
+        registry: Identity registry for resolving users. If None, all users allowed.
     """
 
+    def _resolve_identity(user) -> Identity | None:
+        """Resolve a Telegram user to an Identity. Returns None if not found/no registry."""
+        if not registry:
+            return None
+        identity = registry.resolve_telegram(user.id)
+        if not identity:
+            logger.warning("Blocked message from %s (id=%s) — no identity found", user.first_name, user.id)
+        return identity
+
     def _check_allowed(user) -> bool:
-        """Check if a user is in the allowlist."""
-        if allowed_users and user.id not in allowed_users:
-            logger.warning("Blocked message from %s (id=%s)", user.first_name, user.id)
-            return False
-        return True
+        """Check if a user has a registered identity (or if no registry, allow all)."""
+        if not registry:
+            return True
+        return registry.resolve_telegram(user.id) is not None
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle regular text messages — routed through the processor."""
@@ -46,14 +54,15 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
             return
 
         user = update.message.from_user
-        logger.info("Message from %s (id=%s): %s", user.first_name, user.id, update.message.text)
+        identity = _resolve_identity(user)
+        logger.info("Message from %s (id=%s, identity=%s): %s", user.first_name, user.id, identity.id if identity else "none", update.message.text)
 
         # Build metadata for potential memory saving
         meta = MemoryMetadata(
             medium="telegram",
             source=f"{user.first_name} (id={user.id})",
         )
-        response = await processor.process(update.message.chat_id, update.message.text, metadata=meta)
+        response = await processor.process(update.message.chat_id, update.message.text, metadata=meta, identity=identity)
 
         # Handle RecallResult — may need to send an image
         from app.actions.recall import RecallResult
@@ -80,9 +89,11 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
             return
 
         user = update.message.from_user
+        identity = _resolve_identity(user)
         logger.info("Command from %s (id=%s): %s", user.first_name, user.id, update.message.text)
 
-        response = await handle_command(update.message.text, update.message.chat_id, channel="telegram")
+        memories_dir = identity.memories_dir if identity else None
+        response = await handle_command(update.message.text, update.message.chat_id, channel="telegram", memories_dir=memories_dir)
         reply, _ = render_response(response, "telegram")
         logger.info("Command reply to %s: %s", user.first_name, reply[:100])
         await update.message.reply_text(reply)
@@ -100,20 +111,22 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
             return
 
         user = update.message.from_user
+        identity = _resolve_identity(user)
         caption = update.message.caption or ""
-        logger.info("Photo from %s (id=%s), caption: %s", user.first_name, user.id, caption[:100])
+        logger.info("Photo from %s (id=%s, identity=%s), caption: %s", user.first_name, user.id, identity.id if identity else "none", caption[:100])
 
         # Telegram provides multiple sizes — grab the largest
         photo = update.message.photo[-1]
         file = await context.bot.get_file(photo.file_id)
 
-        # Save the image to the memories directory
+        # Save the image to the identity-scoped memories directory
+        target_memories = identity.memories_dir if identity else MEMORIES_DIR
         now = datetime.now(timezone.utc)
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%Y-%m-%dT%H-%M-%S")
         slug = _slugify(caption[:50]) if caption else "photo"
 
-        day_dir = os.path.join(MEMORIES_DIR, date_str)
+        day_dir = os.path.join(target_memories, date_str)
         os.makedirs(day_dir, exist_ok=True)
 
         # Download to a temp path first to detect the actual format
@@ -150,7 +163,7 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
         )
 
         from app.actions.remember import save_memory
-        response = await save_memory(content, metadata=meta)
+        response = await save_memory(content, metadata=meta, memories_dir=target_memories)
         reply, _ = render_response(response, "telegram")
         logger.info("Photo reply to %s: %s", user.first_name, reply[:100])
         await update.message.reply_text(reply)

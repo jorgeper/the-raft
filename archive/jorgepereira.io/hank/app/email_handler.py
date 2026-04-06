@@ -20,6 +20,7 @@ import httpx
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 
 from app.actions.remember import MemoryMetadata, MEMORIES_DIR, _slugify
+from app.identity import IdentityRegistry
 from app.message import render_response
 from app.processor import Processor
 
@@ -27,15 +28,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# The processor instance, set by main.py during startup.
-# Same instance handles all emails — routing is done via the intent parameter.
+# The processor and registry instances, set by main.py during startup.
 _processor: Processor | None = None
+_registry: IdentityRegistry | None = None
 
 
 def set_processor(processor: Processor) -> None:
     """Inject the processor instance. Called once during app startup."""
     global _processor
     _processor = processor
+
+
+def set_registry(registry: IdentityRegistry | None) -> None:
+    """Inject the identity registry. Called once during app startup."""
+    global _registry
+    _registry = registry
 
 
 def _email_chat_id(email: str) -> int:
@@ -157,7 +164,7 @@ def _detect_image_ext(header: bytes) -> str:
     return ".jpg"
 
 
-async def _save_image_data(data: bytes, name: str = "photo") -> str | None:
+async def _save_image_data(data: bytes, name: str = "photo", memories_dir: str | None = None) -> str | None:
     """Save raw image bytes to the memories directory.
 
     Returns the file path on disk, or None if the data is empty.
@@ -165,6 +172,7 @@ async def _save_image_data(data: bytes, name: str = "photo") -> str | None:
     if not data or len(data) < 100:
         return None
 
+    target_dir = memories_dir or MEMORIES_DIR
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%Y-%m-%dT%H-%M-%S")
@@ -172,7 +180,7 @@ async def _save_image_data(data: bytes, name: str = "photo") -> str | None:
     slug = _slugify(os.path.splitext(name)[0][:50]) or "photo"
     ext = _detect_image_ext(data[:12])
 
-    day_dir = os.path.join(MEMORIES_DIR, date_str)
+    day_dir = os.path.join(target_dir, date_str)
     os.makedirs(day_dir, exist_ok=True)
 
     image_filename = f"{time_str}_{slug}{ext}"
@@ -184,7 +192,7 @@ async def _save_image_data(data: bytes, name: str = "photo") -> str | None:
     return image_path
 
 
-async def _save_email_attachment(attachment: UploadFile) -> str | None:
+async def _save_email_attachment(attachment: UploadFile, memories_dir: str | None = None) -> str | None:
     """Save an UploadFile image attachment (forward() mode).
 
     Returns the file path on disk, or None if not an image.
@@ -194,10 +202,10 @@ async def _save_email_attachment(attachment: UploadFile) -> str | None:
         return None
 
     data = await attachment.read()
-    return await _save_image_data(data, attachment.filename or "photo")
+    return await _save_image_data(data, attachment.filename or "photo", memories_dir=memories_dir)
 
 
-async def _download_stored_attachment(attachment_json: str) -> str | None:
+async def _download_stored_attachment(attachment_json: str, memories_dir: str | None = None) -> str | None:
     """Download an image from a Mailgun store() URL.
 
     When Mailgun uses store() + notify, attachments arrive as JSON objects
@@ -251,7 +259,7 @@ async def _download_stored_attachment(attachment_json: str) -> str | None:
             logger.info("Downloaded data doesn't look like an image (%d bytes, header: %r)", len(data), data[:8])
             return None
 
-    return await _save_image_data(data, name)
+    return await _save_image_data(data, name, memories_dir=memories_dir)
 
 
 @router.post("/email")
@@ -299,17 +307,18 @@ async def handle_email(request: Request):
         else:
             logger.info("Form field %r: str (%d chars)", key, len(str(value)))
 
-    # Check sender allowlist
-    allowed_senders_str = os.getenv("ALLOWED_EMAIL_SENDERS", "")
-    allowed_senders = {s.strip().lower() for s in allowed_senders_str.split(",") if s.strip()}
-    if allowed_senders and sender.lower() not in allowed_senders:
-        logger.warning("Blocked email from %s (not in ALLOWED_EMAIL_SENDERS)", sender)
+    # Resolve sender to an identity
+    identity = _registry.resolve_email(sender) if _registry else None
+    if _registry and not identity:
+        logger.warning("Blocked email from %s (no identity found)", sender)
         return {"status": "blocked"}
+    logger.info("Email identity: %s", identity.id if identity else "none")
 
     # Extract image attachments from the form.
     # Two modes depending on Mailgun route action:
     #   forward() → attachments arrive as UploadFile objects
     #   store()+notify → attachments arrive as JSON strings with download URLs
+    identity_memories = identity.memories_dir if identity else None
     image_path = None
     attachment_count = int(form.get("attachment-count", "0") or "0")
 
@@ -322,11 +331,11 @@ async def handle_email(request: Request):
             if hasattr(value, 'read') and hasattr(value, 'content_type'):
                 # File upload (forward() mode or multipart file field)
                 logger.info("Attachment %s is a file: filename=%s, content_type=%s", key, getattr(value, 'filename', '?'), value.content_type)
-                saved = await _save_email_attachment(value)
+                saved = await _save_email_attachment(value, memories_dir=identity_memories)
             else:
                 # store()+notify mode — JSON string with URL
                 logger.info("Attachment %s is a string (%d chars): %s", key, len(str(value)), str(value)[:200])
-                saved = await _download_stored_attachment(str(value))
+                saved = await _download_stored_attachment(str(value), memories_dir=identity_memories)
             if saved:
                 image_path = saved
                 break  # use the first image attachment
@@ -349,7 +358,7 @@ async def handle_email(request: Request):
     if first_line.startswith("/"):
         from app.commands import handle_command
         logger.info("Email contains slash command: %s", first_line)
-        response = await handle_command(first_line, chat_id, channel="email")
+        response = await handle_command(first_line, chat_id, channel="email", memories_dir=identity_memories)
         reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         await _send_reply(sender, reply_subject, reply, html=is_html)
@@ -371,7 +380,7 @@ async def handle_email(request: Request):
             content = md_text
             meta = MemoryMetadata(medium="email-remember", source=sender)
             meta.html_content = html_content
-        response = await _processor.process(chat_id, content, intent="remember", metadata=meta)
+        response = await _processor.process(chat_id, content, intent="remember", metadata=meta, identity=identity)
         reply, is_html = render_response(response, "email")
         reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
         from_addr = None
@@ -387,7 +396,7 @@ async def handle_email(request: Request):
             meta.image_path = image_path
         md_text, html_content = await _format_email_for_storage(sender, subject, text, body_html)
         meta.html_content = html_content
-        response = await _processor.process(chat_id, md_text, metadata=meta)
+        response = await _processor.process(chat_id, md_text, metadata=meta, identity=identity)
 
         # Handle RecallResult — may need to attach an image
         from app.actions.recall import RecallResult

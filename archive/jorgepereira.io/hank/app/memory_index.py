@@ -142,29 +142,31 @@ def build_entry(filepath: str) -> IndexEntry:
     )
 
 
-def load_index() -> list[dict]:
+def load_index(memories_dir: str | None = None) -> list[dict]:
     """Load the index from disk. Returns empty list if not found."""
-    if not os.path.exists(INDEX_PATH):
+    path = os.path.join(memories_dir, "index.json") if memories_dir else INDEX_PATH
+    if not os.path.exists(path):
         return []
     try:
-        with open(INDEX_PATH, "r") as f:
+        with open(path, "r") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
-        logger.warning("Failed to load index, returning empty")
+        logger.warning("Failed to load index from %s, returning empty", path)
         return []
 
 
-def save_index(entries: list[dict]) -> None:
+def save_index(entries: list[dict], memories_dir: str | None = None) -> None:
     """Write the index to disk."""
-    os.makedirs(os.path.dirname(INDEX_PATH), exist_ok=True)
-    with open(INDEX_PATH, "w") as f:
+    path = os.path.join(memories_dir, "index.json") if memories_dir else INDEX_PATH
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
         json.dump(entries, f, indent=2)
-    logger.info("Saved index with %d entries to %s", len(entries), INDEX_PATH)
+    logger.info("Saved index with %d entries to %s", len(entries), path)
 
 
-def add_to_index(filepath: str) -> None:
+def add_to_index(filepath: str, memories_dir: str | None = None) -> None:
     """Add or update a single entry in the index."""
-    entries = load_index()
+    entries = load_index(memories_dir=memories_dir)
 
     # Remove existing entry for this file if present
     entries = [e for e in entries if e.get("filepath") != filepath]
@@ -173,28 +175,31 @@ def add_to_index(filepath: str) -> None:
     entry = build_entry(filepath)
     entries.append(asdict(entry))
 
-    save_index(entries)
+    save_index(entries, memories_dir=memories_dir)
     logger.info("Indexed %s", filepath)
 
 
-def rebuild_index(date_filter: str | None = None) -> int:
+def rebuild_index(date_filter: str | None = None, memories_dir: str | None = None) -> int:
     """Rebuild the index by scanning memory files.
 
     Args:
         date_filter: If set, only reindex this date (YYYY-MM-DD).
                      If None, reindex everything.
+        memories_dir: Override for the memories directory (identity-scoped).
 
     Returns:
         Number of entries indexed.
     """
-    if not os.path.isdir(MEMORIES_DIR):
-        save_index([])
+    target_dir = memories_dir or MEMORIES_DIR
+
+    if not os.path.isdir(target_dir):
+        save_index([], memories_dir=memories_dir)
         return 0
 
     if date_filter:
         # Reindex a specific date — keep other dates, replace this one
-        entries = [e for e in load_index() if e.get("date") != date_filter]
-        day_dir = os.path.join(MEMORIES_DIR, date_filter)
+        entries = [e for e in load_index(memories_dir=memories_dir) if e.get("date") != date_filter]
+        day_dir = os.path.join(target_dir, date_filter)
         if os.path.isdir(day_dir):
             for filename in sorted(os.listdir(day_dir)):
                 if filename.endswith(".md"):
@@ -203,8 +208,8 @@ def rebuild_index(date_filter: str | None = None) -> int:
     else:
         # Full reindex
         entries = []
-        for day_dir_name in sorted(os.listdir(MEMORIES_DIR)):
-            day_dir = os.path.join(MEMORIES_DIR, day_dir_name)
+        for day_dir_name in sorted(os.listdir(target_dir)):
+            day_dir = os.path.join(target_dir, day_dir_name)
             if not os.path.isdir(day_dir) or day_dir_name == "index.json":
                 continue
             for filename in sorted(os.listdir(day_dir)):
@@ -212,5 +217,5 @@ def rebuild_index(date_filter: str | None = None) -> int:
                     filepath = os.path.join(day_dir, filename)
                     entries.append(asdict(build_entry(filepath)))
 
-    save_index(entries)
+    save_index(entries, memories_dir=memories_dir)
     return len(entries)

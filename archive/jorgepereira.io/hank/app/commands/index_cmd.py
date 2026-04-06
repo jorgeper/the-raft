@@ -29,14 +29,14 @@ def _parse_date(args: str) -> str | None:
             return ""  # invalid
 
 
-async def index_handler(args: str, chat_id: int, channel: str) -> str:
+async def index_handler(args: str, chat_id: int, channel: str, memories_dir: str | None = None) -> str:
     """Rebuild the memory index."""
     date_filter = _parse_date(args)
 
     if date_filter == "":
         return f"Invalid date: {args}\n\nUsage: /index [today|yesterday|YYYY-MM-DD]"
 
-    count = rebuild_index(date_filter=date_filter)
+    count = rebuild_index(date_filter=date_filter, memories_dir=memories_dir)
 
     if date_filter:
         return f"Reindexed {count} memories for {date_filter}."

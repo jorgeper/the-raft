@@ -1,16 +1,17 @@
 """Google OAuth authentication.
 
-Uses Google OAuth2 to authenticate users. Only the email address
-specified in ALLOWED_EMAIL env var is permitted access.
+Uses Google OAuth2 to authenticate users. Only users with an identity
+in identities.json are permitted access (resolved by email).
 
 Flow:
 1. User visits /login → redirected to Google
 2. Google redirects back to /auth/callback with a code
-3. We exchange the code for tokens, verify the email
-4. Set a signed session cookie
+3. We exchange the code for tokens, verify the email against identity registry
+4. Set a signed session cookie with the identity ID
 5. All /api/* and /app routes check the cookie
 """
 
+import json
 import os
 import logging
 
@@ -41,23 +42,50 @@ oauth.register(
 )
 
 
-def get_current_user(request: Request) -> str | None:
-    """Extract the authenticated email from the session cookie."""
+def _load_identities() -> dict:
+    """Load identities and build email→identity lookup."""
+    path = os.getenv("IDENTITIES_FILE", "data/identities.json")
+    try:
+        with open(path) as f:
+            entries = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    lookup = {}
+    for entry in entries:
+        for email in entry.get("emails", []):
+            lookup[email.lower()] = entry
+    return lookup
+
+
+def get_current_user(request: Request) -> dict | None:
+    """Extract the authenticated identity from the session cookie.
+
+    Returns a dict with 'id' and 'email' keys, or None.
+    """
     cookie = request.cookies.get(COOKIE_NAME)
     if not cookie:
         return None
     try:
-        return _serializer.loads(cookie, max_age=SESSION_MAX_AGE)
+        data = _serializer.loads(cookie, max_age=SESSION_MAX_AGE)
+        # New format: JSON string with identity info
+        if isinstance(data, str) and data.startswith("{"):
+            return json.loads(data)
+        # Legacy format: plain email string — try to resolve
+        identities = _load_identities()
+        identity = identities.get(data.lower())
+        if identity:
+            return {"id": identity["id"], "email": data}
+        return None
     except Exception:
         return None
 
 
-def require_auth(request: Request) -> str:
-    """Require authentication. Returns the email or raises 401."""
-    email = get_current_user(request)
-    if not email:
+def require_auth(request: Request) -> dict:
+    """Require authentication. Returns identity dict or raises 401."""
+    user = get_current_user(request)
+    if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return email
+    return user
 
 
 @router.get("/login")
@@ -78,16 +106,18 @@ async def auth_callback(request: Request):
         raise HTTPException(status_code=403, detail="Could not get email from Google")
 
     email = user_info["email"].lower()
-    allowed_email = os.getenv("ALLOWED_EMAIL", "").lower()
 
-    if allowed_email and email != allowed_email:
-        logger.warning("OAuth: blocked login from %s (allowed: %s)", email, allowed_email)
+    # Verify against identity registry
+    identities = _load_identities()
+    identity = identities.get(email)
+    if not identity:
+        logger.warning("OAuth: blocked login from %s (no identity found)", email)
         raise HTTPException(status_code=403, detail=f"Access denied for {email}")
 
-    logger.info("OAuth: logged in as %s", email)
+    logger.info("OAuth: logged in as %s (identity=%s)", email, identity["id"])
 
     response = RedirectResponse(url="/app")
-    cookie_value = _serializer.dumps(email)
+    cookie_value = _serializer.dumps(json.dumps({"id": identity["id"], "email": email}))
     response.set_cookie(
         COOKIE_NAME,
         cookie_value,

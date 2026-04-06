@@ -62,18 +62,19 @@ class RecallResult:
     image_file: str | None = None    # path to image (if the memory is an image)
 
 
-async def recall(chat_id: int, text: str, conversation_history: list[dict] | None = None) -> RecallResult:
+async def recall(chat_id: int, text: str, conversation_history: list[dict] | None = None, memories_dir: str | None = None) -> RecallResult:
     """Search memories by sending the full index to Claude.
 
     Args:
         chat_id: The conversation ID.
         text: The user's recall query.
         conversation_history: Previous messages for disambiguation context.
+        memories_dir: Override for the memories directory (identity-scoped).
 
     Returns:
         RecallResult with the match(es) and a reply.
     """
-    index = load_index()
+    index = load_index(memories_dir=memories_dir)
 
     if not index:
         return RecallResult(

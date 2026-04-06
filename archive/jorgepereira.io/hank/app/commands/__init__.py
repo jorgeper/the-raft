@@ -38,13 +38,14 @@ def is_command(text: str) -> bool:
     return text.strip().startswith("/")
 
 
-async def handle_command(text: str, chat_id: int, channel: str = "telegram") -> str | Message:
+async def handle_command(text: str, chat_id: int, channel: str = "telegram", memories_dir: str | None = None) -> str | Message:
     """Parse and execute a slash command.
 
     Args:
         text: The full message text starting with /
         chat_id: The chat/conversation ID
         channel: "telegram" or "email" — passed to the handler for rendering
+        memories_dir: Identity-scoped memories directory (passed to memory/index commands).
 
     Returns:
         The command's response — either a plain string or a Message object.
@@ -62,7 +63,7 @@ async def handle_command(text: str, chat_id: int, channel: str = "telegram") -> 
     handler_entry = COMMANDS.get(command)
     if handler_entry:
         handler, _ = handler_entry
-        return await handler(args, chat_id, channel)
+        return await handler(args, chat_id, channel, memories_dir=memories_dir)
 
     # Unknown command — list available ones
     available = "\n".join(f"  {desc}" for _, (_, desc) in COMMANDS.items())

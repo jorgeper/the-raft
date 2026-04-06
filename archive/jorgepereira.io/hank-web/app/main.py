@@ -56,7 +56,8 @@ async def health():
 @server.get("/app")
 async def app_page(request: Request):
     """Serve the memories browser. Requires authentication."""
-    if not get_current_user(request):
+    user = get_current_user(request)
+    if not user:
         return RedirectResponse(url="/login")
     return FileResponse(STATIC_DIR / "app.html")
 

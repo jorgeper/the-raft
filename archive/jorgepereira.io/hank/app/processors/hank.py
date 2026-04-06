@@ -19,6 +19,7 @@ import logging
 from app.actions.chat import ChatAction
 from app.actions.recall import recall, RecallResult
 from app.actions.remember import MemoryMetadata, save_memory
+from app.identity import Identity
 from app.intent import resolve_intent
 from app.processor import Processor
 
@@ -72,7 +73,7 @@ class HankProcessor(Processor):
         # Track chats that are in disambiguation mode.
         # If a recall returns "disambiguate", the next message from this
         # chat_id goes straight back to recall instead of fresh intent detection.
-        self._pending_recall: set[int] = set()
+        self._pending_recall: set = set()
 
     async def process(
         self,
@@ -80,48 +81,55 @@ class HankProcessor(Processor):
         text: str,
         intent: str | None = None,
         metadata: MemoryMetadata | None = None,
+        identity: Identity | None = None,
     ) -> str | RecallResult:
         """Process a message by resolving intent and routing to the right action."""
 
+        # Scope chat history key by identity to isolate conversations
+        history_key = (identity.id, chat_id) if identity else ("_default", chat_id)
+
+        # Determine identity-scoped memories directory
+        memories_dir = identity.memories_dir if identity else None
+
         # Check if this chat is in disambiguation mode (previous recall had multiple matches).
         # Continue recall UNLESS the user is clearly starting something new.
-        if chat_id in self._pending_recall and intent is None:
+        if history_key in self._pending_recall and intent is None:
             # Check if this looks like a new intent (not a disambiguation reply)
             if _is_new_intent(text):
                 logger.info("Breaking out of recall disambiguation — new intent detected")
-                self._pending_recall.discard(chat_id)
+                self._pending_recall.discard(history_key)
             else:
-                logger.info("Continuing recall disambiguation for chat_id=%s", chat_id)
+                logger.info("Continuing recall disambiguation for %s", history_key)
                 intent = "recall"
 
         if intent is None:
             intent = await resolve_intent(text, explicit_intent=None)
 
         if intent == "remember":
-            self._pending_recall.discard(chat_id)
-            return await save_memory(text, metadata=metadata)
+            self._pending_recall.discard(history_key)
+            return await save_memory(text, metadata=metadata, memories_dir=memories_dir)
 
         if intent == "recall":
             # Get conversation history for disambiguation context
-            history = self._chat._get_messages(chat_id)
-            result = await recall(chat_id, text, conversation_history=history or None)
+            history = self._chat._get_messages(history_key)
+            result = await recall(chat_id, text, conversation_history=history or None, memories_dir=memories_dir)
 
             # Store the recall exchange in chat history for follow-up context
-            self._chat._append(chat_id, "user", text)
-            self._chat._append(chat_id, "assistant", result.reply)
+            self._chat._append(history_key, "user", text)
+            self._chat._append(history_key, "assistant", result.reply)
 
             # If still disambiguating, keep the flag so the next message continues recall.
             # If found or not_found, clear it — recall is done.
             if result.action == "disambiguate":
-                self._pending_recall.add(chat_id)
-                logger.info("Recall disambiguation pending for chat_id=%s (%d matches)", chat_id, len(result.matches))
+                self._pending_recall.add(history_key)
+                logger.info("Recall disambiguation pending for %s (%d matches)", history_key, len(result.matches))
             else:
-                self._pending_recall.discard(chat_id)
-                logger.info("Recall complete for chat_id=%s: %s", chat_id, result.action)
+                self._pending_recall.discard(history_key)
+                logger.info("Recall complete for %s: %s", history_key, result.action)
 
             return result
 
         # Default: chat
-        self._pending_recall.discard(chat_id)
+        self._pending_recall.discard(history_key)
         image_path = metadata.image_path if metadata else None
-        return await self._chat.run(chat_id, text, image_path=image_path)
+        return await self._chat.run(history_key, text, image_path=image_path)

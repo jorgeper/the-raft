@@ -14,6 +14,7 @@ from app.processor import Processor
 
 if TYPE_CHECKING:
     from app.actions.remember import MemoryMetadata
+    from app.identity import Identity
 
 
 class HelloWorldProcessor(Processor):
@@ -25,5 +26,6 @@ class HelloWorldProcessor(Processor):
         text: str,
         intent: str | None = None,
         metadata: "MemoryMetadata | None" = None,
+        identity: "Identity | None" = None,
     ) -> str:
         return f"Hello! You said: {text}"

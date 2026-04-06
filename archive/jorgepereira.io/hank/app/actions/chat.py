@@ -31,27 +31,28 @@ class ChatAction:
 
     def __init__(self) -> None:
         self._client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-        # History: chat_id → list of (timestamp, message_dict) tuples.
-        self._history: dict[int, list[tuple[float, dict]]] = {}
+        # History: key → list of (timestamp, message_dict) tuples.
+        # Key is (identity_id, chat_id) tuple for identity-scoped history.
+        self._history: dict[tuple, list[tuple[float, dict]]] = {}
 
-    def _get_messages(self, chat_id: int) -> list[dict]:
-        """Return conversation history for chat_id, dropping expired messages."""
+    def _get_messages(self, key) -> list[dict]:
+        """Return conversation history for key, dropping expired messages."""
         cutoff = time.time() - MAX_AGE
-        entries = self._history.get(chat_id, [])
-        self._history[chat_id] = [(ts, msg) for ts, msg in entries if ts > cutoff]
-        return [msg for _, msg in self._history[chat_id]]
+        entries = self._history.get(key, [])
+        self._history[key] = [(ts, msg) for ts, msg in entries if ts > cutoff]
+        return [msg for _, msg in self._history[key]]
 
-    def _append(self, chat_id: int, role: str, text: str) -> None:
+    def _append(self, key, role: str, text: str) -> None:
         """Append a message to the conversation history."""
-        self._history.setdefault(chat_id, []).append(
+        self._history.setdefault(key, []).append(
             (time.time(), {"role": role, "content": text})
         )
 
-    async def run(self, chat_id: int, text: str, image_path: str | None = None) -> str:
+    async def run(self, key, text: str, image_path: str | None = None) -> str:
         """Send a message to Claude and return the reply.
 
         Args:
-            chat_id: Conversation ID.
+            key: Conversation key — (identity_id, chat_id) tuple.
             text: The user's message text.
             image_path: Optional path to an image file to include via vision API.
         """
@@ -79,13 +80,13 @@ class ChatAction:
                 {"type": "text", "text": text},
             ]
             # Store text-only version in history (images are too large to keep)
-            self._append(chat_id, "user", f"{text}\n[image attached]")
+            self._append(key, "user", f"{text}\n[image attached]")
         else:
             content = text
-            self._append(chat_id, "user", text)
+            self._append(key, "user", text)
 
         # Build messages: history + current (replace last entry with full content)
-        messages = self._get_messages(chat_id)
+        messages = self._get_messages(key)
         if messages:
             messages[-1] = {"role": "user", "content": content}
 
@@ -100,5 +101,5 @@ class ChatAction:
         logger.info("Claude API response: usage=%s", message.usage)
 
         reply = message.content[0].text
-        self._append(chat_id, "assistant", reply)
+        self._append(key, "assistant", reply)
         return reply

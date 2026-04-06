@@ -1,7 +1,7 @@
 """API endpoints for browsing memories.
 
 All endpoints require authentication via Google OAuth session cookie.
-Reads memory files from data/memories/ (shared Docker volume with hank bot).
+Each user sees only their own memories, scoped by identity.
 """
 
 import os
@@ -15,7 +15,12 @@ from app.auth import require_auth
 
 logger = logging.getLogger(__name__)
 
-MEMORIES_DIR = os.getenv("MEMORIES_DIR", "data/memories")
+DATA_DIR = os.getenv("DATA_DIR", "data")
+
+
+def _memories_dir(identity: dict) -> str:
+    """Return the identity-scoped memories directory."""
+    return os.path.join(DATA_DIR, identity["id"], "memories")
 
 router = APIRouter(prefix="/api")
 
@@ -59,13 +64,14 @@ def _extract_body(filepath: str) -> str:
 @router.get("/memories")
 async def list_memory_dates(request: Request):
     """List all dates that have memories."""
-    require_auth(request)
+    identity = require_auth(request)
+    mem_dir = _memories_dir(identity)
 
-    if not os.path.isdir(MEMORIES_DIR):
+    if not os.path.isdir(mem_dir):
         return {"dates": []}
 
     dates = sorted(
-        (d for d in os.listdir(MEMORIES_DIR) if os.path.isdir(os.path.join(MEMORIES_DIR, d))),
+        (d for d in os.listdir(mem_dir) if os.path.isdir(os.path.join(mem_dir, d))),
         reverse=True,
     )
     return {"dates": dates}
@@ -74,9 +80,10 @@ async def list_memory_dates(request: Request):
 @router.get("/memories/{date}")
 async def list_memories_for_date(date: str, request: Request):
     """List all memories for a specific date."""
-    require_auth(request)
+    identity = require_auth(request)
+    mem_dir = _memories_dir(identity)
 
-    day_dir = os.path.join(MEMORIES_DIR, date)
+    day_dir = os.path.join(mem_dir, date)
     if not os.path.isdir(day_dir):
         raise HTTPException(status_code=404, detail=f"No memories for {date}")
 
@@ -113,9 +120,10 @@ async def list_memories_for_date(date: str, request: Request):
 @router.get("/memories/{date}/{filename}")
 async def get_memory(date: str, filename: str, request: Request):
     """Get a single memory's full content and metadata."""
-    require_auth(request)
+    identity = require_auth(request)
+    mem_dir = _memories_dir(identity)
 
-    filepath = os.path.join(MEMORIES_DIR, date, filename)
+    filepath = os.path.join(mem_dir, date, filename)
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Memory not found")
 
@@ -138,9 +146,10 @@ async def get_memory(date: str, filename: str, request: Request):
 @router.get("/memories/{date}/{filename}/html")
 async def get_memory_html(date: str, filename: str, request: Request):
     """Get the raw HTML version of a memory."""
-    require_auth(request)
+    identity = require_auth(request)
+    mem_dir = _memories_dir(identity)
 
-    html_path = os.path.join(MEMORIES_DIR, date, filename.replace(".md", ".html"))
+    html_path = os.path.join(mem_dir, date, filename.replace(".md", ".html"))
     if not os.path.exists(html_path):
         raise HTTPException(status_code=404, detail="No HTML version")
 
@@ -151,14 +160,15 @@ async def get_memory_html(date: str, filename: str, request: Request):
 @router.get("/memories/{date}/{filename}/image")
 async def get_memory_image(date: str, filename: str, request: Request):
     """Serve the image file associated with a memory."""
-    require_auth(request)
+    identity = require_auth(request)
+    mem_dir = _memories_dir(identity)
 
-    meta = _parse_frontmatter(os.path.join(MEMORIES_DIR, date, filename))
+    meta = _parse_frontmatter(os.path.join(mem_dir, date, filename))
     image_file = meta.get("image")
     if not image_file:
         raise HTTPException(status_code=404, detail="No image")
 
-    image_path = os.path.join(MEMORIES_DIR, date, image_file)
+    image_path = os.path.join(mem_dir, date, image_file)
     if not os.path.exists(image_path):
         raise HTTPException(status_code=404, detail="Image file not found")
 

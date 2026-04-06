@@ -111,18 +111,21 @@ def _build_frontmatter(metadata: MemoryMetadata, now: datetime, html_filename: s
     return "\n".join(lines)
 
 
-async def save_memory(content: str, metadata: MemoryMetadata | None = None) -> str:
+async def save_memory(content: str, metadata: MemoryMetadata | None = None, memories_dir: str | None = None) -> str:
     """Save content as a markdown file with frontmatter and run post-processors.
 
     Args:
         content: The body content to save.
         metadata: Metadata from the channel layer. If None, uses defaults.
+        memories_dir: Override for the memories directory (identity-scoped).
 
     Returns:
         A confirmation message.
     """
     if metadata is None:
         metadata = MemoryMetadata()
+
+    target_dir = memories_dir or MEMORIES_DIR
 
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
@@ -138,7 +141,7 @@ async def save_memory(content: str, metadata: MemoryMetadata | None = None) -> s
     slug = _slugify(first_line)
 
     # Create the day folder and determine filenames
-    day_dir = os.path.join(MEMORIES_DIR, date_str)
+    day_dir = os.path.join(target_dir, date_str)
     os.makedirs(day_dir, exist_ok=True)
 
     filename = f"{time_str}_{slug}.md"

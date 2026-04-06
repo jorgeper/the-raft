@@ -9,5 +9,8 @@ logger = logging.getLogger(__name__)
 
 async def update_index(filepath: str, metadata: MemoryMetadata) -> None:
     """Add or update this memory in the index."""
+    import os
     from app.memory_index import add_to_index
-    add_to_index(filepath)
+    # Derive memories_dir from filepath: data/jorge/memories/2026-04-05/file.md → data/jorge/memories
+    memories_dir = os.path.dirname(os.path.dirname(filepath))
+    add_to_index(filepath, memories_dir=memories_dir)

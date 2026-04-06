@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.actions.remember import MemoryMetadata
+    from app.identity import Identity
 
 
 class Processor(ABC):
@@ -24,4 +25,5 @@ class Processor(ABC):
         text: str,
         intent: str | None = None,
         metadata: "MemoryMetadata | None" = None,
+        identity: "Identity | None" = None,
     ) -> str: ...

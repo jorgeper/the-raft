@@ -18,7 +18,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 
 from app.bot import create_app as create_telegram_app
-from app.email_handler import router as email_router, set_processor as set_email_processor
+from app.email_handler import router as email_router, set_processor as set_email_processor, set_registry as set_email_registry
+from app.identity import load_registry, IdentityRegistry
 from app.processor import Processor
 
 # Load .env.local for direct (non-Docker) runs.
@@ -74,17 +75,8 @@ def _create_processor() -> Processor:
 # Global reference to the Telegram Application, used by the webhook endpoint.
 telegram_app = None
 
-
-def _parse_allowed_users() -> set[int] | None:
-    """Parse ALLOWED_USER_IDS env var into a set of Telegram user IDs.
-
-    Returns None if empty or not set (meaning all users are allowed).
-    """
-    allowed_users_str = os.getenv("ALLOWED_USER_IDS", "")
-    allowed_users = {int(uid.strip()) for uid in allowed_users_str.split(",") if uid.strip()} or None
-    if allowed_users:
-        logger.info("Restricting Telegram to user IDs: %s", allowed_users)
-    return allowed_users
+# Global identity registry, loaded at startup.
+registry: IdentityRegistry | None = None
 
 
 async def _start_telegram(processor: Processor) -> None:
@@ -93,9 +85,8 @@ async def _start_telegram(processor: Processor) -> None:
 
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     mode = os.getenv("MODE", "polling")
-    allowed_users = _parse_allowed_users()
 
-    telegram_app = create_telegram_app(token, processor, allowed_users)
+    telegram_app = create_telegram_app(token, processor, registry=registry)
     await telegram_app.initialize()
     await telegram_app.start()
 
@@ -125,8 +116,9 @@ async def _stop_telegram() -> None:
 # ---------------------------------------------------------------------------
 
 def _start_email(processor: Processor) -> None:
-    """Inject the processor into the email handler."""
+    """Inject the processor and registry into the email handler."""
     set_email_processor(processor)
+    set_email_registry(registry)
     logger.info("Email handler ready (POST /email)")
 
 
@@ -137,6 +129,10 @@ def _start_email(processor: Processor) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
+    global registry
+    registry = load_registry()
+    logger.info("Loaded identity registry (%d identities)", len(registry._identities))
+
     processor = _create_processor()
     _start_email(processor)
     await _start_telegram(processor)
