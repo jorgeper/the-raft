@@ -294,8 +294,8 @@ async def handle_email(request: Request):
     # Log all form field names and types for debugging attachment detection
     for key in form:
         value = form[key]
-        if isinstance(value, UploadFile):
-            logger.info("Form field %r: UploadFile(filename=%r, content_type=%r)", key, value.filename, value.content_type)
+        if hasattr(value, 'read') and hasattr(value, 'content_type'):
+            logger.info("Form field %r: file(filename=%r, content_type=%r, type=%s)", key, getattr(value, 'filename', '?'), value.content_type, type(value).__name__)
         else:
             logger.info("Form field %r: str (%d chars)", key, len(str(value)))
 
@@ -318,9 +318,10 @@ async def handle_email(request: Request):
             key = f"attachment-{i}"
             if key not in form:
                 continue
-            value = form[key]  # use [] not .get() to preserve UploadFile type
-            if isinstance(value, UploadFile):
-                # forward() mode — file upload
+            value = form[key]
+            if hasattr(value, 'read') and hasattr(value, 'content_type'):
+                # File upload (forward() mode or multipart file field)
+                logger.info("Attachment %s is a file: filename=%s, content_type=%s", key, getattr(value, 'filename', '?'), value.content_type)
                 saved = await _save_email_attachment(value)
             else:
                 # store()+notify mode — JSON string with URL
