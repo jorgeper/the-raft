@@ -22,15 +22,18 @@ services:
     env_file: ${ENV_FILE:-hank/.env.local}
     restart: unless-stopped
     volumes:
-      - hank_memories:/app/data/memories
+      - hank_data:/app/data
 
   hank-web:
     build: hank-web
     env_file: ${WEB_ENV_FILE:-hank-web/.env.local}
     restart: unless-stopped
     volumes:
-      - hank_memories:/app/data/memories:ro
+      - hank_data:/app/data:ro
 
 volumes:
   caddy_data:
+  hank_data:
+  # Legacy volume kept so Docker doesn't error on existing deployments.
+  # Data should be migrated from hank_memories to hank_data.
   hank_memories:
