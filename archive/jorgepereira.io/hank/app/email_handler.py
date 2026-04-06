@@ -316,9 +316,9 @@ async def handle_email(request: Request):
     if attachment_count > 0:
         for i in range(1, attachment_count + 1):
             key = f"attachment-{i}"
-            value = form.get(key)
-            if value is None:
+            if key not in form:
                 continue
+            value = form[key]  # use [] not .get() to preserve UploadFile type
             if isinstance(value, UploadFile):
                 # forward() mode — file upload
                 saved = await _save_email_attachment(value)
