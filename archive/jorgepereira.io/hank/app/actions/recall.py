@@ -133,20 +133,17 @@ async def recall(chat_id: int, text: str, conversation_history: list[dict] | Non
         if os.path.exists(memory_file):
             from app.memory_index import _parse_frontmatter, _extract_body
             meta = _parse_frontmatter(memory_file)
-
-            # For non-image memories, include the full body so text content
-            # (like code snippets) isn't truncated. For image memories, Claude's
-            # conversational reply + the attached image is better UX.
-            if not meta.get("image"):
-                full_body = _extract_body(memory_file)
-                if full_body and len(full_body) > len(reply):
-                    reply = f"Here's what I found:\n\n{full_body}"
+            full_body = _extract_body(memory_file)
 
             if meta.get("image"):
                 date_dir = os.path.dirname(memory_file)
                 img_path = os.path.join(date_dir, meta["image"])
                 if os.path.exists(img_path):
                     image_file = img_path
+
+            # Format the reply through Claude for a natural, conversational response
+            if full_body:
+                reply = await _format_recall_reply(client, text, full_body, conversation_history)
 
     return RecallResult(
         action=action,
@@ -155,3 +152,48 @@ async def recall(chat_id: int, text: str, conversation_history: list[dict] | Non
         memory_file=memory_file,
         image_file=image_file,
     )
+
+
+FORMAT_REPLY_PROMPT = """You are Hank, a friendly chat buddy. The user asked you to find something \
+from their saved memories, and you found it. Now present it to them in a natural, \
+conversational way.
+
+Rules:
+- Be concise and friendly — don't say "here's what I found" or "from your memories".
+- If the memory contains code, include it in a code block.
+- If it contains a URL, include the link.
+- If it's an image description, summarize what's in the image naturally.
+- If the user asked a specific question, answer it directly using the memory content.
+- Don't include raw metadata, frontmatter, or markdown image syntax.
+- Keep the original content intact — don't paraphrase code or quotes."""
+
+
+async def _format_recall_reply(
+    client: AsyncAnthropic,
+    user_query: str,
+    memory_content: str,
+    conversation_history: list[dict] | None = None,
+) -> str:
+    """Send the found memory through Claude to produce a friendly reply."""
+    messages = []
+    if conversation_history:
+        messages.extend(conversation_history)
+    messages.append({
+        "role": "user",
+        "content": f"I asked: {user_query}\n\nHere's the memory you found:\n\n{memory_content}",
+    })
+
+    try:
+        message = await client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
+            system=FORMAT_REPLY_PROMPT,
+            messages=messages,
+        )
+        reply = message.content[0].text
+        logger.info("Formatted recall reply (%d chars)", len(reply))
+        return reply
+    except Exception as e:
+        logger.error("Failed to format recall reply: %s", e)
+        # Fall back to raw content
+        return memory_content
