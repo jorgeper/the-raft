@@ -86,20 +86,30 @@ async def describe_image(filepath: str, metadata: MemoryMetadata) -> None:
         return
 
     response = message.content[0].text.strip()
-    logger.info("Vision response: %s", response[:200])
+    logger.info("Vision response (full): %s", response)
 
-    # Parse the structured response and add to frontmatter
-    for line in response.split("\n"):
-        line = line.strip()
-        if line.startswith("description:"):
-            desc = line[len("description:"):].strip()
-            _add_frontmatter_field(filepath, "description", desc)
-        elif line.startswith("text:"):
-            text = line[len("text:"):].strip()
-            if text.lower() != "none":
-                _add_frontmatter_field(filepath, "ocr_text", text)
-        elif line.startswith("tags:"):
-            tags = line[len("tags:"):].strip()
-            _add_frontmatter_field(filepath, "image_tags", tags)
+    # Parse the structured response — handle both newline-separated and
+    # single-line responses from Claude.
+    # Look for "description:", "text:", "tags:" anywhere in the response.
+    import re
 
-    logger.info("Added vision metadata to %s", filepath)
+    desc_match = re.search(r'description:\s*(.+?)(?=\n\s*(?:text:|tags:)|$)', response, re.DOTALL)
+    text_match = re.search(r'text:\s*(.+?)(?=\n\s*(?:description:|tags:)|$)', response, re.DOTALL)
+    tags_match = re.search(r'tags:\s*(.+?)(?=\n\s*(?:description:|text:)|$)', response, re.DOTALL)
+
+    added = []
+    if desc_match:
+        desc = desc_match.group(1).strip()
+        _add_frontmatter_field(filepath, "description", desc)
+        added.append("description")
+    if text_match:
+        text = text_match.group(1).strip()
+        if text.lower() != "none":
+            _add_frontmatter_field(filepath, "ocr_text", text)
+            added.append("ocr_text")
+    if tags_match:
+        tags = tags_match.group(1).strip()
+        _add_frontmatter_field(filepath, "image_tags", tags)
+        added.append("image_tags")
+
+    logger.info("Added vision metadata to %s: %s", filepath, added)
