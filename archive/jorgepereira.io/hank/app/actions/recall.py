@@ -134,11 +134,13 @@ async def recall(chat_id: int, text: str, conversation_history: list[dict] | Non
             from app.memory_index import _parse_frontmatter, _extract_body
             meta = _parse_frontmatter(memory_file)
 
-            # Read the full body so the reply includes all content
-            full_body = _extract_body(memory_file)
-            if full_body and len(full_body) > len(reply):
-                # Replace Claude's partial reply with the full memory content
-                reply = f"Here's what I found:\n\n{full_body}"
+            # For non-image memories, include the full body so text content
+            # (like code snippets) isn't truncated. For image memories, Claude's
+            # conversational reply + the attached image is better UX.
+            if not meta.get("image"):
+                full_body = _extract_body(memory_file)
+                if full_body and len(full_body) > len(reply):
+                    reply = f"Here's what I found:\n\n{full_body}"
 
             if meta.get("image"):
                 date_dir = os.path.dirname(memory_file)
