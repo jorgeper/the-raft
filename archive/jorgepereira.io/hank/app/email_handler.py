@@ -10,6 +10,7 @@ Replies are sent back via the Mailgun API.
 
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
@@ -156,27 +157,19 @@ def _detect_image_ext(header: bytes) -> str:
     return ".jpg"
 
 
-async def _save_email_attachment(attachment: UploadFile) -> str | None:
-    """Save an image attachment to the memories directory.
+async def _save_image_data(data: bytes, name: str = "photo") -> str | None:
+    """Save raw image bytes to the memories directory.
 
-    Returns the file path on disk, or None if not an image.
+    Returns the file path on disk, or None if the data is empty.
     """
-    if attachment.content_type not in _IMAGE_CONTENT_TYPES:
-        logger.info("Skipping non-image attachment: %s (%s)", attachment.filename, attachment.content_type)
-        return None
-
-    data = await attachment.read()
-    if not data:
+    if not data or len(data) < 100:
         return None
 
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%Y-%m-%dT%H-%M-%S")
 
-    # Use the original filename for the slug, fall back to "photo"
-    name = attachment.filename or "photo"
     slug = _slugify(os.path.splitext(name)[0][:50]) or "photo"
-
     ext = _detect_image_ext(data[:12])
 
     day_dir = os.path.join(MEMORIES_DIR, date_str)
@@ -189,6 +182,76 @@ async def _save_email_attachment(attachment: UploadFile) -> str | None:
 
     logger.info("Saved email attachment to %s (%d bytes)", image_path, len(data))
     return image_path
+
+
+async def _save_email_attachment(attachment: UploadFile) -> str | None:
+    """Save an UploadFile image attachment (forward() mode).
+
+    Returns the file path on disk, or None if not an image.
+    """
+    if attachment.content_type not in _IMAGE_CONTENT_TYPES:
+        logger.info("Skipping non-image attachment: %s (%s)", attachment.filename, attachment.content_type)
+        return None
+
+    data = await attachment.read()
+    return await _save_image_data(data, attachment.filename or "photo")
+
+
+async def _download_stored_attachment(attachment_json: str) -> str | None:
+    """Download an image from a Mailgun store() URL.
+
+    When Mailgun uses store() + notify, attachments arrive as JSON objects
+    with a "url" field pointing to Mailgun's temporary storage.
+    Returns the file path on disk, or None if not an image.
+    """
+    try:
+        info = json.loads(attachment_json)
+    except (json.JSONDecodeError, TypeError):
+        # Could be a bare URL string
+        if isinstance(attachment_json, str) and attachment_json.startswith("http"):
+            info = {"url": attachment_json, "content-type": "image/png", "name": "image.png"}
+        else:
+            logger.info("Cannot parse attachment field: %s", attachment_json[:200])
+            return None
+
+    # Handle both single object and list of objects
+    if isinstance(info, list):
+        if not info:
+            return None
+        info = info[0]
+
+    url = info.get("url", "")
+    content_type = info.get("content-type", "")
+    name = info.get("name", "image.png")
+
+    if not url:
+        logger.info("No URL in attachment info: %s", attachment_json[:200])
+        return None
+
+    # Check if it's an image type
+    if content_type and not any(t in content_type for t in ("image/", "application/octet-stream")):
+        logger.info("Skipping non-image stored attachment: %s (%s)", name, content_type)
+        return None
+
+    logger.info("Downloading stored attachment: %s (%s)", name, url[:100])
+
+    api_key = os.environ.get("MAILGUN_API_KEY", "")
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, auth=("api", api_key), timeout=15)
+            resp.raise_for_status()
+            data = resp.content
+    except Exception as e:
+        logger.error("Failed to download stored attachment: %s", e)
+        return None
+
+    # Verify it's actually image data
+    if data[:3] != b'\xff\xd8\xff' and data[:8] != b'\x89PNG\r\n\x1a\n' and data[:4] != b'GIF8':
+        if not (data[:4] == b'RIFF' and data[8:12] == b'WEBP'):
+            logger.info("Downloaded data doesn't look like an image (%d bytes, header: %r)", len(data), data[:8])
+            return None
+
+    return await _save_image_data(data, name)
 
 
 @router.post("/email")
@@ -243,13 +306,26 @@ async def handle_email(request: Request):
         logger.warning("Blocked email from %s (not in ALLOWED_EMAIL_SENDERS)", sender)
         return {"status": "blocked"}
 
-    # Extract image attachments from the form
-    # Mailgun sends attachments as file fields named "attachment-1", "attachment-2", etc.
+    # Extract image attachments from the form.
+    # Two modes depending on Mailgun route action:
+    #   forward() → attachments arrive as UploadFile objects
+    #   store()+notify → attachments arrive as JSON strings with download URLs
     image_path = None
-    for key in form:
-        value = form[key]
-        if isinstance(value, UploadFile):
-            saved = await _save_email_attachment(value)
+    attachment_count = int(form.get("attachment-count", "0") or "0")
+
+    if attachment_count > 0:
+        for i in range(1, attachment_count + 1):
+            key = f"attachment-{i}"
+            value = form.get(key)
+            if value is None:
+                continue
+            if isinstance(value, UploadFile):
+                # forward() mode — file upload
+                saved = await _save_email_attachment(value)
+            else:
+                # store()+notify mode — JSON string with URL
+                logger.info("Attachment %s is a string (%d chars): %s", key, len(str(value)), str(value)[:200])
+                saved = await _download_stored_attachment(str(value))
             if saved:
                 image_path = saved
                 break  # use the first image attachment
