@@ -105,11 +105,11 @@ def create_app(token: str, processor: Processor, registry: IdentityRegistry | No
         await update.message.reply_text(reply)
 
     async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle incoming photos — download and save as a memory.
+        """Handle incoming photos.
 
-        Photos are always treated as "remember" intent. The image is saved
-        as a .png file, and a .md file is created with metadata. A post-processor
-        then sends the image to Claude Vision for description.
+        If no caption: save as a memory (same as before).
+        If caption present: route through the processor with intent detection,
+        so "what is this?" gets a chat reply and "remember this" saves it.
         """
         if not update.message or not update.message.photo:
             return
@@ -158,9 +158,6 @@ def create_app(token: str, processor: Processor, registry: IdentityRegistry | No
         os.rename(temp_path, image_path)
         logger.info("Downloaded photo to %s", image_path)
 
-        # Build the markdown content — caption or a placeholder
-        content = f"# {caption or 'Photo'}\n\n![{caption or 'photo'}]({image_filename})"
-
         meta = MemoryMetadata(
             medium="telegram",
             source=f"{user.first_name} (id={user.id})",
@@ -168,11 +165,33 @@ def create_app(token: str, processor: Processor, registry: IdentityRegistry | No
             image_path=image_path,
         )
 
-        from app.actions.remember import save_memory
-        response = await save_memory(content, metadata=meta, memories_dir=target_memories)
-        reply, _ = render_response(response, "telegram")
-        logger.info("Photo reply to %s: %s", user.first_name, reply[:100])
-        await update.message.reply_text(reply)
+        if caption:
+            # Caption present — route through processor for intent detection.
+            # "What is this?" → chat (with vision), "remember this" → save.
+            response = await processor.process(
+                update.message.chat_id, caption, metadata=meta, identity=identity,
+            )
+            from app.actions.recall import RecallResult
+            if isinstance(response, RecallResult):
+                if response.image_file:
+                    await update.message.reply_photo(
+                        photo=open(response.image_file, "rb"),
+                        caption=response.reply[:1024],
+                    )
+                else:
+                    await update.message.reply_text(response.reply)
+            else:
+                reply, _ = render_response(response, "telegram")
+                await update.message.reply_text(reply)
+        else:
+            # No caption — save as memory directly
+            content = f"# Photo\n\n![photo]({image_filename})"
+            from app.actions.remember import save_memory
+            response = await save_memory(content, metadata=meta, memories_dir=target_memories)
+            reply, _ = render_response(response, "telegram")
+            await update.message.reply_text(reply)
+
+        logger.info("Photo reply to %s: %s", user.first_name, str(response)[:100])
 
     app = Application.builder().token(token).build()
 
