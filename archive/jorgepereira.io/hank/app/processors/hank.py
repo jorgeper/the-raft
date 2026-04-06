@@ -9,8 +9,9 @@ Intents:
 - "remember" — save content to disk, routed to save_memory()
 - "recall"   — find a memory, routed to recall()
 
-The process() method returns either a plain string or a RecallResult
-(for recall intent, so the channel layer can send images/files).
+When a recall returns "disambiguate" (multiple matches), the next message
+from this user is automatically routed back to recall — no fresh intent
+detection. This lets "the first one" resolve correctly.
 """
 
 import logging
@@ -29,6 +30,10 @@ class HankProcessor(Processor):
 
     def __init__(self) -> None:
         self._chat = ChatAction()
+        # Track chats that are in disambiguation mode.
+        # If a recall returns "disambiguate", the next message from this
+        # chat_id goes straight back to recall instead of fresh intent detection.
+        self._pending_recall: set[int] = set()
 
     async def process(
         self,
@@ -37,26 +42,39 @@ class HankProcessor(Processor):
         intent: str | None = None,
         metadata: MemoryMetadata | None = None,
     ) -> str | RecallResult:
-        """Process a message by resolving intent and routing to the right action.
+        """Process a message by resolving intent and routing to the right action."""
 
-        Returns:
-            str for chat/remember, RecallResult for recall.
-            The channel layer (bot.py, email_handler.py) handles RecallResult
-            to send images, URLs, etc.
-        """
-        intent = await resolve_intent(text, explicit_intent=intent)
+        # Check if this chat is in disambiguation mode (previous recall had multiple matches)
+        if chat_id in self._pending_recall and intent is None:
+            logger.info("Continuing recall disambiguation for chat_id=%s", chat_id)
+            self._pending_recall.discard(chat_id)
+            intent = "recall"
+
+        if intent is None:
+            intent = await resolve_intent(text, explicit_intent=None)
 
         if intent == "remember":
+            self._pending_recall.discard(chat_id)
             return await save_memory(text, metadata=metadata)
 
         if intent == "recall":
             # Get conversation history for disambiguation context
             history = self._chat._get_messages(chat_id)
             result = await recall(chat_id, text, conversation_history=history or None)
-            # Store the recall exchange in chat history for follow-up disambiguation
+
+            # Store the recall exchange in chat history for follow-up context
             self._chat._append(chat_id, "user", text)
             self._chat._append(chat_id, "assistant", result.reply)
+
+            # If disambiguating, flag this chat so the next message continues recall
+            if result.action == "disambiguate":
+                self._pending_recall.add(chat_id)
+                logger.info("Recall disambiguation pending for chat_id=%s", chat_id)
+            else:
+                self._pending_recall.discard(chat_id)
+
             return result
 
         # Default: chat
+        self._pending_recall.discard(chat_id)
         return await self._chat.run(chat_id, text)
