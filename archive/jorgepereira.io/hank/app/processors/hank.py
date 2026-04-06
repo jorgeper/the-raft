@@ -24,6 +24,45 @@ from app.processor import Processor
 
 logger = logging.getLogger(__name__)
 
+# Words/patterns that signal the user is giving up or changing topic,
+# not continuing a disambiguation.
+_EXIT_KEYWORDS = [
+    "nevermind", "never mind", "forget it", "cancel", "stop",
+    "nvm", "nah", "no thanks", "no thank you",
+]
+
+
+def _is_new_intent(text: str) -> bool:
+    """Check if a message is clearly a new intent, not a disambiguation reply.
+
+    Returns True if the user is:
+    - Starting a new remember/recall with keywords
+    - Sending a URL (remember)
+    - Giving up (nevermind, cancel, etc.)
+    - Sending a long message (disambiguation replies are short)
+    """
+    stripped = text.strip().lower()
+
+    # Exit keywords — user is giving up
+    if any(stripped.startswith(kw) for kw in _EXIT_KEYWORDS):
+        return True
+
+    # Bare URL — new remember intent
+    import re
+    if re.match(r'^https?://\S+$', stripped):
+        return True
+
+    # Starts with a remember/recall keyword — new intent
+    from app.intent import _starts_with_remember_keyword, _starts_with_recall_keyword
+    if _starts_with_remember_keyword(text) or _starts_with_recall_keyword(text):
+        return True
+
+    # Long message (>100 chars) is unlikely a disambiguation reply like "the first one"
+    if len(stripped) > 100:
+        return True
+
+    return False
+
 
 class HankProcessor(Processor):
     """Unified processor that resolves intent and routes to the right action."""
@@ -44,11 +83,16 @@ class HankProcessor(Processor):
     ) -> str | RecallResult:
         """Process a message by resolving intent and routing to the right action."""
 
-        # Check if this chat is in disambiguation mode (previous recall had multiple matches)
+        # Check if this chat is in disambiguation mode (previous recall had multiple matches).
+        # Continue recall UNLESS the user is clearly starting something new.
         if chat_id in self._pending_recall and intent is None:
-            logger.info("Continuing recall disambiguation for chat_id=%s", chat_id)
-            self._pending_recall.discard(chat_id)
-            intent = "recall"
+            # Check if this looks like a new intent (not a disambiguation reply)
+            if _is_new_intent(text):
+                logger.info("Breaking out of recall disambiguation — new intent detected")
+                self._pending_recall.discard(chat_id)
+            else:
+                logger.info("Continuing recall disambiguation for chat_id=%s", chat_id)
+                intent = "recall"
 
         if intent is None:
             intent = await resolve_intent(text, explicit_intent=None)
@@ -66,12 +110,14 @@ class HankProcessor(Processor):
             self._chat._append(chat_id, "user", text)
             self._chat._append(chat_id, "assistant", result.reply)
 
-            # If disambiguating, flag this chat so the next message continues recall
+            # If still disambiguating, keep the flag so the next message continues recall.
+            # If found or not_found, clear it — recall is done.
             if result.action == "disambiguate":
                 self._pending_recall.add(chat_id)
-                logger.info("Recall disambiguation pending for chat_id=%s", chat_id)
+                logger.info("Recall disambiguation pending for chat_id=%s (%d matches)", chat_id, len(result.matches))
             else:
                 self._pending_recall.discard(chat_id)
+                logger.info("Recall complete for chat_id=%s: %s", chat_id, result.action)
 
             return result
 
