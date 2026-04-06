@@ -16,6 +16,7 @@ response (image, URL, text, disambiguation).
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic
@@ -103,6 +104,13 @@ async def recall(chat_id: int, text: str, conversation_history: list[dict] | Non
     )
 
     raw = message.content[0].text.strip()
+
+    # Strip markdown code fences if Claude wrapped the JSON in ```json ... ```
+    if raw.startswith("```"):
+        raw = re.sub(r'^```(?:json)?\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw)
+        raw = raw.strip()
+
     logger.info("Recall response: %s", raw[:300])
 
     # Parse the JSON response
