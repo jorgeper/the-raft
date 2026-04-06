@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hank — Memories</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fafafa; color: #333; }
+
+  .header {
+    background: #fff; border-bottom: 1px solid #e0e0e0; padding: 16px 24px;
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header a { color: #888; text-decoration: none; font-size: 14px; }
+  .header a:hover { color: #333; }
+
+  .container { max-width: 800px; margin: 0 auto; padding: 24px; }
+
+  .breadcrumb { font-size: 14px; color: #888; margin-bottom: 16px; }
+  .breadcrumb a { color: #4a90d9; text-decoration: none; }
+  .breadcrumb a:hover { text-decoration: underline; }
+
+  .date-list, .memory-list { list-style: none; }
+  .date-list li, .memory-list li {
+    background: #fff; border: 1px solid #e8e8e8; border-radius: 8px;
+    margin-bottom: 8px; transition: box-shadow 0.15s;
+  }
+  .date-list li:hover, .memory-list li:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
+  .date-list a, .memory-list a {
+    display: block; padding: 16px 20px; text-decoration: none; color: #333;
+  }
+
+  .date-label { font-weight: 600; font-size: 16px; }
+  .memory-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .memory-meta { font-size: 13px; color: #888; }
+  .memory-meta span { margin-right: 12px; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+  }
+  .badge-note { background: #e8f4fd; color: #2980b9; }
+  .badge-url { background: #eafaf1; color: #27ae60; }
+  .badge-image { background: #fef5e7; color: #e67e22; }
+
+  .detail { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 24px; }
+  .detail-meta { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #eee; }
+  .detail-meta div { font-size: 13px; color: #666; margin-bottom: 4px; }
+  .detail-meta div strong { color: #333; }
+  .detail-body { font-size: 15px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .detail-body h1 { font-size: 22px; margin-bottom: 12px; }
+  .detail-body h2 { font-size: 18px; margin: 20px 0 8px; }
+  .detail-body a { color: #4a90d9; }
+  .detail-body img { max-width: 100%; border-radius: 8px; margin: 12px 0; }
+
+  .tab-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px; background: #fff;
+         cursor: pointer; font-size: 13px; color: #666; }
+  .tab.active { background: #333; color: #fff; border-color: #333; }
+
+  .html-frame { width: 100%; border: 1px solid #e8e8e8; border-radius: 8px; min-height: 400px; }
+
+  .empty { text-align: center; color: #aaa; padding: 60px 0; font-size: 16px; }
+
+  .loading { text-align: center; color: #aaa; padding: 40px 0; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Hank — Memories</h1>
+  <a href="/logout">Sign out</a>
+</div>
+
+<div class="container" id="content">
+  <div class="loading">Loading...</div>
+</div>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const content = $('#content');
+
+// Simple markdown to HTML (handles headers, bold, links, images, line breaks)
+function md(text) {
+  return text
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2">')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/(^|[^"(])(https?:\/\/\S+)/g, '$1<a href="$2" target="_blank">$2</a>')
+    .replace(/\n/g, '<br>');
+}
+
+async function api(path) {
+  const resp = await fetch(path);
+  if (resp.status === 401) { window.location = '/login'; return null; }
+  if (!resp.ok) return null;
+  return resp.json();
+}
+
+// --- Views ---
+
+async function showDates() {
+  const data = await api('/api/memories');
+  if (!data) return;
+  if (!data.dates.length) {
+    content.innerHTML = '<div class="empty">No memories saved yet.</div>';
+    return;
+  }
+  content.innerHTML = `
+    <ul class="date-list">
+      ${data.dates.map(d => `
+        <li><a href="#" onclick="showDate('${d}'); return false;">
+          <span class="date-label">${d}</span>
+        </a></li>
+      `).join('')}
+    </ul>`;
+}
+
+async function showDate(date) {
+  const data = await api(`/api/memories/${date}`);
+  if (!data) return;
+  content.innerHTML = `
+    <div class="breadcrumb"><a href="#" onclick="showDates(); return false;">All dates</a> / ${date}</div>
+    ${!data.memories.length ? '<div class="empty">No memories for this date.</div>' : `
+    <ul class="memory-list">
+      ${data.memories.map(m => `
+        <li><a href="#" onclick="showMemory('${date}', '${m.filename}'); return false;">
+          <div class="memory-title">${esc(m.title)}</div>
+          <div class="memory-meta">
+            <span>${m.time}</span>
+            <span class="badge badge-${m.type}">${m.type}</span>
+            <span>${m.medium}</span>
+          </div>
+        </a></li>
+      `).join('')}
+    </ul>`}`;
+}
+
+async function showMemory(date, filename) {
+  const data = await api(`/api/memories/${date}/${filename}`);
+  if (!data) return;
+  const meta = data.metadata;
+
+  let tabs = '<div class="tab active" onclick="showTab(\'md\')">Markdown</div>';
+  if (data.has_html) tabs += '<div class="tab" onclick="showTab(\'html\')">HTML</div>';
+  if (data.image_file) tabs += '<div class="tab" onclick="showTab(\'image\')">Image</div>';
+
+  // Fix image src in body to point to API
+  let body = data.body;
+  if (data.image_file) {
+    body = body.replace(
+      new RegExp(`\\(${data.image_file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`, 'g'),
+      `(/api/memories/${date}/${filename}/image)`
+    );
+  }
+
+  content.innerHTML = `
+    <div class="breadcrumb">
+      <a href="#" onclick="showDates(); return false;">All dates</a> /
+      <a href="#" onclick="showDate('${date}'); return false;">${date}</a> /
+      ${esc(meta.title || filename)}
+    </div>
+    <div class="detail">
+      <div class="detail-meta">
+        ${Object.entries(meta).map(([k,v]) => v ? `<div><strong>${k}:</strong> ${esc(v)}</div>` : '').join('')}
+      </div>
+      <div class="tab-bar">${tabs}</div>
+      <div id="tab-md" class="detail-body">${md(body)}</div>
+      <div id="tab-html" style="display:none;"></div>
+      <div id="tab-image" style="display:none;"></div>
+    </div>`;
+
+  // Lazy-load HTML tab content
+  if (data.has_html) {
+    api(`/api/memories/${date}/${filename}/html`).then(h => {
+      if (h) $('#tab-html').innerHTML = '<iframe class="html-frame" srcdoc="' + esc(h.html) + '"></iframe>';
+    });
+  }
+  if (data.image_file) {
+    $('#tab-image').innerHTML = '<img src="/api/memories/' + date + '/' + filename + '/image" style="max-width:100%;border-radius:8px;">';
+  }
+}
+
+function showTab(name) {
+  document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  const el = $(`#tab-${name}`);
+  if (el) el.style.display = '';
+  // Find and activate the clicked tab
+  document.querySelectorAll('.tab').forEach(t => {
+    if (t.textContent.toLowerCase().includes(name)) t.classList.add('active');
+  });
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+// Boot
+showDates();
+</script>
+</body>
+</html>
