@@ -12,6 +12,7 @@ import logging
 
 from app.commands.echo import echo_handler
 from app.commands.help import help_handler
+from app.commands.index_cmd import index_handler
 from app.commands.memory import memory_handler
 from app.message import Message
 
@@ -28,6 +29,7 @@ COMMANDS: dict[str, tuple] = {
     "echo": (echo_handler, "/echo <text> — Echo back the text"),
     "help": (help_handler, "/help — Show available commands"),
     "memory": (memory_handler, "/memory [today|yesterday|YYYY-MM-DD|last|wipe] — List, inspect, or wipe memories"),
+    "index": (index_handler, "/index [today|yesterday|YYYY-MM-DD] — Rebuild memory search index"),
 }
 
 

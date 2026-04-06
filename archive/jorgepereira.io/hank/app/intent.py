@@ -59,11 +59,40 @@ def _starts_with_remember_keyword(text: str) -> str | None:
     return None
 
 
+def _starts_with_recall_keyword(text: str) -> str | None:
+    """If the message starts with a recall instruction, it's a recall.
+
+    Catches: "remind me", "find", "show me", "what was", "search for", etc.
+    """
+    KEYWORDS = [
+        "remind me",
+        "find ",
+        "find:",
+        "show me",
+        "what was",
+        "where was",
+        "where is",
+        "what's that",
+        "search for",
+        "look for",
+        "pull up",
+        "do i have",
+        "did i save",
+    ]
+    lower = text.strip().lower()
+    for kw in KEYWORDS:
+        if lower.startswith(kw):
+            logger.info("Heuristic match: recall keyword prefix '%s'", kw)
+            return "recall"
+    return None
+
+
 # Ordered list of heuristic functions. Each takes text, returns intent or None.
 # Add new heuristics here — they run in order, first match wins.
 _HEURISTICS = [
     _is_bare_url,
     _starts_with_remember_keyword,
+    _starts_with_recall_keyword,
 ]
 
 
@@ -75,10 +104,11 @@ INTENT_SYSTEM_PROMPT = """You are an intent classifier for a personal assistant 
 
 Given a user message, classify the intent as one of:
 - "remember" — the user wants to save/remember something for later (e.g. "remember this", "save this", "keep this", forwarded content they want stored)
+- "recall" — the user wants to find/retrieve something they previously saved (e.g. "remind me about", "find that receipt", "show me the link", "what was that URL")
 - "chat" — normal conversation, questions, or anything else
 
 Respond with ONLY a JSON object, no other text:
-{"intent": "remember" or "chat"}
+{"intent": "remember" or "recall" or "chat"}
 
 Note: the message may be truncated. Focus on the first few lines to determine intent."""
 

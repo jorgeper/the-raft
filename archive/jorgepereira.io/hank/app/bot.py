@@ -54,9 +54,23 @@ def create_app(token: str, processor: Processor, allowed_users: set[int] | None 
             source=f"{user.first_name} (id={user.id})",
         )
         response = await processor.process(update.message.chat_id, update.message.text, metadata=meta)
-        reply, _ = render_response(response, "telegram")
-        logger.info("Reply to %s: %s", user.first_name, reply[:100])
-        await update.message.reply_text(reply)
+
+        # Handle RecallResult — may need to send an image
+        from app.actions.recall import RecallResult
+        if isinstance(response, RecallResult):
+            logger.info("Recall result: action=%s, matches=%s", response.action, response.matches)
+            if response.image_file:
+                # Send the image along with the reply text
+                await update.message.reply_photo(
+                    photo=open(response.image_file, "rb"),
+                    caption=response.reply[:1024],  # Telegram caption limit
+                )
+            else:
+                await update.message.reply_text(response.reply)
+        else:
+            reply, _ = render_response(response, "telegram")
+            logger.info("Reply to %s: %s", user.first_name, reply[:100])
+            await update.message.reply_text(reply)
 
     async def handle_slash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle slash commands — routed through the command router, no LLM."""

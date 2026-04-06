@@ -195,8 +195,15 @@ async def handle_email(
         meta.html_content = html_content
         full_email = md_text
         response = await _processor.process(chat_id, full_email, metadata=meta)
-        reply, is_html = render_response(response, "email")
-        reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
-        await _send_reply(sender, reply_subject, reply, html=is_html)
+
+        # Handle RecallResult
+        from app.actions.recall import RecallResult
+        if isinstance(response, RecallResult):
+            reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
+            await _send_reply(sender, reply_subject, response.reply)
+        else:
+            reply, is_html = render_response(response, "email")
+            reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
+            await _send_reply(sender, reply_subject, reply, html=is_html)
 
     return {"status": "ok"}
