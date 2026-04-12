@@ -62,16 +62,6 @@ const CONFIG_FIELDS: Array<{
       "A personal access token so the agent can read/write to your memory repo.\n" +
       "  Create one at: https://github.com/settings/tokens (needs repo access).",
   },
-  {
-    key: "githubRepo",
-    envVar: "GITHUB_REPO",
-    label: "GitHub repo URL",
-    hint: "https://github.com/user/repo",
-    sensitive: false,
-    description:
-      "The GitHub repo where Hank stores memories.\n" +
-      "  This is passed to the agent's container as an environment variable.",
-  },
 ];
 
 function ensureConfigDir(): void {
@@ -142,7 +132,6 @@ export async function ensureAgentConfig(): Promise<{
   agentId: string;
   environmentId: string;
   githubToken: string;
-  githubRepo: string;
 }> {
   const config = loadConfig();
   const missing = CONFIG_FIELDS.filter((f) => !resolve(f, config));
@@ -208,7 +197,6 @@ export async function ensureAgentConfig(): Promise<{
     agentId: string;
     environmentId: string;
     githubToken: string;
-    githubRepo: string;
   };
 }
 

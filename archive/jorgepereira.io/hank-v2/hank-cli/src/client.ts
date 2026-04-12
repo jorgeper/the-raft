@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import type { AgentEvent } from "./types.js";
 
@@ -6,7 +9,6 @@ export interface HankClientConfig {
   agentId: string;
   environmentId: string;
   githubToken: string;
-  githubRepo: string;
 }
 
 export class HankClient {
@@ -14,26 +16,44 @@ export class HankClient {
   private agentId: string;
   private environmentId: string;
   private githubToken: string;
-  private githubRepo: string;
 
   constructor(config: HankClientConfig) {
     this.client = new Anthropic({ apiKey: config.apiKey });
     this.agentId = config.agentId;
     this.environmentId = config.environmentId;
     this.githubToken = config.githubToken;
-    this.githubRepo = config.githubRepo;
+  }
+
+  private async uploadSecretsEnv(): Promise<string> {
+    // Write token to a temp .env file
+    const tmpPath = path.join(os.tmpdir(), `hank-secrets-${Date.now()}.env`);
+    fs.writeFileSync(tmpPath, `GITHUB_TOKEN=${this.githubToken}\n`);
+
+    try {
+      // Upload via the files API
+      const fileStream = fs.createReadStream(tmpPath);
+      const envFile = await (this.client.beta.files as any).upload(
+        { file: ["secrets.env", fileStream, "text/plain"] },
+        { headers: { "anthropic-beta": "files-api-2025-04-14" } }
+      );
+      return envFile.id;
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
   }
 
   async createSession(): Promise<string> {
+    const envFileId = await this.uploadSecretsEnv();
+
     const session = await this.client.beta.sessions.create({
       agent: this.agentId,
       environment_id: this.environmentId,
       resources: [
         {
-          type: "github_repository",
-          url: this.githubRepo,
-          authorization_token: this.githubToken,
-        },
+          type: "file",
+          file_id: envFileId,
+          mount_path: "/workspace/.env",
+        } as any,
       ],
     });
     return session.id;
@@ -73,7 +93,6 @@ export class HankClient {
   async checkSession(sessionId: string): Promise<boolean> {
     try {
       const session = await this.client.beta.sessions.retrieve(sessionId);
-      // Session exists and is not terminated
       return session.status !== "terminated";
     } catch {
       return false;

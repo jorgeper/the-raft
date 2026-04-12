@@ -104,18 +104,19 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({ apiKey });
 
-// Create a session (= start a new conversation)
-// GitHub credentials are passed as container env vars so the agent
-// can read/write to the memory repo during this session.
+// Upload the GitHub token as a .env file via the files API
+const envFile = await client.beta.files.upload(
+  { file: ["secrets.env", envFileStream, "text/plain"] },
+  { headers: { "anthropic-beta": "files-api-2025-04-14" } }
+);
+
+// Create a session, mounting the .env file into the container
 const session = await client.beta.sessions.create({
   agent: agentId,
   environment_id: environmentId,
-  container: {
-    environment: {
-      GITHUB_TOKEN: githubToken,
-      GITHUB_REPO: githubRepo,
-    },
-  },
+  resources: [
+    { type: "file", file_id: envFile.id, mount_path: "/workspace/.env" },
+  ],
 });
 
 // Open a stream to receive events
@@ -170,14 +171,13 @@ Stores CLI configuration in `~/.config/hank/config.json`:
   "apiKey": "sk-ant-...",
   "agentId": "agent_...",
   "environmentId": "env_...",
-  "githubToken": "ghp_...",
-  "githubRepo": "https://github.com/jorgeper/brain"
+  "githubToken": "ghp_..."
 }
 ```
 
 - **API key:** resolved via `ANTHROPIC_API_KEY` env var > config file > interactive prompt (see [API Key Management](#api-key-management))
 - **Agent ID / Environment ID:** identify which managed agent to talk to — set once during initial setup
-- **GitHub token / repo:** passed to the agent's container as environment variables on every session creation. The managed agent uses these to read/write to a GitHub repo for persistent memory. Resolved via `GITHUB_TOKEN` / `GITHUB_REPO` env vars or config file.
+- **GitHub token:** uploaded as a `.env` file via the files API and mounted into the agent's container at `/workspace/.env` on every session creation. The agent reads this to authenticate with GitHub for persistent memory. Resolved via `GITHUB_TOKEN` env var or config file. The GitHub repo URL is hardcoded in the agent itself.
 
 Runtime state (current session ID) is stored separately in `~/.config/hank/state.json` so it doesn't mix with user configuration.
 

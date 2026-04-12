@@ -9,8 +9,7 @@ Hank CLI is a thin client — all the intelligence (personality, memory, tool us
 - [Node.js](https://nodejs.org/) 22 or later
 - An [Anthropic API key](https://console.anthropic.com/settings/keys)
 - A Claude managed agent ID and environment ID (set up via the Anthropic console or API)
-- A [GitHub personal access token](https://github.com/settings/tokens) with repo access
-- A GitHub repository for the agent's memory storage
+- A [GitHub personal access token](https://github.com/settings/tokens) with repo access (for the agent's memory storage)
 
 ## Installation
 
@@ -81,10 +80,6 @@ $ hank
     Create one at: https://github.com/settings/tokens (needs repo access).
   GitHub token: ghp_...
 
-  The GitHub repo where Hank stores memories.
-    This is passed to the agent's container as an environment variable.
-  GitHub repo URL: https://github.com/your-user/your-repo
-
   Config saved to ~/.config/hank/config.json
 ```
 
@@ -95,22 +90,20 @@ This only happens once. Everything is stored in `~/.config/hank/config.json` (yo
 If you prefer, you can set each value individually:
 
 ```bash
-hank config set apiKey sk-ant-...                          # from console.anthropic.com/settings/keys
-hank config set agentId agent_...                          # from console.anthropic.com > Agents
-hank config set environmentId env_...                      # from console.anthropic.com > Environments
-hank config set githubToken ghp_...                        # from github.com/settings/tokens
-hank config set githubRepo https://github.com/user/repo    # your memory storage repo
+hank config set apiKey sk-ant-...            # from console.anthropic.com/settings/keys
+hank config set agentId agent_...            # from console.anthropic.com > Agents
+hank config set environmentId env_...        # from console.anthropic.com > Environments
+hank config set githubToken ghp_...          # from github.com/settings/tokens
 ```
 
 ### Environment variables
 
-For `apiKey`, `githubToken`, and `githubRepo`, you can also use environment variables. Env vars take precedence over the config file.
+For `apiKey` and `githubToken`, you can also use environment variables. Env vars take precedence over the config file.
 
 ```bash
 # In your ~/.zshrc or ~/.bashrc
 export ANTHROPIC_API_KEY="sk-ant-..."
 export GITHUB_TOKEN="ghp_..."
-export GITHUB_REPO="https://github.com/your-user/your-repo"
 ```
 
 ## Usage
@@ -154,7 +147,6 @@ hank config set apiKey sk-ant-...            # set or update the API key
 hank config set agentId agent_...            # set the managed agent ID
 hank config set environmentId env_...        # set the environment ID
 hank config set githubToken ghp_...          # set the GitHub token
-hank config set githubRepo https://...       # set the GitHub memory repo
 ```
 
 ## How it works
@@ -177,7 +169,7 @@ All user data lives in `~/.config/hank/`, outside the repo:
 
 | File | Purpose |
 |------|---------|
-| `~/.config/hank/config.json` | API key, agent ID, environment ID, GitHub token/repo |
+| `~/.config/hank/config.json` | API key, agent ID, environment ID, GitHub token |
 | `~/.config/hank/state.json` | Current conversation session ID |
 
 Nothing sensitive is stored in the project directory.

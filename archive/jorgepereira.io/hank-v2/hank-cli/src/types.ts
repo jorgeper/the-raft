@@ -3,7 +3,6 @@ export interface HankConfig {
   agentId?: string;
   environmentId?: string;
   githubToken?: string;
-  githubRepo?: string;
 }
 
 export interface HankState {
