@@ -8,7 +8,9 @@ Hank CLI is a thin client — all the intelligence (personality, memory, tool us
 
 - [Node.js](https://nodejs.org/) 22 or later
 - An [Anthropic API key](https://console.anthropic.com/settings/keys)
-- A Claude managed agent ID (set up via the Anthropic console or API)
+- A Claude managed agent ID and environment ID (set up via the Anthropic console or API)
+- A [GitHub personal access token](https://github.com/settings/tokens) with repo access
+- A GitHub repository for the agent's memory storage
 
 ## Installation
 
@@ -42,31 +44,61 @@ npm unlink -g hank-cli
 
 ## Setup
 
-The first time you run `hank`, it will ask for your API key:
+### Guided setup (recommended)
+
+The first time you run `hank`, it walks you through all the configuration you need:
 
 ```
 $ hank
 
-  No API key found.
+  Hey, I'm Hank! Let's get me set up so we can chat.
 
-  You can either:
-    1. Enter your key now (saved to ~/.config/hank/config.json)
-    2. Set the ANTHROPIC_API_KEY environment variable in your shell
+  This authenticates you with the Anthropic API.
+    Get one at: https://console.anthropic.com/settings/keys
+  Anthropic API key: sk-ant-...
 
-  Enter your Anthropic API key (or press Enter to skip): sk-ant-...
+  The ID of your Claude managed agent.
+    You get this when you create an agent in the Anthropic console or via the API.
+  Agent ID: agent_...
 
-  API key saved to ~/.config/hank/config.json
+  The ID of the container environment your agent runs in.
+    Created alongside your agent — it defines the runtime (networking, packages).
+  Environment ID: env_...
+
+  A personal access token so the agent can read/write to your memory repo.
+    Create one at: https://github.com/settings/tokens (needs repo access).
+  GitHub token: ghp_...
+
+  The GitHub repo where Hank stores memories.
+    This is passed to the agent's container as an environment variable.
+  GitHub repo URL: https://github.com/your-user/your-repo
+
+  Config saved to ~/.config/hank/config.json
 ```
 
-This only happens once. The key is stored in `~/.config/hank/config.json` (your home directory, outside the repo).
+This only happens once. Everything is stored in `~/.config/hank/config.json` (your home directory, outside the repo).
 
-### Alternative: environment variable
+### Manual setup
 
-If you already have `ANTHROPIC_API_KEY` set in your shell (e.g., for Claude Code), Hank will use that automatically. The env var takes precedence over the config file.
+If you prefer, you can set each value individually:
+
+```bash
+hank config set apiKey sk-ant-...                          # Anthropic API key
+hank config set agentId agent_...                          # managed agent ID
+hank config set environmentId env_...                      # container environment ID
+hank config set githubToken ghp_...                        # GitHub personal access token
+hank config set githubRepo https://github.com/user/repo    # memory storage repo
+```
+
+### Environment variables
+
+For `apiKey`, `githubToken`, and `githubRepo`, you can also use environment variables. Env vars take precedence over the config file.
 
 ```bash
 # In your ~/.zshrc or ~/.bashrc
 export ANTHROPIC_API_KEY="sk-ant-..."
+export GITHUB_TOKEN="ghp_..."
+export GITHUB_REPO="https://github.com/your-user/your-repo"
 ```
 
 ## Usage
@@ -105,9 +137,12 @@ hank --new "start fresh with this question"
 ### Configuration
 
 ```bash
-hank config show                     # show current configuration
-hank config set apiKey sk-ant-...    # set or update the API key
-hank config set agentId agent_...    # set the managed agent ID
+hank config show                             # show current configuration
+hank config set apiKey sk-ant-...            # set or update the API key
+hank config set agentId agent_...            # set the managed agent ID
+hank config set environmentId env_...        # set the environment ID
+hank config set githubToken ghp_...          # set the GitHub token
+hank config set githubRepo https://...       # set the GitHub memory repo
 ```
 
 ## How it works
@@ -130,7 +165,7 @@ All user data lives in `~/.config/hank/`, outside the repo:
 
 | File | Purpose |
 |------|---------|
-| `~/.config/hank/config.json` | API key, agent ID, environment ID |
+| `~/.config/hank/config.json` | API key, agent ID, environment ID, GitHub token/repo |
 | `~/.config/hank/state.json` | Current conversation session ID |
 
 Nothing sensitive is stored in the project directory.

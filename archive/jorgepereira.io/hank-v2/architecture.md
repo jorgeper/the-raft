@@ -105,9 +105,17 @@ import Anthropic from "@anthropic-ai/sdk";
 const client = new Anthropic({ apiKey });
 
 // Create a session (= start a new conversation)
+// GitHub credentials are passed as container env vars so the agent
+// can read/write to the memory repo during this session.
 const session = await client.beta.sessions.create({
   agent: agentId,
   environment_id: environmentId,
+  container: {
+    environment: {
+      GITHUB_TOKEN: githubToken,
+      GITHUB_REPO: githubRepo,
+    },
+  },
 });
 
 // Open a stream to receive events
@@ -161,12 +169,15 @@ Stores CLI configuration in `~/.config/hank/config.json`:
 {
   "apiKey": "sk-ant-...",
   "agentId": "agent_...",
-  "environmentId": "env_..."
+  "environmentId": "env_...",
+  "githubToken": "ghp_...",
+  "githubRepo": "https://github.com/jorgeper/brain"
 }
 ```
 
-- API key: resolved via env var > config file > interactive prompt (see [API Key Management](#api-key-management))
-- Agent ID and environment ID identify which managed agent to talk to — set once during initial setup
+- **API key:** resolved via `ANTHROPIC_API_KEY` env var > config file > interactive prompt (see [API Key Management](#api-key-management))
+- **Agent ID / Environment ID:** identify which managed agent to talk to — set once during initial setup
+- **GitHub token / repo:** passed to the agent's container as environment variables on every session creation. The managed agent uses these to read/write to a GitHub repo (e.g., for persistent memory). Resolved via `GITHUB_TOKEN` / `GITHUB_REPO` env vars or config file.
 
 Runtime state (current session ID) is stored separately in `~/.config/hank/state.json` so it doesn't mix with user configuration.
 
@@ -267,37 +278,45 @@ The CLI resolves the API key in this order, using the first one found:
 
 ### First-run setup
 
-When you run `hank` for the first time and no API key is found, the CLI prompts you interactively:
+When you run `hank` for the first time and any config value is missing, the CLI walks you through each one. For every field it explains what it is, where to get it, and prompts for the value:
 
 ```
 $ hank
 
-  No API key found.
+  Hey, I'm Hank! Let's get me set up so we can chat.
 
-  You can either:
-    1. Enter your key now (saved to ~/.config/hank/config.json)
-    2. Set the ANTHROPIC_API_KEY environment variable in your shell
+  This authenticates you with the Anthropic API.
+    Get one at: https://console.anthropic.com/settings/keys
+  Anthropic API key (or set ANTHROPIC_API_KEY env var): sk-ant-...
 
-  Enter your Anthropic API key (or press Enter to skip): sk-ant-...
+  The ID of your Claude managed agent.
+    You get this when you create an agent in the Anthropic console or via the API.
+  Agent ID: agent_...
 
-  API key saved to ~/.config/hank/config.json
+  ...
+
+  Config saved to ~/.config/hank/config.json
 ```
 
 The flow:
-- Check env var and config file — if either has a key, proceed normally.
-- If no key found, print the prompt above.
-- If the user enters a key, validate it's non-empty, create `~/.config/hank/` if needed, write `config.json`, and continue into the REPL/one-shot as normal.
-- If the user presses Enter without typing a key, print the env var instructions and exit.
+- For each required field, check env var (if applicable) then config file.
+- Only prompt for values that are actually missing — if you already have `ANTHROPIC_API_KEY` set as an env var, it skips that one.
+- All entered values are saved to `config.json` at the end.
+- If the user leaves a field empty, it exits with instructions on how to set it via `hank config set` or env var.
 
-This only happens once. After the key is saved, `hank` starts immediately on every subsequent run.
+This only happens once. After everything is configured, `hank` starts immediately.
 
 ### Manual config commands
 
-The key can also be set or updated explicitly without the first-run wizard:
+All values can also be set or updated individually, bypassing the guided setup:
 
 ```
-hank config set apiKey sk-ant-...    # set or update the API key
-hank config show                     # show current config (key is masked)
+hank config set apiKey sk-ant-...            # Anthropic API key
+hank config set agentId agent_...            # managed agent ID
+hank config set environmentId env_...        # container environment ID
+hank config set githubToken ghp_...          # GitHub personal access token
+hank config set githubRepo https://...       # memory storage repo
+hank config show                             # show current config (secrets masked)
 ```
 
 ## Streaming Events & Live State
