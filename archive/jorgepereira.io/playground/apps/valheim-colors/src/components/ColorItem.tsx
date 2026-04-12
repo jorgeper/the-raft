@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { parseColor } from "../colors";
+import { parseColor, replaceColor } from "../colors";
 
 interface Props {
   code: string;
@@ -13,6 +13,7 @@ export function ColorItem({ code, editMode, onUpdate, onDelete, onCopy }: Props)
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(code);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pickerRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setValue(code);
@@ -26,6 +27,15 @@ export function ColorItem({ code, editMode, onUpdate, onDelete, onCopy }: Props)
   }, [editing]);
 
   const color = parseColor(editing ? value : code) ?? undefined;
+
+  function handlePickerChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const newCode = replaceColor(editing ? value : code, e.target.value);
+    if (editing) {
+      setValue(newCode);
+    } else {
+      onUpdate(newCode);
+    }
+  }
 
   if (editMode && editing) {
     return (
@@ -50,6 +60,13 @@ export function ColorItem({ code, editMode, onUpdate, onDelete, onCopy }: Props)
           }}
           style={{ color }}
         />
+        <input
+          ref={pickerRef}
+          type="color"
+          className="color-picker"
+          value={color || "#ffffff"}
+          onChange={handlePickerChange}
+        />
         <button className="delete-color" onClick={onDelete}>
           &times;
         </button>
@@ -65,15 +82,24 @@ export function ColorItem({ code, editMode, onUpdate, onDelete, onCopy }: Props)
     >
       <span className="code-text">{code}</span>
       {editMode && (
-        <button
-          className="delete-color"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-        >
-          &times;
-        </button>
+        <>
+          <input
+            type="color"
+            className="color-picker"
+            value={color || "#ffffff"}
+            onChange={handlePickerChange}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            className="delete-color"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            &times;
+          </button>
+        </>
       )}
     </div>
   );
