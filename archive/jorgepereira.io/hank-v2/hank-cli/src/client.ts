@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
+import { toFile } from "@anthropic-ai/sdk/uploads";
 import { debug } from "./debug.js";
 import type { AgentEvent } from "./types.js";
 
@@ -26,20 +27,15 @@ export class HankClient {
   }
 
   private async uploadSecretsEnv(): Promise<string> {
-    const tmpPath = path.join(os.tmpdir(), `hank-secrets-${Date.now()}.env`);
-    fs.writeFileSync(tmpPath, `GITHUB_TOKEN=${this.githubToken}\n`);
-    debug("client", "Wrote temp secrets file", { path: tmpPath });
+    const content = `GITHUB_TOKEN=${this.githubToken}\n`;
+    debug("client", "Uploading secrets.env via files API");
 
-    try {
-      debug("client", "Uploading secrets.env via files API");
-      const envFile = await this.client.beta.files.upload({
-        file: fs.createReadStream(tmpPath),
-      });
-      debug("client", "File uploaded", { fileId: envFile.id });
-      return envFile.id;
-    } finally {
-      fs.unlinkSync(tmpPath);
-    }
+    const file = await toFile(Buffer.from(content), "secrets.env", {
+      type: "text/plain",
+    });
+    const envFile = await this.client.beta.files.upload({ file });
+    debug("client", "File uploaded", { fileId: envFile.id });
+    return envFile.id;
   }
 
   async createSession(): Promise<string> {

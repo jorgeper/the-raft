@@ -11,7 +11,7 @@ const TOOL_BORDER = chalk.dim("  │ ");
 
 let activeSpinner: Ora | null = null;
 let responseBuffer = "";
-let isStreaming = false;
+let flushedLength = 0;
 
 function stopSpinner(symbol?: string, text?: string): void {
   if (activeSpinner) {
@@ -31,22 +31,24 @@ function startSpinner(text: string): void {
 
 function flushResponseBuffer(): void {
   if (responseBuffer) {
+    // Render the full markdown and write only what hasn't been written yet
     const rendered = marked.parse(responseBuffer) as string;
-    // Indent each line of the rendered markdown
     const indented = rendered
       .split("\n")
       .map((line) => INDENT + line)
       .join("\n");
-    process.stdout.write(indented);
+    const remaining = indented.slice(flushedLength);
+    if (remaining) {
+      process.stdout.write(remaining);
+    }
     responseBuffer = "";
-    isStreaming = false;
+    flushedLength = 0;
   }
 }
 
 export function renderEvent(event: AgentEvent, verbose: boolean): void {
   switch (event.type) {
     case "agent.thinking": {
-      // If we were streaming a response, flush it first
       flushResponseBuffer();
       startSpinner(chalk.dim.italic("Thinking..."));
       break;
@@ -60,19 +62,18 @@ export function renderEvent(event: AgentEvent, verbose: boolean): void {
         .join("") ?? "";
 
       if (text) {
-        if (!isStreaming) {
-          isStreaming = true;
-        }
         responseBuffer += text;
-        // Stream character by character — write the new text immediately
+        // Render the full buffer, but only write the new delta
         const rendered = marked.parse(responseBuffer) as string;
         const indented = rendered
           .split("\n")
           .map((line) => INDENT + line)
           .join("\n");
-        // Clear current line area and rewrite
-        process.stdout.write("\r\x1b[K");
-        process.stdout.write(indented);
+        const delta = indented.slice(flushedLength);
+        if (delta) {
+          process.stdout.write(delta);
+          flushedLength = indented.length;
+        }
       }
       break;
     }
