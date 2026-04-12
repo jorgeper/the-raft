@@ -105,17 +105,18 @@ import Anthropic from "@anthropic-ai/sdk";
 const client = new Anthropic({ apiKey });
 
 // Create a session (= start a new conversation)
-// GitHub credentials are passed as container env vars so the agent
-// can read/write to the memory repo during this session.
+// The GitHub repo is mounted into the agent's container as a resource
+// so it can read/write to the memory repo during this session.
 const session = await client.beta.sessions.create({
   agent: agentId,
   environment_id: environmentId,
-  container: {
-    environment: {
-      GITHUB_TOKEN: githubToken,
-      GITHUB_REPO: githubRepo,
+  resources: [
+    {
+      type: "github_repository",
+      url: githubRepo,
+      authorization_token: githubToken,
     },
-  },
+  ],
 });
 
 // Open a stream to receive events
@@ -177,7 +178,7 @@ Stores CLI configuration in `~/.config/hank/config.json`:
 
 - **API key:** resolved via `ANTHROPIC_API_KEY` env var > config file > interactive prompt (see [API Key Management](#api-key-management))
 - **Agent ID / Environment ID:** identify which managed agent to talk to — set once during initial setup
-- **GitHub token / repo:** passed to the agent's container as environment variables on every session creation. The managed agent uses these to read/write to a GitHub repo (e.g., for persistent memory). Resolved via `GITHUB_TOKEN` / `GITHUB_REPO` env vars or config file.
+- **GitHub token / repo:** mounted as a `github_repository` resource on every session creation. The agent clones the repo into its container and can read/write to it for persistent memory. Resolved via `GITHUB_TOKEN` / `GITHUB_REPO` env vars or config file.
 
 Runtime state (current session ID) is stored separately in `~/.config/hank/state.json` so it doesn't mix with user configuration.
 

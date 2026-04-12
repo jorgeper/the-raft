@@ -25,15 +25,16 @@ export class HankClient {
   }
 
   async createSession(): Promise<string> {
-    const session = await (this.client as any).beta.sessions.create({
+    const session = await this.client.beta.sessions.create({
       agent: this.agentId,
       environment_id: this.environmentId,
-      container: {
-        environment: {
-          GITHUB_TOKEN: this.githubToken,
-          GITHUB_REPO: this.githubRepo,
+      resources: [
+        {
+          type: "github_repository",
+          url: this.githubRepo,
+          authorization_token: this.githubToken,
         },
-      },
+      ],
     });
     return session.id;
   }
@@ -43,12 +44,10 @@ export class HankClient {
     message: string
   ): AsyncGenerator<AgentEvent> {
     // Open the SSE stream
-    const stream = await (this.client as any).beta.sessions.events.stream(
-      sessionId
-    );
+    const stream = await this.client.beta.sessions.events.stream(sessionId);
 
     // Send the user message
-    await (this.client as any).beta.sessions.events.send(sessionId, {
+    await this.client.beta.sessions.events.send(sessionId, {
       events: [
         {
           type: "user.message",
@@ -59,7 +58,7 @@ export class HankClient {
 
     // Yield events as they arrive
     for await (const event of stream) {
-      yield event as AgentEvent;
+      yield event as unknown as AgentEvent;
 
       // Stop iterating when the agent is done
       if (
@@ -73,9 +72,7 @@ export class HankClient {
 
   async checkSession(sessionId: string): Promise<boolean> {
     try {
-      const session = await (this.client as any).beta.sessions.retrieve(
-        sessionId
-      );
+      const session = await this.client.beta.sessions.retrieve(sessionId);
       // Session exists and is not terminated
       return session.status !== "terminated";
     } catch {
