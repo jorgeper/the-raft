@@ -52,14 +52,15 @@ export class HankClient {
     });
     debug("client", "Session created", { sessionId: session.id });
 
-    // Mount the secrets file into the container after session creation
+    // Mount the secrets file — the API prepends /mnt/session/uploads/ to the path,
+    // so ".env" becomes /mnt/session/uploads/.env
     debug("client", "Adding .env resource to session");
     const resource = await this.client.beta.sessions.resources.add(
       session.id,
       {
         type: "file",
         file_id: envFileId,
-        mount_path: "/workspace/.env",
+        mount_path: ".env",
       }
     );
     debug("client", "Resource added", {
