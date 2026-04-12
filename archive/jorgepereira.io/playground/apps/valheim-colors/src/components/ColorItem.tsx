@@ -60,13 +60,15 @@ export function ColorItem({ code, editMode, onUpdate, onDelete, onCopy }: Props)
           }}
           style={{ color }}
         />
-        <input
-          ref={pickerRef}
-          type="color"
-          className="color-picker"
-          value={color || "#ffffff"}
-          onChange={handlePickerChange}
-        />
+        <label className="picker-btn" title="Pick color">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M13.4 2.6a2 2 0 0 0-2.8 0L3.3 9.9l-.8 3.6 3.6-.8L13.4 5.4a2 2 0 0 0 0-2.8ZM5.4 11.2l-.6.6-1.5.3.3-1.5.6-.6 1.2 1.2Zm1-1L5.2 9l5-5 1.2 1.2-5 5Z"/></svg>
+          <input
+            ref={pickerRef}
+            type="color"
+            value={color || "#ffffff"}
+            onChange={handlePickerChange}
+          />
+        </label>
         <button className="delete-color" onClick={onDelete}>
           &times;
         </button>
@@ -83,13 +85,14 @@ export function ColorItem({ code, editMode, onUpdate, onDelete, onCopy }: Props)
       <span className="code-text">{code}</span>
       {editMode && (
         <>
-          <input
-            type="color"
-            className="color-picker"
-            value={color || "#ffffff"}
-            onChange={handlePickerChange}
-            onClick={(e) => e.stopPropagation()}
-          />
+          <label className="picker-btn" title="Pick color" onClick={(e) => e.stopPropagation()}>
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M13.4 2.6a2 2 0 0 0-2.8 0L3.3 9.9l-.8 3.6 3.6-.8L13.4 5.4a2 2 0 0 0 0-2.8ZM5.4 11.2l-.6.6-1.5.3.3-1.5.6-.6 1.2 1.2Zm1-1L5.2 9l5-5 1.2 1.2-5 5Z"/></svg>
+            <input
+              type="color"
+              value={color || "#ffffff"}
+              onChange={handlePickerChange}
+            />
+          </label>
           <button
             className="delete-color"
             onClick={(e) => {

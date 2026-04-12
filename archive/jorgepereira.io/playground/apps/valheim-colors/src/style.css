@@ -299,35 +299,28 @@ body {
   min-width: 0;
 }
 
-.color-picker {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: none;
+.picker-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
   cursor: pointer;
-  padding: 0;
+  padding: 0 0.15rem;
   flex-shrink: 0;
+  transition: color 0.15s;
+  position: relative;
 }
 
-.color-picker::-webkit-color-swatch-wrapper {
-  padding: 1px;
+.picker-btn:hover {
+  color: var(--text-muted);
 }
 
-.color-picker::-webkit-color-swatch {
-  border: none;
-  border-radius: 3px;
-}
-
-.color-picker::-moz-color-swatch {
-  border: none;
-  border-radius: 3px;
-}
-
-.color-picker:hover {
-  border-color: var(--border-hover);
+.picker-btn input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .color-item .delete-color {
