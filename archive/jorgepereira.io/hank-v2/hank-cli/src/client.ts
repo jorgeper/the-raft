@@ -25,16 +25,16 @@ export class HankClient {
   }
 
   async createSession(): Promise<string> {
-    const session = await this.client.beta.sessions.create({
+    // The SDK types don't include `container` yet, but the API accepts it.
+    const session = await (this.client.beta.sessions.create as Function)({
       agent: this.agentId,
       environment_id: this.environmentId,
-      resources: [
-        {
-          type: "github_repository",
-          url: this.githubRepo,
-          authorization_token: this.githubToken,
+      container: {
+        environment: {
+          GITHUB_TOKEN: this.githubToken,
+          GITHUB_REPO: this.githubRepo,
         },
-      ],
+      },
     });
     return session.id;
   }
