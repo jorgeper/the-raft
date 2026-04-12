@@ -1,0 +1,23 @@
+{
+  "name": "valheim-colors",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "cd ../.. && npm run dev:server",
+    "build": "npm run build:api && tsc && vite build",
+    "build:api": "tsc -p api/tsconfig.json"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

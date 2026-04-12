@@ -1,0 +1,209 @@
+{
+  "name": "Valheim Colors",
+  "columns": [
+    [
+      {
+        "name": "Wood/Stone",
+        "colors": [
+          "<#d3d4d3>Stone/Flint🪨",
+          "<#e1cafe>BlackMarble🪨",
+          "<#bbfff5>Grausten🪨",
+          "<#ffbf95>Wood🪵",
+          "<#ffe3cc>Finewood🪵",
+          "<#ff9b59>Corewood🪵",
+          "<#d7ff38>AnicentBark🪵",
+          "<#fffac5>Yggd Wood🪵",
+          "<#ffc5d7>Ashwood🪵"
+        ]
+      },
+      {
+        "name": "METALS",
+        "colors": [
+          "<#ffa834>Copper🪨",
+          "<#fef1df>Tin🪨",
+          "<#e7c05b>Bronze🪨",
+          "<#cbcac8>Iron🪨",
+          "<#eaeaea>Silver🪨",
+          "<#91ff34>BlackMetal🪨",
+          "<#5ce3cd>Flametal🪨",
+          "<#d6e2e0>Chain ⛓",
+          "<#535353>Nails🥢"
+        ]
+      },
+      {
+        "name": "Equipment/Fishing",
+        "colors": [
+          "<color=yellow>EQ🥼",
+          "<color=yellow>EQ🛠️",
+          "<color=yellow>EQ⚔",
+          "<color=yellow>Arrows 🏹",
+          "<color=yellow>Fishing🎣",
+          "<Color=white>Boat⛵",
+          "<color=yellow>🏆Trophies🏆",
+          "<#6AE0E6>To Keep🫙",
+          "<#CC6AE6>To SELL",
+          "<color=yellow>🪙Gold🪙"
+        ]
+      }
+    ],
+    [
+      {
+        "name": "Resources",
+        "colors": [
+          "<#f6c144>🐗Leather🐗",
+          "<#ffa321>🦌Deer Hide🦌",
+          "<#96dbf9>🗿Troll🗿",
+          "<#e0e0e0>🐺Wolf🐺",
+          "<#aae57b>🍥Root🍥",
+          "<#ddbf6a>🦬Lox🦬",
+          "<#6cb2df>🛡️Carapace🛡️",
+          "<#fef0c7>🐇ScaleHide🐇",
+          "<#fff7da>🪶Feather🪶",
+          "<#efe9e9>🦴Bones🦴",
+          "<#61fff9>👁Eyes👁",
+          "<#e9bf6e>🫧Ooze🫧",
+          "<color=green>🫧Guck🫧",
+          "<#00eaff>🔘Wisp🔘",
+          "<#ff957d>💠Core",
+          "<#ecef1f>Resin🪨",
+          "<#dfdfdf>🪨Obsidian🪨",
+          "<#abffb4>Needle🪡",
+          "<color=white>🪢Thread🪢",
+          "<#c3c3c3>🪨Tar🪨",
+          "<#ffcc62>👜Bilebag👜",
+          "<#ffa08e>🧣Jute🧣",
+          "<#FFCAB3>🥮SoftTissue🥮",
+          "<#d5bab4>🥓Ymir🥓",
+          "<#fff4b3>🔅Morgen🔅",
+          "<#ffb3b3>🦷BonemawTooth🦷",
+          "<#fad6fe>Dragon Egg🥚",
+          "<color=green>🌱Seeds🌱",
+          "<#FFEDB0>🌾Flax🌾",
+          "<#90ff95>🦖Askvin🦖",
+          "<color=white>📛Chitin📛",
+          "<#B0D9FF>🩸Dragon Tear🩸",
+          "<#D6D6D6>⭕Barrel Hoops⭕",
+          "<color=grey>🪨Coal🪨",
+          "<#FFEDB0>🌾Flax🌾",
+          "<#abffec>Crystal💠",
+          "<#ffc9f0>Pottery🍶",
+          "<#ffa321>Bear🐻",
+          "<#FFD080>⚜️Fuling Totem⚜️",
+          "<#abffec>💠Crystal💠",
+          "<color=green>🪨Ectoplasm🪨",
+          "<color=white>🕯️Wick🕯️",
+          "<#EDC547>Mugs🍵",
+          "<#9CF7C5>🧿Etir🧿",
+          "<#E3F79C>📎Spring📎",
+          "<#E3D836>🏮Lantern🏮",
+          "<#367EE3>Iron Pit 🕳️",
+          "<#D97575>⚡SealBreaker⚡",
+          "<#BF9349>Bear Hide🐻",
+          "<color=yellow>🧪Vial🧪"
+        ]
+      }
+    ],
+    [
+      {
+        "name": "Food stuff",
+        "colors": [
+          "<#D2FF8C>🫘Bukeberries🫘",
+          "<#ffa0a0>🍓Raspberries🍓",
+          "<#52B4FF>🫐Blueberries🫐",
+          "<#FFF203>🥭Cloudberries🥭",
+          "<#cbff9a>🍇Vineberries🍇",
+          "<#ffbf86>🍄Mushroom🍄",
+          "<color=yellow>🍄Yellow Mushroom🍄",
+          "<#FFDB00>🍯Honey🍯",
+          "<#FFC878>🍯Royal Jelly🍯",
+          "<#ffff00>🌻Dandelion🌻",
+          "<#1affff>🌿Thistle🌿",
+          "<#FFE6C4>🧅Onion🧅",
+          "<#FFF2F2>🍑Turnip🍑",
+          "<#FFB152>🥕Carrot🥕",
+          "<#25e0ff>Magecap🌶️",
+          "<#ffef79>🍠JotunPuffs🍠",
+          "<#FFF073>🥦SmokePuff🥦",
+          "<#ffffba>Flour🍚",
+          "<#ffa486>⚕️Entrails⚕️",
+          "<#ff8989>Bloodclot       👛",
+          "<#ffbcbc>Bloodbag    👛",
+          "<color=white>ADDINS🧉",
+          "<color=yellow>🌾Barley🌾",
+          "<#F5FFEB>🫧Ooze🫧",
+          "<#00eaff>❄️Freeze Gland❄️",
+          "<#ffffba>🍚Flour🍚",
+          "<#FFFE8A>🍞Bread🍞",
+          "<color=yellow>Barley 🌿",
+          "<color=White>Eggs🥚",
+          "<#6BB7FF>🐟",
+          "<#FFA1A1>🍖R1",
+          "<#F78181>🍖R2",
+          "<#FF5454>🍖R3",
+          "<#aaff44>Special⭐",
+          "<#ff3c3c>Health❤",
+          "<#faff00>Stamina🫁",
+          "<#44e5ff>Magic🧠",
+          "<#fdaf6f>Meads🧉",
+          "<#6AE66A>Sap🍶",
+          "<#FFCB78>Chicken🐔",
+          "<color=green>🧪Resistances🧪",
+          "<#FF7D7D>🧪Resistances🧪",
+          "<#96FFFF>🧪Resistances🧪",
+          "<color=white>ADDINS🧉"
+        ]
+      }
+    ],
+    [
+      {
+        "name": "Portal Names",
+        "colors": [
+          "<#fff94a>💰Vendor💰",
+          "<#8efae6>👕Vendor👕",
+          "<#cda2fc>🔮Witch🔮",
+          "<#FFA8A8>🍓Berry<#7DC9FF>Fields🫐",
+          "<#54FFD2>🍂Greydwarf Farm🍂",
+          "<#1affff>🌿Thistle Farm🌿",
+          "<#FFEA63>🌾Plains Field🌾"
+        ]
+      },
+      {
+        "name": "BOSS PORTAL NAMES",
+        "colors": [
+          "<#FFC675>🦌Eikthyr🦌",
+          "<#C9FFA8>🍂The Elder🍂",
+          "<#FFFCAB>💀Bonemass💀",
+          "<#FFDACF>🔥Yagluth🔥",
+          "<color=red>🦂Queen🦂",
+          "<color=yellow>🚩Starting Area🚩",
+          "<color=yellow><size=50><voffset=40>🌟",
+          "<#91FF70>Trees",
+          "<#91FF70>🌲",
+          "<#FFFF00><size=30><voffset=65>🗺️",
+          "<#0092DB><size=105><voffset=60>🔺",
+          "<#F5FF87><size=25><voffset=60>🍽️",
+          "<#FFD0A6><size=105><voffset=55>🔺"
+        ]
+      }
+    ],
+    [
+      {
+        "name": "Borders",
+        "colors": [
+          "<#94561E><size=105><voffset=55>🔺",
+          "<#FF4A1C><size=42><voffset=35>☠"
+        ]
+      },
+      {
+        "name": "Icon",
+        "colors": [
+          "<#F5FF87><size=30><voffset=60>🍽️"
+        ]
+      },
+      {
+        "name": "Workshop Area Below",
+        "colors": []
+      }
+    ]
+  ]
+}

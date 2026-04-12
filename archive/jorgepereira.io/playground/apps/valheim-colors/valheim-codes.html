@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Valheim Codes 2.0</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #000000;
+    color: #eee;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 20px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 2em;
+    margin-bottom: 20px;
+    color: #c0c0c0;
+    text-shadow: 0 0 10px rgba(192,192,192,0.3);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+    max-width: 1500px;
+    margin: 0 auto;
+    align-items: start;
+  }
+  .column {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .group {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #2a2a2a;
+    background: #141414;
+  }
+  .group-header {
+    font-weight: 700;
+    font-size: 1.05em;
+    text-align: center;
+    padding: 10px 8px;
+    background: #1a1a1a;
+    color: #c0c0c0;
+    border-bottom: 1px solid #2a2a2a;
+  }
+  .item {
+    padding: 5px 10px;
+    font-size: 0.88em;
+    border-bottom: 1px solid #1e1e1e;
+    background: #141414;
+    cursor: pointer;
+    user-select: all;
+    font-weight: 500;
+    transition: background 0.15s;
+  }
+  .item:hover {
+    background: #1e1e1e;
+  }
+  .item:last-child {
+    border-bottom: none;
+  }
+  .toolbar {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .toolbar button {
+    background: #1a1a1a;
+    color: #c0c0c0;
+    border: 1px solid #2a2a2a;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .toolbar button:hover {
+    background: #2a2a2a;
+  }
+  .toolbar button.active {
+    background: #2a1010;
+    border-color: #5a2020;
+    color: #ff8080;
+  }
+  #btn-save {
+    display: none;
+  }
+  #btn-save.visible {
+    display: inline-block;
+    background: #102a10;
+    border-color: #205a20;
+    color: #80ff80;
+  }
+  #btn-save.visible:hover {
+    background: #183818;
+  }
+  .item.edited {
+    background: #1e0a0a !important;
+    border-left: 3px solid #662222;
+  }
+  .item.editing {
+    outline: 1px solid #884444;
+    background: #1e0a0a !important;
+  }
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #c0c0c0;
+    color: #000;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.9em;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 100;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+</style>
+<script>
+let editMode = false;
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => toast.classList.remove('show'), 1200);
+}
+
+function handleItemClick(el) {
+  if (editMode) {
+    el.contentEditable = 'true';
+    el.classList.add('editing');
+    el.focus();
+  } else {
+    const text = el.getAttribute('data-code');
+    navigator.clipboard.writeText(text).then(() => showToast('Copied: ' + text));
+  }
+}
+
+function handleItemBlur(el) {
+  el.contentEditable = 'false';
+  el.classList.remove('editing');
+  const newText = el.textContent.trim();
+  const orig = el.getAttribute('data-code');
+  if (newText !== orig) {
+    el.setAttribute('data-code', newText);
+    el.classList.add('edited');
+    document.getElementById('btn-save').classList.add('visible');
+  }
+}
+
+function handleItemKey(e, el) {
+  if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+  if (e.key === 'Escape') { el.textContent = el.getAttribute('data-code'); el.blur(); }
+}
+
+function toggleEdit() {
+  editMode = !editMode;
+  const btn = document.getElementById('btn-edit');
+  btn.classList.toggle('active', editMode);
+  btn.textContent = editMode ? '✏️ Edit Mode ON' : '✏️ Edit Mode';
+  if (!editMode) {
+    document.querySelectorAll('.item.editing').forEach(el => { el.contentEditable = 'false'; el.classList.remove('editing'); });
+  }
+}
+
+function saveHtml() {
+  const clone = document.documentElement.cloneNode(true);
+  // Remove toolbar, toast, and clean up editing states
+  clone.querySelectorAll('.item').forEach(el => {
+    el.contentEditable = 'false';
+    el.classList.remove('editing');
+    el.removeAttribute('style');
+  });
+  // Re-apply colors from data-code
+  clone.querySelectorAll('.item[data-code]').forEach(el => {
+    const code = el.getAttribute('data-code');
+    let color = null;
+    let m = code.match(/<#([0-9a-fA-F]{6})>/);
+    if (m) color = '#' + m[1];
+    else {
+      m = code.match(/<color=([a-zA-Z]+)>/i);
+      if (m) {
+        const map = {yellow:'#faff00',red:'#ff3c3c',green:'#00cc00',white:'#ffffff',grey:'#999999',blue:'#4488ff'};
+        color = map[m[1].toLowerCase()] || m[1];
+      }
+    }
+    if (color) el.setAttribute('style', 'color:' + color + ';');
+  });
+  // Reset edit button
+  const editBtn = clone.querySelector('#btn-edit');
+  if (editBtn) { editBtn.classList.remove('active'); editBtn.textContent = '✏️ Edit Mode'; }
+  const saveBtn = clone.querySelector('#btn-save');
+  if (saveBtn) saveBtn.classList.remove('visible');
+  // Reset edited highlights
+  clone.querySelectorAll('.item.edited').forEach(el => el.classList.remove('edited'));
+
+  const html = '<!DOCTYPE html>\n' + clone.outerHTML;
+  const blob = new Blob([html], {type: 'text/html'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'valheim-codes-edited.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Saved valheim-codes-edited.html');
+}
+</script>
+</head>
+<body>
+<h1>⚔️ Valheim Sign Codes 2.0 ⚔️</h1>
+<div class="toolbar">
+  <button id="btn-edit" onclick="toggleEdit()">✏️ Edit Mode</button>
+  <button id="btn-save" onclick="saveHtml()">💾 Save HTML</button>
+</div>
+<div id="toast" class="toast"></div>
+<div class="grid">
+<div class="column">
+  <div class="group">
+    <div class="group-header">Wood/Stone</div>
+    <div class="item" style="color:#d3d4d3;" data-code="&lt;#d3d4d3&gt;Stone/Flint🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#d3d4d3&gt;Stone/Flint🪨</div>
+    <div class="item" style="color:#e1cafe;" data-code="&lt;#e1cafe&gt;BlackMarble🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#e1cafe&gt;BlackMarble🪨</div>
+    <div class="item" style="color:#bbfff5;" data-code="&lt;#bbfff5&gt;Grausten🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#bbfff5&gt;Grausten🪨</div>
+    <div class="item" style="color:#ffbf95;" data-code="&lt;#ffbf95&gt;Wood🪵" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffbf95&gt;Wood🪵</div>
+    <div class="item" style="color:#ffe3cc;" data-code="&lt;#ffe3cc&gt;Finewood🪵" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffe3cc&gt;Finewood🪵</div>
+    <div class="item" style="color:#ff9b59;" data-code="&lt;#ff9b59&gt;Corewood🪵" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ff9b59&gt;Corewood🪵</div>
+    <div class="item" style="color:#d7ff38;" data-code="&lt;#d7ff38&gt;AnicentBark🪵" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#d7ff38&gt;AnicentBark🪵</div>
+    <div class="item" style="color:#fffac5;" data-code="&lt;#fffac5&gt;Yggd Wood🪵" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#fffac5&gt;Yggd Wood🪵</div>
+    <div class="item" style="color:#ffc5d7;" data-code="&lt;#ffc5d7&gt;Ashwood🪵" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffc5d7&gt;Ashwood🪵</div>
+  </div>
+  <div class="group">
+    <div class="group-header">METALS</div>
+    <div class="item" style="color:#ffa834;" data-code="&lt;#ffa834&gt;Copper🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffa834&gt;Copper🪨</div>
+    <div class="item" style="color:#fef1df;" data-code="&lt;#fef1df&gt;Tin🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#fef1df&gt;Tin🪨</div>
+    <div class="item" style="color:#e7c05b;" data-code="&lt;#e7c05b&gt;Bronze🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#e7c05b&gt;Bronze🪨</div>
+    <div class="item" style="color:#cbcac8;" data-code="&lt;#cbcac8&gt;Iron🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#cbcac8&gt;Iron🪨</div>
+    <div class="item" style="color:#eaeaea;" data-code="&lt;#eaeaea&gt;Silver🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#eaeaea&gt;Silver🪨</div>
+    <div class="item" style="color:#91ff34;" data-code="&lt;#91ff34&gt;BlackMetal🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#91ff34&gt;BlackMetal🪨</div>
+    <div class="item" style="color:#5ce3cd;" data-code="&lt;#5ce3cd&gt;Flametal🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#5ce3cd&gt;Flametal🪨</div>
+    <div class="item" style="color:#d6e2e0;" data-code="&lt;#d6e2e0&gt;Chain ⛓" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#d6e2e0&gt;Chain ⛓</div>
+    <div class="item" style="color:#535353;" data-code="&lt;#535353&gt;Nails🥢" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#535353&gt;Nails🥢</div>
+  </div>
+  <div class="group">
+    <div class="group-header">Equipment/Fishing</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;EQ🥼" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;EQ🥼</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;EQ🛠️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;EQ🛠️</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;EQ⚔" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;EQ⚔</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;Arrows 🏹" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;Arrows 🏹</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;Fishing🎣" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;Fishing🎣</div>
+    <div class="item" style="color:#ffffff;" data-code="&lt;Color=white&gt;Boat⛵" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;Color=white&gt;Boat⛵</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;🏆Trophies🏆" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;🏆Trophies🏆</div>
+    <div class="item" style="color:#6AE0E6;" data-code="&lt;#6AE0E6&gt;To Keep🫙" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#6AE0E6&gt;To Keep🫙</div>
+    <div class="item" style="color:#CC6AE6;" data-code="&lt;#CC6AE6&gt;To SELL" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#CC6AE6&gt;To SELL</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;🪙Gold🪙" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;🪙Gold🪙</div>
+  </div>
+</div>
+<div class="column">
+  <div class="group">
+    <div class="group-header">Resources</div>
+    <div class="item" style="color:#f6c144;" data-code="&lt;#f6c144&gt;🐗Leather🐗" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#f6c144&gt;🐗Leather🐗</div>
+    <div class="item" style="color:#ffa321;" data-code="&lt;#ffa321&gt;🦌Deer Hide🦌" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffa321&gt;🦌Deer Hide🦌</div>
+    <div class="item" style="color:#96dbf9;" data-code="&lt;#96dbf9&gt;🗿Troll🗿" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#96dbf9&gt;🗿Troll🗿</div>
+    <div class="item" style="color:#e0e0e0;" data-code="&lt;#e0e0e0&gt;🐺Wolf🐺" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#e0e0e0&gt;🐺Wolf🐺</div>
+    <div class="item" style="color:#aae57b;" data-code="&lt;#aae57b&gt;🍥Root🍥" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#aae57b&gt;🍥Root🍥</div>
+    <div class="item" style="color:#ddbf6a;" data-code="&lt;#ddbf6a&gt;🦬Lox🦬" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ddbf6a&gt;🦬Lox🦬</div>
+    <div class="item" style="color:#6cb2df;" data-code="&lt;#6cb2df&gt;🛡️Carapace🛡️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#6cb2df&gt;🛡️Carapace🛡️</div>
+    <div class="item" style="color:#fef0c7;" data-code="&lt;#fef0c7&gt;🐇ScaleHide🐇" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#fef0c7&gt;🐇ScaleHide🐇</div>
+    <div class="item" style="color:#fff7da;" data-code="&lt;#fff7da&gt;🪶Feather🪶" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#fff7da&gt;🪶Feather🪶</div>
+    <div class="item" style="color:#efe9e9;" data-code="&lt;#efe9e9&gt;🦴Bones🦴" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#efe9e9&gt;🦴Bones🦴</div>
+    <div class="item" style="color:#61fff9;" data-code="&lt;#61fff9&gt;👁Eyes👁" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#61fff9&gt;👁Eyes👁</div>
+    <div class="item" style="color:#e9bf6e;" data-code="&lt;#e9bf6e&gt;🫧Ooze🫧" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#e9bf6e&gt;🫧Ooze🫧</div>
+    <div class="item" style="color:#00cc00;" data-code="&lt;color=green&gt;🫧Guck🫧" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=green&gt;🫧Guck🫧</div>
+    <div class="item" style="color:#00eaff;" data-code="&lt;#00eaff&gt;🔘Wisp🔘" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#00eaff&gt;🔘Wisp🔘</div>
+    <div class="item" style="color:#ff957d;" data-code="&lt;#ff957d&gt;💠Core" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ff957d&gt;💠Core</div>
+    <div class="item" style="color:#ecef1f;" data-code="&lt;#ecef1f&gt;Resin🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ecef1f&gt;Resin🪨</div>
+    <div class="item" style="color:#dfdfdf;" data-code="&lt;#dfdfdf&gt;🪨Obsidian🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#dfdfdf&gt;🪨Obsidian🪨</div>
+    <div class="item" style="color:#abffb4;" data-code="&lt;#abffb4&gt;Needle🪡" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#abffb4&gt;Needle🪡</div>
+    <div class="item" style="color:#ffffff;" data-code="&lt;color=white&gt;🪢Thread🪢" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=white&gt;🪢Thread🪢</div>
+    <div class="item" style="color:#c3c3c3;" data-code="&lt;#c3c3c3&gt;🪨Tar🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#c3c3c3&gt;🪨Tar🪨</div>
+    <div class="item" style="color:#ffcc62;" data-code="&lt;#ffcc62&gt;👜Bilebag👜" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffcc62&gt;👜Bilebag👜</div>
+    <div class="item" style="color:#ffa08e;" data-code="&lt;#ffa08e&gt;🧣Jute🧣" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffa08e&gt;🧣Jute🧣</div>
+    <div class="item" style="color:#FFCAB3;" data-code="&lt;#FFCAB3&gt;🥮SoftTissue🥮" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFCAB3&gt;🥮SoftTissue🥮</div>
+    <div class="item" style="color:#d5bab4;" data-code="&lt;#d5bab4&gt;🥓Ymir🥓" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#d5bab4&gt;🥓Ymir🥓</div>
+    <div class="item" style="color:#fff4b3;" data-code="&lt;#fff4b3&gt;🔅Morgen🔅" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#fff4b3&gt;🔅Morgen🔅</div>
+    <div class="item" style="color:#ffb3b3;" data-code="&lt;#ffb3b3&gt;🦷BonemawTooth🦷" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffb3b3&gt;🦷BonemawTooth🦷</div>
+    <div class="item" style="color:#fad6fe;" data-code="&lt;#fad6fe&gt;Dragon Egg🥚" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#fad6fe&gt;Dragon Egg🥚</div>
+    <div class="item" style="color:#00cc00;" data-code="&lt;color=green&gt;🌱Seeds🌱" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=green&gt;🌱Seeds🌱</div>
+    <div class="item" style="color:#FFEDB0;" data-code="&lt;#FFEDB0&gt;🌾Flax🌾" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFEDB0&gt;🌾Flax🌾</div>
+    <div class="item" style="color:#90ff95;" data-code="&lt;#90ff95&gt;🦖Askvin🦖" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#90ff95&gt;🦖Askvin🦖</div>
+    <div class="item" style="color:#ffffff;" data-code="&lt;color=white&gt;📛Chitin📛" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=white&gt;📛Chitin📛</div>
+    <div class="item" style="color:#B0D9FF;" data-code="&lt;#B0D9FF&gt;🩸Dragon Tear🩸" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#B0D9FF&gt;🩸Dragon Tear🩸</div>
+    <div class="item" style="color:#D6D6D6;" data-code="&lt;#D6D6D6&gt;⭕Barrel Hoops⭕" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#D6D6D6&gt;⭕Barrel Hoops⭕</div>
+    <div class="item" style="color:#999999;" data-code="&lt;color=grey&gt;🪨Coal🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=grey&gt;🪨Coal🪨</div>
+    <div class="item" style="color:#FFEDB0;" data-code="&lt;#FFEDB0&gt;🌾Flax🌾" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFEDB0&gt;🌾Flax🌾</div>
+    <div class="item" style="color:#abffec;" data-code="&lt;#abffec&gt;Crystal💠" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#abffec&gt;Crystal💠</div>
+    <div class="item" style="color:#ffc9f0;" data-code="&lt;#ffc9f0&gt;Pottery🍶" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffc9f0&gt;Pottery🍶</div>
+    <div class="item" style="color:#ffa321;" data-code="&lt;#ffa321&gt;Bear🐻" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffa321&gt;Bear🐻</div>
+    <div class="item" style="color:#FFD080;" data-code="&lt;#FFD080&gt;⚜️Fuling Totem⚜️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFD080&gt;⚜️Fuling Totem⚜️</div>
+    <div class="item" style="color:#abffec;" data-code="&lt;#abffec&gt;💠Crystal💠" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#abffec&gt;💠Crystal💠</div>
+    <div class="item" style="color:#00cc00;" data-code="&lt;color=green&gt;🪨Ectoplasm🪨" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=green&gt;🪨Ectoplasm🪨</div>
+    <div class="item" style="color:#ffffff;" data-code="&lt;color=white&gt;🕯️Wick🕯️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=white&gt;🕯️Wick🕯️</div>
+    <div class="item" style="color:#EDC547;" data-code="&lt;#EDC547&gt;Mugs🍵" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#EDC547&gt;Mugs🍵</div>
+    <div class="item" style="color:#9CF7C5;" data-code="&lt;#9CF7C5&gt;🧿Etir🧿" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#9CF7C5&gt;🧿Etir🧿</div>
+    <div class="item" style="color:#E3F79C;" data-code="&lt;#E3F79C&gt;📎Spring📎" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#E3F79C&gt;📎Spring📎</div>
+    <div class="item" style="color:#E3D836;" data-code="&lt;#E3D836&gt;🏮Lantern🏮" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#E3D836&gt;🏮Lantern🏮</div>
+    <div class="item" style="color:#367EE3;" data-code="&lt;#367EE3&gt;Iron Pit 🕳️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#367EE3&gt;Iron Pit 🕳️</div>
+    <div class="item" style="color:#D97575;" data-code="&lt;#D97575&gt;⚡SealBreaker⚡" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#D97575&gt;⚡SealBreaker⚡</div>
+    <div class="item" style="color:#BF9349;" data-code="&lt;#BF9349&gt;Bear Hide🐻" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#BF9349&gt;Bear Hide🐻</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;🧪Vial🧪" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;🧪Vial🧪</div>
+  </div>
+</div>
+<div class="column">
+  <div class="group">
+    <div class="group-header">Food stuff</div>
+    <div class="item" style="color:#D2FF8C;" data-code="&lt;#D2FF8C&gt;🫘Bukeberries🫘" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#D2FF8C&gt;🫘Bukeberries🫘</div>
+    <div class="item" style="color:#ffa0a0;" data-code="&lt;#ffa0a0&gt;🍓Raspberries🍓" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffa0a0&gt;🍓Raspberries🍓</div>
+    <div class="item" style="color:#52B4FF;" data-code="&lt;#52B4FF&gt;🫐Blueberries🫐" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#52B4FF&gt;🫐Blueberries🫐</div>
+    <div class="item" style="color:#FFF203;" data-code="&lt;#FFF203&gt;🥭Cloudberries🥭" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFF203&gt;🥭Cloudberries🥭</div>
+    <div class="item" style="color:#cbff9a;" data-code="&lt;#cbff9a&gt;🍇Vineberries🍇" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#cbff9a&gt;🍇Vineberries🍇</div>
+    <div class="item" style="color:#ffbf86;" data-code="&lt;#ffbf86&gt;🍄Mushroom🍄" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffbf86&gt;🍄Mushroom🍄</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;🍄Yellow Mushroom🍄" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;🍄Yellow Mushroom🍄</div>
+    <div class="item" style="color:#FFDB00;" data-code="&lt;#FFDB00&gt;🍯Honey🍯" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFDB00&gt;🍯Honey🍯</div>
+    <div class="item" style="color:#FFC878;" data-code="&lt;#FFC878&gt;🍯Royal Jelly🍯" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFC878&gt;🍯Royal Jelly🍯</div>
+    <div class="item" style="color:#ffff00;" data-code="&lt;#ffff00&gt;🌻Dandelion🌻" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffff00&gt;🌻Dandelion🌻</div>
+    <div class="item" style="color:#1affff;" data-code="&lt;#1affff&gt;🌿Thistle🌿" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#1affff&gt;🌿Thistle🌿</div>
+    <div class="item" style="color:#FFE6C4;" data-code="&lt;#FFE6C4&gt;🧅Onion🧅" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFE6C4&gt;🧅Onion🧅</div>
+    <div class="item" style="color:#FFF2F2;" data-code="&lt;#FFF2F2&gt;🍑Turnip🍑" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFF2F2&gt;🍑Turnip🍑</div>
+    <div class="item" style="color:#FFB152;" data-code="&lt;#FFB152&gt;🥕Carrot🥕" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFB152&gt;🥕Carrot🥕</div>
+    <div class="item" style="color:#25e0ff;" data-code="&lt;#25e0ff&gt;Magecap🌶️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#25e0ff&gt;Magecap🌶️</div>
+    <div class="item" style="color:#ffef79;" data-code="&lt;#ffef79&gt;🍠JotunPuffs🍠" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffef79&gt;🍠JotunPuffs🍠</div>
+    <div class="item" style="color:#FFF073;" data-code="&lt;#FFF073&gt;🥦SmokePuff🥦" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFF073&gt;🥦SmokePuff🥦</div>
+    <div class="item" style="color:#ffffba;" data-code="&lt;#ffffba&gt;Flour🍚" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffffba&gt;Flour🍚</div>
+    <div class="item" style="color:#ffa486;" data-code="&lt;#ffa486&gt;⚕️Entrails⚕️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffa486&gt;⚕️Entrails⚕️</div>
+    <div class="item" style="color:#ff8989;" data-code="&lt;#ff8989&gt;Bloodclot       👛" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ff8989&gt;Bloodclot       👛</div>
+    <div class="item" style="color:#ffbcbc;" data-code="&lt;#ffbcbc&gt;Bloodbag    👛" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffbcbc&gt;Bloodbag    👛</div>
+    <div class="item" style="color:#ffffff;" data-code="&lt;color=white&gt;ADDINS🧉" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=white&gt;ADDINS🧉</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;🌾Barley🌾" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;🌾Barley🌾</div>
+    <div class="item" style="color:#F5FFEB;" data-code="&lt;#F5FFEB&gt;🫧Ooze🫧" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#F5FFEB&gt;🫧Ooze🫧</div>
+    <div class="item" style="color:#00eaff;" data-code="&lt;#00eaff&gt;❄️Freeze Gland❄️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#00eaff&gt;❄️Freeze Gland❄️</div>
+    <div class="item" style="color:#ffffba;" data-code="&lt;#ffffba&gt;🍚Flour🍚" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ffffba&gt;🍚Flour🍚</div>
+    <div class="item" style="color:#FFFE8A;" data-code="&lt;#FFFE8A&gt;🍞Bread🍞" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFFE8A&gt;🍞Bread🍞</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;Barley 🌿" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;Barley 🌿</div>
+    <div class="item" style="color:#ffffff;" data-code="&lt;color=White&gt;Eggs🥚" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=White&gt;Eggs🥚</div>
+    <div class="item" style="color:#6BB7FF;" data-code="&lt;#6BB7FF&gt;🐟" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#6BB7FF&gt;🐟</div>
+    <div class="item" style="color:#FFA1A1;" data-code="&lt;#FFA1A1&gt;🍖R1" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFA1A1&gt;🍖R1</div>
+    <div class="item" style="color:#F78181;" data-code="&lt;#F78181&gt;🍖R2" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#F78181&gt;🍖R2</div>
+    <div class="item" style="color:#FF5454;" data-code="&lt;#FF5454&gt;🍖R3" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FF5454&gt;🍖R3</div>
+    <div class="item" style="color:#aaff44;" data-code="&lt;#aaff44&gt;Special⭐" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#aaff44&gt;Special⭐</div>
+    <div class="item" style="color:#ff3c3c;" data-code="&lt;#ff3c3c&gt;Health❤" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#ff3c3c&gt;Health❤</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;#faff00&gt;Stamina🫁" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#faff00&gt;Stamina🫁</div>
+    <div class="item" style="color:#44e5ff;" data-code="&lt;#44e5ff&gt;Magic🧠" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#44e5ff&gt;Magic🧠</div>
+    <div class="item" style="color:#fdaf6f;" data-code="&lt;#fdaf6f&gt;Meads🧉" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#fdaf6f&gt;Meads🧉</div>
+    <div class="item" style="color:#6AE66A;" data-code="&lt;#6AE66A&gt;Sap🍶" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#6AE66A&gt;Sap🍶</div>
+    <div class="item" style="color:#FFCB78;" data-code="&lt;#FFCB78&gt;Chicken🐔" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFCB78&gt;Chicken🐔</div>
+    <div class="item" style="color:#00cc00;" data-code="&lt;color=green&gt;🧪Resistances🧪" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=green&gt;🧪Resistances🧪</div>
+    <div class="item" style="color:#FF7D7D;" data-code="&lt;#FF7D7D&gt;🧪Resistances🧪" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FF7D7D&gt;🧪Resistances🧪</div>
+    <div class="item" style="color:#96FFFF;" data-code="&lt;#96FFFF&gt;🧪Resistances🧪" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#96FFFF&gt;🧪Resistances🧪</div>
+    <div class="item" style="color:#ffffff;" data-code="&lt;color=white&gt;ADDINS🧉" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=white&gt;ADDINS🧉</div>
+  </div>
+</div>
+<div class="column">
+  <div class="group">
+    <div class="group-header">Portal Names</div>
+    <div class="item" style="color:#fff94a;" data-code="&lt;#fff94a&gt;💰Vendor💰" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#fff94a&gt;💰Vendor💰</div>
+    <div class="item" style="color:#8efae6;" data-code="&lt;#8efae6&gt;👕Vendor👕" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#8efae6&gt;👕Vendor👕</div>
+    <div class="item" style="color:#cda2fc;" data-code="&lt;#cda2fc&gt;🔮Witch🔮" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#cda2fc&gt;🔮Witch🔮</div>
+    <div class="item" style="color:#FFA8A8;" data-code="&lt;#FFA8A8&gt;🍓Berry&lt;#7DC9FF&gt;Fields🫐" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFA8A8&gt;🍓Berry&lt;#7DC9FF&gt;Fields🫐</div>
+    <div class="item" style="color:#54FFD2;" data-code="&lt;#54FFD2&gt;🍂Greydwarf Farm🍂" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#54FFD2&gt;🍂Greydwarf Farm🍂</div>
+    <div class="item" style="color:#1affff;" data-code="&lt;#1affff&gt;🌿Thistle Farm🌿" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#1affff&gt;🌿Thistle Farm🌿</div>
+    <div class="item" style="color:#FFEA63;" data-code="&lt;#FFEA63&gt;🌾Plains Field🌾" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFEA63&gt;🌾Plains Field🌾</div>
+  </div>
+  <div class="group">
+    <div class="group-header">BOSS PORTAL NAMES</div>
+    <div class="item" style="color:#FFC675;" data-code="&lt;#FFC675&gt;🦌Eikthyr🦌" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFC675&gt;🦌Eikthyr🦌</div>
+    <div class="item" style="color:#C9FFA8;" data-code="&lt;#C9FFA8&gt;🍂The Elder🍂" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#C9FFA8&gt;🍂The Elder🍂</div>
+    <div class="item" style="color:#FFFCAB;" data-code="&lt;#FFFCAB&gt;💀Bonemass💀" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFFCAB&gt;💀Bonemass💀</div>
+    <div class="item" style="color:#FFDACF;" data-code="&lt;#FFDACF&gt;🔥Yagluth🔥" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFDACF&gt;🔥Yagluth🔥</div>
+    <div class="item" style="color:#ff3c3c;" data-code="&lt;color=red&gt;🦂Queen🦂" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=red&gt;🦂Queen🦂</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;🚩Starting Area🚩" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;🚩Starting Area🚩</div>
+    <div class="item" style="color:#faff00;" data-code="&lt;color=yellow&gt;&lt;size=50&gt;&lt;voffset=40&gt;🌟" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;color=yellow&gt;&lt;size=50&gt;&lt;voffset=40&gt;🌟</div>
+    <div class="item" style="color:#91FF70;" data-code="&lt;#91FF70&gt;Trees" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#91FF70&gt;Trees</div>
+    <div class="item" style="color:#91FF70;" data-code="&lt;#91FF70&gt;🌲" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#91FF70&gt;🌲</div>
+    <div class="item" style="color:#FFFF00;" data-code="&lt;#FFFF00&gt;&lt;size=30&gt;&lt;voffset=65&gt;🗺️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFFF00&gt;&lt;size=30&gt;&lt;voffset=65&gt;🗺️</div>
+    <div class="item" style="color:#0092DB;" data-code="&lt;#0092DB&gt;&lt;size=105&gt;&lt;voffset=60&gt;🔺" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#0092DB&gt;&lt;size=105&gt;&lt;voffset=60&gt;🔺</div>
+    <div class="item" style="color:#F5FF87;" data-code="&lt;#F5FF87&gt;&lt;size=25&gt;&lt;voffset=60&gt;🍽️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#F5FF87&gt;&lt;size=25&gt;&lt;voffset=60&gt;🍽️</div>
+    <div class="item" style="color:#FFD0A6;" data-code="&lt;#FFD0A6&gt;&lt;size=105&gt;&lt;voffset=55&gt;🔺" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FFD0A6&gt;&lt;size=105&gt;&lt;voffset=55&gt;🔺</div>
+  </div>
+</div>
+<div class="column">
+  <div class="group">
+    <div class="group-header">Borders</div>
+    <div class="item" style="color:#94561E;" data-code="&lt;#94561E&gt;&lt;size=105&gt;&lt;voffset=55&gt;🔺" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#94561E&gt;&lt;size=105&gt;&lt;voffset=55&gt;🔺</div>
+    <div class="item" style="color:#FF4A1C;" data-code="&lt;#FF4A1C&gt;&lt;size=42&gt;&lt;voffset=35&gt;☠" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#FF4A1C&gt;&lt;size=42&gt;&lt;voffset=35&gt;☠</div>
+  </div>
+  <div class="group">
+    <div class="group-header">Icon</div>
+    <div class="item" style="color:#F5FF87;" data-code="&lt;#F5FF87&gt;&lt;size=30&gt;&lt;voffset=60&gt;🍽️" onclick="handleItemClick(this)" onblur="handleItemBlur(this)" onkeydown="handleItemKey(event,this)">&lt;#F5FF87&gt;&lt;size=30&gt;&lt;voffset=60&gt;🍽️</div>
+  </div>
+  <div class="group">
+    <div class="group-header">Workshop Area Below</div>
+  </div>
+</div>
+</div>
+</body>
+</html>

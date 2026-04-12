@@ -36,10 +36,13 @@ services:
     build: playground
     env_file: ${PLAYGROUND_ENV_FILE:-playground/.env.local}
     restart: unless-stopped
+    volumes:
+      - playground_data:/app/data
 
 volumes:
   caddy_data:
   hank_data:
+  playground_data:
   # Legacy volume kept so Docker doesn't error on existing deployments.
   # Data should be migrated from hank_memories to hank_data.
   hank_memories:
