@@ -49,15 +49,24 @@ export class HankClient {
     const session = await this.client.beta.sessions.create({
       agent: this.agentId,
       environment_id: this.environmentId,
-      resources: [
-        {
-          type: "file",
-          file_id: envFileId,
-          mount_path: "/workspace/.env",
-        } as any,
-      ],
     });
     debug("client", "Session created", { sessionId: session.id });
+
+    // Mount the secrets file into the container after session creation
+    debug("client", "Adding .env resource to session");
+    const resource = await this.client.beta.sessions.resources.add(
+      session.id,
+      {
+        type: "file",
+        file_id: envFileId,
+        mount_path: "/workspace/.env",
+      }
+    );
+    debug("client", "Resource added", {
+      resourceId: resource.id,
+      mountPath: resource.mount_path,
+    });
+
     return session.id;
   }
 
