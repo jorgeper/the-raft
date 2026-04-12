@@ -180,6 +180,10 @@ export function renderConnected(): void {
   stopSpinner(chalk.green("✓"), chalk.dim("Connected"));
 }
 
+export function renderSending(): void {
+  startSpinner(chalk.dim("Sending..."));
+}
+
 export function renderError(message: string): void {
   flushResponseBuffer();
   stopSpinner();
@@ -187,6 +191,7 @@ export function renderError(message: string): void {
 }
 
 export function renderGoodbye(): void {
+  stopSpinner();
   console.log();
   console.log(INDENT + chalk.dim("Goodbye."));
   console.log();

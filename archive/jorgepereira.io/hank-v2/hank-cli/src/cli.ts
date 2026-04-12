@@ -8,12 +8,19 @@ import {
   renderPrompt,
   renderConnecting,
   renderConnected,
+  renderSending,
   renderError,
   renderGoodbye,
 } from "./render.js";
 import type { CliOptions } from "./types.js";
 
 const VERSION = "0.1.0";
+
+// Handle Ctrl+C gracefully
+process.on("SIGINT", () => {
+  renderGoodbye();
+  process.exit(0);
+});
 
 async function getOrCreateSession(
   client: HankClient,
@@ -44,6 +51,8 @@ async function handleMessage(
   message: string,
   verbose: boolean
 ): Promise<void> {
+  renderSending();
+
   for await (const event of client.sendMessage(sessionId, message)) {
     renderEvent(event, verbose);
   }
