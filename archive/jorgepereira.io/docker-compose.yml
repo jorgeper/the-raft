@@ -12,6 +12,7 @@ services:
       - site
       - hank
       - hank-web
+      - playground
 
   site:
     build: site
@@ -27,6 +28,13 @@ services:
   hank-web:
     build: hank-web
     env_file: ${WEB_ENV_FILE:-hank-web/.env.local}
+    restart: unless-stopped
+    volumes:
+      - hank_data:/app/data:ro
+
+  playground:
+    build: playground
+    env_file: ${PLAYGROUND_ENV_FILE:-playground/.env.local}
     restart: unless-stopped
     volumes:
       - hank_data:/app/data:ro

@@ -2,6 +2,10 @@ jorgepereira.io {
 	reverse_proxy site:80
 }
 
+playground.jorgepereira.io {
+	reverse_proxy playground:8002
+}
+
 hank.jorgepereira.io {
 	# Bot endpoints — telegram webhook, email webhook, health check
 	@bot {
