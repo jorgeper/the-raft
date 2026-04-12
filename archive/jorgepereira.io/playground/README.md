@@ -55,6 +55,7 @@ GOOGLE_CLIENT_SECRET=<your-client-secret>
 SESSION_SECRET=$(openssl rand -hex 32)
 PORT=8002
 IDENTITIES_FILE=identities.json
+DB_PATH=data/playground.db
 NODE_ENV=production
 ```
 

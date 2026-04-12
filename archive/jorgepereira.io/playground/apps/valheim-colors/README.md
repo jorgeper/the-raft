@@ -23,7 +23,9 @@ The full text including the color tag is what gets copied to clipboard and paste
 
 ## Data Storage
 
-Sheets are stored server-side in SQLite via the API in `api/`. Each user's sheets are scoped to their Google account. The database persists across container restarts via a Docker volume.
+Sheets are stored server-side in SQLite via the API in `api/`. Each user's sheets are scoped to their Google account.
+
+**Important:** In production, `DB_PATH` must be set to `data/playground.db` so the database is written to the Docker volume (`playground_data` mounted at `/app/data/`). Without this, the database lives inside the container and is lost on every rebuild. See the deployment section for setup.
 
 ## Project Structure
 
