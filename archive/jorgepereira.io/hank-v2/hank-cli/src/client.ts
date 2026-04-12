@@ -31,12 +31,10 @@ export class HankClient {
     debug("client", "Wrote temp secrets file", { path: tmpPath });
 
     try {
-      const fileStream = fs.createReadStream(tmpPath);
       debug("client", "Uploading secrets.env via files API");
-      const envFile = await (this.client.beta.files as any).upload(
-        { file: ["secrets.env", fileStream, "text/plain"] },
-        { headers: { "anthropic-beta": "files-api-2025-04-14" } }
-      );
+      const envFile = await this.client.beta.files.upload({
+        file: fs.createReadStream(tmpPath),
+      });
       debug("client", "File uploaded", { fileId: envFile.id });
       return envFile.id;
     } finally {
