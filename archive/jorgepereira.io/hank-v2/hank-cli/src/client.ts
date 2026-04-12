@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
+import { debug } from "./debug.js";
 import type { AgentEvent } from "./types.js";
 
 export interface HankClientConfig {
@@ -25,17 +26,18 @@ export class HankClient {
   }
 
   private async uploadSecretsEnv(): Promise<string> {
-    // Write token to a temp .env file
     const tmpPath = path.join(os.tmpdir(), `hank-secrets-${Date.now()}.env`);
     fs.writeFileSync(tmpPath, `GITHUB_TOKEN=${this.githubToken}\n`);
+    debug("client", "Wrote temp secrets file", { path: tmpPath });
 
     try {
-      // Upload via the files API
       const fileStream = fs.createReadStream(tmpPath);
+      debug("client", "Uploading secrets.env via files API");
       const envFile = await (this.client.beta.files as any).upload(
         { file: ["secrets.env", fileStream, "text/plain"] },
         { headers: { "anthropic-beta": "files-api-2025-04-14" } }
       );
+      debug("client", "File uploaded", { fileId: envFile.id });
       return envFile.id;
     } finally {
       fs.unlinkSync(tmpPath);
@@ -43,6 +45,11 @@ export class HankClient {
   }
 
   async createSession(): Promise<string> {
+    debug("client", "Creating session", {
+      agentId: this.agentId,
+      environmentId: this.environmentId,
+    });
+
     const envFileId = await this.uploadSecretsEnv();
 
     const session = await this.client.beta.sessions.create({
@@ -56,6 +63,7 @@ export class HankClient {
         } as any,
       ],
     });
+    debug("client", "Session created", { sessionId: session.id });
     return session.id;
   }
 
@@ -63,10 +71,13 @@ export class HankClient {
     sessionId: string,
     message: string
   ): AsyncGenerator<AgentEvent> {
-    // Open the SSE stream
+    debug("client", "Opening SSE stream", { sessionId });
     const stream = await this.client.beta.sessions.events.stream(sessionId);
+    debug("client", "Stream opened, sending message", {
+      sessionId,
+      messageLength: message.length,
+    });
 
-    // Send the user message
     await this.client.beta.sessions.events.send(sessionId, {
       events: [
         {
@@ -75,26 +86,32 @@ export class HankClient {
         },
       ],
     });
+    debug("client", "Message sent, waiting for events");
 
-    // Yield events as they arrive
     for await (const event of stream) {
+      debug("event", event.type, event);
       yield event as unknown as AgentEvent;
 
-      // Stop iterating when the agent is done
       if (
         event.type === "session.status_idle" ||
         event.type === "session.status_terminated"
       ) {
+        debug("client", "Stream ended", { reason: event.type });
         break;
       }
     }
   }
 
   async checkSession(sessionId: string): Promise<boolean> {
+    debug("client", "Checking session", { sessionId });
     try {
       const session = await this.client.beta.sessions.retrieve(sessionId);
+      debug("client", "Session status", { status: session.status });
       return session.status !== "terminated";
-    } catch {
+    } catch (err) {
+      debug("client", "Session check failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
       return false;
     }
   }

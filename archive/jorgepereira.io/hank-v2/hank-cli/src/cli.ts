@@ -1,6 +1,8 @@
 import readline from "node:readline";
 import { Command } from "commander";
+import chalk from "chalk";
 import { HankClient } from "./client.js";
+import { initDebug, debug, getLogFile } from "./debug.js";
 import { ensureAgentConfig, loadState, saveState, configShow, configSet } from "./config.js";
 import {
   renderEvent,
@@ -16,11 +18,19 @@ import type { CliOptions } from "./types.js";
 
 const VERSION = "0.1.0";
 
+const EXIT_COMMANDS = new Set(["exit", "quit", "bye"]);
+
 // Handle Ctrl+C gracefully
 process.on("SIGINT", () => {
+  debug("session", "SIGINT received");
   renderGoodbye();
   process.exit(0);
 });
+
+function setupDebug(): void {
+  const logPath = initDebug();
+  console.log(chalk.dim(`  Debug log: ${logPath}`));
+}
 
 async function getOrCreateSession(
   client: HankClient,
@@ -30,10 +40,13 @@ async function getOrCreateSession(
 
   // Try to resume existing session
   if (!forceNew && state.sessionId) {
+    debug("session", "Attempting to resume session", { sessionId: state.sessionId });
     const alive = await client.checkSession(state.sessionId);
     if (alive) {
+      debug("session", "Session resumed");
       return { sessionId: state.sessionId, resumed: true };
     }
+    debug("session", "Previous session is dead, creating new one");
   }
 
   // Create a new session
@@ -41,6 +54,7 @@ async function getOrCreateSession(
   const sessionId = await client.createSession();
   saveState({ sessionId });
   renderConnected();
+  debug("session", "New session ready", { sessionId });
 
   return { sessionId, resumed: false };
 }
@@ -51,6 +65,7 @@ async function handleMessage(
   message: string,
   verbose: boolean
 ): Promise<void> {
+  debug("session", "User message", { message });
   renderSending();
 
   for await (const event of client.sendMessage(sessionId, message)) {
@@ -60,6 +75,9 @@ async function handleMessage(
 }
 
 async function runRepl(options: CliOptions): Promise<void> {
+  if (options.debug) setupDebug();
+  debug("session", "Starting REPL", { options });
+
   const config = await ensureAgentConfig();
   const client = new HankClient(config);
 
@@ -89,15 +107,20 @@ async function runRepl(options: CliOptions): Promise<void> {
       return;
     }
 
+    if (EXIT_COMMANDS.has(message.toLowerCase())) {
+      rl.close();
+      return;
+    }
+
     // Pause readline while processing
     rl.pause();
 
     try {
       await handleMessage(client, sessionId, message, options.verbose ?? false);
     } catch (err) {
-      renderError(
-        err instanceof Error ? err.message : "Something went wrong"
-      );
+      const msg = err instanceof Error ? err.message : "Something went wrong";
+      debug("session", "Error handling message", { error: msg });
+      renderError(msg);
     }
 
     promptForInput();
@@ -105,6 +128,7 @@ async function runRepl(options: CliOptions): Promise<void> {
   });
 
   rl.on("close", () => {
+    debug("session", "REPL closed");
     renderGoodbye();
     process.exit(0);
   });
@@ -114,6 +138,9 @@ async function runOneShot(
   message: string,
   options: CliOptions
 ): Promise<void> {
+  if (options.debug) setupDebug();
+  debug("session", "One-shot mode", { message });
+
   const config = await ensureAgentConfig();
   const client = new HankClient(config);
 
@@ -125,7 +152,9 @@ async function runOneShot(
   try {
     await handleMessage(client, sessionId, message, options.verbose ?? false);
   } catch (err) {
-    renderError(err instanceof Error ? err.message : "Something went wrong");
+    const msg = err instanceof Error ? err.message : "Something went wrong";
+    debug("session", "Error in one-shot", { error: msg });
+    renderError(msg);
     process.exit(1);
   }
 }
@@ -139,6 +168,7 @@ export function createProgram(): Command {
     .description("CLI for talking to Hank, a personal AI assistant")
     .option("-n, --new", "Start a fresh session")
     .option("-v, --verbose", "Show full tool output")
+    .option("-d, --debug", "Write debug logs to ~/.config/hank/logs/")
     .argument("[message]", "Send a one-shot message")
     .action(async (message: string | undefined, options: CliOptions) => {
       if (message) {

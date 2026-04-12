@@ -37,4 +37,5 @@ export interface AgentEvent {
 export interface CliOptions {
   new?: boolean;
   verbose?: boolean;
+  debug?: boolean;
 }
