@@ -36,8 +36,6 @@ services:
     build: playground
     env_file: ${PLAYGROUND_ENV_FILE:-playground/.env.local}
     restart: unless-stopped
-    volumes:
-      - hank_data:/app/data:ro
 
 volumes:
   caddy_data:

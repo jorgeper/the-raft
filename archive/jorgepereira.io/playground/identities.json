@@ -1,0 +1,22 @@
+[
+  {
+    "id": "jorge",
+    "name": "Jorge",
+    "emails": ["jorgeper@gmail.com"]
+  },
+  {
+    "id": "brad",
+    "name": "Brad",
+    "emails": ["brad@gillespie.fm"]
+  },
+  {
+    "id": "alberto",
+    "name": "Alberto",
+    "emails": ["albertodjram@gmail.com"]
+  },
+  {
+    "id": "karen",
+    "name": "Karen",
+    "emails": ["kintrachat@gmail.com"]
+  }
+]

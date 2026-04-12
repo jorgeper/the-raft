@@ -99,6 +99,7 @@ playground/
 ├── vite.config.ts               # Builds home/ → dist/home/
 ├── .env.local.example
 ├── .env.cloud.example
+├── identities.json              # Allow-list of Google accounts
 ├── architecture.md              # This file
 └── README.md
 ```
@@ -107,9 +108,7 @@ Build output:
 - `dist/server/` — compiled Express server (from `src/`)
 - `dist/home/` — built home page assets (from `home/`, served at `/`)
 - `apps/` — sub-apps served at `/<slug>/` (no build, just copied into Docker image)
-
-Runtime volume mount (read-only, from Docker):
-- `/app/data/identities.json` — allow-list shared with hank/hank-web via `hank_data` volume
+- `identities.json` — copied into Docker image at `/app/identities.json`
 
 ## Authentication
 
@@ -119,7 +118,7 @@ Same model as hank-web, adapted to Express + arctic:
 2. `/login` stores `returnTo` in a signed cookie, creates Google OAuth URL with PKCE, redirects
 3. Google calls back `/auth/callback` with authorization code
 4. Server exchanges code for tokens via arctic, extracts email from ID token
-5. Email checked against `identities.json` (mounted at `/app/data/identities.json`)
+5. Email checked against `identities.json` (baked into the Docker image)
 6. If allowed → signed session cookie (`playground_session`, 7-day TTL), redirect to `returnTo`
 7. If not allowed → 403
 
@@ -127,9 +126,9 @@ Cookie config: `httpOnly`, `secure`, `sameSite: "lax"`, signed with `SESSION_SEC
 
 ### Allow-List
 
-The allow-list is the shared `identities.json` file that already exists in the `hank_data` Docker volume. It is **not** part of the playground source code — it's mounted read-only at runtime at `/app/data/identities.json`.
+The allow-list is `playground/identities.json`, committed to the repo and baked into the Docker image. To add or remove allowed users, edit the file, commit, and redeploy.
 
-This is the same file used by hank and hank-web. Format:
+Format:
 
 ```json
 [
@@ -160,8 +159,6 @@ playground:
   build: playground
   env_file: ${PLAYGROUND_ENV_FILE:-playground/.env.local}
   restart: unless-stopped
-  volumes:
-    - hank_data:/app/data:ro
 ```
 
 ### DNS
@@ -181,7 +178,7 @@ GOOGLE_CLIENT_ID=...              # Same as hank-web (same OAuth client)
 GOOGLE_CLIENT_SECRET=...          # Same as hank-web
 SESSION_SECRET=...                # New secret (openssl rand -hex 32)
 PORT=8002                         # Internal port
-IDENTITIES_FILE=data/identities.json
+IDENTITIES_FILE=identities.json
 ```
 
 ## Deployment

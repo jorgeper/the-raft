@@ -16,18 +16,33 @@ playground.jorgepereira.io → <VPS IP>
 
 ### 2. Google OAuth
 
-In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), open the existing OAuth 2.0 client and add:
+In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create (or reuse) an OAuth 2.0 client and add:
 
 - **Authorized JavaScript origins:** `https://playground.jorgepereira.io`
 - **Authorized redirect URIs:** `https://playground.jorgepereira.io/auth/callback`
 
-You can reuse the same client ID/secret as hank-web.
+### 3. Allow-list
 
-### 3. Environment files (on the VPS)
+Edit `playground/identities.json` to list the Google accounts that can log in:
+
+```json
+[
+  {
+    "id": "jorge",
+    "name": "Jorge",
+    "emails": ["jorgeper@gmail.com"]
+  }
+]
+```
+
+This file is committed to the repo and baked into the Docker image. To add or remove users, edit it, commit, and redeploy.
+
+### 4. Environment files (on the VPS)
 
 Create the playground env file:
 
 ```bash
+ssh jorge@<vps-ip>
 cd /opt/sandbox/jorgepereira.io
 cp playground/.env.cloud.example playground/.env.cloud
 ```
@@ -35,29 +50,25 @@ cp playground/.env.cloud.example playground/.env.cloud
 Edit `playground/.env.cloud`:
 
 ```bash
-GOOGLE_CLIENT_ID=<same as hank-web>
-GOOGLE_CLIENT_SECRET=<same as hank-web>
+GOOGLE_CLIENT_ID=<your-client-id>
+GOOGLE_CLIENT_SECRET=<your-client-secret>
 SESSION_SECRET=$(openssl rand -hex 32)
 PORT=8002
-IDENTITIES_FILE=data/identities.json
+IDENTITIES_FILE=identities.json
 NODE_ENV=production
 ```
 
-Then tell Docker Compose to use it. SSH into the VPS and append the line to the root `.env`:
+Then tell Docker Compose to use it. Append this line to the **root** `.env`:
 
 ```bash
-ssh jorge@<vps-ip>
-cd /opt/sandbox/jorgepereira.io
 echo 'PLAYGROUND_ENV_FILE=playground/.env.cloud' >> .env
 ```
 
-This root `.env` file (`/opt/sandbox/jorgepereira.io/.env`) is where Docker Compose reads variable overrides like `ENV_FILE` and `WEB_ENV_FILE` for the other services. It's gitignored — it only exists on the VPS. Without this line, Docker Compose defaults to `playground/.env.local`.
+This root `.env` file (`/opt/sandbox/jorgepereira.io/.env`) is where Docker Compose reads variable overrides for each service. It's gitignored — it only exists on the VPS. Without this line, Docker Compose defaults to `playground/.env.local`.
 
-### 4. Deploy
+### 5. Deploy
 
 ```bash
-ssh jorge@<vps-ip>
-cd /opt/sandbox/jorgepereira.io
 git pull
 docker compose up -d --build playground
 ```
@@ -69,7 +80,6 @@ Caddy picks up the new subdomain and issues a certificate automatically.
 ### Prerequisites
 
 - Node.js 22+
-- A `data/identities.json` file (or symlink to the one in `../hank/`)
 
 ### Setup
 
@@ -79,6 +89,8 @@ cp .env.local.example .env.local
 # Edit .env.local with your Google OAuth credentials
 npm install
 ```
+
+The `identities.json` in the repo root is used for both local dev and production.
 
 ### Run
 
