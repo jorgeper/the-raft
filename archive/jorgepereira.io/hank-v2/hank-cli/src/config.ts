@@ -40,7 +40,7 @@ const CONFIG_FIELDS: Array<{
     sensitive: false,
     description:
       "The ID of your Claude managed agent.\n" +
-      "  You get this when you create an agent in the Anthropic console or via the API.",
+      "  Find it in the Anthropic console: console.anthropic.com > Agents > your agent > copy the ID.",
   },
   {
     key: "environmentId",
@@ -49,8 +49,8 @@ const CONFIG_FIELDS: Array<{
     hint: "env_...",
     sensitive: false,
     description:
-      "The ID of the container environment your agent runs in.\n" +
-      "  Created alongside your agent — it defines the runtime (networking, packages).",
+      "The container environment your agent runs in.\n" +
+      "  Find it in the Anthropic console: console.anthropic.com > Environments tab > copy the ID.",
   },
   {
     key: "githubToken",

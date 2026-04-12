@@ -22,13 +22,25 @@ cd jorgepereira.io/hank-v2/hank-cli
 npm install
 ```
 
-Then link the CLI globally so the `hank` command is available anywhere in your terminal:
+Build and link the CLI globally so the `hank` command is available anywhere in your terminal:
 
 ```bash
+npm run build
 npm link
 ```
 
-This creates a symlink from your global `node_modules` to this local folder, and wires up the `hank` binary. Since it's a symlink, any changes you make to the source code take effect immediately — no reinstall needed.
+This creates a symlink from your global `node_modules` to this local folder, and wires up the `hank` binary. Since it's a symlink, any changes you make to the source code take effect immediately (after `npm run build`) — no reinstall needed.
+
+> **Permission error?** If `npm link` fails with `EACCES`, your global `node_modules` is owned by root. Either run `sudo npm link`, or configure npm to use a directory you own:
+>
+> ```bash
+> mkdir -p ~/.npm-global
+> npm config set prefix '~/.npm-global'
+> # Add to your ~/.zshrc or ~/.bashrc:
+> export PATH="$HOME/.npm-global/bin:$PATH"
+> ```
+>
+> Then restart your shell and run `npm link` again (no sudo needed).
 
 To verify it worked:
 
@@ -58,11 +70,11 @@ $ hank
   Anthropic API key: sk-ant-...
 
   The ID of your Claude managed agent.
-    You get this when you create an agent in the Anthropic console or via the API.
+    Find it in the Anthropic console: console.anthropic.com > Agents > your agent > copy the ID.
   Agent ID: agent_...
 
-  The ID of the container environment your agent runs in.
-    Created alongside your agent — it defines the runtime (networking, packages).
+  The container environment your agent runs in.
+    Find it in the Anthropic console: console.anthropic.com > Environments tab > copy the ID.
   Environment ID: env_...
 
   A personal access token so the agent can read/write to your memory repo.
@@ -83,11 +95,11 @@ This only happens once. Everything is stored in `~/.config/hank/config.json` (yo
 If you prefer, you can set each value individually:
 
 ```bash
-hank config set apiKey sk-ant-...                          # Anthropic API key
-hank config set agentId agent_...                          # managed agent ID
-hank config set environmentId env_...                      # container environment ID
-hank config set githubToken ghp_...                        # GitHub personal access token
-hank config set githubRepo https://github.com/user/repo    # memory storage repo
+hank config set apiKey sk-ant-...                          # from console.anthropic.com/settings/keys
+hank config set agentId agent_...                          # from console.anthropic.com > Agents
+hank config set environmentId env_...                      # from console.anthropic.com > Environments
+hank config set githubToken ghp_...                        # from github.com/settings/tokens
+hank config set githubRepo https://github.com/user/repo    # your memory storage repo
 ```
 
 ### Environment variables
