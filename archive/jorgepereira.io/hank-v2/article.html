@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hank — A Personal Memory Agent for Obsidian</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #f5f3ef;
+    --bg-card: #ffffff;
+    --bg-code: #2b2b2b;
+    --text: #2c2c2c;
+    --text-muted: #6b6560;
+    --text-light: #9b9590;
+    --accent: #c97b3a;
+    --accent-light: #e8a96020;
+    --border: #e0dcd6;
+    --green: #4a9e6d;
+    --blue: #4a7fb5;
+    --purple: #8b6bb5;
+    --cyan: #4a9eb5;
+    --red: #b5564a;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 60px 24px 120px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 64px;
+    padding-bottom: 48px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header h1 {
+    font-size: 2.8em;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+
+  .header .subtitle {
+    font-size: 1.15em;
+    color: var(--text-muted);
+    max-width: 520px;
+    margin: 0 auto 24px;
+  }
+
+  .header .meta {
+    font-size: 0.85em;
+    color: var(--text-light);
+  }
+
+  .header .meta a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .header .meta a:hover {
+    text-decoration: underline;
+  }
+
+  /* Sections */
+  h2 {
+    font-size: 1.5em;
+    font-weight: 600;
+    margin: 56px 0 16px;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  h3 {
+    font-size: 1.15em;
+    font-weight: 600;
+    margin: 32px 0 12px;
+    color: var(--text);
+  }
+
+  p {
+    margin-bottom: 16px;
+    color: var(--text);
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  strong {
+    font-weight: 600;
+  }
+
+  ul, ol {
+    margin: 0 0 16px 24px;
+  }
+
+  li {
+    margin-bottom: 6px;
+  }
+
+  /* Code */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88em;
+    background: #eae6e0;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  pre {
+    background: var(--bg-code);
+    color: #e0dcd6;
+    padding: 20px 24px;
+    border-radius: 10px;
+    overflow-x: auto;
+    margin: 16px 0 24px;
+    font-size: 0.85em;
+    line-height: 1.6;
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+  }
+
+  .code-comment { color: #6a9955; }
+  .code-string { color: #ce9178; }
+  .code-keyword { color: #569cd6; }
+  .code-type { color: #4ec9b0; }
+
+  /* Cards */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    margin: 20px 0;
+  }
+
+  .card h4 {
+    font-size: 0.95em;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+
+  .card p {
+    font-size: 0.92em;
+    margin-bottom: 8px;
+  }
+
+  .card p:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Architecture diagrams */
+  .diagram {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    margin: 24px 0;
+    overflow-x: auto;
+  }
+
+  .diagram-title {
+    font-size: 0.8em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-light);
+    margin-bottom: 20px;
+    text-align: center;
+  }
+
+  .diagram svg {
+    display: block;
+    margin: 0 auto;
+  }
+
+  /* Tags */
+  .tag {
+    display: inline-block;
+    font-size: 0.78em;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 20px;
+    margin: 2px 4px 2px 0;
+  }
+
+  .tag-green { background: #e8f5e9; color: var(--green); }
+  .tag-blue { background: #e3f2fd; color: var(--blue); }
+  .tag-purple { background: #f3e5f5; color: var(--purple); }
+  .tag-cyan { background: #e0f7fa; color: var(--cyan); }
+  .tag-orange { background: #fff3e0; color: var(--accent); }
+  .tag-red { background: #fce4ec; color: var(--red); }
+
+  /* Callout */
+  .callout {
+    background: var(--accent-light);
+    border-left: 3px solid var(--accent);
+    padding: 16px 20px;
+    border-radius: 0 8px 8px 0;
+    margin: 20px 0;
+    font-size: 0.92em;
+  }
+
+  /* System prompt */
+  .system-prompt {
+    background: var(--bg-code);
+    color: #d4d0ca;
+    padding: 24px;
+    border-radius: 10px;
+    margin: 16px 0 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78em;
+    line-height: 1.65;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+
+  .system-prompt .heading { color: #569cd6; font-weight: 600; }
+  .system-prompt .comment { color: #6a9955; }
+  .system-prompt .yaml-key { color: #9cdcfe; }
+  .system-prompt .yaml-val { color: #ce9178; }
+
+  /* Separator */
+  .sep {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 48px 0;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+    color: var(--text-light);
+    font-size: 0.85em;
+  }
+
+  .footer a {
+    color: var(--text-muted);
+  }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .container { padding: 32px 16px 80px; }
+    .header h1 { font-size: 2em; }
+    h2 { font-size: 1.3em; }
+    pre { padding: 16px; font-size: 0.8em; }
+    .diagram { padding: 20px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Hank</h1>
+    <p class="subtitle">A personal memory agent that saves things to my Obsidian vault using Claude managed agents.</p>
+    <p class="meta">
+      By <strong>Jorge Pereira</strong> &middot; April 2026 &middot;
+      <a href="https://github.com/jorgeper/sandbox/tree/main/jorgepereira.io/hank-v2/hank-cli">View on GitHub</a>
+    </p>
+  </div>
+
+  <!-- Intro -->
+  <h2>The Problem</h2>
+  <p>
+    I keep my personal knowledge base in <a href="https://obsidian.md">Obsidian</a>, synced to a GitHub repo using the
+    <a href="https://github.com/denolehov/obsidian-git">Obsidian Git</a> plugin. It works great for notes I write
+    at my desk, but what about everything else? A YouTube video I want to watch later, a quick thought while I'm
+    on my phone, a link someone sends me in Telegram, an email with travel details?
+  </p>
+  <p>
+    I wanted an agent that could <strong>capture anything from anywhere</strong> and file it neatly into my vault
+    with proper frontmatter, tags, and summaries &mdash; so I could find it later with Obsidian's search or ask Claude about it.
+  </p>
+
+  <h2>The Solution: Hank</h2>
+  <p>
+    Hank is a <a href="https://docs.anthropic.com/en/docs/agents">Claude managed agent</a> that knows how to
+    write Obsidian-compatible markdown files and push them to my GitHub-synced vault. It accepts three types of memories:
+  </p>
+  <ul>
+    <li><span class="tag tag-green">text</span> Plain notes, reminders, thoughts</li>
+    <li><span class="tag tag-blue">youtube</span> YouTube URLs &mdash; it infers the topic and writes a summary</li>
+    <li><span class="tag tag-purple">image</span> Images &mdash; it analyzes the content and describes what it sees</li>
+  </ul>
+  <p>
+    Each memory becomes a markdown file with YAML frontmatter (date, type, tags, summary), organized into
+    month-year folders under <code>hank/</code> in my vault. The agent commits and pushes to GitHub, and Obsidian
+    Git picks up the changes automatically.
+  </p>
+
+  <div class="callout">
+    The key insight: the agent is a <strong>dumb terminal's best friend</strong>. All the intelligence &mdash;
+    parsing content, generating tags, writing markdown, managing git &mdash; lives in the managed agent.
+    The clients (CLI, Telegram, email) are intentionally thin.
+  </div>
+
+  <!-- Architecture: Current -->
+  <h2>Architecture</h2>
+
+  <h3>What's Built Today</h3>
+  <p>
+    The system has two parts: the managed agent running on Anthropic's platform, and a Node.js CLI that talks to it.
+  </p>
+
+  <div class="diagram">
+    <div class="diagram-title">Current Architecture</div>
+    <svg viewBox="0 0 680 340" fill="none" xmlns="http://www.w3.org/2000/svg" style="max-width:680px;width:100%">
+      <!-- Terminal -->
+      <rect x="20" y="40" width="160" height="70" rx="10" fill="#fff" stroke="#e0dcd6" stroke-width="1.5"/>
+      <text x="100" y="68" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="#2c2c2c">Terminal</text>
+      <text x="100" y="88" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#6b6560">hank "remember foo"</text>
+
+      <!-- Arrow: Terminal -> CLI -->
+      <line x1="180" y1="75" x2="230" y2="75" stroke="#c97b3a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- CLI -->
+      <rect x="230" y="30" width="180" height="90" rx="10" fill="#fff3e0" stroke="#c97b3a" stroke-width="1.5"/>
+      <text x="320" y="58" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="#c97b3a">hank-cli</text>
+      <text x="320" y="76" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">Node.js / TypeScript</text>
+      <text x="320" y="92" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">Streams SSE events</text>
+      <text x="320" y="108" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">Renders with colors</text>
+
+      <!-- Arrow: CLI -> Anthropic -->
+      <line x1="410" y1="75" x2="460" y2="75" stroke="#c97b3a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- Anthropic API -->
+      <rect x="460" y="20" width="200" height="110" rx="10" fill="#e3f2fd" stroke="#4a7fb5" stroke-width="1.5"/>
+      <text x="560" y="48" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="#4a7fb5">Anthropic API</text>
+      <text x="560" y="68" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">Claude Managed Agent</text>
+      <text x="560" y="84" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">Sonnet 4.6 + bash tools</text>
+      <text x="560" y="100" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">Writes markdown, runs git</text>
+      <text x="560" y="116" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">Commits &amp; pushes</text>
+
+      <!-- Arrow: Anthropic -> GitHub -->
+      <line x1="560" y1="130" x2="560" y2="190" stroke="#4a7fb5" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="575" y="165" font-family="JetBrains Mono,monospace" font-size="9" fill="#6b6560">git push</text>
+
+      <!-- GitHub -->
+      <rect x="460" y="190" width="200" height="70" rx="10" fill="#fff" stroke="#e0dcd6" stroke-width="1.5"/>
+      <text x="560" y="218" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="#2c2c2c">GitHub</text>
+      <text x="560" y="236" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">jorgeper/brain repo</text>
+      <text x="560" y="250" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">hank/Month-YYYY/*.md</text>
+
+      <!-- Arrow: GitHub -> Obsidian -->
+      <line x1="460" y1="225" x2="410" y2="225" stroke="#8b6bb5" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="435" y="218" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#6b6560">git pull</text>
+
+      <!-- Obsidian -->
+      <rect x="230" y="190" width="180" height="70" rx="10" fill="#f3e5f5" stroke="#8b6bb5" stroke-width="1.5"/>
+      <text x="320" y="218" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="#8b6bb5">Obsidian</text>
+      <text x="320" y="236" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">Git plugin auto-syncs</text>
+      <text x="320" y="250" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#6b6560">Search, link, ask Claude</text>
+
+      <!-- .env flow -->
+      <rect x="230" y="290" width="180" height="40" rx="8" fill="#fff" stroke="#e0dcd6" stroke-width="1"/>
+      <text x="320" y="314" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#6b6560">GITHUB_TOKEN via files API</text>
+      <text x="320" y="326" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#6b6560">mounted at /mnt/session/uploads/.env</text>
+
+      <line x1="320" y1="290" x2="320" y2="260" stroke="#e0dcd6" stroke-width="1" stroke-dasharray="4"/>
+
+      <!-- Arrow marker -->
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#6b6560"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+
+  <h3>How a Memory Gets Saved</h3>
+  <p>Here's what happens when you type <code>hank "remember this: buy oat milk"</code>:</p>
+  <ol>
+    <li>The CLI uploads your GitHub token as a <code>.env</code> file via the Anthropic files API</li>
+    <li>A new session is created with the managed agent, mounting the <code>.env</code> at <code>/mnt/session/uploads/.env</code></li>
+    <li>Your message is sent to the agent via server-sent events (SSE)</li>
+    <li>The agent narrates each step as it works:
+      <ul>
+        <li>Sources the token from the mounted <code>.env</code></li>
+        <li>Clones the <code>jorgeper/brain</code> repo</li>
+        <li>Creates a markdown file with frontmatter (date, type, tags, summary)</li>
+        <li>Commits and pushes to GitHub</li>
+      </ul>
+    </li>
+    <li>The CLI streams the agent's progress in real-time with colored output and spinners</li>
+    <li>Obsidian Git picks up the new file on its next sync</li>
+  </ol>
+
+  <!-- Future Architecture -->
+  <h3>What's Coming Next</h3>
+  <p>
+    The CLI is just the first client. The same managed agent will be accessible from multiple channels,
+    each through a thin adapter running on a VPS:
+  </p>
+
+  <div class="diagram">
+    <div class="diagram-title">Future Architecture</div>
+    <svg viewBox="0 0 700 420" fill="none" xmlns="http://www.w3.org/2000/svg" style="max-width:700px;width:100%">
+      <!-- Terminal -->
+      <rect x="20" y="30" width="130" height="50" rx="8" fill="#fff3e0" stroke="#c97b3a" stroke-width="1.5"/>
+      <text x="85" y="52" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="#c97b3a">Terminal</text>
+      <text x="85" y="68" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">hank-cli (Node.js)</text>
+
+      <!-- Telegram -->
+      <rect x="20" y="100" width="130" height="50" rx="8" fill="#e0f7fa" stroke="#4a9eb5" stroke-width="1.5"/>
+      <text x="85" y="122" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="#4a9eb5">Telegram</text>
+      <text x="85" y="138" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">Bot webhook</text>
+
+      <!-- Email -->
+      <rect x="20" y="170" width="130" height="50" rx="8" fill="#fce4ec" stroke="#b5564a" stroke-width="1.5"/>
+      <text x="85" y="192" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="#b5564a">Email</text>
+      <text x="85" y="208" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">Mailgun webhook</text>
+
+      <!-- Future label -->
+      <text x="85" y="258" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" font-weight="600" fill="#9b9590">PLANNED</text>
+      <line x1="40" y1="262" x2="130" y2="262" stroke="#e0dcd6" stroke-width="1"/>
+
+      <!-- Arrows to VPS -->
+      <line x1="150" y1="55" x2="220" y2="125" stroke="#c97b3a" stroke-width="1.2" marker-end="url(#arrow2)"/>
+      <line x1="150" y1="125" x2="220" y2="125" stroke="#4a9eb5" stroke-width="1.2" stroke-dasharray="5" marker-end="url(#arrow2)"/>
+      <line x1="150" y1="195" x2="220" y2="145" stroke="#b5564a" stroke-width="1.2" stroke-dasharray="5" marker-end="url(#arrow2)"/>
+
+      <!-- VPS -->
+      <rect x="220" y="90" width="170" height="80" rx="10" fill="#fff" stroke="#e0dcd6" stroke-width="1.5"/>
+      <text x="305" y="116" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#2c2c2c">VPS Gateway</text>
+      <text x="305" y="134" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">Webhook adapters</text>
+      <text x="305" y="150" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">Routes to managed agent</text>
+      <text x="305" y="162" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#9b9590">(Telegram + Email are future)</text>
+
+      <!-- Arrow: VPS -> Agent -->
+      <line x1="390" y1="130" x2="450" y2="130" stroke="#6b6560" stroke-width="1.5" marker-end="url(#arrow2)"/>
+      <text x="420" y="122" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#6b6560">SSE</text>
+
+      <!-- Agent -->
+      <rect x="450" y="80" width="220" height="100" rx="10" fill="#e3f2fd" stroke="#4a7fb5" stroke-width="1.5"/>
+      <text x="560" y="108" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#4a7fb5">Claude Managed Agent</text>
+      <text x="560" y="126" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">Obsidian Notes Agent</text>
+      <text x="560" y="142" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">Parses content, writes markdown</text>
+      <text x="560" y="158" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">Commits to GitHub</text>
+      <text x="560" y="172" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">text / youtube / image</text>
+
+      <!-- Arrow: Agent -> GitHub -->
+      <line x1="560" y1="180" x2="560" y2="240" stroke="#4a7fb5" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+      <!-- GitHub -->
+      <rect x="460" y="240" width="200" height="60" rx="10" fill="#fff" stroke="#e0dcd6" stroke-width="1.5"/>
+      <text x="560" y="265" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#2c2c2c">GitHub</text>
+      <text x="560" y="282" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">jorgeper/brain</text>
+      <text x="560" y="294" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">hank/*.md</text>
+
+      <!-- Arrow: GitHub -> Obsidian -->
+      <line x1="460" y1="270" x2="410" y2="330" stroke="#8b6bb5" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+      <!-- Obsidian -->
+      <rect x="260" y="310" width="150" height="70" rx="10" fill="#f3e5f5" stroke="#8b6bb5" stroke-width="1.5"/>
+      <text x="335" y="338" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="#8b6bb5">Obsidian</text>
+      <text x="335" y="356" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">All memories searchable</text>
+      <text x="335" y="370" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#6b6560">Ask Claude about them</text>
+
+      <!-- Bidirectional label -->
+      <rect x="230" y="370" width="210" height="36" rx="6" fill="#f3e5f510" stroke="none"/>
+      <text x="335" y="400" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#9b9590">Every channel feeds the same vault.</text>
+      <text x="335" y="412" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#9b9590">Obsidian + Claude lets you query all of it.</text>
+
+      <defs>
+        <marker id="arrow2" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#6b6560"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+
+  <p>
+    The idea is simple: <strong>every input channel feeds the same vault</strong>. Whether I'm at my terminal,
+    chatting on Telegram, or forwarding an email, the memory ends up as a searchable markdown file in Obsidian.
+    I can then use Obsidian's graph view, backlinks, and Claude integration to explore and query everything.
+  </p>
+
+  <hr class="sep">
+
+  <!-- How the Agent Works -->
+  <h2>The Managed Agent</h2>
+  <p>
+    The brain of the system is a <a href="https://docs.anthropic.com/en/docs/agents">Claude managed agent</a>
+    called <strong>Obsidian Notes Agent</strong>, running Sonnet 4.6. It has bash tools enabled so it can
+    clone repos, write files, and push to GitHub.
+  </p>
+
+  <h3>What it does on each request</h3>
+  <ol>
+    <li>Sources the GitHub token from the mounted <code>.env</code> file</li>
+    <li>Clones the <code>jorgeper/brain</code> repo into the container</li>
+    <li>Determines the memory type (text, youtube, or image)</li>
+    <li>Generates a filename: <code>YYYY-MM-DD-slug-name.md</code></li>
+    <li>Writes YAML frontmatter with date, type, auto-generated tags, and a summary</li>
+    <li>Writes the body &mdash; formatted differently per type</li>
+    <li>Commits with a descriptive message and pushes to GitHub</li>
+    <li>Reports back with a confirmation</li>
+  </ol>
+
+  <h3>Example output</h3>
+  <p>For <code>remember this: buy oat milk</code>, the agent creates:</p>
+  <pre><code><span class="code-comment">---</span>
+<span class="code-keyword">date</span>: <span class="code-string">2026-04-16T14:30:00</span>
+<span class="code-keyword">type</span>: <span class="code-string">text</span>
+<span class="code-keyword">tags</span>: [<span class="code-string">groceries</span>, <span class="code-string">shopping</span>, <span class="code-string">reminder</span>]
+<span class="code-keyword">summary</span>: <span class="code-string">Reminder to buy oat milk</span>
+<span class="code-comment">---</span>
+
+<span class="code-type">## Summary</span>
+A quick reminder to pick up oat milk.
+
+<span class="code-type">## Note</span>
+Buy oat milk.</code></pre>
+
+  <p>Saved at: <code>hank/April-2026/2026-04-16-buy-oat-milk.md</code></p>
+
+  <h3>Passing the GitHub Token Securely</h3>
+  <p>
+    The managed agent runs in an isolated container and needs a GitHub personal access token to push to the repo.
+    The CLI handles this by:
+  </p>
+  <ol>
+    <li>Uploading the token as a <code>.env</code> file via the <a href="https://docs.anthropic.com/en/docs/build-with-claude/files">Anthropic files API</a></li>
+    <li>Mounting it into the session container at <code>/mnt/session/uploads/.env</code> using the session resources API</li>
+    <li>The agent sources it before any git operation: <code>source /mnt/session/uploads/.env</code></li>
+  </ol>
+  <p>The token never appears in logs, chat messages, or file contents.</p>
+
+  <pre><code><span class="code-comment">// Upload token as a .env file</span>
+<span class="code-keyword">const</span> file = <span class="code-keyword">await</span> toFile(
+  Buffer.from(<span class="code-string">`GITHUB_TOKEN=${token}\n`</span>),
+  <span class="code-string">"secrets.env"</span>
+);
+<span class="code-keyword">const</span> uploaded = <span class="code-keyword">await</span> client.beta.files.upload({ file });
+
+<span class="code-comment">// Create session, then mount the file</span>
+<span class="code-keyword">const</span> session = <span class="code-keyword">await</span> client.beta.sessions.create({
+  agent: agentId,
+  environment_id: environmentId,
+});
+
+<span class="code-keyword">await</span> client.beta.sessions.resources.add(session.id, {
+  type: <span class="code-string">"file"</span>,
+  file_id: uploaded.id,
+  mount_path: <span class="code-string">".env"</span>,  <span class="code-comment">// becomes /mnt/session/uploads/.env</span>
+});</code></pre>
+
+  <hr class="sep">
+
+  <!-- The CLI -->
+  <h2>The CLI: hank-cli</h2>
+  <p>
+    <a href="https://github.com/jorgeper/sandbox/tree/main/jorgepereira.io/hank-v2/hank-cli">hank-cli</a>
+    is a Node.js/TypeScript app that provides a terminal interface to the managed agent. It's intentionally
+    thin &mdash; under 500 lines of code across 7 source files.
+  </p>
+
+  <h3>Features</h3>
+  <ul>
+    <li><strong>Interactive REPL</strong> &mdash; type <code>hank</code> to start a conversation</li>
+    <li><strong>One-shot mode</strong> &mdash; <code>hank "remember this: buy oat milk"</code></li>
+    <li><strong>Session persistence</strong> &mdash; resumes the last conversation by default, <code>--new</code> for a fresh one</li>
+    <li><strong>Streaming</strong> &mdash; responses appear token-by-token via SSE</li>
+    <li><strong>Colored output</strong> &mdash; cyan for tool names, dim for thinking, green checkmarks for completed actions</li>
+    <li><strong>Animated spinners</strong> &mdash; shows progress during tool execution</li>
+    <li><strong>Guided setup</strong> &mdash; first run walks you through configuring API keys and agent IDs</li>
+    <li><strong>Debug logging</strong> &mdash; <code>--debug</code> writes every SSE event to a timestamped log file</li>
+  </ul>
+
+  <h3>What a session looks like</h3>
+  <div class="card" style="background: var(--bg-code); border-color: #444; color: #e0dcd6;">
+    <pre style="background:none;margin:0;padding:0;"><code style="color:#e0dcd6;background:none;">  <span style="font-weight:700;color:#fff;">Hank CLI</span> <span style="color:#6b6560;">v0.1.0 — new session</span>
+
+<span style="color:#4a7fb5;font-weight:700;">&gt;</span> remember this: buy oat milk
+
+  <span style="color:#6b6560;font-style:italic;">Thinking...</span>
+
+  Cloning the repo so I have a fresh working copy...
+
+  <span style="color:#4a9e6d;">&#10003;</span> <span style="color:#4a9eb5;">bash</span>
+  <span style="color:#4a9e6d;">&#10003;</span> <span style="color:#4a9eb5;">bash</span>
+  <span style="color:#4a9e6d;">&#10003;</span> <span style="color:#4a9eb5;">bash</span>
+
+  Done! Saved your note:
+  - File: hank/April-2026/2026-04-16-buy-oat-milk.md
+  - Type: text
+  - Commit: "Remember: 2026-04-16-buy-oat-milk.md (text)"
+  &#10004;&#65039; Pushed to GitHub successfully!
+
+<span style="color:#4a7fb5;font-weight:700;">&gt;</span> _</code></pre>
+  </div>
+
+  <hr class="sep">
+
+  <!-- Agent System Prompt -->
+  <h2>The Agent's System Prompt</h2>
+  <p>
+    Here's the full system prompt that defines how the Obsidian Notes Agent behaves. It covers memory types,
+    file naming conventions, frontmatter format, git workflow, timeout discipline, and narration style.
+  </p>
+
+  <div class="system-prompt"><span class="heading">## Narration</span>
+As you work, narrate every step in plain language before you take it &mdash;
+as if you're thinking out loud for the user watching in a CLI.
+Keep each narration to one short sentence. Examples:
+- "Cloning the repo into /workspace/brain..."
+- "Creating the April-2026 folder..."
+- "Writing the note file 2026-04-16-buy-oat-milk.md..."
+- "Committing and pushing to GitHub..."
+
+Never go silent mid-task. Every tool call should be preceded by a brief narration line.
+
+<span class="heading">## Bash Timeouts</span>
+Every bash command MUST use a strict timeout to prevent hangs:
+- Default: <span class="yaml-val">30 seconds</span>
+- Git clone/push/pull: <span class="yaml-val">60 seconds</span>
+- File writes: <span class="yaml-val">10 seconds</span>
+
+If a command exits with code 124, it timed out. Report this immediately.
+
+<span class="heading">## GitHub Authentication</span>
+A GITHUB_TOKEN is mounted at <span class="yaml-val">/mnt/session/uploads/.env</span>.
+Source it before any git commands:
+<span class="comment">  source /mnt/session/uploads/.env</span>
+Never expose the token value in output or logs.
+
+<span class="heading">## Supported Memory Types</span>
+1. <span class="yaml-key">text</span>    &mdash; plain text notes, reminders, thoughts
+2. <span class="yaml-key">youtube</span> &mdash; YouTube URLs (infers topic, writes summary)
+3. <span class="yaml-key">image</span>   &mdash; image files (analyzes content, describes what it sees)
+
+<span class="heading">## File Naming &amp; Location</span>
+- Filename: <span class="yaml-val">YYYY-MM-DD-slug-name.md</span>
+- Folder:   <span class="yaml-val">/workspace/brain/hank/Month-YYYY/</span>
+  e.g.      <span class="yaml-val">hank/April-2026/2026-04-16-buy-oat-milk.md</span>
+
+<span class="heading">## Frontmatter</span>
+<span class="comment">---
+date: 2026-04-16T14:30:00
+type: text | youtube | image
+tags: [tag1, tag2, ...]     # 2-6 tags, inferred from content
+summary: one-sentence summary
+---</span>
+
+<span class="heading">## Git Workflow</span>
+After writing files, commit and push:
+<span class="comment">  source /mnt/session/uploads/.env
+  cd /workspace/brain
+  timeout 30 git add hank/
+  timeout 30 git commit -m "Remember: &lt;filename&gt; (&lt;type&gt;)"
+  timeout 60 git push</span>
+
+<span class="heading">## Confirmation</span>
+After success, report: file path, commit message, and a &#10004; success message.</div>
+
+  <hr class="sep">
+
+  <!-- Future -->
+  <h2>What's Next</h2>
+
+  <div class="card">
+    <h4><span class="tag tag-cyan">Telegram Bot</span></h4>
+    <p>A webhook adapter on my VPS that receives Telegram messages and forwards them to the managed agent. Send a photo, a link, or a quick note from my phone &mdash; it ends up in the vault.</p>
+  </div>
+
+  <div class="card">
+    <h4><span class="tag tag-red">Email via Mailgun</span></h4>
+    <p>A Mailgun inbound webhook that parses emails and sends them to the agent. Forward a flight confirmation, a newsletter, or a receipt &mdash; Hank extracts the content and files it.</p>
+  </div>
+
+  <div class="card">
+    <h4><span class="tag tag-purple">More Memory Types</span></h4>
+    <p>Links with auto-extracted content, PDFs, voice memos, code snippets. Each new type just needs a new section in the agent's system prompt.</p>
+  </div>
+
+  <div class="card">
+    <h4><span class="tag tag-orange">Query Mode</span></h4>
+    <p>Ask Hank questions about your memories: "What did I save about TypeScript last month?" Using Obsidian + Claude to search and synthesize across everything in the vault.</p>
+  </div>
+
+  <hr class="sep">
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>
+      Built by <a href="https://jorgepereira.io">Jorge Pereira</a> &middot;
+      <a href="https://github.com/jorgeper/sandbox/tree/main/jorgepereira.io/hank-v2/hank-cli">Source on GitHub</a> &middot;
+      Powered by <a href="https://docs.anthropic.com/en/docs/agents">Claude Managed Agents</a>
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
