@@ -17,6 +17,7 @@ def route_of(dest):
     if d=="": return "duplicate"
     if d.startswith("_not-media") or d.startswith("_not-photos"): return "not-media"
     if d.startswith("_needs-review"): return "needs-review"
+    if d.startswith("_phone-misc"): return "phone-misc"
     if d.startswith("untouched/"):
         if "/duplicate/" in d: return "duplicate"
         if "/corrupt/" in d: return "corrupt"
@@ -24,7 +25,7 @@ def route_of(dest):
         return "untouched"
     return "placed"
 
-ORDER=["placed","untouched","duplicate","corrupt","not-media","needs-review"]
+ORDER=["placed","untouched","duplicate","corrupt","not-media","needs-review","phone-misc"]
 
 def fmt_dt(s):
     try: return datetime.datetime.fromisoformat(s).strftime("%Y-%m-%d %H:%M")

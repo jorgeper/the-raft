@@ -34,6 +34,10 @@ DESTINATION/
       2011-02-12-sunset.jpg                         <- renamed to its date
       2011-02-26-karen-hawaii/                       <- a "single folder" of photos becomes an event
         2011-02-26-001.jpg
+  2023/
+    07 - July/
+      2023-07-04-beach.phone.jpg                     <- ".phone" = shot on a phone (searchable)
+  _phone-misc/       <- screenshots & WhatsApp/messaging saves, dated but out of the timeline
   _not-media/        <- documents, .DS_Store, etc. (copied as-is)
   _needs-review/     <- photos it couldn't find a date for (copied as-is)
   untouched/         <- see below
@@ -80,6 +84,14 @@ bytes are copied exactly (never re-encoded); and every file lands somewhere in t
   after adding files doesn't re-copy things whose numbered names shifted.
 - **Progress shows destination folders** — each `YYYY/MM - Month` or event folder is announced the
   first time a file is copied into it, so you can watch the library take shape.
+- **Phone tagging.** Photos/videos shot on a phone get a `.phone` token before the extension
+  (`2023-07-04-beach.phone.jpg`). Type `.phone.` in Explorer's search box for a phone-only view,
+  `kind:video` for videos-only, or combine them. Detection uses the camera Make/Model embedded in
+  the file (Apple, Google, Samsung phones, ...), the HEIC format, and phone filename patterns.
+  Disable with `--no-phone-tag`.
+- **Phone junk quarantine.** Screenshots and WhatsApp/messaging saves go to
+  `_phone-misc/YYYY/MM - Month/` — still dated, renamed and preserved, but out of your main
+  timeline, and they can't drag an event to the wrong date. Disable with `--no-junk-quarantine`.
 - **HEIC dates** (iPhone photos) work when `pillow-heif` is installed; guards against source and
   destination overlapping; `--min-year` flag (default 1995) for pre-1995 collections; reads Google
   Takeout `*.supplemental-metadata.json` sidecars; assorted smaller fixes.
@@ -150,11 +162,21 @@ python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" run --source "Z
 That's it. When it finishes you'll have `Z:\clean library` filled with `YYYY\MM - Month\` folders,
 plus `untouched\`, `_needs-review\`, and a `_organizer\` log. Nothing in the source is touched.
 
-Useful knobs (both optional):
+Useful knobs (all optional):
 - `--event-span-days 31` — how far a file's date may sit from its event folder's typical date and
   still join the event. Raise it for month-long trips; lower it for tighter grouping.
 - `--min-year 1995` — dates before this year are treated as implausible. Lower it if you're
   organizing scanned pre-1995 photos with real dates in their names.
+- `--no-phone-tag` — don't add the `.phone` token to phone-shot files.
+- `--no-junk-quarantine` — keep screenshots/WhatsApp saves in the main timeline instead of `_phone-misc/`.
+
+### Browsing by kind once it's organized
+
+- **Only videos:** type `kind:video` in Explorer's search box (works over the whole library), or add
+  the Type column / group by Type in any folder.
+- **Only phone photos:** type `.phone.` in the search box.
+- **Only phone videos:** `.phone. kind:video`.
+- **Screenshots & WhatsApp stuff:** it's all in `_phone-misc/`, organized by date.
 
 ### The careful way — look before you copy (two steps)
 
@@ -294,6 +316,7 @@ Notes:
 | `media_organizer-fable.py run --source SRC --dest DST` | **One step:** scan, copy, and verify. Simplest option. Skips files already imported. |
 | `… run … --skip-library` | Same, but also skips photos already imported under a different name/path. |
 | `… run … --event-span-days N --min-year Y` | Tune event grouping window (default 31 days) and oldest plausible year (default 1995). |
+| `… run … --no-phone-tag --no-junk-quarantine` | Turn off the `.phone` filename token and/or the `_phone-misc` junk quarantine. |
 | `media_organizer-fable.py plan --source SRC --dest DST` | Scan and build a plan only. **Copies nothing.** For reviewing first. |
 | `media_organizer-fable.py execute --dest DST` | Copy everything from the latest plan, then verify. |
 | `media_organizer-fable.py resume --dest DST` | Finish an interrupted copy, retry failed files (safe to run anytime). |
@@ -323,6 +346,15 @@ Install ffmpeg (see setup) if you want the best dates.
 
 **My iPhone HEIC photos all landed on the wrong date.** Install `pip install pillow-heif` and re-run —
 without it HEIC files can't be read for EXIF dates and fall back to modified-time.
+
+**How do I see only my phone photos, or only videos?** Phone-shot files carry a `.phone` token in
+their name — type `.phone.` in Explorer's search box. For videos type `kind:video`. Combine both for
+phone videos. Screenshots and WhatsApp saves live separately under `_phone-misc/`.
+
+**What counts as "phone junk"?** Files whose names mark them as screenshots
+(`Screenshot_*`, screen recordings) or messaging-app saves (WhatsApp `IMG-…-WA####`, `FB_IMG_*`,
+`received_*`, Signal/Telegram). They're dated and kept in `_phone-misc/` — nothing is deleted. Your
+actual phone *photos* (IMG_/PXL_/HEIC camera shots) stay in the main timeline, tagged `.phone`.
 
 **A lot of files went to `_needs-review`.** Those are photos with no reliable date signal (often because
 their modified-dates looked like a bulk copy). They're safe in `_needs-review/` with their original

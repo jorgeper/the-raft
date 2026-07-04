@@ -24,6 +24,16 @@ Drop-in successor to media_organizer.py. Same flow (scan -> date -> plan -> revi
   - guards against source/destination overlap
   - --min-year (default 1995) replaces the hard-coded plausibility floor
   - Google Takeout ".supplemental-metadata.json" sidecars; timezone-safe timestamp parsing
+  - phone-shot photos/videos get a ".phone" token before the extension
+    (2023-07-04-beach.phone.jpg) so Explorer search for ".phone." shows phone-only files;
+    disable with --no-phone-tag. Detection: EXIF / QuickTime Make+Model, HEIC extension,
+    and phone filename patterns (PXL_, WhatsApp, screenshots).
+  - phone junk (screenshots, WhatsApp/messaging saves) is quarantined to
+    _phone-misc/YYYY/MM - Month/ -- dated and renamed like the timeline, but out of it;
+    junk never anchors an event's date. Disable with --no-junk-quarantine.
+
+ROUTING adds one branch vs v5: junk-named media with a date -> _phone-misc/YYYY/MM - Month/,
+without a date -> _phone-misc/<original path>. Everything else routes as before.
 
 USAGE
   python media_organizer-fable.py run     --source "SRC" --dest "DST"   # ONE STEP: plan + copy + verify
@@ -69,6 +79,23 @@ CAMPREFIX = ["dscf","dscn","dscm","dsc","dcp","img","pxl","vid","mvi","gopr","pi
 
 MIN_YEAR   = 1995     # overridable with --min-year
 EVENT_SPAN = 31       # days; overridable with --event-span-days
+TAG_PHONE  = True     # ".phone" token on phone-shot files; disable with --no-phone-tag
+
+PHONE_NAME_RE=re.compile(r"^(pxl_|img-\d{8}-wa|vid-\d{8}-wa|screenshot|signal-|telegram)",re.I)
+def is_phone(makemodel, fname, ext):
+    """Did this file come from a phone? EXIF/QuickTime Make+Model is the primary signal."""
+    m=(makemodel or "").lower()
+    if "samsung" in m and re.search(r"sm-|galaxy|gt-i|sgh-",m): return True   # not their NX cameras
+    if any(b in m for b in ("apple","google","huawei","xiaomi","oneplus","motorola","oppo","vivo","realme","nothing","fairphone")): return True
+    if ext in ("heic","heif"): return True                                     # iPhone default format
+    if PHONE_NAME_RE.match(fname): return True
+    return False
+
+QUAR_JUNK  = True     # route phone junk to _phone-misc/; disable with --no-junk-quarantine
+JUNK_RE=re.compile(r"^(screenshot|screen[ _-]shot|screen[ _-]recording|img-\d{8}-wa|vid-\d{8}-wa|fb_img_|received_|signal-\d|telegram)",re.I)
+def is_junk(fname):
+    """Screenshots / messaging-app saves: kept and dated, but out of the main timeline."""
+    return bool(JUNK_RE.match(fname))
 
 try:
     from PIL import Image
@@ -184,40 +211,47 @@ def plausible(y,mo=1,d=1):
     except ValueError: return False
     return datetime.date(MIN_YEAR,1,1)<=dt<=datetime.date.today()
 
-def exif_date(path,ext):
-    if not HAVE_PIL or ext not in EXIF_EXT: return None
-    vals=[]
+def exif_info(path,ext):
+    """-> (date or None, 'Make Model' or '') read in a single open."""
+    if not HAVE_PIL or ext not in EXIF_EXT: return None,""
+    vals=[]; mm=""
     try:
         with Image.open(path) as im:       # context manager: v5 leaked the file handle
             try:
                 ex=im.getexif(); ifd=ex.get_ifd(0x8769)
                 vals=[ifd.get(36867),ifd.get(36868),ex.get(306)]
+                mm=f"{ex.get(271) or ''} {ex.get(272) or ''}".strip()
             except Exception:              # very old Pillow: fall back to legacy API
                 ex=im._getexif() or {}
                 vals=[ex.get(36867),ex.get(36868),ex.get(306)]
+                mm=f"{ex.get(271) or ''} {ex.get(272) or ''}".strip()
     except Exception:
-        return None
+        return None,""
     for v in vals:
         if v:
             m=re.match(r"(\d{4})[:\-](\d{2})[:\-](\d{2})",str(v).strip())
             if m:
                 y,mo,d=map(int,m.groups())
-                if plausible(y,mo,d): return datetime.date(y,mo,d)
-    return None
-def probe_date(path,ext):
-    if ext not in PROBE_EXT or not have_ffprobe(): return None
+                if plausible(y,mo,d): return datetime.date(y,mo,d),mm
+    return None,mm
+def probe_info(path,ext):
+    """-> (date or None, 'Make Model' or '') from ffprobe format tags."""
+    if ext not in PROBE_EXT or not have_ffprobe(): return None,""
     try:
         out=subprocess.run(["ffprobe","-v","quiet","-print_format","json","-show_entries","format_tags",path],
                            capture_output=True,text=True).stdout
         tags={k.lower():v for k,v in ((json.loads(out).get("format",{}) or {}).get("tags",{}) or {}).items()}
+        mm=f"{tags.get('com.apple.quicktime.make') or tags.get('make') or tags.get('com.android.manufacturer') or ''} " \
+           f"{tags.get('com.apple.quicktime.model') or tags.get('model') or ''}".strip()
         for key in ("com.apple.quicktime.creationdate","date","creation_time"):
             v=tags.get(key)
             if v:
                 m=re.match(r"(\d{4})[-:](\d{2})[-:](\d{2})",str(v).strip())
                 if m:
                     y,mo,d=map(int,m.groups())
-                    if plausible(y,mo,d): return datetime.date(y,mo,d)
-    except Exception: return None
+                    if plausible(y,mo,d): return datetime.date(y,mo,d),mm
+        return None,mm
+    except Exception: return None,""
 def filename_date(name):
     m=re.search(r"(19|20)\d{2}[-_]?(0[1-9]|1[0-2])[-_]?(0[1-9]|[12]\d|3[01])",name)
     if m:
@@ -260,6 +294,7 @@ def build_records(SRC):
             except OSError: size=0; mt=datetime.datetime.now()
             recs.append(dict(full=full, rel=rel, fname=f, ext=ext, base=base, folder=os.path.dirname(rel) or ".",
                              size=size, mtime=mt, is_media=ext in MEDIA_EXT, nested=depth(rel)>=2,
+                             phone=False, junk=is_junk(f),
                              date=None, date_source="", date_conf="", tier=0, note="", dest="", md5=""))
     return recs
 
@@ -267,7 +302,10 @@ def date_local(r):
     if not r["is_media"] or r["nested"]: return
     if r["size"]==0:
         r.update(note="zero-byte / corrupt", tier=7, date_source="none", date_conf="none"); return
-    d=exif_date(r["full"],r["ext"]) or probe_date(r["full"],r["ext"])
+    ed,emm=exif_info(r["full"],r["ext"])
+    pd,pmm=probe_info(r["full"],r["ext"])          # no-op for images (gated by PROBE_EXT)
+    r["phone"]=is_phone(emm or pmm, r["fname"], r["ext"])
+    d=ed or pd
     if d: r.update(date=d,date_source="embedded",date_conf="high",tier=1); return
     d=filename_date(r["fname"])
     if d: r.update(date=d,date_source="filename",date_conf="high",tier=2); return
@@ -326,7 +364,8 @@ def assign_destinations(recs):
     event_dates={}; event_anchor={}
     for folder in {r["folder"] for r in placeable}:
         if is_event_folder(folder):
-            ds=sorted(r["date"] for r in placeable if r["folder"]==folder and r["date"] and not dupe_of.get(r["rel"]))
+            # junk (screenshots/WhatsApp) must not anchor an event's date
+            ds=sorted(r["date"] for r in placeable if r["folder"]==folder and r["date"] and not dupe_of.get(r["rel"]) and not r["junk"])
             if not ds: continue
             med=ds[len(ds)//2]
             cluster=[x for x in ds if abs((x-med).days)<=EVENT_SPAN]
@@ -348,9 +387,16 @@ def assign_destinations(recs):
         if not r["is_media"]:
             r["dest"]=f"_not-media/{rel}"; r["route"]="not-media"; continue
         if not r["date"]:
+            if QUAR_JUNK and r["junk"]:
+                r["dest"]=f"_phone-misc/{rel}"; r["route"]="phone-misc"; continue
             r["dest"]=f"_needs-review/{rel}"; r["route"]="needs-review"; continue
         d=r["date"]; ev=event_dates.get(r["folder"]); med=event_anchor.get(r["folder"])
-        if ev is not None and abs((d-med).days)<=EVENT_SPAN:
+        route="placed"
+        if QUAR_JUNK and r["junk"]:
+            # screenshots / messaging saves: dated + renamed, but quarantined out of the timeline
+            destdir=f"_phone-misc/{d.year}/{d.month:02d} - {MONTHS[d.month]}"; r["event_name"]=""
+            route="phone-misc"
+        elif ev is not None and abs((d-med).days)<=EVENT_SPAN:
             fslug=slugify(os.path.basename(r['folder'])) or "event"
             evname=f"{ev.year}-{ev.month:02d}-{ev.day:02d}-{fslug}"
             destdir=f"{ev.year}/{ev.month:02d} - {MONTHS[ev.month]}/{evname}"
@@ -362,20 +408,22 @@ def assign_destinations(recs):
         slug=make_slug(r["base"])
         if slug is None:
             daycount[(destdir,d)]+=1
-            fn=f"{d.year}-{d.month:02d}-{d.day:02d}-{daycount[(destdir,d)]:03d}.{r['ext']}"
+            stem=f"{d.year}-{d.month:02d}-{d.day:02d}-{daycount[(destdir,d)]:03d}"
         else:
-            fn=f"{d.year}-{d.month:02d}-{d.day:02d}-{slug}.{r['ext']}"
+            stem=f"{d.year}-{d.month:02d}-{d.day:02d}-{slug}"
+        tok=".phone" if (TAG_PHONE and r["phone"]) else ""   # searchable: type ".phone." in Explorer
+        fn=f"{stem}{tok}.{r['ext']}"
         path=f"{destdir}/{fn}"
         if used[path.lower()]:
             # keep probing until we find a free suffixed name (v5 took -NN blindly and could
             # collide with a file that legitimately owns that name -> silent overwrite)
-            stem,e=fn.rsplit(".",1); k=used[path.lower()]
+            k=used[path.lower()]
             while True:
-                cand_fn=f"{stem}-{k:02d}.{e}"; cand=f"{destdir}/{cand_fn}"
+                cand_fn=f"{stem}-{k:02d}{tok}.{r['ext']}"; cand=f"{destdir}/{cand_fn}"
                 if not used[cand.lower()]:
                     used[path.lower()]+=1; fn,path=cand_fn,cand; break
                 k+=1
-        used[path.lower()]+=1; r["dest"]=path; r["route"]="placed"
+        used[path.lower()]+=1; r["dest"]=path; r["route"]=route
     return event_dates, dupe_of
 
 LEDGER_FIELDS=["run_id","started_at","finished_at","source","destination","phase","total_files",
@@ -389,9 +437,11 @@ def write_ledger(org, rows):
         for r in rows: w.writerow({k:r.get(k,"") for k in LEDGER_FIELDS})
 
 def cmd_plan(args):
-    global MIN_YEAR, EVENT_SPAN
+    global MIN_YEAR, EVENT_SPAN, TAG_PHONE, QUAR_JUNK
     MIN_YEAR=getattr(args,"min_year",None) or MIN_YEAR
     EVENT_SPAN=getattr(args,"event_span_days",None) or EVENT_SPAN
+    if getattr(args,"no_phone_tag",False): TAG_PHONE=False
+    if getattr(args,"no_junk_quarantine",False): QUAR_JUNK=False
     SRC=os.path.abspath(args.source); DST=os.path.abspath(args.dest)
     if not os.path.isdir(SRC): sys.exit(f"source not found: {SRC}")
     check_overlap(SRC,DST)
@@ -411,13 +461,15 @@ def write_run_outputs(SRC,DST,recs,event_dates,dupe_of):
     started=datetime.datetime.now().isoformat(timespec="seconds")
     with open(os.path.join(rundir,"plan.csv"),"w",newline="",encoding="utf-8") as fh:
         w=csv.writer(fh)
-        w.writerow(["source_path","proposed_destination","route","date_used","date_source","date_confidence","tier","event_folder","md5","notes"])
+        w.writerow(["source_path","proposed_destination","route","date_used","date_source","date_confidence","tier","event_folder","md5","notes","origin"])
         for r in sorted(recs,key=lambda x:x["rel"]):
             w.writerow([r["rel"],r["dest"],r.get("route",""),r["date"].isoformat() if r["date"] else "",
-                        r["date_source"],r["date_conf"],r["tier"],r.get("event_name",""),r["md5"],r["note"]])
+                        r["date_source"],r["date_conf"],r["tier"],r.get("event_name",""),r["md5"],r["note"],
+                        "phone" if r.get("phone") else ""])
     def cnt(route): return len([r for r in recs if r.get("route")==route])
     placed=cnt("placed"); nested=cnt("nested"); cod=cnt("corrupt")+cnt("duplicate")
-    notmedia=cnt("not-media"); needs=cnt("needs-review")
+    notmedia=cnt("not-media"); needs=cnt("needs-review"); pmisc=cnt("phone-misc")
+    phones=len([r for r in recs if r.get("route")=="placed" and r.get("phone")])
     by_tier=defaultdict(int)
     for r in recs:
         if r.get("route")=="placed": by_tier[r["tier"]]+=1
@@ -427,7 +479,7 @@ def write_run_outputs(SRC,DST,recs,event_dates,dupe_of):
     state=dict(run_id=run_id,source=SRC,destination=DST,phase="awaiting-approval",
                plan_path=f"_organizer/runs/{run_id}/plan.csv",started_at=started,finished_at=None,
                totals=dict(total_files=len(recs),placed=placed,untouched=nested,corrupt_or_duplicate=cod,
-                           not_media=notmedia,needs_review=needs,events=len(event_dates)),
+                           not_media=notmedia,needs_review=needs,phone_misc=pmisc,phone_tagged=phones,events=len(event_dates)),
                events={f:d.isoformat() for f,d in event_dates.items()})
     with open(os.path.join(rundir,"state.json"),"w",encoding="utf-8") as fh:
         json.dump(state,fh,indent=2)
@@ -436,7 +488,9 @@ def write_run_outputs(SRC,DST,recs,event_dates,dupe_of):
         f"- Phase: **awaiting-approval**\n","## Disposition (every file is copied somewhere)",
         f"- Total files: {len(recs)}",f"- Placed into year/month: {placed}",
         f"- Untouched (nested >1 deep): {nested}",f"- Corrupt: {cnt('corrupt')}   Duplicate: {cnt('duplicate')}",
-        f"- Not-media: {notmedia}",f"- Needs-review: {needs}\n","## Date-source tiers (placed)"]
+        f"- Not-media: {notmedia}",f"- Needs-review: {needs}",
+        f"- Phone junk quarantined to _phone-misc: {pmisc}",
+        f"- Phone-tagged (.phone token) in timeline: {phones}\n","## Date-source tiers (placed)"]
     for t in range(1,8): sm.append(f"- tier {t} {lab[t]}: {by_tier[t]}")
     sm.append("\n## Events (single-level folders): %d"%len(event_dates))
     for f,d in sorted(event_dates.items()):
@@ -454,7 +508,7 @@ def write_run_outputs(SRC,DST,recs,event_dates,dupe_of):
                      copied_count=0,notes="dry-run complete"))
     write_ledger(org,rows)
     print(f"\nRUN {run_id}  --  phase: awaiting-approval")
-    print(f"  total={len(recs)} placed={placed} untouched={nested} corrupt/dup={cod} not-media={notmedia} needs-review={needs}")
+    print(f"  total={len(recs)} placed={placed} untouched={nested} corrupt/dup={cod} not-media={notmedia} needs-review={needs} phone-misc={pmisc} phone-tagged={phones}")
     print("  placed tiers:",dict(by_tier)," events:",len(event_dates))
     print(f"\nReview: {os.path.join(rundir,'summary.md')}\n        {os.path.join(rundir,'plan.csv')}")
     print(f"Then run:  python {os.path.basename(__file__)} execute --dest \"{DST}\"")
@@ -654,6 +708,10 @@ def main():
         sp.add_argument("--min-year",dest="min_year",type=int,default=1995,help="reject dates before this year (default 1995)")
         sp.add_argument("--event-span-days",dest="event_span_days",type=int,default=31,
                         help="files further than this from an event folder's typical date are filed by their own date (default 31)")
+        sp.add_argument("--no-phone-tag",dest="no_phone_tag",action="store_true",
+                        help="do not insert the .phone token into phone-shot filenames")
+        sp.add_argument("--no-junk-quarantine",dest="no_junk_quarantine",action="store_true",
+                        help="keep screenshots/WhatsApp saves in the main timeline instead of _phone-misc/")
     p=sub.add_parser("plan"); add_plan_opts(p)
     g=sub.add_parser("run"); add_plan_opts(g); g.add_argument("--run",default=None); g.add_argument("--skip-library",dest="skip_library",action="store_true")
     e=sub.add_parser("execute"); e.add_argument("--dest",required=True); e.add_argument("--run",default=None); e.add_argument("--skip-library",dest="skip_library",action="store_true")
