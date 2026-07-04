@@ -100,6 +100,46 @@ Same commands, same plan/execute flow, same output layout — it's a drop-in rep
 
 ---
 
+## Quick start — a fresh run with all the new features
+
+The recommended path, whether you're starting from zero or rebuilding a library you made with the
+original script. Four steps:
+
+**0. One-time setup** (so iPhone HEIC photos get real dates and phone detection works):
+```
+pip install pillow pillow-heif rich
+```
+
+**1. Organize into a brand-new, empty folder.** If you have an old library, do **not** reuse its
+folder — the layout changed between versions and mixing them creates duplicates:
+```
+python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" run --source "Z:\messy photos" --dest "Z:\clean library v2"
+```
+Everything is on by default: `.phone` tagging, `_phone-misc` junk quarantine, the 31-day event
+window, and per-file failure tolerance. You'll see each destination folder announced as it's
+created. If some files were locked (cloud placeholders, open apps), the run finishes anyway and
+lists them as FAILED — then just run:
+```
+python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" resume --dest "Z:\clean library v2"
+```
+
+**2. Verify it's content-complete** (compares by content, expects **MISSING: 0**):
+```
+python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" verify --source "Z:\messy photos" --dest "Z:\clean library v2"
+```
+
+**3. Retire the old library (if you had one).** Rename it (e.g. `clean library` →
+`clean library OLD`) and keep it until you've lived with the new one for a while — your source
+originals are untouched either way, so nothing is at risk. Delete the old copy whenever you're
+comfortable.
+
+Then browse:
+- `.phone.` in Explorer's search box → only phone shots
+- `kind:video` → only videos (`.phone. kind:video` → phone videos)
+- `_phone-misc\` → screenshots and WhatsApp saves, organized by date
+
+---
+
 ## Option A — Run it through Cowork (talk to Claude)
 
 1. Open Cowork and make sure Claude has access to your **source** folder and your **destination**
