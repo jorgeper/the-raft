@@ -50,10 +50,17 @@ List every `raw/**/*.md` (skip `attachments/`); parse front matter `tags`/`date`
 (`shasum -a 256 <file>`); a note is **stale** if absent from the cache or its hash changed.
 Non-stale notes reuse cached `summary_md`.
 
+**Rebuild mode:** if the request asks to re-index / rebuild from scratch ("re-index
+everything", "rebuild the wiki from scratch", "full reindex"), treat **all** relevant notes as
+stale — ignore the cache and regenerate every summary in the current format. On a full rebuild
+with no tags named, target every tag in `generated_tags`.
+
 ## Step 5 — Summarize stale notes
-Read each stale note and write a compressed summary: a few tight paragraphs plus the single
-most important table (copied) or one embedded image (`![[file.png]]`) if clearly central —
-otherwise neither. Never invent content; don't repeat the title or backlink. Update the note's
+Read each stale note and write a **compressed, scannable summary**: an optional one-line
+framing sentence, then **3–6 bullet points** each starting with a **bold lead-in**, and the
+highest-signal terms/names/numbers **bolded** inline. Include the single most important table
+(copied) or one embedded image (`![[file.png]]`) if clearly central — otherwise neither. No
+wall of text; never invent content; don't repeat the title or backlink. Update the note's
 `hash`, `date`, `title`, `tags`, `summary_md` in the cache.
 
 ## Step 6 — Render each target tag page

@@ -42,12 +42,18 @@ content `hash` and cached `summary_md`.
 - Keep notes whose tags intersect the target tags ("relevant notes").
 - Hash each relevant note (`shasum -a 256 <file>`). A note is **stale** if it's absent from
   the cache or its hash changed. Non-stale notes reuse their cached `summary_md`.
+- **Rebuild mode:** if the request asks to re-index / rebuild from scratch ("re-index
+  everything", "rebuild the wiki from scratch", "full reindex"), treat **all** relevant notes
+  as stale — ignore the cache and regenerate every summary in the current format. On a full
+  rebuild with no tags named, target every tag in `generated_tags`.
 
 ## Step 5 — Summarize the stale notes
-Read each stale note and write a **compressed summary** per the quality bar in the reference:
-a few tight paragraphs, plus the single most important table (copied) or one embedded image
-(`![[file.png]]`) if clearly central — otherwise neither. Don't repeat the title or backlink.
-Update that note's `hash`, `date`, `title`, `tags`, and `summary_md` in the cache.
+Read each stale note and write a **compressed, scannable summary** per the quality bar in the
+reference: an optional one-line framing sentence, then **3–6 bullet points** each starting with
+a **bold lead-in**, and the highest-signal terms/names/numbers **bolded** inline. Include the
+single most important table (copied) or one embedded image (`![[file.png]]`) if clearly central
+— otherwise neither. No wall of text; don't repeat the title or backlink. Update that note's
+`hash`, `date`, `title`, `tags`, and `summary_md` in the cache.
 
 ## Step 6 — Render each target tag page
 For each target tag, collect relevant notes carrying it, sort **newest date first**, and write

@@ -46,11 +46,26 @@ Rules:
 
 ## Compressed summary — quality bar
 
-Not a dumb one-liner. A few tight paragraphs that capture the substance, plus:
-- The single most important **table** from the note, copied verbatim, if one is central.
-- One embedded **image** (`![[attachments-filename.png]]`) if a picture carries key meaning.
-- Skip tables/images when nothing clearly stands out. Never invent content.
-Do **not** repeat the title or the backlink inside the summary — the page adds those.
+Structure it for **fast scanning**, not a wall of text. The reader should get the signal by
+skimming the bold text and bullets. Shape:
+
+- Optionally open with one short framing sentence (what this is), only if it helps.
+- Then **3–6 bullet points** carrying the key signal. Start each bullet with a **bold lead-in**
+  (the key term/idea) followed by the detail.
+- **Bold** the highest-signal terms, names, and numbers inline so the eye catches them.
+- Include the single most important **table** (copied verbatim) or one embedded **image**
+  (`![[attachments-filename.png]]`) if one is central — otherwise neither.
+- Keep it compressed — cut filler. Never invent content. Do **not** repeat the title or the
+  backlink inside the summary (the page adds those).
+
+Example shape:
+```markdown
+**Two-model split** for coding: Opus plans, Sonnet builds.
+
+- **Always plan first** — write a plan file and pick an effort level before implementing.
+- **Live context** — feed current web data and fetch up-to-date docs mid-task.
+- **Safety net** — full security review + a git checkpoint before shipping.
+```
 
 ## State file schema
 
@@ -75,3 +90,12 @@ Do **not** repeat the title or the backlink inside the summary — the page adds
 - `notes`: the summary cache, keyed by vault-relative note path. A note is **stale** when its
   path is missing or its `hash` changed; only stale notes are re-summarized.
 - Paths are relative to the vault root.
+
+## Rebuild from scratch (ignore the cache)
+
+When the user asks to re-index / rebuild everything from scratch (e.g. "re-index everything",
+"rebuild the wiki from scratch", "full reindex" — useful after the summary format changes),
+treat **every** relevant note as stale: ignore cached `summary_md` and regenerate all
+summaries in the current format. If no tags are named on a full rebuild, rebuild every tag in
+`generated_tags`. The regenerated summaries overwrite the cache, so subsequent normal runs go
+back to incremental.

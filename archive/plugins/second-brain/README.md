@@ -46,7 +46,9 @@ save this image ~/Downloads/diagram.png as a note
 
 # wiki
 update the wiki for coffee, ai, workflow
-update the wiki            # refreshes every tag it already tracks
+update the wiki                       # refreshes every tag it already tracks (incremental)
+rebuild the wiki from scratch         # re-index everything, ignoring the cache
+re-index everything for coffee, ai    # full rebuild of just those tags
 ```
 
 To update after you change the plugin files: `claude plugin marketplace update sandbox-plugins`.
