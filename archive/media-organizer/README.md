@@ -7,7 +7,10 @@ This folder contains:
 
 | File | What it is |
 |---|---|
-| `media_organizer.py` | The program that does the work. Runs locally, no internet needed. |
+| `media_organizer-fable.py` | **The current organizer — use this one.** Bug-fixed successor to the original (see "What's new" below). |
+| `library_fixer-fable.py` | Repairs a library built with the *original* script (wrong-year files, broken names). Scan / fix / revert. |
+| `media_organizer.py` | The original v5 organizer. Kept for reference; superseded by the fable version. |
+| `processed_summary.py` | Readable report of every run recorded in a library. |
 | `media-organizer-prompt.md` | The plain-English spec the program is built from. Read it if you want the exact rules. |
 | `README.md` | This file. |
 
@@ -42,6 +45,13 @@ in the filename → a sidecar `.json`/`.xmp` → inference from neighbouring fil
 date → a year/month from the folder name. Each file's date source and confidence are written to the
 plan so you can see how it was decided.
 
+**Event folders:** a single-level source folder with a meaningful name ("Karen Hawaii") becomes an
+event folder in the library. Files join the event only if their date is within `--event-span-days`
+(default 31) of the folder's typical date — a file whose date is years off (usually a bad
+modified-time) is filed under **its own** year/month instead of dragging the event, or being dragged,
+into the wrong year. (The original script used the folder's *earliest* date and claimed every file,
+which is how 2016-named files could end up under `2014/` — `library_fixer-fable.py` repairs that.)
+
 **The `untouched/` folder** is where it plays it safe:
 - Anything buried **more than one folder deep** in the source is copied to `untouched/` with the exact
   same structure — not renamed, not reorganized.
@@ -56,6 +66,28 @@ bytes are copied exactly (never re-encoded); and every file lands somewhere in t
 
 ---
 
+## What's new in `media_organizer-fable.py` (vs the original)
+
+- **A locked or unreadable file no longer kills the run.** It's logged as FAILED and the run
+  continues; `resume` retries it later. (The original crashed and could never get past it.)
+- **No more silent overwrites.** Name collisions are re-checked until a genuinely free name is found.
+- **Wrong-year events fixed.** Events anchor on their *median* date and only claim files within
+  `--event-span-days` (default 31); far-off strays are filed by their own date.
+- **`verify` now lists MISSING files by name** in its CSV report (before it only counted them).
+- **Non-Latin filenames** (e.g. Chinese) become numbered names like `2020-05-08-001.jpg` instead of
+  the broken `2020-05-08-.jpg`; accented names are transliterated (`cumpleaños` → `cumpleanos`).
+- **Smarter incremental re-runs.** The import record remembers *where* each photo went, so re-running
+  after adding files doesn't re-copy things whose numbered names shifted.
+- **Progress shows destination folders** — each `YYYY/MM - Month` or event folder is announced the
+  first time a file is copied into it, so you can watch the library take shape.
+- **HEIC dates** (iPhone photos) work when `pillow-heif` is installed; guards against source and
+  destination overlapping; `--min-year` flag (default 1995) for pre-1995 collections; reads Google
+  Takeout `*.supplemental-metadata.json` sidecars; assorted smaller fixes.
+
+Same commands, same plan/execute flow, same output layout — it's a drop-in replacement.
+
+---
+
 ## Option A — Run it through Cowork (talk to Claude)
 
 1. Open Cowork and make sure Claude has access to your **source** folder and your **destination**
@@ -63,7 +95,7 @@ bytes are copied exactly (never re-encoded); and every file lands somewhere in t
 2. Say something like:
 
    > Organize my photos. Source: `Z:\path\to\messy photos`. Destination: `Z:\path\to\clean library`.
-   > Follow the media-organizer spec in `Z:\src\media-organizer\media-organizer-prompt.md`.
+   > Follow the media-organizer spec in `Z:\src\sandbox\media-organizer\media-organizer-prompt.md`.
 
 3. Claude does a **dry run** first and shows you a summary (how many files, how they'd be dated, which
    are events, duplicates, etc.) plus a `plan.csv`. **Nothing is copied yet.**
@@ -91,12 +123,12 @@ Replace only the folder paths inside the quotes.
 1. Install Python 3 from https://www.python.org/downloads/ (tick "Add Python to PATH" during install).
 2. Install the helpers:
    ```
-   pip install pillow rich
+   pip install pillow pillow-heif rich
    ```
-   `pillow` reads dates out of photos; `rich` gives you the live progress bar, spinner, and
-   folder-by-folder status while it runs. `rich` is optional — without it you still get plain-text
-   progress lines (and you can force plain mode any time by setting the `MO_NO_RICH` environment
-   variable).
+   `pillow` reads dates out of photos; `pillow-heif` adds iPhone HEIC photos; `rich` gives you the
+   live progress bar, spinner, and folder-by-folder status while it runs. `pillow-heif` and `rich`
+   are optional — without them HEIC falls back to filename/modified-date and you get plain-text
+   progress lines (you can force plain mode any time by setting the `MO_NO_RICH` environment variable).
 3. (Optional but recommended) Install **ffmpeg** so it can read dates from videos and audio:
    - Easiest on Windows: `winget install Gyan.FFmpeg`
    - Or download from https://www.gyan.dev/ffmpeg/builds/ and add its `bin` folder to your PATH.
@@ -112,18 +144,24 @@ Replace only the folder paths inside the quotes.
 Use `run` when you just want it done. It scans, copies, and verifies in a single step:
 
 ```
-python "Z:\src\media-organizer\media_organizer.py" run --source "Z:\messy photos" --dest "Z:\clean library"
+python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" run --source "Z:\messy photos" --dest "Z:\clean library"
 ```
 
 That's it. When it finishes you'll have `Z:\clean library` filled with `YYYY\MM - Month\` folders,
 plus `untouched\`, `_needs-review\`, and a `_organizer\` log. Nothing in the source is touched.
+
+Useful knobs (both optional):
+- `--event-span-days 31` — how far a file's date may sit from its event folder's typical date and
+  still join the event. Raise it for month-long trips; lower it for tighter grouping.
+- `--min-year 1995` — dates before this year are treated as implausible. Lower it if you're
+  organizing scanned pre-1995 photos with real dates in their names.
 
 ### The careful way — look before you copy (two steps)
 
 If you'd rather review first, split it into `plan` (copies nothing) then `execute`:
 
 ```
-1)  python "Z:\src\media-organizer\media_organizer.py" plan --source "Z:\messy photos" --dest "Z:\clean library"
+1)  python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" plan --source "Z:\messy photos" --dest "Z:\clean library"
 ```
 Then open the two files it made and check the `proposed_destination` / `route` columns:
 ```
@@ -132,40 +170,41 @@ Then open the two files it made and check the `proposed_destination` / `route` c
 ```
 When happy:
 ```
-2)  python "Z:\src\media-organizer\media_organizer.py" execute --dest "Z:\clean library"
+2)  python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" execute --dest "Z:\clean library"
 ```
 
 ### If it gets interrupted (closed laptop, lost power, etc.)
 
-Just run `resume` — it skips everything already copied and finishes the rest:
+Just run `resume` — it skips everything already copied and finishes the rest (including anything
+that FAILED with a locked/unreadable file the first time):
 ```
-python "Z:\src\media-organizer\media_organizer.py" resume --dest "Z:\clean library"
+python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" resume --dest "Z:\clean library"
 ```
 
 ### Do several source folders into one library
 
 Run `run` once per source, all pointing at the same `--dest`:
 ```
-python "Z:\src\media-organizer\media_organizer.py" run --source "Z:\folder one"   --dest "Z:\clean library"
-python "Z:\src\media-organizer\media_organizer.py" run --source "Z:\folder two"   --dest "Z:\clean library"
+python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" run --source "Z:\folder one"   --dest "Z:\clean library"
+python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" run --source "Z:\folder two"   --dest "Z:\clean library"
 ```
 Each run is logged separately and files are de-duplicated against what's already there.
 
 ### Re-running / adding new photos (incremental — it skips what it already has)
 
 You can safely re-run the same source into the same library. It keeps a record of everything it has
-already imported (`DST\_organizer\library.md5`) and **skips files it already copied** — so a second
-run only picks up what's new, instead of re-copying everything.
+already imported (`DST\_organizer\library.md5`, now including where each file went) and **skips files
+it already copied** — so a second run only picks up what's new, instead of re-copying everything.
 
 - **Default:** a file is skipped if its content was already imported **and** its copy is still in the
   library. Perfect for "I dropped some new photos into the same folder, run it again."
   ```
-  python "Z:\src\media-organizer\media_organizer.py" run --source "Z:\messy photos" --dest "Z:\clean library"
+  python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" run --source "Z:\messy photos" --dest "Z:\clean library"
   ```
 - **`--skip-library`:** also skips a file if that exact photo was imported before **under any name or
   path** — useful if you renamed or moved things in the source and don't want a second copy.
   ```
-  python "Z:\src\media-organizer\media_organizer.py" run --source "Z:\messy photos" --dest "Z:\clean library" --skip-library
+  python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" run --source "Z:\messy photos" --dest "Z:\clean library" --skip-library
   ```
 
 (The very first run builds the record, so the skipping kicks in from the second run onward.)
@@ -176,13 +215,13 @@ If a destination looks bigger (or smaller) than you expect, `verify` compares th
 file content** (not by name, since the organizer renames files) and tells you the delta:
 
 ```
-python "Z:\src\media-organizer\media_organizer.py" verify --source "Z:\messy photos" --dest "Z:\clean library"
+python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" verify --source "Z:\messy photos" --dest "Z:\clean library"
 ```
 
 It reports three things and writes the full list (largest first) to `DST\_organizer\verify-<timestamp>.csv`:
 
-- **MISSING from destination** — source content that isn't in the destination. Should be zero; if not,
-  something didn't copy.
+- **MISSING from destination** — source content that isn't in the destination, listed by source path.
+  Should be zero; if not, something didn't copy.
 - **EXTRA in destination** — content that isn't in the source at all (e.g. files from a different
   source, or an earlier run).
 - **DUPLICATE copies in destination** — the same photo stored more than once, inflating the size.
@@ -191,13 +230,13 @@ Add `--quick` for a much faster compare on large libraries (uses a size + partia
 instead of hashing every full file):
 
 ```
-python "Z:\src\media-organizer\media_organizer.py" verify --source "Z:\messy photos" --dest "Z:\clean library" --quick
+python "Z:\src\sandbox\media-organizer\media_organizer-fable.py" verify --source "Z:\messy photos" --dest "Z:\clean library" --quick
 ```
 
 ### See what you've processed so far
 
 ```
-python "Z:\src\media-organizer\processed_summary.py" --dest "Z:\clean library"
+python "Z:\src\sandbox\media-organizer\processed_summary.py" --dest "Z:\clean library"
 ```
 Prints every run, its source folder, status, and where the files went (placed / untouched / duplicate /
 corrupt / not-media / needs-review), plus totals. Add more `--dest "..."` to summarize several libraries
@@ -205,17 +244,64 @@ at once.
 
 ---
 
+## Repairing a library built with the ORIGINAL script
+
+If you organized with `media_organizer.py` (v5), your library may have two kinds of damage:
+
+- **Files under the wrong year** — e.g. a `2014/` folder containing `2016-…`-named photos. The old
+  script parked a whole event under the folder's *earliest* date, so one mis-dated file (or a source
+  folder mixing years) put files years away from where their names say they belong.
+- **Broken names** from non-Latin filenames: files like `2020-05-08-.jpg` and event folders like
+  `2014-02-26-` (nothing after the date).
+
+`library_fixer-fable.py` repairs both, in place, with a full undo log. Three steps:
+
+**1. Scan (changes nothing — always start here):**
+```
+python "Z:\src\sandbox\media-organizer\library_fixer-fable.py" scan --dest "Z:\clean library"
+```
+Prints how many strays and broken names it found, and writes the complete list to
+`DST\_organizer\fixes\<id>\fixplan.csv` so you can review every proposed move.
+
+**2. Fix:**
+```
+python "Z:\src\sandbox\media-organizer\library_fixer-fable.py" fix --dest "Z:\clean library" --prune-empty
+```
+Moves each stray to the year/month its filename says, renames `2020-05-08-.jpg` →
+`2020-05-08-001.jpg`, and renames `2014-02-26-` folders → `2014-02-26-event`.
+`--prune-empty` removes any folders the moves left empty (optional).
+
+**3. Undo, if you don't like the result:**
+```
+python "Z:\src\sandbox\media-organizer\library_fixer-fable.py" revert --dest "Z:\clean library"
+```
+Every change was logged to `DST\_organizer\fixes\<id>\fixlog.csv`; revert plays it back in reverse.
+
+Notes:
+- Files within `--tolerance-days` (default 31) of their event folder's date are **left in the event**
+  — so a New Year's Eve party or a three-week trip isn't shredded across months.
+- It only ever moves/renames **inside** the library; it never overwrites (collisions get a numeric
+  suffix), never deletes a file, and never touches `untouched/`, `_needs-review/`, `_not-media/`
+  or `_organizer/`.
+- Not needed for libraries built with `media_organizer-fable.py` — it doesn't create this damage.
+
+---
+
 ## The commands at a glance
 
 | Command | What it does |
 |---|---|
-| `run --source SRC --dest DST` | **One step:** scan, copy, and verify. Simplest option. Skips files already imported. |
-| `run ... --skip-library` | Same, but also skips photos already imported under a different name/path. |
-| `plan --source SRC --dest DST` | Scan and build a plan only. **Copies nothing.** For reviewing first. |
-| `execute --dest DST` | Copy everything from the latest plan, then verify. |
-| `resume --dest DST` | Finish an interrupted copy (safe to run anytime). |
-| `status --dest DST` | Quick one-line-per-run list. |
-| `verify --source SRC --dest DST` | Content diff: missing / extra / duplicate files (add `--quick` for speed). |
+| `media_organizer-fable.py run --source SRC --dest DST` | **One step:** scan, copy, and verify. Simplest option. Skips files already imported. |
+| `… run … --skip-library` | Same, but also skips photos already imported under a different name/path. |
+| `… run … --event-span-days N --min-year Y` | Tune event grouping window (default 31 days) and oldest plausible year (default 1995). |
+| `media_organizer-fable.py plan --source SRC --dest DST` | Scan and build a plan only. **Copies nothing.** For reviewing first. |
+| `media_organizer-fable.py execute --dest DST` | Copy everything from the latest plan, then verify. |
+| `media_organizer-fable.py resume --dest DST` | Finish an interrupted copy, retry failed files (safe to run anytime). |
+| `media_organizer-fable.py status --dest DST` | Quick one-line-per-run list. |
+| `media_organizer-fable.py verify --source SRC --dest DST` | Content diff: missing / extra / duplicate files (add `--quick` for speed). |
+| `library_fixer-fable.py scan --dest DST` | Find wrong-year strays & broken names in an existing library. **Changes nothing.** |
+| `library_fixer-fable.py fix --dest DST` | Apply the repairs (add `--prune-empty` to remove emptied folders). |
+| `library_fixer-fable.py revert --dest DST` | Undo the last fix run from its log. |
 | `processed_summary.py --dest DST` | Readable report of all sources processed into a library. |
 
 Every run is recorded under `DST\_organizer\`, so you can always come back and see what happened.
@@ -226,8 +312,17 @@ Every run is recorded under `DST\_organizer\`, so you can always come back and s
 
 **Will it touch my originals?** No. The source is opened read-only. Nothing is ever deleted anywhere.
 
+**Which script should I use?** `media_organizer-fable.py` for all new runs. `library_fixer-fable.py`
+once, to repair a library you built with the original `media_organizer.py`.
+
+**Why does my `2014` folder contain photos named `2016-…`?** That's the original script's event
+grouping (earliest-date-wins). Run `library_fixer-fable.py scan` — it will find and fix exactly those.
+
 **It said `ffprobe` not found.** Videos/audio will just be dated by filename or modified-date instead.
 Install ffmpeg (see setup) if you want the best dates.
+
+**My iPhone HEIC photos all landed on the wrong date.** Install `pip install pillow-heif` and re-run —
+without it HEIC files can't be read for EXIF dates and fall back to modified-time.
 
 **A lot of files went to `_needs-review`.** Those are photos with no reliable date signal (often because
 their modified-dates looked like a bulk copy). They're safe in `_needs-review/` with their original
@@ -237,6 +332,9 @@ folder structure — you can sort them by hand or re-date them and run again.
 duplicates — so the tool preserved them exactly rather than guess. Look there if a file seems "missing"
 from the year/month tree.
 
+**A file was locked/unreadable during the copy.** The run finishes anyway and lists the failures at the
+end (also logged in `copied.log`). Close whatever holds the file and run `resume` — it retries just those.
+
 **Can I change the rules?** Yes — the exact behavior is described in `media-organizer-prompt.md`, and
-the logic lives near the top of `media_organizer.py` (the extension lists and the `assign_destinations`
-function). Or just ask Claude in Cowork to adjust it.
+the logic lives near the top of `media_organizer-fable.py` (the extension lists and the
+`assign_destinations` function). Or just ask Claude in Cowork to adjust it.
