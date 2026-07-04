@@ -1,96 +1,87 @@
-ZSH_THEME="powerlevel10k/powerlevel10k"
+# =============================================================================
+#  ~/.zshrc — Jorge Pereira
+#
+#  Source of truth: ~/src/sandbox/dotfiles/zshrc  (this file)
+#  ~/.zshrc is a symlink to it, so edits here take effect in new shells.
+#
+#  Layout:  PATH/env → prompt → editing → tools → aliases →
+#           completions → plugins → history/options
+# =============================================================================
 
-export PATH="/opt/homebrew/bin:$PATH"
+# ---- PATH & core environment ------------------------------------------------
+export PATH="/opt/homebrew/bin:$PATH"           # Homebrew (Apple Silicon)
+export PATH="$HOME/.local/bin:$PATH"            # native Claude Code CLI + user-installed tools
+export PATH="$HOME/.rbenv/bin:$PATH"            # rbenv shims (only used if rbenv is installed)
+export PATH="${PATH}:$HOME/.azureauth/0.9.5"    # Azure CLI auth helper (if present)
+export EDITOR="nvim"                            # default editor for git, etc.
 
-# ---- eza, better ls
-alias ls='eza --icons'
-alias ll='eza -lh --icons'
-alias la='eza -la --icons'
+# ---- Prompt: Starship -------------------------------------------------------
+eval "$(starship init zsh)"
 
-# ---- Use vim keybindings
+# ---- Editing: vi keybindings on the command line ----------------------------
 bindkey -v
 
-eval "$(starship init zsh)"
-
-# ---- PATH and Environment ----
-
-export PATH="/opt/homebrew/bin:$PATH"
-export EDITOR="nvim"  # or "code", "vim", etc.
-
-# ---- Starship Prompt ----
-
-eval "$(starship init zsh)"
-
-# ---- FZF + FD + BAT ----
-
+# ---- FZF fuzzy finder (backed by fd, previews via bat) ----------------------
 export FZF_DEFAULT_COMMAND='fd --type f'
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 export FZF_ALT_C_COMMAND='fd --type d'
-
 export FZF_DEFAULT_OPTS='
   --height 40%
   --layout=reverse
   --border
   --preview "bat --style=numbers --color=always --line-range :200 {}"
 '
-
+# Sourcing fzf binds the interactive widgets: Ctrl-R history, Ctrl-T files, Alt-C cd.
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
-# ---- Aliases ----
-
-alias cat="bat"
-alias findf="fd"
-alias f="fzf"
-alias vf='nvim $(fzf)'  # fuzzy open file in nvim
-alias cf='cd $(fd --type d | fzf)'  # fuzzy cd into dir
+# ---- Aliases ----------------------------------------------------------------
+# eza — a modern `ls` with icons
+alias ls='eza --icons'
+alias ll='eza -lh --icons'
+alias la='eza -la --icons'
+# other tool swaps
+alias cat='bat'                     # syntax-highlighted cat
+alias findf='fd'                    # friendlier find
+alias f='fzf'
+alias vf='nvim $(fzf)'              # fuzzy-pick a file and open it in nvim
+alias cf='cd $(fd --type d | fzf)'  # fuzzy-pick a directory and cd into it
 alias please='sudo'
 alias ..='cd ..'
 
-
-# ---- Oh My Zsh Plugins ----
-
-ZSH_CUSTOM=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}
-
-# Autosuggestions
-if [ -f $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
-  source $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-fi
-
-# Syntax Highlighting (must be last)
-if [ -f $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]; then
-  source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-fi
-
-# Substring History Search
-if [ -f $ZSH_CUSTOM/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then
-  source $ZSH_CUSTOM/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
-fi
-
-# Key Bindings for history search (↑ ↓ to move through matching history)
-bindkey '^[[A' history-substring-search-up
-bindkey '^[[B' history-substring-search-down
-
-# ---- Shell Options ----
-
-setopt NO_CASE_GLOB
-setopt CORRECT
-setopt INC_APPEND_HISTORY SHARE_HISTORY
-
-HISTFILE=~/.zsh_history
-HISTSIZE=10000
-SAVEHIST=10000
-
-# The following lines have been added by Docker Desktop to enable Docker CLI completions.
-fpath=(/Users/jorgepereira/.docker/completions $fpath)
+# ---- Completions (compinit + Docker CLI) ------------------------------------
+# Run compinit before plugins so completion widgets exist when they load.
+fpath=($HOME/.docker/completions $fpath)   # Docker Desktop completions (if present)
 autoload -Uz compinit
 compinit
-# End of Docker CLI completions
 
+# ---- rbenv (Ruby version manager) -------------------------------------------
+# Stays dormant until rbenv is actually installed, then activates automatically.
+command -v rbenv >/dev/null 2>&1 && eval "$(rbenv init - zsh)"
 
-# Added by Agency Claude Code installer
-export PATH="/Users/jorgepereira/.claude-cli/currentVersion:$PATH"
+# ---- Oh My Zsh plugins (sourced directly; OMZ core is NOT loaded) -----------
+ZSH_CUSTOM=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}
 
-export PATH="${PATH}:/Users/jorgepereira/.azureauth/0.9.5"
+# Autosuggestions — fish-style inline suggestion from history as you type.
+[ -f $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ] && \
+  source $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 
-export PATH="$HOME/.rbenv/bin:$PATH"
-eval "$(rbenv init -)"
+# Syntax highlighting — colours the command line. Must be sourced *before*
+# history-substring-search (below), which wraps its widgets.
+[ -f $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ] && \
+  source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# Substring history search — type a fragment, then ↑/↓ to walk matching history.
+[ -f $ZSH_CUSTOM/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh ] && \
+  source $ZSH_CUSTOM/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
+bindkey '^[[A' history-substring-search-up      # ↑
+bindkey '^[[B' history-substring-search-down    # ↓
+
+# ---- History & shell options ------------------------------------------------
+setopt NO_CASE_GLOB           # case-insensitive globbing
+setopt CORRECT                # suggest corrections for mistyped commands
+setopt INC_APPEND_HISTORY     # append each command to history as it runs
+setopt SHARE_HISTORY          # share history live across all open shells
+
+HISTFILE=~/.zsh_history
+HISTSIZE=10000                # commands kept in memory per session
+SAVEHIST=10000                # commands persisted to $HISTFILE
