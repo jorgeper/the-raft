@@ -1,0 +1,11 @@
+.env
+.venv/
+worktrees/
+orchestrator/logs/*.csv
+orchestrator/memory/issue-*.md
+orchestrator/costs.html
+role_keys.json
+pending.json
+__pycache__/
+*.egg-info/
+.DS_Store
