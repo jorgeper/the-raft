@@ -1,11 +1,40 @@
-# The Agentic Loop — a starter kit
+```text
+██████╗ ███████╗██╗     ██╗██╗   ██╗███████╗██████╗  █████╗ ████████╗ ██████╗ ██████╗
+██╔══██╗██╔════╝██║     ██║██║   ██║██╔════╝██╔══██╗██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗
+██║  ██║█████╗  ██║     ██║██║   ██║█████╗  ██████╔╝███████║   ██║   ██║   ██║██████╔╝
+██║  ██║██╔══╝  ██║     ██║╚██╗ ██╔╝██╔══╝  ██╔══██╗██╔══██║   ██║   ██║   ██║██╔══██╗
+██████╔╝███████╗███████╗██║ ╚████╔╝ ███████╗██║  ██║██║  ██║   ██║   ╚██████╔╝██║  ██║
+╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝
+─────────────────────────────────────────────────────────────────────────────────────
+   issues in ▸ reviewed PRs out ▸ guaranteed ▸ the loop never sleeps ▸▸▸
+```
 
-A persistent, multi-agent development system you fully control: **GitHub issues
-in, reviewed pull requests out**, running 24/7 on a VPS or your laptop,
-steerable from your phone — with you making exactly three kinds of decisions
-and agents doing everything else.
+> *"The Deliverator belongs to an elite order, a hallowed subcategory."*
+> — Neal Stephenson, Snow Crash
 
-Clone this repo, follow the setup below, and you end up with:
+**Deliverator** is a persistent, multi-agent development system you fully
+control: **GitHub issues in, reviewed pull requests out**, running 24/7 on a
+VPS or your laptop, steerable from your phone — with you making exactly three
+kinds of decisions and agents doing everything else.
+
+**New to Deliverator?** Read **[OVERVIEW.md](OVERVIEW.md)** first — an
+article-length tour of how the whole thing works and why it's shaped the way
+it is, diagrams included. Then come back here to install it.
+
+## The pattern: Deliverator moves in with your project
+
+This is the one thing to understand before anything else. You don't install
+Deliverator somewhere central and point it at repos. **You copy this
+scaffolding into the same repository where your application will live.** The
+orchestrator, skills, conventions, and CI wrap around your code; the agents
+build your app inside the very repo they inhabit; your issues are its work
+queue. One project = one repo = one Deliverator.
+
+Concretely: clone this repo → copy its contents into your (new or existing)
+project repo → configure → your repo is now a self-driving project. Setup is
+section 3 below.
+
+Follow it end to end and you have:
 
 - An **orchestrator** (a ~300-line Python daemon, no AI inside) that watches
   GitHub for labeled issues and moves each one through a state machine:
@@ -28,6 +57,9 @@ bug — the three developer journeys, hands-on.
 ---
 
 ## 1. How it works (the 5-minute version)
+
+*(This is the compressed reference. For the full story — the reasoning, the
+trust model, the economics — read [OVERVIEW.md](OVERVIEW.md).)*
 
 ```
 you ── file a brief (issue + agent:ready)
@@ -117,7 +149,8 @@ Model calls are stateless; all continuity is files you can inspect:
 
 ```
 .
-├── README.md                    # you are here
+├── README.md                    # you are here — setup & reference
+├── OVERVIEW.md                  # read first: how Deliverator works, article-style
 ├── LABS.md                      # hands-on: build an app, add a feature, fix a bug
 ├── AGENTS.md                    # always-on conventions (edit for your stack)
 ├── CLAUDE.md                    # @AGENTS.md shim for Claude Code
@@ -173,16 +206,27 @@ You need Python **3.11+** and three accounts:
    an API key (`sk-or-v1-…`). One gateway serves every model family, which is
    what makes cheap-first routing and cross-family reviewers possible.
 
-### 3.2 Create your project repo from this starter
+### 3.2 Move Deliverator into your project's repo
+
+Remember the pattern: Deliverator and your application share one repo. Create
+the repo your project will live in, then seed it with this scaffolding:
 
 ```bash
-# new repo on GitHub, seeded with this scaffolding
+# the repo where your project will live, seeded with Deliverator
 gh repo create my-project --private --clone
 cd my-project
-# copy everything except .git from your clone of this starter:
-rsync -a --exclude .git /path/to/this-starter/ .
-git add -A && git commit -m "Agentic loop scaffolding" && git push
+# copy everything except .git from your clone of deliverator:
+rsync -a --exclude .git /path/to/deliverator/ .
+git add -A && git commit -m "Move Deliverator in" && git push
 ```
+
+(Adding Deliverator to an **existing** project? Same `rsync` into your repo —
+nothing collides except possibly `AGENTS.md`/`CLAUDE.md`/`.claude/`, which you
+merge by hand — then commit.)
+
+From here on, "the repo" means this one: your issues drive the loop, the
+agents' worktrees appear under `worktrees/`, and the app the agents build
+lands at the repo root, next to the scaffolding.
 
 Then **edit `AGENTS.md`** for your stack (it ships with the Flask defaults the
 labs use — fine to leave as-is if you're doing the labs first).
@@ -310,7 +354,7 @@ laptop — the system no longer needs it.
 
 ## 4. Adapting it to your stack
 
-The kit ships tuned for **Python/Flask** (what the labs build). The genericity
+Deliverator ships tuned for **Python/Flask** (what the labs build). The genericity
 seam is deliberately small:
 
 1. **The `make` contract.** The coder, skills, and CI all assume

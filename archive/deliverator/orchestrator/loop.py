@@ -1,4 +1,4 @@
-"""The agentic loop. One pass = advance every ready issue by ONE state.
+"""Deliverator: the loop. One pass = advance every ready issue by ONE state.
 
 State is tracked entirely in GitHub labels, so the loop is restartable: kill it
 any time; the next pass re-reads reality from GitHub and picks up where things
@@ -309,7 +309,7 @@ def one_pass():
 
 
 def main():
-    con.print(f"[green]Agentic loop started (coder: {CODER_MODE}). Ctrl-C to stop.[/]")
+    con.print(f"[green]Deliverator started (coder: {CODER_MODE}). Ctrl-C to stop.[/]")
     bot.start()                      # no-op if Telegram isn't configured
     while True:
         one_pass()

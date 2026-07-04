@@ -35,7 +35,7 @@ def provision():
     with httpx.Client(headers={"Authorization": f"Bearer {MGMT}"}, timeout=30) as c:
         for role, cfg in ROLE_BUDGETS.items():
             r = c.post(BASE, json={
-                "name": f"agentic-loop:{role}",
+                "name": f"deliverator:{role}",
                 "limit": cfg["limit"],
                 "limit_reset": cfg["limit_reset"],
             })

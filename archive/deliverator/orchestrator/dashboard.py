@@ -22,12 +22,12 @@ def build():
                        for k, v in counter.most_common())
 
     html = f"""<!doctype html><meta charset=utf-8>
-<title>Agentic loop costs</title>
+<title>Deliverator costs</title>
 <style>body{{font:14px system-ui;margin:2rem;max-width:640px}}
 table{{border-collapse:collapse;width:100%;margin:1rem 0}}
 td,th{{border:1px solid #ddd;padding:6px 10px;text-align:left}}
 h1 small{{color:#888;font-weight:400}}</style>
-<h1>Agentic loop spend <small>as of {datetime.datetime.utcnow():%Y-%m-%d %H:%M} UTC</small></h1>
+<h1>Deliverator spend <small>as of {datetime.datetime.utcnow():%Y-%m-%d %H:%M} UTC</small></h1>
 <p><b>Total: ${total:.4f}</b> across {len(rows)} calls</p>
 <h2>By role</h2><table><tr><th>Role</th><th>Spend</th></tr>{rows_html(by_role)}</table>
 <h2>By day</h2><table><tr><th>Day</th><th>Spend</th></tr>{rows_html(by_day)}</table>"""

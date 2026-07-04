@@ -31,7 +31,7 @@ def _client_for(role: str) -> OpenAI:
         _clients[role] = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=ROLE_KEYS.get(role) or _FALLBACK,
-            default_headers={"X-Title": "agentic-loop"},
+            default_headers={"X-Title": "deliverator"},
         )
     return _clients[role]
 

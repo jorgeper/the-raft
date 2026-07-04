@@ -201,4 +201,4 @@ def start():
               "Loop runs without it.")
         return
     threading.Thread(target=_poll_forever, daemon=True).start()
-    _send("🤖 Agent loop bot online. `/status` to see what's cooking.")
+    _send("🤖 Deliverator bot online. `/status` to see what's cooking.")

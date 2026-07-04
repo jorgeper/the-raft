@@ -1,4 +1,4 @@
-# The Labs — build, extend, and fix a real app with the loop
+# The Deliverator Labs — build, extend, and fix a real app
 
 Three hands-on labs, in order, at your keyboard. They assume you finished the
 [README setup](README.md): the loop is running, labels exist, the spike issue
