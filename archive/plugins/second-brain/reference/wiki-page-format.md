@@ -46,24 +46,24 @@ Rules:
 
 ## Compressed summary — quality bar
 
-Write it as **tight prose** — mostly 1–3 short paragraphs — with the **highest-signal terms,
-names, and numbers bolded** so it stays scannable. The **bolding** does the scanning work, not
-bullets.
+Write it as tight prose — mostly 1–3 short paragraphs. Keep it scannable with a **few longer
+bold phrases**, not many tiny bolded words.
 
-- Prefer prose. Use **bullets sparingly** — only for a genuine short list (concrete steps,
-  options, key stats). Default to paragraphs.
+- **Bold sparingly:** at most ~4 bold phrases in the whole summary, each a short meaningful
+  phrase of **up to ~5 words** — never scattered single words. Pick the phrases that carry the
+  core idea, so someone reading only the bold gets the gist.
+- Prefer prose; use bullets only for a genuine short list.
 - Include the single most important **table** (copied verbatim) or one embedded **image**
   (`![[attachments-filename.png]]`) if one is central — otherwise neither.
-- Keep it compressed — cut filler. Never invent content. Do **not** repeat the title or the
+- Keep it compressed — cut filler. Never invent content. Do not repeat the title or the
   backlink inside the summary (the page adds those).
 
-Example shape:
+Example shape (note: only ~4 bold spans, each a short phrase):
 ```markdown
-**Two-model split** for coding — **Opus plans, Sonnet builds** — distilled from ~900 hours.
-The throughline is **plan before you build**: write a **plan file**, pick an **effort level**,
-then implement and finish with a **full security review** and a **git checkpoint** before
-shipping. Along the way it leans on **live web data**, **up-to-date docs**, and an **overview
-file** to keep token use down.
+A two-model split for coding — **Opus plans, Sonnet builds** — distilled from ~900 hours. The
+throughline is to **plan before you build**: write a plan file, pick an effort level, then
+implement and finish with a **full security review** before shipping, leaning on live web data
+and **up-to-date docs fetched mid-task**.
 ```
 
 ## State file schema
