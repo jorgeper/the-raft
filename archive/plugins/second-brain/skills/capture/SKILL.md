@@ -57,6 +57,12 @@ kind: <video|article|product|image|idea|note>
 ---
 ```
 
+### Tags
+- If the request names explicit tags (`tag: llm` or `tags: llm, data`), **always include
+  them**. Only add inferred tags if the user gave none.
+- Otherwise infer 2–6 short, lowercase, hyphenated topic tags from the content.
+- Tags drive the wiki, so keep them deliberate — you'll confirm them in Step 6.
+
 ## Step 4 — Body
 
 - **Blank:** just `# <Title>` and an empty body.
@@ -76,6 +82,13 @@ kind: <video|article|product|image|idea|note>
   the URL in `url:`. Do not fabricate details you didn't retrieve.
 - Images/docs: read the file directly.
 
-## Step 6 — Finish
+## Step 6 — Finish and confirm tags
 
-Report the created file path and the `tldr`. Do not commit, move, or modify anything else.
+Report the created file path and the `tldr`, then show the tags you used and offer to adjust
+them, e.g.:
+
+> Tags: `#llm #agents #workflow` — want to change or add any?
+
+This is an offer, not a hard stop — the note is already written. If the user replies with
+changes (add/remove/rename), update **only** the `tags:` field in the note's front matter.
+Do not commit, move, or modify anything else.

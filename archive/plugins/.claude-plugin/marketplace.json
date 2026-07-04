@@ -7,8 +7,8 @@
     {
       "name": "second-brain",
       "source": "./second-brain",
-      "description": "Capture notes into an Obsidian vault's raw/ folder — blank from a topic, or hydrated from a link, YouTube, webpage, image, or pasted text.",
-      "version": "0.1.0",
+      "description": "Capture notes into an Obsidian vault's raw/ folder, and generate a browsable per-tag wiki of compressed summaries with backlinks.",
+      "version": "0.2.0",
       "keywords": ["obsidian", "notes", "capture", "second-brain"]
     }
   ]

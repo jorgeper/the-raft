@@ -158,3 +158,41 @@ does not touch" note.
    description) — no transcript tool assumed. If you have an MCP/tool that pulls transcripts,
    name it and the skill will prefer it.
 2. Anything about the canonical front matter or body layout you'd tweak before build.
+
+---
+
+# Addendum (v0.2.0): explicit tagging + the wiki skill
+
+Added 2026-07-04. Confirmed decisions: state in the vault, notes newest-first, capture reports
+tags and offers to adjust (non-blocking), wiki ships for both Claude Code and Copilot CLI.
+
+## capture — explicit tagging
+
+- Accept inline tags in the request: `tag: llm` or `tags: llm, data` → always included; infer
+  extras only when none are given.
+- After writing the note, report the tags used and **offer** to change/add them (not a hard
+  stop). On a change request, update only the `tags:` field.
+
+## wiki — one browsable page per area
+
+- Output: `<vault>/wiki/<tag>.md` (filename is just the tag). Reads `raw/`, writes only under
+  `wiki/`. Never touches `manual/`, `ai/`, or existing raw notes.
+- **Tag selection:** tags named in the request, else the `generated_tags` in state (refresh
+  what exists), else ask. Never auto-generates a page per tag.
+- **Page layout:** front matter (`area`, `last_update`, `note_count`, `tags: [wiki]`); then,
+  per note (newest date first): `## Title`, a line with the human date (`May 17, 2026`) + tag
+  chips + a top backlink `[[<basename>|open full note]]`, then a compressed summary that pulls
+  in the single most important table/image.
+- **Incremental:** a vault-local state file `<vault>/wiki/.second-brain-index.json` caches each
+  note's `summary_md` keyed by content hash, plus `generated_tags` and `last_run`. Only stale
+  (new/changed-hash) notes are re-summarized; pages are rebuilt from cache in date order so
+  ordering stays correct when back-dated notes arrive. Canonical schema + page format:
+  `reference/wiki-page-format.md`.
+- **Packaging:** Claude skill `skills/wiki/SKILL.md` + Copilot agent
+  `agents/second-brain-wiki.agent.md`, both delegating format to the reference file.
+
+## Deliberately deferred
+
+- **Nightly automation:** run explicitly for now. When automating (cron) or once the vault
+  grows large, replace the model-maintained state/render with a deterministic helper script
+  (model keeps doing only the summarization). Flagged as the natural next step.

@@ -1,15 +1,20 @@
 # Second Brain
 
-A small plugin for capturing notes into an [Obsidian](https://obsidian.md) vault's `raw/`
-folder. One adaptive skill, **capture**, that either:
+A small plugin for managing an [Obsidian](https://obsidian.md) vault's `raw/` capture folder.
+Two skills:
 
-- creates a **blank** note from a topic ("create a note about X"), or
-- **hydrates** a note from a source you give it — a URL, YouTube link, webpage, image, doc,
-  or pasted text — by summarizing it, writing a `tldr`, and preserving the original.
+- **capture** — creates a **blank** note from a topic ("create a note about X"), or
+  **hydrates** a note from a source you give it (URL, YouTube link, webpage, image, doc, or
+  pasted text) by summarizing it, writing a `tldr`, and preserving the original. It writes to
+  `raw/<YYYY-MM>/<YYYY-MM-DD>-<slug>.md` and, after writing, shows the tags it used and offers
+  to adjust them (you can also pass tags explicitly: `tag: llm` / `tags: llm, data`).
+- **wiki** — generates a browsable per-area digest: one page per chosen tag at
+  `wiki/<tag>.md`, stacking compressed summaries (with the key table/image) of every raw note
+  carrying that tag, newest first, each with a backlink to the original. Incremental — it only
+  re-summarizes new or changed notes, tracked in a state file in the vault.
 
-It writes to `raw/<YYYY-MM>/<YYYY-MM-DD>-<slug>.md` using a consistent front matter format.
-It is **append-only**: it never edits existing notes and never touches your `manual/` or
-`ai/` folders.
+Everything is **append-only / additive**: it never edits existing raw notes and never touches
+your `manual/` or `ai/` folders. `wiki` writes only under `wiki/`.
 
 It installs in **two** tools — pick the one you use. The instructions are independent; you
 don't need to read both.
@@ -31,13 +36,17 @@ claude plugin install second-brain@sandbox-plugins
 claude plugin marketplace list
 ```
 
-Then, in any Claude Code session, just ask naturally — the `capture` skill loads by
-description:
+Then, in any Claude Code session, just ask naturally — the skills load by description:
 
 ```
+# capture
 create a note about the espresso puck-collapse thing
-capture this: https://www.youtube.com/watch?v=…
+capture this: https://www.youtube.com/watch?v=…   tag: coffee
 save this image ~/Downloads/diagram.png as a note
+
+# wiki
+update the wiki for coffee, ai, workflow
+update the wiki            # refreshes every tag it already tracks
 ```
 
 To update after you change the plugin files: `claude plugin marketplace update sandbox-plugins`.
@@ -46,31 +55,34 @@ To update after you change the plugin files: `claude plugin marketplace update s
 
 ## Install for GitHub Copilot CLI
 
-Copilot CLI doesn't support custom slash commands yet, so this ships as a **custom agent**.
-Install it by copying (or symlinking) the agent file into your user agents directory:
+Copilot CLI doesn't support custom slash commands yet, so this ships as **custom agents** —
+one for capture, one for the wiki. Install by copying (or symlinking) both agent files into
+your user agents directory:
 
 ```bash
-# Copy the agent into your personal Copilot agents directory
+# Copy both agents into your personal Copilot agents directory
 mkdir -p ~/.copilot/agents
-cp ~/src/sandbox/plugins/second-brain/agents/second-brain.agent.md ~/.copilot/agents/
+cp ~/src/sandbox/plugins/second-brain/agents/*.agent.md ~/.copilot/agents/
 
-# (Optional) symlink instead, so it updates when you pull this repo:
-# ln -sf ~/src/sandbox/plugins/second-brain/agents/second-brain.agent.md ~/.copilot/agents/second-brain.agent.md
+# (Optional) symlink instead, so they update when you pull this repo:
+# ln -sf ~/src/sandbox/plugins/second-brain/agents/second-brain.agent.md      ~/.copilot/agents/
+# ln -sf ~/src/sandbox/plugins/second-brain/agents/second-brain-wiki.agent.md ~/.copilot/agents/
 ```
 
-Then use it from the Copilot CLI:
+Then use them from the Copilot CLI:
 
 ```bash
-# Interactive: pick the agent
+# Interactive: pick an agent
 copilot
-# …then run: /agent   and choose "Second Brain"
+# …then run: /agent   and choose "Second Brain" (capture) or "Second Brain Wiki"
 
-# Or invoke it directly:
-copilot --agent second-brain -p "capture this: https://www.youtube.com/watch?v=…"
+# Or invoke directly:
+copilot --agent second-brain      -p "capture this: https://www.youtube.com/watch?v=…  tag: coffee"
+copilot --agent second-brain-wiki -p "update the wiki for coffee, ai, workflow"
 ```
 
-To verify it's registered, run `/agent` in an interactive session and confirm **Second Brain**
-appears in the list.
+To verify, run `/agent` in an interactive session and confirm **Second Brain** and **Second
+Brain Wiki** appear.
 
 ---
 
@@ -120,11 +132,17 @@ with an `## AI Description`; pasted text is preserved in a `> [!quote] Original`
 
 ```
 second-brain/
-├── README.md                       # this file
-├── DESIGN.md                       # design spec
-├── .claude-plugin/plugin.json      # Claude Code plugin manifest
-├── skills/capture/SKILL.md         # Claude Code skill
-├── agents/second-brain.agent.md    # Copilot CLI custom agent
-└── reference/raw-note-format.md    # canonical note format (single source of truth)
+├── README.md                          # this file
+├── DESIGN.md                          # design spec
+├── .claude-plugin/plugin.json         # Claude Code plugin manifest
+├── skills/
+│   ├── capture/SKILL.md               # Claude skill: capture a raw note
+│   └── wiki/SKILL.md                  # Claude skill: build/update the area wiki
+├── agents/
+│   ├── second-brain.agent.md          # Copilot agent: capture
+│   └── second-brain-wiki.agent.md     # Copilot agent: wiki
+└── reference/
+    ├── raw-note-format.md             # canonical raw-note format
+    └── wiki-page-format.md            # canonical wiki-page + state format
 ```
 (The Claude Code marketplace manifest is one level up, at `plugins/.claude-plugin/marketplace.json`.)

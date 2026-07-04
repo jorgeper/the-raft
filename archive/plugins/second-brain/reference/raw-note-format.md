@@ -32,6 +32,9 @@ Field notes:
 - `source` describes where it came from; `kind` describes what it is.
 - Include `image_path:` (relative to the note) for image notes.
 - Keep `tags` lowercase and hyphenated.
+- Tags: explicit tags in the request (`tag:`/`tags:`) are always kept; otherwise infer them.
+  Capture reports the final tags and offers to adjust. Tags are what the `wiki` skill groups
+  notes by, so keep them meaningful and reuse existing area tags where they fit.
 
 ## Body
 
