@@ -49,11 +49,11 @@ content `hash` and cached `summary_md`.
 
 ## Step 5 — Summarize the stale notes
 Read each stale note and write a **compressed, scannable summary** per the quality bar in the
-reference: an optional one-line framing sentence, then **3–6 bullet points** each starting with
-a **bold lead-in**, and the highest-signal terms/names/numbers **bolded** inline. Include the
-single most important table (copied) or one embedded image (`![[file.png]]`) if clearly central
-— otherwise neither. No wall of text; don't repeat the title or backlink. Update that note's
-`hash`, `date`, `title`, `tags`, and `summary_md` in the cache.
+reference: mostly **tight prose** (1–3 short paragraphs) with the highest-signal
+terms/names/numbers **bolded** inline for scannability. Use **bullets sparingly** — only for a
+genuine short list — otherwise prose. Include the single most important table (copied) or one
+embedded image (`![[file.png]]`) if clearly central — otherwise neither. Don't repeat the title
+or backlink. Update that note's `hash`, `date`, `title`, `tags`, and `summary_md` in the cache.
 
 ## Step 6 — Render each target tag page
 For each target tag, collect relevant notes carrying it, sort **newest date first**, and write

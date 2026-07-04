@@ -46,13 +46,12 @@ Rules:
 
 ## Compressed summary — quality bar
 
-Structure it for **fast scanning**, not a wall of text. The reader should get the signal by
-skimming the bold text and bullets. Shape:
+Write it as **tight prose** — mostly 1–3 short paragraphs — with the **highest-signal terms,
+names, and numbers bolded** so it stays scannable. The **bolding** does the scanning work, not
+bullets.
 
-- Optionally open with one short framing sentence (what this is), only if it helps.
-- Then **3–6 bullet points** carrying the key signal. Start each bullet with a **bold lead-in**
-  (the key term/idea) followed by the detail.
-- **Bold** the highest-signal terms, names, and numbers inline so the eye catches them.
+- Prefer prose. Use **bullets sparingly** — only for a genuine short list (concrete steps,
+  options, key stats). Default to paragraphs.
 - Include the single most important **table** (copied verbatim) or one embedded **image**
   (`![[attachments-filename.png]]`) if one is central — otherwise neither.
 - Keep it compressed — cut filler. Never invent content. Do **not** repeat the title or the
@@ -60,11 +59,11 @@ skimming the bold text and bullets. Shape:
 
 Example shape:
 ```markdown
-**Two-model split** for coding: Opus plans, Sonnet builds.
-
-- **Always plan first** — write a plan file and pick an effort level before implementing.
-- **Live context** — feed current web data and fetch up-to-date docs mid-task.
-- **Safety net** — full security review + a git checkpoint before shipping.
+**Two-model split** for coding — **Opus plans, Sonnet builds** — distilled from ~900 hours.
+The throughline is **plan before you build**: write a **plan file**, pick an **effort level**,
+then implement and finish with a **full security review** and a **git checkpoint** before
+shipping. Along the way it leans on **live web data**, **up-to-date docs**, and an **overview
+file** to keep token use down.
 ```
 
 ## State file schema
