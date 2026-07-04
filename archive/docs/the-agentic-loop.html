@@ -1,0 +1,2494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Agentic Loop — Field Guide</title>
+<style>
+:root{
+  --bg:#FAF9F5;
+  --bg-side:#F2F0E8;
+  --bg-card:#FFFDF8;
+  --ink:#29261C;
+  --ink-soft:#4E4A3D;
+  --muted:#8A8574;
+  --accent:#C6613F;
+  --accent-deep:#A44F32;
+  --accent-wash:#F6E7DF;
+  --line:#E5E1D3;
+  --code-bg:#F1EFE5;
+  --code-ink:#3C382C;
+  --serif:"Tiempos Headline",Charter,"Iowan Old Style",Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sidebar-w:302px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:2.2rem}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto} *{transition:none!important;animation:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 var(--sans);-webkit-font-smoothing:antialiased}
+
+/* ---------- sidebar ---------- */
+#sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar-w);background:var(--bg-side);
+  border-right:1px solid var(--line);overflow-y:auto;padding:1.1rem 0.9rem 3rem;z-index:40;
+  transition:transform .28s ease;scrollbar-width:thin}
+body.nav-hidden #sidebar{transform:translateX(calc(-1 * var(--sidebar-w)))}
+.brand{display:flex;align-items:baseline;gap:.5rem;padding:.2rem .55rem 1rem;border-bottom:1px solid var(--line);margin-bottom:.8rem}
+.brand .mark{font-family:var(--serif);font-size:1.22rem;font-weight:600;letter-spacing:-.01em}
+.brand .mark em{color:var(--accent);font-style:normal}
+.brand .ver{font-size:.72rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.nav-group{border:none;margin:0 0 .15rem}
+.nav-group summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:.45rem;
+  padding:.42rem .55rem;border-radius:8px;font-weight:600;font-size:.86rem;color:var(--ink-soft);user-select:none}
+.nav-group summary::-webkit-details-marker{display:none}
+.nav-group summary:hover{background:rgba(198,97,63,.07)}
+.nav-group summary .tw{display:inline-block;width:.8em;color:var(--muted);font-size:.72rem;transition:transform .18s ease;flex:none}
+.nav-group[open] summary .tw{transform:rotate(90deg)}
+.nav-group summary .pt{font-size:.66rem;color:var(--accent);letter-spacing:.09em;text-transform:uppercase;font-weight:700;flex:none;min-width:2.6em}
+.nav-group a{display:block;padding:.28rem .55rem .28rem 2.35rem;border-radius:7px;color:var(--ink-soft);
+  text-decoration:none;font-size:.85rem;line-height:1.35;border-left:2px solid transparent}
+.nav-group a:hover{background:rgba(198,97,63,.07);color:var(--ink)}
+.nav-group a.active{color:var(--accent-deep);background:var(--accent-wash);border-left-color:var(--accent);font-weight:600}
+.nav-foot{margin-top:1.4rem;padding:.8rem .55rem 0;border-top:1px solid var(--line);font-size:.74rem;color:var(--muted);line-height:1.5}
+.nav-foot code{font-size:.72rem}
+
+/* toggle button */
+#navToggle{position:fixed;top:.9rem;left:.9rem;z-index:60;width:38px;height:38px;border-radius:10px;
+  border:1px solid var(--line);background:var(--bg-card);color:var(--ink-soft);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(41,38,28,.08);
+  transition:left .28s ease}
+#navToggle:hover{color:var(--accent-deep);border-color:var(--accent)}
+body:not(.nav-hidden) #navToggle{left:calc(var(--sidebar-w) - 50px);box-shadow:none;background:transparent;border-color:transparent}
+#navToggle svg{width:19px;height:19px}
+
+/* ---------- main ---------- */
+main{margin-left:var(--sidebar-w);padding:0 clamp(1.2rem,5vw,4.5rem) 6rem;max-width:calc(var(--sidebar-w) + 54rem);transition:margin-left .28s ease}
+body.nav-hidden main{margin-left:0;max-width:54rem;margin-inline:auto}
+.hero{padding:4.6rem 0 2.4rem;border-bottom:1px solid var(--line);margin-bottom:2.6rem}
+.hero .eyebrow{font-size:.76rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700}
+h1{font-family:var(--serif);font-weight:500;font-size:clamp(2.1rem,4.4vw,3.15rem);line-height:1.12;letter-spacing:-.015em;margin:.5rem 0 .9rem}
+.hero p.lede{font-size:1.08rem;color:var(--ink-soft);max-width:44rem;margin:0 0 1.1rem}
+.hero .meta{font-size:.82rem;color:var(--muted)}
+h2{font-family:var(--serif);font-weight:500;font-size:1.75rem;letter-spacing:-.012em;line-height:1.2;margin:3.4rem 0 .9rem;padding-top:1.4rem;border-top:1px solid var(--line)}
+h2 .kicker{display:block;font-family:var(--sans);font-size:.72rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin-bottom:.45rem}
+h3{font-family:var(--serif);font-weight:600;font-size:1.22rem;margin:2.2rem 0 .55rem;letter-spacing:-.008em}
+h4{font-size:.95rem;margin:1.6rem 0 .4rem}
+p,ul,ol{color:var(--ink-soft);max-width:46rem}
+li{margin:.28rem 0}
+strong{color:var(--ink)}
+a{color:var(--accent-deep);text-decoration-color:rgba(198,97,63,.4);text-underline-offset:2px}
+hr{border:none;border-top:1px solid var(--line);margin:2.6rem 0}
+
+/* code */
+code{font:.86em var(--mono);background:var(--code-bg);color:var(--code-ink);padding:.1em .38em;border-radius:5px}
+pre{position:relative;background:var(--code-bg);border:1px solid var(--line);border-radius:12px;
+  padding:1rem 1.15rem;overflow-x:auto;margin:1rem 0 1.4rem;max-width:52rem}
+pre code{background:none;padding:0;font-size:.815rem;line-height:1.58;color:var(--code-ink)}
+pre .lang{position:absolute;top:.5rem;right:3rem;font:.66rem var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.copy-btn{position:absolute;top:.45rem;right:.5rem;border:1px solid var(--line);background:var(--bg-card);
+  color:var(--muted);font:.68rem var(--sans);padding:.22rem .5rem;border-radius:6px;cursor:pointer;opacity:0;transition:opacity .15s}
+pre:hover .copy-btn{opacity:1}
+.copy-btn:hover{color:var(--accent-deep);border-color:var(--accent)}
+
+/* tables */
+table{border-collapse:collapse;width:100%;max-width:52rem;margin:1rem 0 1.5rem;font-size:.875rem;background:var(--bg-card);border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px var(--line)}
+th{font-family:var(--sans);font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);text-align:left;padding:.6rem .85rem;background:var(--bg-side);border-bottom:1px solid var(--line)}
+td{padding:.6rem .85rem;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-soft)}
+tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+
+/* callouts */
+.note,.warn,.win,.learn{border-radius:12px;padding:.95rem 1.15rem;margin:1.2rem 0;max-width:50rem;font-size:.92rem}
+.note{background:var(--accent-wash);border:1px solid #EAC9BA}
+.note::before{content:"Note";display:block;font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:.3rem}
+.note.t::before{content:attr(data-t)}
+.warn{background:#FBF3E0;border:1px solid #EBDCB2}
+.warn::before{content:"Careful";display:block;font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8A6D00;margin-bottom:.3rem}
+.warn.t::before{content:attr(data-t)}
+.win{background:#EDF3EA;border:1px solid #CFE0C8}
+.win::before{content:"Done";display:block;font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#2E6B33;margin-bottom:.3rem}
+.win.t::before{content:attr(data-t)}
+.learn{background:#EDF1EC;border:1px solid #D5DECE}
+.learn::before{content:"How it works";display:block;font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4A6741;margin-bottom:.3rem}
+.learn.t::before{content:attr(data-t)}
+.learn ul{margin:.35rem 0 .35rem 1.15rem;font-size:.9rem}
+.learn li{margin:.22rem 0}
+.note p,.warn p,.win p,.learn p{margin:.2rem 0}
+
+/* github label chips */
+.chip{display:inline-block;font:.72rem/1 var(--mono);padding:.28em .65em;border-radius:999px;white-space:nowrap;font-weight:600}
+.chip.g{background:#0E8A16;color:#fff}.chip.y{background:#FBCA04;color:#4a3d00}
+.chip.r{background:#D93F0B;color:#fff}.chip.b{background:#1D76DB;color:#fff}.chip.p{background:#5319E7;color:#fff}
+
+/* pipeline diagrams */
+.flow{display:flex;flex-direction:column;align-items:stretch;max-width:33rem;margin:1.6rem 0 1.8rem}
+.flow .node{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:.7rem 1rem;box-shadow:0 1px 3px rgba(41,38,28,.05)}
+.flow .node .who{font-size:.66rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:.1rem}
+.flow .node .what{font-size:.9rem;color:var(--ink)}
+.flow .gate{border:1.5px solid var(--accent);background:var(--accent-wash);border-radius:12px;padding:.7rem 1rem;position:relative}
+.flow .gate .who{font-size:.66rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--accent-deep);display:block;margin-bottom:.1rem}
+.flow .gate .what{font-size:.9rem;color:var(--ink)}
+.flow .down{align-self:center;color:var(--muted);font-size:1rem;line-height:1;padding:.32rem 0}
+.flow .down.loopback{color:var(--accent-deep);font-size:.78rem;font-family:var(--mono)}
+.legend{font-size:.78rem;color:var(--muted);margin-top:-.8rem;margin-bottom:1.6rem}
+.legend .sw{display:inline-block;width:.85em;height:.85em;border-radius:4px;vertical-align:-2px;margin-right:.3em}
+.node .bits{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.5rem}
+.node .bit{font:.7rem var(--mono);background:var(--code-bg);border:1px solid var(--line);border-radius:6px;padding:.18em .55em;color:var(--ink-soft)}
+.down .lbl{font:.72rem var(--mono);color:var(--muted);margin-left:.55rem}
+
+/* nested loops diagram */
+.loops{max-width:46rem;margin:1.6rem 0 1rem}
+.loopring{border:1.5px solid;border-radius:16px;padding:1rem 1.15rem 1.15rem}
+.ring-head{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;margin-bottom:.35rem;flex-wrap:wrap}
+.ring-name{font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.ring-time{font:.72rem var(--mono);color:var(--muted)}
+.ring-what{font-size:.85rem;color:var(--ink-soft);margin:0 0 .8rem}
+.l3{border-color:var(--accent);background:var(--accent-wash)}
+.l3 .ring-name{color:var(--accent-deep)}
+.l2{border-color:#B9C4A9;background:#F0F2E7}
+.l2 .ring-name{color:#556B3E}
+.l1{border-color:#C4C9D8;background:#EFF0F6}
+.l1 .ring-name{color:#4A5378}
+.l1 .cycle{font:.82rem var(--mono);color:var(--ink-soft);text-align:center;padding:.55rem .4rem;background:var(--bg-card);border:1px dashed var(--line);border-radius:10px}
+
+/* feature-build timeline */
+.timeline{max-width:50rem;margin:1.4rem 0 1.6rem;display:flex;flex-direction:column;gap:.5rem}
+.tl-step{display:grid;grid-template-columns:2.1rem 1fr auto;gap:.85rem;align-items:start;background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:.75rem .95rem}
+.tl-step.human{border-color:var(--accent);background:var(--accent-wash)}
+.tl-num{width:1.75rem;height:1.75rem;border-radius:50%;background:var(--ink-soft);color:var(--bg);font:700 .8rem/1.75rem var(--sans);text-align:center;flex:none}
+.tl-step.human .tl-num{background:var(--accent)}
+.tl-body b{display:block;font-size:.9rem;color:var(--ink);margin-bottom:.1rem}
+.tl-body span{font-size:.83rem;color:var(--ink-soft);line-height:1.5}
+.tl-art{font:.68rem var(--mono);color:var(--muted);background:var(--code-bg);border:1px solid var(--line);border-radius:6px;padding:.28em .55em;white-space:nowrap;margin-top:.2rem}
+@media (max-width:700px){.tl-step{grid-template-columns:2.1rem 1fr}.tl-art{display:none}}
+
+/* two-col cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;max-width:52rem;margin:1.2rem 0 1.6rem}
+.card{background:var(--bg-card);border:1px solid var(--line);border-radius:14px;padding:1.05rem 1.15rem}
+.card h5{margin:0 0 .35rem;font-size:.95rem;font-family:var(--serif);font-weight:600}
+.card p{font-size:.86rem;margin:0;color:var(--ink-soft)}
+.card .tag{display:inline-block;font-size:.64rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:.4rem}
+
+@media (max-width:900px){
+  body{font-size:15px}
+  #sidebar{transform:translateX(calc(-1 * var(--sidebar-w)));box-shadow:none}
+  body.nav-open-m #sidebar{transform:none;box-shadow:0 0 40px rgba(41,38,28,.25)}
+  body:not(.nav-hidden) #navToggle{left:.9rem;background:var(--bg-card);border-color:var(--line);box-shadow:0 1px 4px rgba(41,38,28,.08)}
+  main{margin-left:0;padding-top:3.4rem}
+  .hero{padding-top:2.2rem}
+}
+</style>
+</head>
+<body>
+<button id="navToggle" aria-label="Toggle table of contents" title="Toggle table of contents (t)">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+</button>
+
+<nav id="sidebar" aria-label="Table of contents">
+  <div class="brand"><span class="mark">The Agentic <em>Loop</em></span><span class="ver">field guide</span></div>
+
+  <details class="nav-group" open>
+    <summary><span class="tw">▶</span><span class="pt">1</span> The big picture</summary>
+    <a href="#overview">What you're building</a>
+    <a href="#pieces">The pieces &amp; why they exist</a>
+    <a href="#vocab">The vocabulary</a>
+    <a href="#feature-flow">How a feature gets built</a>
+    <a href="#loops">The three loops</a>
+    <a href="#memory-skills">Memory &amp; skills</a>
+    <a href="#agents-trust">Agents, reviewers &amp; trust</a>
+    <a href="#routing">Models &amp; money</a>
+    <a href="#ways">Three ways to run it</a>
+  </details>
+
+  <details class="nav-group">
+    <summary><span class="tw">▶</span><span class="pt">2</span> Set it all up</summary>
+    <a href="#s-prereqs">2.1 Tools &amp; accounts</a>
+    <a href="#s-repo">2.2 The repo: labels, memory, CI</a>
+    <a href="#s-orch">2.3 The orchestrator</a>
+    <a href="#s-roles">2.4 The role agents</a>
+    <a href="#s-glue">2.5 GitHub glue &amp; worktrees</a>
+    <a href="#s-loop">2.6 The loop &amp; the coder</a>
+    <a href="#s-skills">2.7 Skills</a>
+    <a href="#s-harness">2.8 Subagents, hooks, plugins</a>
+    <a href="#s-budgets">2.9 Budgets &amp; dashboard</a>
+    <a href="#s-telegram">2.10 Telegram</a>
+    <a href="#s-vps">2.11 The VPS</a>
+    <a href="#s-done">2.12 What you have now</a>
+  </details>
+
+  <details class="nav-group">
+    <summary><span class="tw">▶</span><span class="pt">3</span> The labs</summary>
+    <a href="#lab1">Lab 1 · Build an app end-to-end</a>
+    <a href="#lab1-tp1">&nbsp;&nbsp;Touch point 1 — design</a>
+    <a href="#lab1-tp2">&nbsp;&nbsp;Hands-off middle</a>
+    <a href="#lab1-tp3">&nbsp;&nbsp;Touch point 3 — ship</a>
+    <a href="#oauth-setup">&nbsp;&nbsp;Google OAuth setup</a>
+    <a href="#lab2">Lab 2 · Add a feature</a>
+    <a href="#lab3">Lab 3 · Fix a bug</a>
+    <a href="#lab-lessons">What you learned</a>
+  </details>
+
+  <details class="nav-group">
+    <summary><span class="tw">▶</span><span class="pt">End</span> Beyond</summary>
+    <a href="#beyond">Where to go next</a>
+  </details>
+
+  <div class="nav-foot">
+    Part 1 explains, Part 2 builds, Part 3 drives.<br>
+    Press <code>t</code> to toggle this panel.
+  </div>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">A field guide in three parts</div>
+  <h1>The Agentic Loop</h1>
+  <p class="lede">Build a persistent, multi-agent development system you fully control: GitHub issues in,
+  reviewed pull requests out, running 24/7 on a VPS, steerable from your phone — with you making exactly
+  three kinds of decisions and agents doing everything else.</p>
+  <p class="lede" style="font-size:.95rem"><strong>Part 1</strong> is pure concepts — every piece of the
+  system, with diagrams, before you type a single command. <strong>Part 2</strong> is the build: by its end
+  you have the complete system installed and idling — orchestrator, agents, skills, hooks, budgets,
+  Telegram, VPS — wrapped around a blank repo. <strong>Part 3</strong> puts your hands on the wheel: build a
+  real app end-to-end, add a feature, fix a bug. Steps are numbered; under each one, a
+  <span style="color:#4A6741;font-weight:600">How&nbsp;it&nbsp;works</span> box explains what the code does
+  and ties it back to Part 1. Terracotta <em>Note</em> boxes flag design decisions, amber <em>Careful</em>
+  boxes flag risks, green <em>Done</em> boxes mark checkpoints.</p>
+</header>
+
+<section>
+<h2 id="overview"><span class="kicker">Part 1 · The big picture</span>What you're building</h2>
+<p><strong>The loop in one sentence:</strong> an orchestrator watches GitHub for issues labeled
+<span class="chip g">agent:ready</span>, moves each one through a state machine
+(<em>design&nbsp;→ design&nbsp;review&nbsp;→ human&nbsp;gate&nbsp;→ code&nbsp;→ code&nbsp;review&nbsp;→ human&nbsp;gate&nbsp;→ merge</em>),
+and every model call is routed so you can dial cost and capability per role.</p>
+
+<div class="flow" role="img" aria-label="Pipeline: issue to merged PR with three human touch points">
+  <div class="node"><span class="who">You</span><span class="what">File a brief as a GitHub issue · <span class="chip g">agent:ready</span></span></div>
+  <div class="down">↓</div>
+  <div class="node"><span class="who">Design agent</span><span class="what">Drafts <code>DESIGN.md</code>, opens a <strong>design PR</strong></span></div>
+  <div class="down">↓</div>
+  <div class="gate"><span class="who">◆ Touch point 1 — you</span><span class="what">Iterate on the design in PR comments; approve to sign off</span></div>
+  <div class="down loopback">↑ revise · as many rounds as you like · approve ↓</div>
+  <div class="node"><span class="who">Design reviewers ×2</span><span class="what">Feasibility + security critique; you arbitrate</span></div>
+  <div class="down">↓</div>
+  <div class="node"><span class="who">Coder · Claude Code headless in a worktree</span><span class="what">Implements, runs <code>make lint &amp;&amp; make test</code>, iterates until green, commits</span></div>
+  <div class="down">↓</div>
+  <div class="node"><span class="who">Orchestrator</span><span class="what">Independent re-check in a network-less Docker container → opens the <strong>implementation PR</strong> → CI runs</span></div>
+  <div class="down">↓</div>
+  <div class="node"><span class="who">Code reviewers ×2 (different model families)</span><span class="what">Correctness vs the design · security &amp; footguns</span></div>
+  <div class="down">↓</div>
+  <div class="gate"><span class="who">◆ Touch point 3 — you</span><span class="what">Run it for real, review, approve &amp; merge · CI releases</span></div>
+</div>
+<p class="legend"><span class="sw" style="background:var(--accent-wash);border:1.5px solid var(--accent)"></span>Terracotta gates are the only places you act. Everything between touch points 1 and 3 — the “hands-off middle” — is <strong>touch point 2</strong>: you watch, you don't type.</p>
+
+<p>Three properties define the whole design, and every section of this guide traces back to one of them:</p>
+<ul>
+<li><strong>State lives in GitHub, not in any process.</strong> An issue's label <em>is</em> its state. Kill
+the orchestrator any time; restart it; nothing is lost. And you can steer from anything that can flip a
+label — a terminal, the GitHub phone app, a Telegram tap.</li>
+<li><strong>You steer at exactly three points.</strong> Shape the brief and the design (highest leverage),
+stay hands-off through the middle, validate and merge at the end. Everything else is the loop's job.</li>
+<li><strong>Nothing certifies its own work.</strong> The coder's claim of "green" is re-checked in a sandbox
+it can't influence, then by CI, then by reviewers from other model families, then by you. Layered,
+mutually distrustful verification is what makes autonomy safe.</li>
+</ul>
+</section>
+
+<section>
+<h2 id="pieces"><span class="kicker">Part 1 · The big picture</span>The pieces — and why each one exists</h2>
+<p>The whole system is five components, and each exists to solve a specific problem. Here's the stack,
+top to bottom, with what flows between the layers. You'll build every box in Part 2:</p>
+<div class="flow" style="max-width:38rem" role="img" aria-label="Architecture: you, GitHub, orchestrator, role agents, model providers">
+  <div class="gate"><span class="who">◆ You — the product owner</span><span class="what">Write briefs, steer designs, arbitrate reviews, do the final validation. You never type application code.</span></div>
+  <div class="down">↓ <span class="lbl">issues, PR comments, label flips</span></div>
+  <div class="node"><span class="who">GitHub — the source of truth</span><span class="what">Holds all state. Nothing lives only in a process's memory.</span>
+    <div class="bits"><span class="bit">issues = work queue</span><span class="bit">labels = state machine</span><span class="bit">PRs = review surface</span><span class="bit">Actions = outer loop</span></div>
+  </div>
+  <div class="down">↓ <span class="lbl">polled every 30s by label</span></div>
+  <div class="node"><span class="who">Orchestrator — the control plane</span><span class="what">A ~300-line Python daemon on your Mac or a VPS. Deterministic code; no AI inside.</span>
+    <div class="bits"><span class="bit">loop.py · state machine</span><span class="bit">gh.py · GitHub glue</span><span class="bit">llm.py · model calls + cost</span><span class="bit">worktree.py · isolation</span><span class="bit">memory/ · scratchpads</span><span class="bit">bot.py · Telegram</span></div>
+  </div>
+  <div class="down">↓ <span class="lbl">one stage handler per state</span></div>
+  <div class="node"><span class="who">Role agents — the workers</span><span class="what">Each is just a system prompt + a model + optional skills. Stateless: they know only what each call hands them.</span>
+    <div class="bits"><span class="bit">design agent</span><span class="bit">design reviewers ×2</span><span class="bit">coder (Claude Code)</span><span class="bit">code reviewers ×2</span></div>
+  </div>
+  <div class="down">↓ <span class="lbl">metered, budget-capped calls</span></div>
+  <div class="node"><span class="who">Model providers</span><span class="what">OpenRouter serves every family behind one API (so reviewers can be non-Anthropic models); the coder runs on Claude Code's harness.</span>
+    <div class="bits"><span class="bit">one capped key per role</span><span class="bit">claude -p in the worktree</span></div>
+  </div>
+</div>
+<p>Why each piece earns its place:</p>
+<ul>
+<li><strong>GitHub as the database.</strong> The naive design keeps state in the orchestrator's memory — then a
+crash loses everything. Putting state in labels means the loop can die and restart mid-issue with zero
+loss, you can inspect everything from the GitHub mobile app, and the issue timeline doubles as a
+complete audit log of what every agent did.</li>
+<li><strong>A dumb orchestrator, smart workers.</strong> The Python daemon makes no decisions about
+<em>content</em> — it only routes: which issue, which stage, which model, when to stop. Intelligence lives
+in the model calls; control lives in code you can read in five minutes. When something behaves weirdly,
+you always know which of the two to debug.</li>
+<li><strong>Roles instead of one super-agent.</strong> Splitting the work into narrow roles gets you three
+things: cheaper routing (a review is a smaller job than writing code, so it gets a cheaper model),
+sharper prompts (each role has one job and an output contract), and <em>independent judgment</em> — the
+reviewer never saw the coder's reasoning, so it judges the artifact, not the intention.</li>
+<li><strong>Files as memory.</strong> Model calls are stateless — every call starts from nothing. All
+continuity comes from files the orchestrator injects: <code>AGENTS.md</code> (durable conventions), the
+per-issue memo (what's happened on this issue so far), skills (on-demand procedures). Files are
+debuggable: when an agent acts oddly, you can open the exact text it saw.</li>
+<li><strong>Worktrees as workbenches.</strong> Each issue gets a private checkout of the repo. Two issues in
+flight can't overwrite each other, and a misbehaving coder can't touch your main checkout.</li>
+</ul>
+</section>
+
+<section>
+<h2 id="vocab"><span class="kicker">Part 1 · The big picture</span>The vocabulary</h2>
+<p>Every term this guide uses, in plain language. Skim now, come back when a word feels fuzzy:</p>
+<table>
+<tr><th>Term</th><th>What it actually means</th></tr>
+<tr><td><strong>Agent</strong></td><td>A model given a job description (system prompt), inputs, and possibly tools. Not magic — a function that happens to be very flexible.</td></tr>
+<tr><td><strong>Orchestrator</strong></td><td>The ordinary program that decides which agent runs when, with what inputs, and what happens with the output.</td></tr>
+<tr><td><strong>State machine</strong></td><td>A design where a thing is always in exactly one named state, and code defines the legal moves between states. Here: one <code>agent:*</code> label per issue, one handler per label.</td></tr>
+<tr><td><strong>Brief</strong></td><td>An issue that fixes the <em>what</em> (behavior, constraints) and leaves the <em>how</em> open — the input that starts the loop.</td></tr>
+<tr><td><strong>DESIGN.md</strong></td><td>The design agent's output: stack choices with justifications, data model, flows, testing strategy. The artifact you iterate on at touch point 1.</td></tr>
+<tr><td><strong>Worktree</strong></td><td>An extra checkout of the same git repo in another folder, sharing one <code>.git</code>. Each issue gets one, on its own branch.</td></tr>
+<tr><td><strong>Memo / scratchpad</strong></td><td>The per-issue markdown file where every stage appends its output. How stateless agents "remember" across passes.</td></tr>
+<tr><td><strong>Inner loop</strong></td><td>Local validation: install → lint → test, run repeatedly while developing. Fast, seconds-scale.</td></tr>
+<tr><td><strong>Outer loop</strong></td><td>CI on the PR: the same checks in a clean environment, plus release on merge. Minutes-scale, and it doesn't trust anyone's laptop.</td></tr>
+<tr><td><strong>Gate / touch point</strong></td><td>A state where the loop parks and waits for a human label-flip. Your steering wheel.</td></tr>
+<tr><td><strong>Harness</strong></td><td>The scaffolding around a model that gives it tools, file access, and iteration — Claude Code, Codex CLI, Cursor. A raw API call has no harness.</td></tr>
+<tr><td><strong>Headless</strong></td><td>Running a harness non-interactively (<code>claude -p</code>): it works, finishes, prints a result, exits. No chat.</td></tr>
+<tr><td><strong>Skill</strong></td><td>A markdown file of procedural know-how an agent loads only when the task matches its description. Cheap until needed.</td></tr>
+<tr><td><strong>Subagent</strong></td><td>A named helper agent (own prompt, own tool allowlist, own context window) a Claude Code session can delegate to.</td></tr>
+<tr><td><strong>Hook</strong></td><td>A shell command the harness runs automatically around tool calls; exit codes allow or block. Guardrails as code, not prose.</td></tr>
+<tr><td><strong>Connector / MCP</strong></td><td>A standard protocol for handing agents external capabilities (GitHub, browsers, databases) as tools.</td></tr>
+<tr><td><strong>Plugin</strong></td><td>An installable bundle of skills, subagents, hooks, and connectors for a harness — capability off the shelf.</td></tr>
+</table>
+</section>
+
+<section>
+<h2 id="feature-flow"><span class="kicker">Part 1 · The big picture</span>How a feature gets built — the full journey</h2>
+<p>Here's the life of one feature, from idea to deployed code, numbered. Terracotta steps are yours;
+everything else runs unattended. The right-hand tags show the artifact each step produces — notice that
+every step leaves a durable trace <em>in GitHub</em>, which is what makes the whole run auditable. Lab 1
+walks this exact journey with your hands on the keyboard.</p>
+<div class="timeline">
+  <div class="tl-step human"><span class="tl-num">1</span><div class="tl-body"><b>You write a brief</b><span>What you want, constraints, and what "done" means — not how to build it. File it as an issue labeled <code>agent:ready</code>.</span></div><span class="tl-art">issue #42</span></div>
+  <div class="tl-step"><span class="tl-num">2</span><div class="tl-body"><b>The design agent drafts</b><span>Next loop pass picks the issue up, drafts <code>DESIGN.md</code> in the issue's worktree, and opens a <strong>design PR</strong> so you can review a document, not a comment thread.</span></div><span class="tl-art">design PR</span></div>
+  <div class="tl-step human"><span class="tl-num">3</span><div class="tl-body"><b>Touch point 1 — you iterate</b><span>Comment on the PR ("key users on sub, not email"), relabel <code>agent:design-draft</code>, and the agent redrafts with your feedback folded in. Loop between 2↔3 as many rounds as the design needs — this is the cheapest place to fix anything.</span></div><span class="tl-art">PR comments</span></div>
+  <div class="tl-step human"><span class="tl-num">4</span><div class="tl-body"><b>You sign off</b><span>Approve the design PR, relabel <code>agent:design-approved</code>. The approval is deliberately explicit — a real gate, not an inference.</span></div><span class="tl-art">approval</span></div>
+  <div class="tl-step"><span class="tl-num">5</span><div class="tl-body"><b>Design reviewers critique</b><span>Two reviewers from different model families check feasibility and security of the <em>approved</em> design and post their verdicts.</span></div><span class="tl-art">2 reviews</span></div>
+  <div class="tl-step human"><span class="tl-num">6</span><div class="tl-body"><b>You arbitrate</b><span>Real concern → back to step 2 for one more round. Noise → relabel <code>agent:coding</code>. (Still touch point 1; you're the tie-breaker, not a rubber stamp.)</span></div><span class="tl-art">label flip</span></div>
+  <div class="tl-step"><span class="tl-num">7</span><div class="tl-body"><b>The coder implements</b><span>Claude Code runs headless in the worktree: reads AGENTS.md + DESIGN.md, writes code and tests, runs <code>make lint &amp;&amp; make test</code>, reads failures, fixes, repeats until green, commits. This internal red→green cycle is the inner loop.</span></div><span class="tl-art">commits</span></div>
+  <div class="tl-step"><span class="tl-num">8</span><div class="tl-body"><b>Independent re-check → PR</b><span>The orchestrator re-runs lint+tests in a network-less Docker container — a verifier the coder can't influence. Green → push, open the implementation PR; CI (the outer loop) starts automatically. Red → stay in <code>agent:coding</code>, retry next pass with the error in the memo.</span></div><span class="tl-art">impl PR + CI</span></div>
+  <div class="tl-step"><span class="tl-num">9</span><div class="tl-body"><b>Code reviewers cross-examine</b><span>Reviewer A audits the diff against every acceptance criterion in DESIGN.md; reviewer B hunts security issues. Different model families, so they miss different things.</span></div><span class="tl-art">2 reviews</span></div>
+  <div class="tl-step human"><span class="tl-num">10</span><div class="tl-body"><b>Touch point 3 — you validate &amp; ship</b><span>Check CI, read the reviews, <code>gh pr checkout</code>, run the app for real, run the tests yourself. Good → approve, merge, release fires. Bad → comment the precise failure and bounce it back to step 7. Never fix it yourself — steer.</span></div><span class="tl-art">merge → release</span></div>
+</div>
+<div class="learn t" data-t="Why the flow is shaped this way">
+<p>Three deliberate asymmetries hide in this timeline. <strong>Human effort is front-loaded</strong> — steps
+3–6 (design) get most of your attention because errors there are cheapest to fix; by step 10 you're
+verifying, not designing. <strong>Machine effort is back-loaded</strong> — the expensive model work
+(step 7) only happens after a human-approved, twice-reviewed design; the loop never burns coder tokens
+on a bad plan. And <strong>every automated step ends by handing evidence to a skeptic</strong> — coder →
+Docker re-check → CI → cross-family reviewers → you. Nothing certifies its own work.</p></div>
+</section>
+
+<section>
+<h2 id="loops"><span class="kicker">Part 1 · The big picture</span>The three loops of iteration</h2>
+<p>"Agentic loop" is really three loops nested inside each other, each with its own cadence, its own
+verifier, and its own failure response. Understanding which loop you're in at any moment is most of
+understanding the system:</p>
+<div class="loops" role="img" aria-label="Nested loops: steering contains outer contains inner">
+  <div class="loopring l3">
+    <div class="ring-head"><span class="ring-name">Loop 3 · The steering loop — you</span><span class="ring-time">cadence: hours–days</span></div>
+    <p class="ring-what"><strong>Cycle:</strong> brief → design rounds → approve → (wait) → validate → merge, or bounce back with a repro.
+    <strong>Verifier:</strong> your judgment, running the real app. <strong>On failure:</strong> a precise comment + a label flip — never a hand-edit.</p>
+    <div class="loopring l2">
+      <div class="ring-head"><span class="ring-name">Loop 2 · The outer loop — CI on every PR</span><span class="ring-time">cadence: minutes</span></div>
+      <p class="ring-what"><strong>Cycle:</strong> PR opened/updated → clean VM → install → lint → test → green check or red X; release on merge.
+      <strong>Verifier:</strong> a fresh environment that doesn't trust anyone's machine. <strong>On failure:</strong> the PR is blocked; the failure feeds back into the coder's next attempt.</p>
+      <div class="loopring l1">
+        <div class="ring-head"><span class="ring-name">Loop 1 · The inner loop — the coder</span><span class="ring-time">cadence: seconds</span></div>
+        <p class="ring-what"><strong>Verifier:</strong> the test suite + linter, run locally in the worktree. <strong>On failure:</strong> read the error, fix, rerun — dozens of times if needed, at zero cost to you.</p>
+        <div class="cycle">edit code → make lint &amp;&amp; make test → read failure → fix → ↺ … until green</div>
+      </div>
+    </div>
+  </div>
+</div>
+<p>Three things to internalize about this picture:</p>
+<ul>
+<li><strong>Speed lives inside; trust lives outside.</strong> The inner loop is fast and runs on the coder's
+own word; the outer loop is slower but runs on a machine nobody configured by hand; your loop is slowest
+and carries the authority. Each layer catches what the layer inside missed — the coder's tests can be
+wrong, CI can't check that the feature makes sense, only you can do the last part.</li>
+<li><strong>The coder must live inside loop 1.</strong> A coder that can see a failing test and fix it in
+seconds beats one that gets a single blind attempt per orchestrator pass. This is why the coder runs on
+a real harness (Claude Code) rather than a bare completion call — the quality of the whole system tracks
+the tightness of its tightest feedback loop.</li>
+<li><strong>Bounce-backs are loop 3 doing its job.</strong> When you return a PR with a repro instead of
+fixing it, you're feeding the failure into loop 1's next cycle <em>and</em> into the memo — so the fix, and
+the lesson, both land inside the system instead of in your working memory.</li>
+</ul>
+</section>
+
+<section>
+<h2 id="memory-skills"><span class="kicker">Part 1 · The big picture</span>Memory &amp; skills — how agents know things</h2>
+<p>Model calls are stateless, so everything an agent "knows" beyond its training is text you hand it at
+call time. The art is in <em>when</em> each kind of knowledge loads. The system uses four layers:</p>
+<table>
+<tr><th>Layer</th><th>Loads</th><th>Scope</th><th>Holds</th></tr>
+<tr><td><strong>AGENTS.md</strong></td><td>Always, at session start</td><td>Whole repo, every tool</td><td>Durable conventions: commands, structure, style, security rules, do-not-touch list</td></tr>
+<tr><td><strong>CLAUDE.md</strong></td><td>Always (Claude Code)</td><td>Whole repo</td><td>A thin <code>@AGENTS.md</code> shim + Claude-only notes</td></tr>
+<tr><td><strong>Skills</strong></td><td>On demand, when relevant</td><td>Task-scoped</td><td>Procedural know-how: a checklist, a framework's conventions, a validation sequence</td></tr>
+<tr><td><strong>Memos / scratchpads</strong></td><td>Injected per issue</td><td>Working set</td><td>The spec, reviews, decisions, error logs for one issue</td></tr>
+</table>
+<p>The discipline that makes this work: <strong>always-loaded things stay tiny; everything conditional
+becomes a skill.</strong> A bloated always-on file is a tax paid on every call by every agent — in tokens,
+in dollars, and in attention (models follow instructions worse as instruction volume grows). A skill
+splits the cost: its one-line <em>description</em> is always visible (~30 tokens); its full <em>body</em>
+(~500+ tokens) loads only when a task matches. That split is called <strong>progressive disclosure</strong>,
+and it's why you can install twenty skills and pay for none of them until the moment one is needed.</p>
+<p>A skill is just a folder with a <code>SKILL.md</code> — YAML frontmatter (name, description, allowed
+tools), then markdown instructions. Here's the shape (you'll install five real ones in Part 2.7):</p>
+<pre><span class="lang">markdown</span><code>---
+name: oauth-security-checklist
+description: Use when reviewing any code or design that implements OAuth login,
+  session handling, or Google sign-in.        ← the always-loaded trigger
+allowed-tools: Read, Grep                     ← least privilege: look, don't touch
+---
+
+# OAuth security review checklist             ← loads only when auth is in scope
+1. State/CSRF — the authorization request sends a `state` param and verifies it…
+2. Secrets — client id/secret from env vars, never literals, never committed…
+…</code></pre>
+<p>Two more facts worth knowing. Skills are an <strong>open standard</strong> — the same file works in
+Claude Code, Codex, Gemini CLI, Cursor — so nothing you write is locked to one harness. And why
+markdown-files-as-memory at all, rather than some vector database? Because files are <em>debuggable</em>:
+when an agent behaves oddly, you open the exact text it saw. Boring, inspectable, versionable memory
+wins at this scale.</p>
+<p><code>AGENTS.md</code> is the cross-tool conventions standard (read by Codex, Cursor, Copilot, Gemini
+CLI, Aider…); Claude Code reads <code>CLAUDE.md</code>, so you keep one source of truth and a one-line shim
+(<code>@AGENTS.md</code>). What belongs in it: the stack, exact build/test/lint commands, structure,
+security rules, a do-not-touch list. What doesn't: anything a formatter enforces, full API docs, "write
+clean code" filler, anything conditional — that's a skill.</p>
+</section>
+
+<section>
+<h2 id="agents-trust"><span class="kicker">Part 1 · The big picture</span>Agents, reviewers &amp; trust</h2>
+<h3>What a role agent is</h3>
+<p>Nothing exotic: a <strong>system prompt</strong> plus a <strong>model choice</strong>. The system prompt is
+a job description with three parts — <em>identity</em> ("You are the FEASIBILITY design reviewer"),
+<em>focus</em> (the specific questions to ask), and an <em>output contract</em> ("Output ## Concerns and
+## Verdict"). The contract matters more than it looks: downstream code and future-you both parse these
+outputs, so a predictable shape makes reviews comparable across issues. Personality words ("terse and
+skeptical") do real work too — they push the model away from its default agreeable register, which is
+exactly wrong for a reviewer.</p>
+<p>The full identity of an agent in this system is the sum of six things:</p>
+<pre><code>agent = system prompt      (its role and voice)
+      + model              (via its own budget-capped key)
+      + AGENTS.md          (always-on shared memory)
+      + skills             (on-demand expertise, tool-restricted)
+      + tools/connectors   (least privilege, enforced by hooks &amp; allowlists)
+      + memo               (what it has learned on this issue)</code></pre>
+
+<h3>Why reviewers come in pairs, from different families</h3>
+<p><strong>Diversity beats collusion.</strong> If reviewer and coder are the same model — or two reviewers
+share a family — they share blind spots and tend to bless each other's mistakes ("evaluator collusion").
+Reviewers from different model families catch different classes of bug, which is the cheap mitigation.
+The same logic gives reviewers <strong>fresh context</strong>: they see the artifact, never the coder's
+reasoning, so they judge what was built, not what was intended.</p>
+
+<h3>How trust is enforced, not requested</h3>
+<p>Instructions like "never touch <code>.env</code>" are requests to a language model — usually honored,
+never guaranteed. The system therefore layers <em>mechanical</em> guardrails, each independent of the
+others:</p>
+<table>
+<tr><th>Guardrail</th><th>Mechanism</th><th>What it stops</th></tr>
+<tr><td><strong>Human gates</strong></td><td>Issues park at <span class="chip r">agent:needs-human</span>; only a human label-flip proceeds</td><td>Anything merging without you</td></tr>
+<tr><td><strong>Tool allowlists</strong></td><td>The coder may run <code>make</code>, <code>pytest</code>, <code>git commit</code> — not <code>curl</code>, not <code>pip install</code>, not <code>git push</code></td><td>Escapes and surprises on your machine</td></tr>
+<tr><td><strong>Hooks</strong></td><td>A separate OS process vets every file edit; exit code 2 blocks it</td><td>Edits to <code>.env</code>, keys, migrations — regardless of what the model decides</td></tr>
+<tr><td><strong>Sandboxes</strong></td><td>Validation re-runs in a Docker container with no network, seeing only the worktree</td><td>Hallucinated dependencies phoning home; host contamination</td></tr>
+<tr><td><strong>Budget caps</strong></td><td>One spend-capped API key per role, enforced server-side; plus an in-loop per-pass cap</td><td>A runaway loop burning your account</td></tr>
+<tr><td><strong>Least-privilege access</strong></td><td>Reviewers get read-only everything; only the coder writes; write-scoped tokens, not one god-token</td><td>A reviewer "helpfully" rewriting the code it judges</td></tr>
+<tr><td><strong>One step per pass</strong></td><td>The loop advances each issue a single state per pass</td><td>A bug spiraling through the pipeline in seconds</td></tr>
+</table>
+<p>Notice the pattern: every guardrail lives <em>outside</em> the model — in the harness, the OS, the
+provider, or GitHub. That's the rule to carry forward: <strong>enforcement beats instruction.</strong></p>
+</section>
+
+<section>
+<h2 id="routing"><span class="kicker">Part 1 · The big picture</span>Models &amp; money</h2>
+<p>Each role gets the cheapest model that's good enough for its job — start cheap everywhere, upgrade
+only roles that visibly fail. The coder is the exception: it does the hardest work, so it starts
+mid-tier. Routing through OpenRouter makes any swap a one-line change:</p>
+<table>
+<tr><th>Role</th><th>Job</th><th>Start (cheap)</th><th>Upgrade when it matters</th></tr>
+<tr><td><strong>Design agent</strong></td><td>Brief → crisp DESIGN.md</td><td><code>anthropic/claude-haiku-4.5</code> or a current Gemini Flash</td><td><code>anthropic/claude-sonnet-5</code></td></tr>
+<tr><td><strong>Design reviewer</strong></td><td>Poke holes: risks, edge cases</td><td>current DeepSeek chat model</td><td><code>anthropic/claude-sonnet-5</code></td></tr>
+<tr><td><strong>Coder</strong></td><td>Write the code + tests</td><td><code>anthropic/claude-sonnet-5</code> via Claude Code (worth it)</td><td><code>anthropic/claude-opus-4.8</code> for gnarly work</td></tr>
+<tr><td><strong>Reviewer A — correctness</strong></td><td>Meets the spec? Real tests?</td><td>current DeepSeek chat model</td><td><code>anthropic/claude-sonnet-5</code></td></tr>
+<tr><td><strong>Reviewer B — security</strong></td><td>Injection, secrets, footguns</td><td>current Qwen coder model</td><td>a frontier model from a <em>third</em> family</td></tr>
+</table>
+<div class="warn t" data-t="Model IDs drift — always verify before hard-coding">
+<p>Providers rename and add models constantly; any written table (including this one) goes stale. Part 2
+includes a live check that prints current slugs and prices — run it before touching config. The
+<em>philosophy</em> is the durable part: cheap models on frequent roles, spend on the coder, reviewers from
+different families.</p></div>
+<p>Money is controlled in four independent layers, from "free" to "nice to have": your <strong>account
+balance</strong> (a hard ceiling — keep it low while learning), <strong>per-role capped keys</strong> (the main
+lever — enforced by the provider, so no bug of yours can overspend), the <strong>in-loop cap</strong>
+(the orchestrator stops itself per pass), and a local <strong>cost dashboard</strong> (visibility: spend by
+role and by day). A realistic solo loop lands in low single-digit dollars per day; the caps exist for
+the bad day — the runaway retry — not the normal one. You'll set all four up in Part 2.9.</p>
+</section>
+
+<section>
+<h2 id="ways"><span class="kicker">Part 1 · The big picture</span>Three ways to run it</h2>
+<p>For honesty's sake before you commit to the build: there are three tiers of this idea, trading
+control for convenience.</p>
+<table>
+<tr><th>Tier</th><th>What it is</th><th>Choose it when</th></tr>
+<tr><td><strong>1 · DIY orchestrator</strong></td><td>The Python daemon, every role a raw completion call via OpenRouter.</td><td>You want to understand and control every moving part, or route any role to any model family.</td></tr>
+<tr><td><strong>2 · DIY + headless coder</strong> <span class="chip g" style="font-size:.6rem">this guide</span></td><td>Same daemon, same gates and budgets — but the coder stage shells out to <code>claude -p</code> inside the worktree.</td><td>Almost always. You keep the control plane and get a coder that iterates inside loop 1.</td></tr>
+<tr><td><strong>3 · GitHub Actions</strong></td><td><code>anthropics/claude-code-action</code>: mention <code>@claude</code> on an issue and a cloud runner implements it. No daemon at all.</td><td>Zero infrastructure, or as a phone-friendly side channel for trivial fixes (see <a href="#beyond">Beyond</a>).</td></tr>
+</table>
+<p>This guide builds tier 2, keeps tier 1 available as a fallback coder mode, and shows the tier 3
+wiring at the end. Nothing about the gates, reviewers, or budgets changes across tiers — the coder is a
+pluggable stage, not the architecture.</p>
+<div class="win t" data-t="End of Part 1">
+<p>You now have the complete mental model: the pipeline and its three touch points, the five components,
+the three nested loops, layered memory, enforced trust, and cheap-first routing. Everything from here is
+building it — and every step in Parts 2 and 3 points back to a concept on this page.</p></div>
+</section>
+<section>
+<h2 id="s-prereqs"><span class="kicker">Part 2 · Set it all up</span>2.1 Tools &amp; accounts</h2>
+<p>Everything gets built on your dev box first — you want to <em>watch</em> it work — then moved to the
+VPS in 2.11 unchanged. Four tools and three accounts:</p>
+<h3>Step 1 — install the tools</h3>
+<pre><span class="lang">bash</span><code># macOS (Linux: use your package manager; Docker from docker.com either way)
+brew install gh                      # GitHub CLI
+npm install -g @anthropic-ai/claude-code   # the coder's harness
+
+# all five should print a version:
+python3 --version && git --version && gh --version && docker --version && claude --version</code></pre>
+<h3>Step 2 — connect the accounts</h3>
+<pre><span class="lang">bash</span><code># GitHub: browser login; gh stores the token
+gh auth login          # choose GitHub.com → HTTPS → login with browser
+gh auth status
+
+# Claude Code: authenticate once (subscription or API key)
+claude                 # follow the login prompt, then exit</code></pre>
+<ol>
+<li><strong>OpenRouter</strong> — create an account at <strong>openrouter.ai</strong>, preload $5–10 (plenty
+for the labs), and create an API key under <strong>Keys</strong>. It looks like <code>sk-or-v1-…</code>. This
+one gateway serves every model family, which is what makes <a href="#routing">cheap-first routing</a> and
+cross-family reviewers possible.</li>
+<li><strong>Anthropic</strong> — the <code>claude</code> login above. Interactive sessions ride your
+subscription; headless coder runs are API-metered (we'll track that spend in 2.9).</li>
+<li><strong>GitHub</strong> — the <code>gh auth login</code> above.</li>
+</ol>
+<div class="learn t" data-t="Why two model accounts?">
+<p>Division of labor from <a href="#pieces">Part 1</a>: the <strong>coder</strong> needs a harness — tools,
+file access, iteration inside loop 1 — so it runs on Claude Code. Every <strong>other</strong> role is a
+single stateless completion call, where OpenRouter's one-API-many-families trick buys you reviewer
+diversity and per-role budgets. Two accounts, two jobs.</p></div>
+
+<h2 id="s-repo"><span class="kicker">Part 2 · Set it all up</span>2.2 The repo — labels, memory files, CI</h2>
+<p>This repo is where the agents will work. By the end of this section it's deliberately <em>blank</em> —
+no application code at all, just the agentic scaffolding. The labs fill it.</p>
+<h3>Step 1 — create it</h3>
+<pre><span class="lang">bash</span><code>gh repo create agentic-hello --private --clone
+cd agentic-hello</code></pre>
+<h3>Step 2 — create the label vocabulary</h3>
+<p>Labels are the handoff signal between states — the state machine from <a href="#pieces">Part 1</a>
+made real. Create the full set once:</p>
+<pre><span class="lang">bash</span><code>gh label create "agent:ready"           --color 0E8A16 --description "Queued for the agent loop"
+gh label create "agent:design-draft"    --color FBCA04 --description "Design doc being drafted/revised"
+gh label create "agent:design-approved" --color 0E8A16 --description "Human approved the design PR"
+gh label create "agent:needs-human"     --color D93F0B --description "Waiting on human"
+gh label create "agent:coding"          --color 1D76DB --description "Coder agent working"
+gh label create "agent:code-review"     --color 1D76DB --description "PR under agent review"
+gh label create "agent:trivial"         --color C2E0C6 --description "Skip design, straight to coding"
+gh label create "agent:done"            --color 5319E7 --description "Merged / complete"</code></pre>
+<div class="learn t" data-t="Why labels make a good state machine">
+<p>A label is just a string attached to an issue — but treat it with discipline (exactly one
+<code>agent:*</code> stage label per issue at a time, and moving the label <em>is</em> the state transition)
+and GitHub becomes your workflow database, for free. You get a UI (the issues list, filterable by label),
+an audit trail (every label change appears in the issue's timeline with a timestamp), an API
+(<code>gh issue edit --add-label</code>), and durability (a crashed orchestrator loses nothing — the state
+is still sitting on the issue). The colors aren't decoration either: green = ready to advance, yellow =
+design phase, blue = code phase, red = waiting on you, purple = done. You'll learn to read the issue
+list at a glance.</p></div>
+<div class="note t" data-t="The human gate is a label, not code">
+<p>Whenever the loop needs you, the issue lands in <span class="chip r">agent:needs-human</span> and
+<strong>nothing proceeds</strong> until you move the label. That's your steering wheel — and it works
+identically from a terminal, the GitHub app on your phone, or the Telegram bot you'll build in 2.10.</p></div>
+
+<h3>Step 3 — seed the always-on memory</h3>
+<p>The top layer of the <a href="#memory-skills">memory stack</a>: lean, durable conventions every agent
+reads at session start. Keep it to what an agent would otherwise get wrong:</p>
+<pre><span class="lang">bash</span><code>cat &gt; AGENTS.md &lt;&lt;'EOF'
+# AGENTS.md — project conventions (read me first)
+
+## Stack
+Python 3.11, Flask.
+
+## Commands (the inner loop — run before any PR)
+- Install: `make install`
+- Test:    `make test`   (pytest; every feature/bugfix needs a test)
+- Lint:    `make lint`   (ruff + black --check)
+
+## Conventions
+- Type hints on public functions. Keep changes small and scoped to the issue.
+
+## Security / do-not-touch
+- Secrets ONLY via env vars. Never commit secrets. Never touch `.env`.
+EOF
+
+cat &gt; CLAUDE.md &lt;&lt;'EOF'
+# CLAUDE.md
+@AGENTS.md
+
+# Claude-only notes (only what differs from AGENTS.md)
+- Prefer plan mode before large edits.
+EOF</code></pre>
+<div class="learn t" data-t="One source of truth, two file names">
+<p><code>AGENTS.md</code> is the open cross-tool standard — Codex, Cursor, Copilot, Gemini CLI, and Aider
+all read it. Claude Code reads <code>CLAUDE.md</code>, whose <code>@AGENTS.md</code> line imports the shared
+file — so there's exactly one place to edit conventions, and every harness sees them. The Flask/make
+targets describe the app the agents will <em>build</em> in Lab 1; writing the conventions before the code
+exists is the point — the design agent and coder will conform to them from their first token.</p></div>
+
+<h3>Step 4 — commit the outer loop</h3>
+<p>Loop 2 from <a href="#loops">Part 1</a>: CI that validates every PR in a clean environment and
+releases on merge. It goes in <em>before</em> any agent works, so the very first implementation PR gets
+gated:</p>
+<pre><span class="lang">bash</span><code>mkdir -p .github/workflows
+cat &gt; .github/workflows/ci.yml &lt;&lt;'EOF'
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e . && pip install pytest ruff
+      - run: ruff check .
+      - run: pytest -q          # OAuth is mocked in tests — CI never calls Google
+  release:
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Deploying 🎉 (placeholder for fly deploy / docker push)"
+EOF
+
+cat &gt; .gitignore &lt;&lt;'EOF'
+.env
+.venv/
+worktrees/
+orchestrator/logs/
+role_keys.json
+pending.json
+__pycache__/
+EOF
+
+git add AGENTS.md CLAUDE.md .github .gitignore
+git commit -m "Agentic scaffolding: conventions, labels, CI"
+git push</code></pre>
+<div class="learn t" data-t="Reading the workflow file — the outer loop's anatomy">
+<p><code>on:</code> declares the triggers: every pull request, and every push to <code>main</code> (which is
+what a merge is). Each <strong>job</strong> runs on a brand-new Ubuntu VM — that freshness is the entire
+value of CI: nothing from your laptop, the agent's worktree, or the last run leaks in, so "works in CI"
+means <em>reproducibly</em> works. The <code>validate</code> steps mirror the inner loop deliberately —
+checkout, install Python, install the project, lint, test — same checks, cleaner room. The
+<code>release</code> job shows two workflow-control keywords worth knowing: <code>needs: validate</code>
+(don't even start unless validate passed) and the <code>if:</code> expression (only on a push to main —
+i.e., only after a merge, never on a mere PR). Replace its <code>echo</code> with a real deploy command
+when you have somewhere to ship to. Until Lab 1 builds the app, CI will fail on a fresh PR — expected:
+there's no <code>pyproject.toml</code> yet. The gate exists before the thing it gates.</p></div>
+
+<h2 id="s-orch"><span class="kicker">Part 2 · Set it all up</span>2.3 The orchestrator</h2>
+<p>Now the control plane from <a href="#pieces">Part 1</a> — the dumb-on-purpose Python daemon. It lives
+in <code>orchestrator/</code> inside the repo.</p>
+<h3>Step 1 — scaffold the project</h3>
+<pre><span class="lang">bash</span><code>mkdir -p orchestrator/{agents,memory,logs} worktrees
+cd orchestrator
+python3 -m venv .venv && source .venv/bin/activate
+
+cat &gt; pyproject.toml &lt;&lt;'EOF'
+[project]
+name = "agentic-loop"
+version = "0.1.0"
+requires-python = "&gt;=3.11"
+dependencies = [
+    "openai&gt;=1.40",          # OpenRouter speaks the OpenAI API dialect
+    "httpx&gt;=0.27",           # raw HTTP (model check, Telegram)
+    "PyGithub&gt;=2.3",         # GitHub REST API as Python objects
+    "pydantic&gt;=2.7",         # structured-data validation
+    "tenacity&gt;=8.3",         # retry/backoff decorators
+    "rich&gt;=13.7",            # readable colored logs
+    "python-dotenv&gt;=1.0",    # loads .env into env vars
+]
+EOF
+
+pip install -e .</code></pre>
+<div class="learn t" data-t="What you just set up">
+<ul>
+<li><strong>The venv</strong> is a project-private Python installation — packages installed inside it can't
+conflict with your system Python or other projects. <code>source .venv/bin/activate</code> switches your
+shell to use it.</li>
+<li><strong><code>pip install -e .</code></strong> installs the project in "editable" mode: imports resolve to
+your actual files, so edits take effect without reinstalling.</li>
+<li><strong>The dependencies</strong> each map to one job — the comments above say which. The notable one:
+<code>openai</code> is the client for <em>OpenRouter</em>, because OpenRouter deliberately implements the
+same HTTP dialect. One SDK, every model family.</li>
+</ul></div>
+
+<h3>Step 2 — the environment file</h3>
+<pre><span class="lang">bash</span><code>cat &gt; .env &lt;&lt;'EOF'
+OPENROUTER_API_KEY=sk-or-v1-REPLACE_ME
+GITHUB_TOKEN=REPLACE_WITH_gh_auth_token
+GITHUB_REPO=your-username/agentic-hello
+# Safety rails
+MAX_USD_PER_RUN=2.00
+MAX_ITERATIONS_PER_ISSUE=6
+EOF
+
+gh auth token    # prints a token — paste it into GITHUB_TOKEN above</code></pre>
+<div class="learn t" data-t="Why an .env file, and what that token is">
+<p>Secrets never go in code or git — they go in environment variables, loaded from a git-ignored
+<code>.env</code> file (already covered by the <code>.gitignore</code> you committed in 2.2).
+<code>gh auth token</code> prints the OAuth token the GitHub CLI already holds from your browser login —
+reusing it saves you creating a personal access token by hand. The orchestrator needs its own copy
+because PyGithub calls the GitHub API directly rather than shelling out to <code>gh</code>. The two
+<code>MAX_*</code> values aren't secrets — they're safety rails kept here so you can tighten them without
+touching code.</p></div>
+
+<h3>Step 3 — check live model IDs</h3>
+<p>The <a href="#routing">routing table</a> warned that model slugs drift. This queries OpenRouter's
+public <code>/models</code> endpoint — every model's slug plus per-token prices — and filters to the
+families we care about. <strong>Run it now, and note the exact slugs you'll use in 2.4:</strong></p>
+<pre><span class="lang">python</span><code>python3 - &lt;&lt;'PY'
+import httpx
+r = httpx.get("https://openrouter.ai/api/v1/models", timeout=30)
+want = ["haiku", "sonnet", "opus", "gemini", "deepseek", "qwen", "gpt"]
+for m in sorted(r.json()["data"], key=lambda x: x["id"]):
+    if any(w in m["id"].lower() for w in want):
+        p = m.get("pricing", {})
+        print(f'{m["id"]:&lt;48} prompt=${p.get("prompt","?")}/tok  completion=${p.get("completion","?")}/tok')
+PY</code></pre>
+
+<h3>Step 4 — the model client</h3>
+<p>Create <code>orchestrator/llm.py</code>. Every non-coder model call in the system goes through this one
+file:</p>
+<pre><span class="lang">python</span><code>"""Thin OpenRouter client — the chokepoint for every completion call.
+Cost tracking, per-role keys, and budget data all live here and only here."""
+import os, json, csv, pathlib, datetime
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# --- per-role keys (provisioned in 2.9; falls back to the single key until then) ---
+_keyfile = pathlib.Path(__file__).parent / "role_keys.json"
+ROLE_KEYS = json.loads(_keyfile.read_text()) if _keyfile.exists() else {}
+_FALLBACK = os.environ["OPENROUTER_API_KEY"]
+_clients: dict[str, OpenAI] = {}
+
+def _client_for(role: str) -&gt; OpenAI:
+    if role not in _clients:
+        _clients[role] = OpenAI(base_url="https://openrouter.ai/api/v1",
+                                api_key=ROLE_KEYS.get(role, _FALLBACK))
+    return _clients[role]
+
+# --- cost accounting: in-memory tally for the loop's cap + CSV log for the dashboard ---
+_usd_spent = 0.0
+_LOG = pathlib.Path(__file__).parent / "logs" / "costs.csv"
+
+def _log_cost(role, model, cost, usage):
+    _LOG.parent.mkdir(exist_ok=True)
+    new = not _LOG.exists()
+    with _LOG.open("a", newline="") as f:
+        w = csv.writer(f)
+        if new:
+            w.writerow(["ts", "role", "model", "cost_usd",
+                        "prompt_tokens", "completion_tokens"])
+        w.writerow([datetime.datetime.now(datetime.UTC).isoformat(), role, model,
+                    f"{cost:.6f}",
+                    getattr(usage, "prompt_tokens", ""),
+                    getattr(usage, "completion_tokens", "")])
+
+def add_cost(role: str, model: str, cost: float):
+    """For spend that doesn't flow through call() — e.g. the headless coder."""
+    global _usd_spent
+    _usd_spent += cost
+    _log_cost(role, model, cost, None)
+
+def call(role: str, model: str, system: str, user: str, max_tokens: int = 4000) -&gt; str:
+    """One LLM turn: system prompt + user message in, text out. Tracks spend
+    via the cost OpenRouter reports on the response itself."""
+    global _usd_spent
+    resp = _client_for(role).chat.completions.create(
+        model=model,
+        messages=[{"role": "system", "content": system},
+                  {"role": "user", "content": user}],
+        max_tokens=max_tokens,
+        extra_body={"usage": {"include": True}},   # ask OR to return actual cost
+    )
+    usage = getattr(resp, "usage", None)
+    cost = float(getattr(usage, "cost", 0) or 0) if usage else 0.0
+    _usd_spent += cost
+    _log_cost(role, model, cost, usage)
+    return resp.choices[0].message.content
+
+def spent() -&gt; float:
+    return _usd_spent</code></pre>
+<div class="learn t" data-t="Reading llm.py — three ideas in fifty lines">
+<ul>
+<li><strong>One API, many providers.</strong> <code>OpenAI(base_url="https://openrouter.ai/api/v1")</code> is
+the whole trick: OpenRouter implements the same HTTP interface as OpenAI, so the official client talks to
+it happily — and behind that one interface sit Anthropic, DeepSeek, Qwen, Google, Meta… Swapping a model
+family is a string change, not a new SDK.</li>
+<li><strong>The chokepoint pattern.</strong> Every completion call goes through <code>call()</code>, and every
+call names its <em>role</em> first. That single funnel is why cost tracking, per-role keys, and budget
+enforcement each get written exactly once — and why 2.9 will add hard budgets with <em>zero</em> changes to
+this file: it already reads <code>role_keys.json</code> when present and falls back to your single key until
+then.</li>
+<li><strong>Billed truth, not estimates.</strong> <code>usage: include</code> asks OpenRouter to attach the
+call's actual dollar cost to the response — budgets computed from real billing beat budgets computed from
+a pricing table you copied last month. Each cost lands in an in-memory tally (the loop's per-pass cap
+reads it) and a CSV (the dashboard reads it).</li>
+</ul>
+<p>Also note what a "turn" is: one system message (the role's standing instructions) + one user message
+(the work item), one response back. No conversation history — statelessness is a feature, because it
+forces all memory into files you can inspect (<a href="#memory-skills">Part 1</a>).</p></div>
+
+<h2 id="s-roles"><span class="kicker">Part 2 · Set it all up</span>2.4 The role agents</h2>
+<p>Create <code>orchestrator/agents/roles.py</code> — the workers from <a href="#agents-trust">Part 1</a>,
+each a system prompt + a model. <strong>Set the model strings to the slugs you noted in 2.3.</strong></p>
+<pre><span class="lang">python</span><code>ROLES = {
+    "design": {
+        "model": "anthropic/claude-haiku-4.5",       # ← use a slug from 2.3
+        "system": (
+            "You are the DESIGN agent. Produce a DESIGN.md for a small web app. "
+            "Sections, in order: ## Problem, ## Goals / Non-goals, ## Chosen stack "
+            "(with justification), ## Data model, ## Auth flow (numbered sequence), "
+            "## API surface (routes + responses), ## Security considerations, "
+            "## Testing strategy, ## Deployment, ## Open questions for the human. "
+            "Make real decisions and JUSTIFY them (e.g. SQLite vs Postgres — pick "
+            "one and say why for THIS app). Concrete but concise. Do NOT write code."
+        ),
+    },
+    "review_feasibility": {
+        "model": "deepseek/deepseek-chat",            # ← use a slug from 2.3
+        "system": (
+            "You are the FEASIBILITY design reviewer. Is the data model right? "
+            "Does the auth flow actually work? Are the routes coherent? Is the "
+            "testing strategy real? Output ## Concerns and ## Verdict "
+            "(APPROVE or REVISE with reasons). Terse and skeptical."
+        ),
+    },
+    "coder": {
+        "model": "anthropic/claude-sonnet-5",         # used only by the fallback
+        "system": (                                    # one-shot coder in 2.6
+            "You are the CODER. Implement the approved design. Always include "
+            "tests. Follow the repo's conventions (read AGENTS.md). Ensure the "
+            "inner loop passes: install, test, lint."
+        ),
+    },
+    "review_correctness": {
+        "model": "deepseek/deepseek-chat",            # ← use a slug from 2.3
+        "system": (
+            "You are CODE REVIEWER A (correctness). Does the diff satisfy every "
+            "acceptance criterion in DESIGN.md? Logic bugs? Are tests meaningful? "
+            "Output ## Findings and ## Verdict (LGTM or CHANGES with a checklist)."
+        ),
+    },
+    "review_security": {
+        "model": "qwen/qwen3-coder",                  # ← use a slug from 2.3
+        "system": (
+            "You are CODE REVIEWER B (security &amp; style). Injection, secret "
+            "leakage, unsafe defaults, session handling, footguns. Output "
+            "## Findings and ## Verdict (LGTM or CHANGES with a checklist)."
+        ),
+    },
+}</code></pre>
+<div class="learn t" data-t="Spot the Part 1 concepts in this file">
+<p>Every prompt has the three parts from <a href="#agents-trust">Agents &amp; trust</a> — identity, focus,
+output contract — and the reviewer pair spans two non-Anthropic families (DeepSeek + Qwen) for exactly
+the collusion-resistance reason covered there. The cheap-first routing is visible too: budget models on
+the frequent, smaller jobs; the coder's entry is mid-tier (and mostly vestigial — the real coder runs on
+Claude Code, coming in 2.6). When a reviewer later rubber-stamps something it shouldn't have, your fix
+is one line in this file: upgrade that role's model.</p></div>
+
+<h2 id="s-glue"><span class="kicker">Part 2 · Set it all up</span>2.5 GitHub glue &amp; worktrees</h2>
+<h3>Step 1 — the GitHub glue</h3>
+<p>Create <code>orchestrator/gh.py</code> — everything the loop needs from GitHub:</p>
+<pre><span class="lang">python</span><code>"""Read issues by label, comment, move labels, open PRs."""
+import os
+from github import Github
+from dotenv import load_dotenv
+
+load_dotenv()
+_gh = Github(os.environ["GITHUB_TOKEN"])
+repo = _gh.get_repo(os.environ["GITHUB_REPO"])
+
+def issues_with_label(label: str):
+    return list(repo.get_issues(state="open", labels=[label]))
+
+def comment(issue_number: int, body: str):
+    repo.get_issue(issue_number).create_comment(body)
+
+def set_label(issue_number: int, new_label: str, remove: list[str]):
+    issue = repo.get_issue(issue_number)
+    for lbl in remove:
+        try:
+            issue.remove_from_labels(lbl)
+        except Exception:
+            pass                      # already gone (e.g. you flipped it by hand) — fine
+    issue.add_to_labels(new_label)
+
+def open_pr(head_branch: str, title: str, body: str, base: str = "main"):
+    return repo.create_pull(title=title, body=body, head=head_branch, base=base)
+
+def open_pr_for_branch(branch: str):
+    prs = [p for p in repo.get_pulls(state="open") if p.head.ref == branch]
+    return prs[0] if prs else None</code></pre>
+<div class="learn t" data-t="Reading gh.py — four verbs and a UI">
+<p>PyGithub wraps GitHub's REST API in Python objects — <code>repo.get_issues(labels=[...])</code> returns
+<code>Issue</code> objects you can call <code>.create_comment()</code> on, instead of you hand-crafting HTTP
+requests. Everything the whole loop needs from GitHub reduces to four verbs: <em>read issues by label</em>
+(the poll), <em>comment</em> (the log), <em>move a label</em> (the state transition), <em>open a PR</em> (the
+deliverable). Note the design choice hiding in <code>comment()</code>: agents narrate everything they do as
+issue comments, so the issue timeline becomes the loop's user interface — you can follow an entire run
+from your phone without ever reading a server log.</p></div>
+
+<h3>Step 2 — worktree isolation</h3>
+<p>Create <code>orchestrator/worktree.py</code> — the private workbench per issue:</p>
+<pre><span class="lang">python</span><code>import subprocess, pathlib
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]   # the git repo
+WT_DIR = REPO_ROOT / "worktrees"
+
+def create(issue_number: int) -&gt; pathlib.Path:
+    branch = f"agent/issue-{issue_number}"
+    path = WT_DIR / f"issue-{issue_number}"
+    if not path.exists():
+        subprocess.run(["git", "worktree", "add", "-b", branch, str(path), "main"],
+                       cwd=REPO_ROOT, check=True)
+    return path
+
+def cleanup(issue_number: int):
+    subprocess.run(["git", "worktree", "remove", "--force",
+                    str(WT_DIR / f"issue-{issue_number}")],
+                   cwd=REPO_ROOT, check=False)</code></pre>
+<div class="learn t" data-t="What a git worktree actually is">
+<p>Most people know one checkout per clone. A <strong>worktree</strong> is git's built-in way to have
+several: <code>git worktree add -b agent/issue-7 worktrees/issue-7 main</code> creates a new folder that is
+a full, real checkout — starting from <code>main</code>, on a brand-new branch — while <em>sharing</em> the
+original repo's <code>.git</code> object database. That sharing is why it's near-instant and nearly free
+(no second copy of history), and why a branch committed in the worktree is immediately visible to the
+main checkout and pushable from either. For this loop it means: issue #7's coder works in
+<code>worktrees/issue-7</code>, issue #8's in <code>worktrees/issue-8</code>, neither can see or clobber the
+other's uncommitted files, and your own checkout stays pristine. One rule to remember: git refuses to
+check out the <em>same</em> branch in two worktrees — which here is a feature, since each issue owns
+exactly one branch.</p></div>
+</section>
+<section>
+<h2 id="s-loop"><span class="kicker">Part 2 · Set it all up</span>2.6 The loop &amp; the coder</h2>
+<p>The heart. One pass advances every ready issue by <strong>one state</strong>, so a crash never loses more
+than a step and a bug can't spiral through the pipeline in seconds.</p>
+<div class="learn t" data-t="How to read loop.py before you paste it">
+<p>The file is long but has only four moving parts — recognize them and the whole thing is legible:</p>
+<ul>
+<li><strong>The memo</strong> (<code>_issue_memo</code> / <code>_append</code>): an append-only markdown notebook
+per issue — the scratchpad layer from <a href="#memory-skills">Part 1</a>. Every stage reads it before
+acting and appends its output after. When the coder "knows" what the design reviewers said, it's because
+those reviews sit in this file and get pasted into its prompt.</li>
+<li><strong>Stage handlers</strong> (<code>run_design_draft</code>, <code>run_design_reviewers</code>, …): one
+function per state. Each follows the same rhythm — <em>gather context → call a role → record the output
+(memo + issue comment) → move the label</em>. The label move at the end IS the state transition.</li>
+<li><strong>The STAGES table</strong>: the entire state machine in six lines, label → handler. Want a new
+stage? Add a label and a function and one row here. This table is the answer to "where do I customize
+the workflow."</li>
+<li><strong><code>one_pass()</code></strong>: for each stage, for each issue wearing that label — budget check,
+run the handler, catch and report errors. Then <code>main()</code> just repeats passes forever with a nap.</li>
+</ul>
+<p>Two properties fall out of this structure. <strong>Restartability:</strong> no state lives in the process,
+so kill it any time; the next pass re-reads reality from GitHub and picks up exactly where things stood.
+<strong>Debuggability:</strong> any weird behavior traces to either a handler (deterministic Python — read
+it) or a model call (open the memo and see exactly what the model was given and what it said).</p></div>
+
+<h3>Step 1 — the state machine</h3>
+<p>Create <code>orchestrator/loop.py</code>:</p>
+<pre><span class="lang">python</span><code>"""The agentic loop. One pass = advance every ready issue by one state.
+State is tracked entirely in GitHub labels, so the loop is restartable."""
+import os, re, json, subprocess, time, pathlib
+from rich.console import Console
+from dotenv import load_dotenv
+
+from llm import call, spent, add_cost
+from agents.roles import ROLES
+import gh, worktree
+
+load_dotenv()
+con = Console()
+MEM = pathlib.Path(__file__).parent / "memory"
+MAX_USD = float(os.environ.get("MAX_USD_PER_RUN", "2.0"))
+
+# ---------- the per-issue memo (the scratchpad memory layer) ----------
+def _issue_memo(n: int) -&gt; pathlib.Path:
+    p = MEM / f"issue-{n}.md"
+    p.parent.mkdir(exist_ok=True)
+    if not p.exists():
+        p.write_text(f"# Issue {n} scratchpad\n\n")
+    return p
+
+def _append(path: pathlib.Path, section: str, text: str):
+    with path.open("a") as f:
+        f.write(f"\n## {section}\n\n{text}\n")
+
+# ---------- your feedback, gathered from wherever you left it ----------
+def _human_feedback(issue, branch: str) -&gt; str:
+    """Touch point 1 happens on the design PR, so read comments from the
+    issue AND the open PR — conversation tab and inline review comments."""
+    fb = [c.body for c in gh.repo.get_issue(issue.number).get_comments()
+          if not c.body.startswith(("###", "⚠️"))]          # skip the bot's own
+    pr = gh.open_pr_for_branch(branch)
+    if pr:
+        fb += [c.body for c in pr.get_issue_comments()]      # conversation tab
+        fb += [f"[on {c.path}] {c.body}" for c in pr.get_review_comments()]
+    return "\n".join(fb)
+
+# ---------- stage handlers: gather → call role → record → move label ----------
+def run_design_draft(issue):
+    """Draft or revise DESIGN.md on a branch; open/update a design PR.
+    You iterate via PR comments; approving the PR is the sign-off."""
+    memo = _issue_memo(issue.number)
+    wt = worktree.create(issue.number)
+    branch = f"agent/issue-{issue.number}"
+    existing = (wt / "DESIGN.md").read_text() if (wt / "DESIGN.md").exists() else "(none yet)"
+    feedback = _human_feedback(issue, branch) or "(none yet)"
+
+    prompt = (f"App brief (from the issue):\n{issue.title}\n{issue.body}\n\n"
+              f"Existing design (may be empty):\n{existing}\n\n"
+              f"Human feedback to incorporate this round:\n{feedback}\n\n"
+              f"Output ONLY the full updated DESIGN.md content.")
+    design = call("design", ROLES["design"]["model"], ROLES["design"]["system"],
+                  prompt, max_tokens=6000)
+
+    (wt / "DESIGN.md").write_text(design)
+    subprocess.run(["git", "add", "DESIGN.md"], cwd=wt, check=True)
+    subprocess.run(["git", "commit", "-m", f"Design for #{issue.number}"],
+                   cwd=wt, check=False)                      # no-op if unchanged
+    subprocess.run(["git", "push", "-u", "origin", branch], cwd=wt, check=False)
+
+    pr = gh.open_pr_for_branch(branch) or gh.open_pr(
+        branch, f"Design: {issue.title}",
+        f"Design doc for #{issue.number}. Comment to request changes; "
+        f"**approve this PR to sign off** and start implementation.")
+    _append(memo, "Design draft", f"See {pr.html_url}")
+    gh.comment(issue.number,
+               f"### 📐 Design draft ready → {pr.html_url}\n\n"
+               f"**Touch point 1:** comment on the PR + relabel `agent:design-draft` "
+               f"to redraft, or approve the PR + relabel `agent:design-approved`.")
+    gh.set_label(issue.number, "agent:needs-human",
+                 ["agent:design-draft", "agent:ready"])
+
+def run_design_reviewers(issue):
+    """Two design reviewers (different families) critique the approved design.
+    You arbitrate, then relabel agent:coding to implement."""
+    memo = _issue_memo(issue.number)
+    wt = worktree.create(issue.number)
+    design = (wt / "DESIGN.md").read_text()
+
+    feas = call("review_feasibility", ROLES["review_feasibility"]["model"],
+                ROLES["review_feasibility"]["system"], design)
+    sec = call("review_security", ROLES["review_security"]["model"],
+               "You are the SECURITY design reviewer. Focus on the OAuth flow, "
+               "secret handling, session security, and data exposure. "
+               "Output ## Concerns and ## Verdict.", design)
+
+    _append(memo, "Design review — feasibility", feas)
+    _append(memo, "Design review — security", sec)
+    gh.comment(issue.number,
+               f"### 🔍 Design reviews\n\n**Feasibility**\n{feas}\n\n"
+               f"**Security**\n{sec}\n\n---\n**Touch point 1 (arbitrate):** "
+               f"relabel `agent:coding` to implement, or `agent:design-draft` to revise.")
+    gh.set_label(issue.number, "agent:needs-human", ["agent:design-approved"])
+
+def run_code_review(issue):
+    memo = _issue_memo(issue.number)
+    a = call("review_correctness", ROLES["review_correctness"]["model"],
+             ROLES["review_correctness"]["system"], memo.read_text())
+    b = call("review_security", ROLES["review_security"]["model"],
+             ROLES["review_security"]["system"], memo.read_text())
+    _append(memo, "Review A (correctness)", a)
+    _append(memo, "Review B (security)", b)
+    gh.comment(issue.number,
+               f"### ✅ Code review\n\n**Correctness**\n{a}\n\n**Security**\n{b}")
+    gh.set_label(issue.number, "agent:needs-human", ["agent:code-review"])
+
+# ---------- the state machine, in one table ----------
+STAGES = [
+    ("agent:ready",           run_design_draft),      # fresh issue → first draft
+    ("agent:design-draft",    run_design_draft),      # you asked for a revision
+    ("agent:design-approved", run_design_reviewers),  # you approved the design PR
+    ("agent:coding",          run_code),              # you cleared reviews → implement
+    ("agent:trivial",         run_code),              # fast path: skip design
+    ("agent:code-review",     run_code_review),
+]
+
+def one_pass():
+    for label, handler in STAGES:
+        for issue in gh.issues_with_label(label):
+            if spent() &gt;= MAX_USD:
+                con.print(f"[red]Budget cap ${MAX_USD} hit — stopping.[/]")
+                return
+            con.print(f"[cyan]{label}[/] → #{issue.number} {issue.title}")
+            try:
+                handler(issue)
+            except Exception as e:
+                con.print(f"[red]Error on #{issue.number}: {e}[/]")
+                gh.comment(issue.number, f"⚠️ Agent error: `{e}`")
+
+def main():
+    con.print("[green]Agentic loop started. Ctrl-C to stop.[/]")
+    while True:
+        one_pass()
+        con.print(f"[dim]pass complete — spent ${spent():.3f} — sleeping 30s[/]")
+        time.sleep(30)
+
+if __name__ == "__main__":
+    main()</code></pre>
+
+<h3>Step 2 — the coder stage</h3>
+<p>The coder is the one role that must live inside loop 1 (<a href="#loops">Part 1</a>): it needs to
+run tests, read failures, and fix them — so it runs on a real harness. Add this to <code>loop.py</code>
+(above the STAGES table, which already references <code>run_code</code>):</p>
+<pre><span class="lang">python</span><code># ---------- the coder: Claude Code headless inside the worktree ----------
+ALLOWED = ("Read,Glob,Grep,Edit,Write,"
+           "Bash(make:*),Bash(pytest:*),Bash(ruff:*),"
+           "Bash(git add:*),Bash(git commit:*)")
+
+def _coder_headless(wt: pathlib.Path, memo_text: str) -&gt; tuple[bool, str, float]:
+    """Run Claude Code as the coder. Returns (ok, summary, cost_usd)."""
+    prompt = (
+        "You are implementing an approved design in this repo. Read AGENTS.md "
+        "and DESIGN.md first. Implement the spec below, working test-first. "
+        "Run `make lint` and `make test` and iterate until BOTH are green. "
+        "Then `git add -A` and `git commit` with a clear message. Do NOT push.\n\n"
+        f"--- Spec, design notes and reviews ---\n{memo_text}")
+    p = subprocess.run(
+        ["claude", "-p", prompt,
+         "--permission-mode", "acceptEdits",
+         "--allowedTools", ALLOWED,
+         "--output-format", "json",
+         "--max-turns", "100"],
+        cwd=wt, capture_output=True, text=True, timeout=3600)
+    try:
+        out = json.loads(p.stdout)
+        return (not out.get("is_error", True),
+                out.get("result", "")[:2000],
+                float(out.get("total_cost_usd", 0)))
+    except (json.JSONDecodeError, KeyError):
+        return False, (p.stdout + p.stderr)[-2000:], 0.0
+
+def _inner_loop_in_docker(wt: pathlib.Path) -&gt; tuple[bool, str]:
+    """Independent re-check in a throwaway container. The agent's own 'it's
+    green' claim is never the thing that opens the PR."""
+    cmd = ["docker", "run", "--rm", "--network", "none",
+           "-v", f"{wt}:/app", "-w", "/app", "python:3.11-slim",
+           "bash", "-lc",
+           "pip install -q -e . 2&gt;/dev/null; pip install -q pytest ruff; "
+           "ruff check . && pytest -q"]
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    return p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+
+def run_code(issue):
+    memo = _issue_memo(issue.number)
+    wt = worktree.create(issue.number)
+    branch = f"agent/issue-{issue.number}"
+
+    ok, summary, cost = _coder_headless(wt, memo.read_text())
+    add_cost("coder", "claude-code", cost)               # same books as every role
+    _append(memo, "Coder session", f"ok={ok} cost=${cost:.4f}\n\n{summary}")
+
+    green, log = _inner_loop_in_docker(wt)
+    _append(memo, "Independent inner loop", f"passed={green}\n\n```\n{log}\n```")
+    if not (ok and green):
+        gh.comment(issue.number,
+                   f"### 👩‍💻 Coder pass — ❌ not green yet\n```\n{log}\n```\n"
+                   f"Staying in `agent:coding` for retry next pass.")
+        return                            # next pass's coder starts from this error
+
+    subprocess.run(["git", "push", "-u", "origin", branch], cwd=wt, check=True)
+    pr = gh.open_pr(branch, f"Issue #{issue.number}: {issue.title}",
+                    f"Closes #{issue.number}\n\nCoder inner loop green; "
+                    f"independently re-validated in Docker.")
+    gh.comment(issue.number, f"### ✅ Inner loop green → opened {pr.html_url}")
+    gh.set_label(issue.number, "agent:code-review",
+                 ["agent:coding", "agent:trivial", "agent:ready"])</code></pre>
+<div class="learn t" data-t="Decoding the claude -p invocation, flag by flag">
+<ul>
+<li><strong><code>-p &lt;prompt&gt;</code></strong> ("print" mode) = headless: instead of an interactive chat,
+Claude Code takes the prompt, plans, edits files, runs commands, iterates — a full agentic session —
+then prints its final result and exits. Same engine you use interactively, no human in the middle.</li>
+<li><strong><code>cwd=wt</code></strong> is quietly the most important line: the session starts <em>inside the
+issue's worktree</em>, so "the repo" from the agent's point of view is that isolated checkout — its file
+reads, edits, test runs, and commits all land there and nowhere else. It also picks up your
+<code>CLAUDE.md → AGENTS.md</code> and skills automatically, because they're in the checkout.</li>
+<li><strong><code>--permission-mode acceptEdits</code></strong>: file edits are auto-approved (no human to
+click "allow"), but everything else still needs to clear the allowlist.</li>
+<li><strong><code>--allowedTools</code></strong> grammar: a bare name (<code>Read</code>, <code>Edit</code>)
+permits that tool; <code>Bash(make:*)</code> permits only shell commands <em>starting with</em>
+<code>make</code>. So this coder can run <code>make test</code> but not <code>curl</code>, not
+<code>pip install</code>, not <code>git push</code> — the least-privilege row from
+<a href="#agents-trust">Part 1's guardrail table</a>, made real.</li>
+<li><strong><code>--output-format json</code></strong> turns the final output into machine-readable fields:
+<code>is_error</code>, <code>result</code> (its closing summary), <code>total_cost_usd</code> (actual metered
+spend — logged via <code>add_cost</code> into the same books as every other role), <code>num_turns</code>.</li>
+<li><strong><code>--max-turns 100</code></strong> is the runaway brake: a session that hasn't converged in
+100 tool-use turns gets cut off rather than looping forever on a doomed approach.</li>
+</ul></div>
+<div class="learn t" data-t="Decoding the Docker re-check, flag by flag">
+<p><code>docker run --rm --network none -v {wt}:/app -w /app python:3.11-slim bash -lc "…"</code> — five
+flags, five guarantees. <code>--rm</code>: the container is destroyed after the run; nothing persists.
+<code>--network none</code>: no network interface at all — code under test can't call home, fetch a
+malicious package, or leak anything. <code>-v {wt}:/app</code>: <em>only</em> the worktree is mounted into
+the container; the rest of your disk doesn't exist from inside. <code>-w /app</code>: start there.
+<code>python:3.11-slim</code>: a fresh, minimal, pinned environment — matching CI far better than your
+laptop does. The trade-off of <code>--network none</code> is honest: <code>pip</code> inside can't reach the
+internet either, so dependencies must come from the image or a pre-baked layer. For the labs' tiny dep
+set (Flask, pytest, ruff), build a small pinned image once — and if the re-check ever fails on a
+<em>network</em> error, that's the sandbox catching an undeclared dependency, which is exactly the kind of
+thing you want caught before CI.</p></div>
+<div class="note t" data-t="Why re-check what the coder already checked?">
+<p>Part 1's rule: <strong>nothing certifies its own work</strong>. The coder ran the tests, yes — in its own
+session, where it also <em>wrote</em> the tests. The orchestrator's Docker run is a verifier the coder
+cannot influence, in an environment closer to CI. Failure feedback lands in the memo, so the next pass's
+coder session starts from the actual error, not from zero.</p></div>
+
+<h3>Step 3 — a fallback coder (optional, no harness required)</h3>
+<p>If you ever want a coder with zero harness dependency — any OpenRouter model, one completion call —
+here's the classic trick: make the model emit files as fenced blocks tagged <code># path:</code>, and
+parse them out. Keep it in your back pocket; swap it in by replacing the <code>_coder_headless</code> call
+in <code>run_code</code>. Everything downstream (Docker re-check, PR, reviews, gates) is identical:</p>
+<pre><span class="lang">python</span><code>def _write_files_from_output(wt: pathlib.Path, output: str):
+    blocks = re.findall(r"# path:\s*(.+?)\n```[a-zA-Z]*\n(.*?)```", output, re.S)
+    written = []
+    for rel, content in blocks:
+        dest = wt / rel.strip()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content)
+        written.append(rel.strip())
+    return written
+
+def _coder_oneshot(wt: pathlib.Path, memo_text: str) -&gt; None:
+    conventions = (worktree.REPO_ROOT / "AGENTS.md").read_text()
+    prompt = (f"Repo conventions:\n{conventions}\n\nSpec &amp; reviews:\n{memo_text}\n\n"
+              f"Output each file as a fenced block prefixed `# path: &lt;path&gt;`. "
+              f"Include pyproject.toml, the app, and tests. Make `ruff check .` "
+              f"and `pytest` pass.")
+    result = call("coder", ROLES["coder"]["model"], ROLES["coder"]["system"],
+                  prompt, max_tokens=8000)
+    _write_files_from_output(wt, result)
+    subprocess.run(["git", "add", "-A"], cwd=wt, check=True)
+    subprocess.run(["git", "commit", "-m", "coder one-shot"], cwd=wt, check=False)</code></pre>
+<div class="learn t" data-t="Why the fallback is a fallback">
+<p>With no harness, a model can't touch your filesystem — it can only emit text, so we define a tiny
+protocol (path-tagged fenced blocks) and parse it. It works, but notice what's missing: the model gets
+exactly <em>one</em> attempt, with no ability to run its own tests, read an error, or fix anything — it
+iterates at orchestrator-pass speed instead of inside loop 1. And the protocol is brittle (a README
+containing a nested code fence breaks the regex). Every agentic harness exists to replace this trick with
+real tools; keeping both versions side by side is the clearest demonstration of what a harness buys.</p></div>
+
+<h3>Step 4 — first light</h3>
+<pre><span class="lang">bash</span><code>cd orchestrator && source .venv/bin/activate
+python loop.py</code></pre>
+<p>In another terminal, file a smoke-test issue and watch the loop move it:</p>
+<pre><span class="lang">bash</span><code>gh issue create --title "Spike: confirm the loop works" \
+  --body "Just checking the pipeline advances through states." \
+  --label "agent:ready"</code></pre>
+<div class="win t" data-t="Checkpoint">
+<p>Within a pass or two: a design PR appears, the issue gets a 📐 comment, and it parks at
+<span class="chip r">agent:needs-human</span>. The state machine lives. (Close the spike issue and delete
+its branch when done: <code>gh issue close &lt;n&gt;</code>.)</p></div>
+
+<h2 id="s-skills"><span class="kicker">Part 2 · Set it all up</span>2.7 Skills — the expertise pack</h2>
+<p>Five skills, one per job the agents keep doing — the on-demand layer of the
+<a href="#memory-skills">memory stack</a>. Run from the <strong>repo root</strong> (not
+<code>orchestrator/</code>):</p>
+<pre><span class="lang">bash</span><code>mkdir -p .claude/skills/{design-doc,flask-conventions,run-inner-loop,acceptance-criteria-audit,oauth-security-checklist}
+
+cat &gt; .claude/skills/design-doc/SKILL.md &lt;&lt;'EOF'
+---
+name: design-doc
+description: Use this whenever drafting or revising a DESIGN.md or architecture document for a new app or feature, before any implementation. Provides the required section structure and the ADR format for recording decisions. Use it every time design work happens, not just occasionally.
+allowed-tools: Read, Write
+---
+
+# Writing a DESIGN.md
+
+Produce a DESIGN.md with these sections, in order. Make real decisions and justify them.
+
+## Required sections
+1. **Problem** — what we're solving, in 2-4 sentences.
+2. **Goals / Non-goals** — bullet lists. Non-goals prevent scope creep.
+3. **Chosen stack** — name each choice AND one line of justification for THIS app's scale.
+4. **Data model** — tables/fields with types. Note keys and why (e.g. user keyed on the stable OAuth `sub` claim, not email).
+5. **Auth flow** — a numbered sequence of the actual request/response steps.
+6. **API surface** — every route: method, path, request, response, status codes.
+7. **Security considerations** — secrets handling, CSRF/state, session flags, authorization.
+8. **Testing strategy** — how each area is tested; how external services are mocked so CI is hermetic.
+9. **Deployment** — how it ships; what CI validates; what runs on release.
+10. **Open questions for the human** — anything you had to assume; flag it here.
+
+## Recording decisions (ADR-style)
+For any non-obvious choice add a short block:
+- **Decision:** what was chosen.
+- **Context:** the forces at play.
+- **Alternatives:** what was rejected and why.
+- **Consequences:** trade-offs accepted.
+
+## Rules
+- Do NOT write application code in a design doc.
+- Prefer boring, mainstream choices; justify anything exotic.
+- Concrete enough that a competent engineer could implement without guessing.
+EOF
+
+cat &gt; .claude/skills/flask-conventions/SKILL.md &lt;&lt;'EOF'
+---
+name: flask-conventions
+description: Use this whenever writing or modifying Flask application code — routes, blueprints, app factory, models, config, or tests. Enforces the app-factory pattern, blueprint structure, env-based config, SQLAlchemy model conventions, and hermetic OAuth test mocking. Apply it to every Flask change, not just new files.
+allowed-tools: Read, Write, Edit, Bash
+---
+
+# Flask conventions
+
+## App structure (app factory)
+- `app/__init__.py` exposes `create_app(config=None)`; register blueprints there.
+- Group routes into blueprints by concern: `app/auth.py` (login/callback/logout), feature blueprints elsewhere.
+- No module-level work at import time — everything through the factory so tests build isolated apps.
+
+## Config &amp; secrets
+- Read all secrets/config from env vars inside the factory (GOOGLE_CLIENT_ID/SECRET, FLASK_SECRET_KEY, DATABASE_URL).
+- Never hard-code or commit secrets. Provide `.env.example` with placeholders.
+
+## Models (SQLAlchemy)
+- Key users on the stable OAuth `sub` claim, not email.
+- `created_at` defaults to now. Add fields via clear, reversible changes.
+
+## Routes
+- Explicit status codes. Validate input; reject bad input with a 4xx and a clear message.
+- Protect login-required routes with a shared check/decorator; anonymous requests must be rejected.
+
+## Tests (hermetic)
+- Flask test client; build via `create_app()` with a test config and a throwaway SQLite DB.
+- NEVER call Google in tests — mock the provider so CI never hits the network.
+- Every route and every branch (valid, invalid, unauthorized) gets a test.
+
+## Before finishing
+Run the inner loop (see run-inner-loop): install, lint, test — all green before any PR.
+EOF
+
+cat &gt; .claude/skills/run-inner-loop/SKILL.md &lt;&lt;'EOF'
+---
+name: run-inner-loop
+description: Use this before opening any pull request or declaring implementation done. Defines the exact local validation sequence (install, lint, test) that must pass in a sandbox, and what to do on failure. Do not open a PR until this is green — apply it on every implementation task.
+allowed-tools: Bash, Read, Edit
+---
+
+# The inner loop (local validation)
+
+Run these IN ORDER. Do not skip. Do not open a PR unless all pass.
+
+1. `make install` — install the package and dev deps.
+2. `make lint` — `ruff check .` and `black --check .`. Fix issues; re-run.
+3. `make test` — `pytest -q`. All tests pass, including new ones for this change.
+
+## If a step fails
+- Read the actual error. Fix the root cause; do NOT delete or weaken tests to force green.
+- Re-run the full sequence from step 1 after any fix.
+- If it fails 3+ times on the same error, stop and summarize the blocker instead of thrashing.
+
+## Sandbox
+- Run in the isolated container/worktree, never the host.
+
+## Done means
+- install + lint + test all green in a clean run, and the change is covered by a test that would fail without it.
+EOF
+
+cat &gt; .claude/skills/acceptance-criteria-audit/SKILL.md &lt;&lt;'EOF'
+---
+name: acceptance-criteria-audit
+description: Use this when reviewing a pull request or diff for correctness against a spec or DESIGN.md. Provides a repeatable procedure to extract every acceptance criterion and prove each is covered by a real test — catching the most common failure, a passing suite that silently omits the dangerous case. Use it on every correctness review.
+allowed-tools: Read, Grep
+---
+
+# Acceptance-criteria audit
+
+Green tests are not enough — verify the RIGHT things are tested.
+
+## Procedure
+1. Extract every acceptance criterion from the spec/DESIGN.md and the issue. List them as a checklist.
+2. For EACH criterion, locate the specific test(s) that prove it. Cite file + test name.
+3. Mark each **COVERED** (cite the test) or **MISSING** (no test proves it).
+4. Pay special attention to:
+   - Boundary values on BOTH sides (max accepted AND max+1 rejected).
+   - Failure/negative paths (invalid input rejected; unauthorized request rejected).
+   - Anything security-relevant (authorization on protected routes).
+
+## Output
+- `## Criteria coverage` — checklist with COVERED/MISSING and test citations.
+- `## Findings` — logic bugs or gaps.
+- `## Verdict` — LGTM only if EVERY criterion is COVERED; otherwise CHANGES with the exact missing tests.
+
+## Rule
+Read-only. Do not edit the code you are reviewing. Report; the coder fixes.
+EOF
+
+cat &gt; .claude/skills/oauth-security-checklist/SKILL.md &lt;&lt;'EOF'
+---
+name: oauth-security-checklist
+description: Use when reviewing any code or design that implements OAuth login, session handling, or Google sign-in. Checks the state parameter, secret handling, session cookie flags, and login-required enforcement. Apply it whenever auth is in scope.
+allowed-tools: Read, Grep
+---
+
+# OAuth security review checklist
+
+Apply every item. For each, cite the file/line or mark it MISSING.
+
+1. **State/CSRF** — the authorization request sends a `state` param and the callback verifies it. (Authlib does this automatically; flag any hand-rolled flow that skips it.)
+2. **Secrets** — client id/secret and the Flask secret key come from env vars, never literals, never committed. No secrets in logs.
+3. **Session cookies** — `HttpOnly` set; `Secure` in production; a sensible `SameSite`.
+4. **Login-required** — protected routes (POST endpoints, /me) reject anonymous requests, and there is a test proving the rejection.
+5. **Token/ID handling** — the ID token is validated; the user is keyed on the stable `sub` claim, not the email.
+
+Output: `## Findings` (numbered, with file refs) then `## Verdict` (LGTM / CHANGES).
+EOF
+
+git add .claude/skills
+git commit -m "Add skills pack (design, flask, inner-loop, audit, oauth-security)"
+git push</code></pre>
+<p>Who carries what: the <strong>design agent</strong> gets <code>design-doc</code>; the
+<strong>coder</strong> gets <code>flask-conventions</code> + <code>run-inner-loop</code>; the
+<strong>correctness reviewer</strong> gets <code>acceptance-criteria-audit</code>; the
+<strong>security reviewer</strong> gets <code>oauth-security-checklist</code>. The headless coder picks
+skills up automatically (they're in its checkout). For the OpenRouter roles — plain completion calls —
+you do the progressive disclosure yourself with a small loader. Create
+<code>orchestrator/skills.py</code>:</p>
+<pre><span class="lang">python</span><code>"""Minimal skill loader for completion-call roles: inject a skill's body
+only when the issue text matches its triggers (progressive disclosure)."""
+import pathlib, re
+SKILLS_DIR = pathlib.Path(__file__).resolve().parents[1] / ".claude" / "skills"
+
+def load(name: str) -&gt; str:
+    body = (SKILLS_DIR / name / "SKILL.md").read_text()
+    return re.sub(r"^---.*?---\n", "", body, flags=re.S)   # strip frontmatter
+
+ROLE_SKILLS = {
+    "design": [
+        ("design-doc", ("design", "architecture", "new app", "feature", "spec")),
+    ],
+    "review_security": [
+        ("oauth-security-checklist", ("oauth", "login", "google", "auth", "session")),
+    ],
+    "review_correctness": [
+        ("acceptance-criteria-audit", ("",)),   # ("",) matches everything — always applies
+    ],
+}
+
+def skills_for(role: str, issue_text: str) -&gt; str:
+    out = []
+    for name, triggers in ROLE_SKILLS.get(role, []):
+        if any(t in issue_text.lower() for t in triggers):
+            out.append(load(name))
+    return "\n\n---\n\n".join(out)</code></pre>
+<p>Wire it in with one pattern at each call site in <code>loop.py</code> — gather matching skills, append
+to the system prompt:</p>
+<pre><span class="lang">python</span><code>import skills   # at the top of loop.py
+
+# example — in run_code_review, for reviewer B:
+extra = skills.skills_for("review_security", issue.title + (issue.body or ""))
+system = ROLES["review_security"]["system"] + ("\n\n" + extra if extra else "")
+b = call("review_security", ROLES["review_security"]["model"], system, memo.read_text())</code></pre>
+<div class="learn t" data-t="The economics of progressive disclosure, applied">
+<p>Why not just paste every checklist into every system prompt? Because always-loaded text is a tax paid
+on <em>every call by every agent</em> — in tokens, in dollars, and in attention (models follow instructions
+worse as instruction volume grows; irrelevant checklists dilute relevant ones). The loader splits the
+cost exactly as <a href="#memory-skills">Part 1</a> described: triggers are the cheap always-on part, the
+body loads only on match. The <code>("",)</code> idiom — an empty string is "in" every text — marks skills
+that should <em>always</em> fire for their role, like the criteria audit. And note
+<code>allowed-tools: Read, Grep</code> on the reviewer skills: least privilege declared in the skill
+itself. Under Claude Code it's enforced by the harness; in completion-call roles it's honored by
+construction, since those roles receive text and can only return text.</p></div>
+
+<h2 id="s-harness"><span class="kicker">Part 2 · Set it all up</span>2.8 Subagents, hooks &amp; plugins</h2>
+<p>Three harness-level upgrades, all committed to the repo so every Claude Code session — interactive or
+the headless coder — inherits them.</p>
+<h3>Step 1 — a subagent for security review</h3>
+<p>Subagents are role agents in the harness's native format: own prompt, own tool allowlist, own fresh
+context. Create <code>.claude/agents/security-reviewer.md</code>:</p>
+<pre><span class="lang">markdown</span><code>---
+name: security-reviewer
+description: Reviews code and designs for OAuth, session, and secret-handling
+  issues. Use after any change that touches auth, login, or sessions.
+tools: Read, Grep, Glob
+model: haiku
+---
+
+You are the SECURITY reviewer. Apply the oauth-security-checklist skill.
+Look for injection, secret leakage, unsafe defaults, session-cookie flags,
+and missing login-required enforcement. Cite file/line for every finding.
+Output ## Findings and ## Verdict (LGTM or CHANGES with a checklist).
+You are read-only: report, never edit.</code></pre>
+<div class="learn t" data-t="Reading the frontmatter — how delegation gets decided">
+<p><code>name</code> is the handle; <code>description</code> is what the <em>lead</em> session reads when
+deciding whether to delegate — write it like a skill trigger ("use after any change that touches auth"),
+because that sentence, not the body, determines when this subagent gets work. <code>tools</code> is a hard
+allowlist enforced by the harness: this reviewer <em>cannot</em> edit or run anything, no matter what it
+decides — the prompt asks, the harness enforces. <code>model: haiku</code> keeps the frequent role on a
+budget model — cheap-first routing again. And each delegation starts with a <strong>fresh context
+window</strong>: it sees the artifact it's handed, never the coder's reasoning — context diversity on top
+of <a href="#agents-trust">model diversity</a>. Your OpenRouter reviewers stay primary (maximum family
+diversity); this one serves interactive sessions and quick self-reviews before commits.</p></div>
+
+<h3>Step 2 — hooks: file protection as code</h3>
+<p><code>AGENTS.md</code> says "never touch <code>.env</code>" — a request. This makes it a rule. Create
+<code>.claude/settings.json</code> at the repo root:</p>
+<pre><span class="lang">json</span><code>{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import json,sys; d=json.load(sys.stdin); p=d.get('tool_input',{}).get('file_path',''); bad=any(x in p for x in ('.env','role_keys.json','migrations/')); print('BLOCKED: protected file' if bad else '', file=sys.stderr); sys.exit(2 if bad else 0)\""
+          }
+        ]
+      }
+    ]
+  }
+}</code></pre>
+<div class="learn t" data-t="Hook mechanics, step by step">
+<p>Here's the exact sequence when the coder tries to edit a file. (1) The harness sees a pending
+<code>Edit</code> call and checks the <code>matcher</code> — a regex over tool names; <code>Edit|Write</code>
+matches both edit paths. (2) It runs your <code>command</code> as a normal shell process, piping the pending
+call to its stdin as JSON: <code>{"tool_name": "Edit", "tool_input": {"file_path": "...", …}}</code>.
+(3) Your script reads that JSON, applies whatever logic you like — here, "is the path one of the
+protected ones?" — and exits. (4) The harness interprets the exit code: <strong>0 = allow</strong> the call
+to proceed; <strong>2 = block it</strong>, and whatever the script printed to stderr is shown to the agent
+as the reason, so it can adapt instead of retrying blindly. The security property comes from step 2
+being a <em>separate OS process</em>: the model never sees the hook, can't negotiate with it, and can't
+"decide" to skip it — enforcement beats instruction, the rule from
+<a href="#agents-trust">Part 1's guardrail table</a>. Natural extensions: a PostToolUse hook that runs
+<code>ruff</code> on every edited file, or an audit log of every Bash command the coder runs.</p></div>
+
+<h3>Step 3 — plugins: capability off the shelf</h3>
+<p>In an interactive Claude Code session, run <code>/plugin</code> and install what maps onto your loop
+(then commit nothing — plugins install per-machine):</p>
+<table>
+<tr><th>Plugin</th><th>Where it slots into the loop</th></tr>
+<tr><td><strong>superpowers</strong></td><td>Discipline for <em>interactive</em> sessions: brainstorming before design, TDD and systematic-debugging for coding, verification-before-completion before any "done" claim. The same loop philosophy — brief → design → implement → verify — as installable skills.</td></tr>
+<tr><td><strong>code-review</strong></td><td><code>/code-review</code> on a working diff at chosen effort; the <code>ultra</code> tier runs a multi-agent adversarial review in the cloud. A third reviewer you rent only for high-stakes changes.</td></tr>
+<tr><td><strong>github</strong></td><td>Issue/PR operations from inside sessions — the same verbs <code>gh.py</code> wraps.</td></tr>
+<tr><td><strong>playwright</strong></td><td>Browser automation for Lab 1's final validation click-through. The mechanical checks get automated; the Google consent click stays yours.</td></tr>
+<tr><td><strong>context7</strong></td><td>Current library documentation on demand — the coder pulls real Authlib/Flask APIs instead of half-remembered ones. Fewer hallucinated calls, fewer red inner loops.</td></tr>
+<tr><td><strong>claude-md-management</strong></td><td>Audits and prunes CLAUDE.md/AGENTS.md as they accrete — the "always-loaded things stay tiny" rule, enforced over time.</td></tr>
+</table>
+<div class="note t" data-t="The build-vs-adopt line">
+<p>Adopt plugins for generic capability (browsing, docs, review procedure). Keep hand-rolled what encodes
+<em>your</em> loop: the state machine, the gates, the budgets, the five project skills. Also built in:
+<code>/security-review</code> for pending changes — a complement to (not a replacement for) your OAuth
+checklist skill, which encodes <em>this app's</em> non-negotiables. And a standing rule: skills and plugins
+execute instructions, so install only from sources you trust, and audit anything third-party.</p></div>
+<pre><span class="lang">bash</span><code># commit the harness config that belongs to the repo
+git add .claude/agents .claude/settings.json
+git commit -m "Harness config: security-reviewer subagent + file-protection hook"
+git push</code></pre>
+</section>
+<section>
+<h2 id="s-budgets"><span class="kicker">Part 2 · Set it all up</span>2.9 Budgets &amp; the cost dashboard</h2>
+<p>The four money layers from <a href="#routing">Part 1</a>. Your account balance (layer 1) and the
+in-loop cap (layer 3, <code>MAX_USD_PER_RUN</code>) already exist. This section adds the main lever —
+per-role capped keys — and the visibility layer.</p>
+<h3>Step 1 — one capped key per role</h3>
+<p>Create a <strong>Management API key</strong> at <code>openrouter.ai/settings/management-keys</code> and add
+it to <code>orchestrator/.env</code> as <code>OPENROUTER_MANAGEMENT_KEY</code>. Then create
+<code>orchestrator/provision_keys.py</code>:</p>
+<pre><span class="lang">python</span><code>"""Create one budget-capped OpenRouter key per role. Run once; re-run to
+adjust caps (it creates new keys — delete old ones in the dashboard)."""
+import os, json, httpx
+from dotenv import load_dotenv
+load_dotenv()
+
+MGMT = os.environ["OPENROUTER_MANAGEMENT_KEY"]
+BASE = "https://openrouter.ai/api/v1/keys"
+
+ROLE_BUDGETS = {
+    "design":             {"limit": 2.0,  "limit_reset": "daily"},
+    "review_feasibility": {"limit": 2.0,  "limit_reset": "daily"},
+    "coder":              {"limit": 10.0, "limit_reset": "daily"},  # fallback coder
+    "review_correctness": {"limit": 2.0,  "limit_reset": "daily"},
+    "review_security":    {"limit": 2.0,  "limit_reset": "daily"},
+}
+
+def provision():
+    out = {}
+    with httpx.Client(headers={"Authorization": f"Bearer {MGMT}"}, timeout=30) as c:
+        for role, cfg in ROLE_BUDGETS.items():
+            r = c.post(BASE, json={"name": f"agentic-loop:{role}",
+                                   "limit": cfg["limit"],
+                                   "limit_reset": cfg["limit_reset"]})
+            r.raise_for_status()
+            data = r.json()
+            # the secret key material appears ONLY in this creation response
+            out[role] = data.get("key") or data.get("data", {}).get("key")
+    with open("role_keys.json", "w") as f:      # gitignored since 2.2
+        json.dump(out, f, indent=2)
+    print("Wrote role_keys.json with", len(out), "capped keys.")
+
+if __name__ == "__main__":
+    provision()</code></pre>
+<pre><span class="lang">bash</span><code>python provision_keys.py</code></pre>
+<p>That's the whole step — <code>llm.py</code> has been checking for <code>role_keys.json</code> since 2.3,
+so every role switches to its own capped key on the next loop start, no code changes.</p>
+<div class="learn t" data-t="Management keys vs inference keys — and why server-side caps matter">
+<p>OpenRouter has two kinds of keys with opposite powers. An <strong>inference key</strong> can call models
+but can't administer anything; a <strong>management key</strong> can create, cap, and delete other keys but
+can't call a single model. The script uses the management key to POST once per role, creating an
+inference key with a <code>limit</code> (dollar cap) and <code>limit_reset</code> (<code>daily</code> /
+<code>weekly</code> / <code>monthly</code>; resets at midnight UTC). The cap is enforced <em>on OpenRouter's
+servers</em>: when the coder key hits $10, the "no" comes from the provider — no bug in your Python, no
+prompt injection, no crashed process can spend past it. Enforcement beats instruction, again. If a role
+hits its cap mid-run, the call errors, the loop's error handling comments the failure on the issue, and
+the issue parks — a clean stop, not a surprise bill. Field names on this API can shift; if a request is
+rejected, check OpenRouter's current docs.</p></div>
+<div class="note t" data-t="And the headless coder's spend?">
+<p>It doesn't go through OpenRouter — it's metered on your Anthropic key. Its guardrails:
+<code>total_cost_usd</code> from every session is logged via <code>add_cost()</code> into the same tally and
+CSV as everything else, <code>--max-turns</code> bounds each session, and <code>MAX_USD_PER_RUN</code> sees
+its spend too. One set of books, two providers.</p></div>
+<div class="note t" data-t="Free models for testing the plumbing">
+<p>OpenRouter carries free-tier models (zero cost, rate-limited) — ideal for validating that issues flow
+and PRs open while you're tinkering. Temporarily point the cheap roles at slugs like
+<code>deepseek/deepseek-r1:free</code> (verify with the 2.3 script — <code>:free</code> availability changes
+often). Don't ship real features on them: they rate-limit and queue at peak. Keep the coder paid.</p></div>
+
+<h3>Step 2 — the dashboard</h3>
+<p><code>llm.py</code> has been logging every call to <code>logs/costs.csv</code> since 2.3. Create
+<code>orchestrator/dashboard.py</code> to turn it into a page:</p>
+<pre><span class="lang">python</span><code>"""Fold the cost log into a static costs.html. No server, no framework."""
+import csv, collections, pathlib, datetime
+LOG = pathlib.Path(__file__).parent / "logs" / "costs.csv"
+
+def build():
+    by_role, by_day, total = collections.Counter(), collections.Counter(), 0.0
+    rows = list(csv.DictReader(LOG.open())) if LOG.exists() else []
+    for r in rows:
+        c = float(r["cost_usd"]); total += c
+        by_role[r["role"]] += c
+        by_day[r["ts"][:10]] += c
+    def t(counter):
+        return "".join(f"&lt;tr&gt;&lt;td&gt;{k}&lt;/td&gt;&lt;td&gt;${v:.4f}&lt;/td&gt;&lt;/tr&gt;"
+                       for k, v in counter.most_common())
+    now = datetime.datetime.now(datetime.UTC)
+    html = f"""&lt;!doctype html&gt;&lt;meta charset=utf-8&gt;
+    &lt;title&gt;Agentic loop costs&lt;/title&gt;
+    &lt;style&gt;body{{font:14px system-ui;margin:2rem;max-width:640px}}
+    table{{border-collapse:collapse;width:100%;margin:1rem 0}}
+    td,th{{border:1px solid #ddd;padding:6px 10px;text-align:left}}&lt;/style&gt;
+    &lt;h1&gt;Agentic loop spend &lt;small&gt;as of {now:%Y-%m-%d %H:%M} UTC&lt;/small&gt;&lt;/h1&gt;
+    &lt;p&gt;&lt;b&gt;Total: ${total:.4f}&lt;/b&gt; across {len(rows)} calls&lt;/p&gt;
+    &lt;h2&gt;By role&lt;/h2&gt;&lt;table&gt;{t(by_role)}&lt;/table&gt;
+    &lt;h2&gt;By day&lt;/h2&gt;&lt;table&gt;{t(by_day)}&lt;/table&gt;"""
+    out = pathlib.Path(__file__).parent / "costs.html"
+    out.write_text(html)
+    print("Wrote", out)
+
+if __name__ == "__main__":
+    build()</code></pre>
+<pre><span class="lang">bash</span><code>python dashboard.py && open costs.html   # macOS</code></pre>
+<div class="learn t" data-t="How the dashboard works — a report generator, not an app">
+<p>No server, no framework, no JavaScript: <code>build()</code> reads the CSV once, folds it into two
+<code>collections.Counter</code> objects (spend by role, spend by day — <code>Counter</code> is just a dict
+that's good at adding), then f-string-formats a static HTML file. <code>most_common()</code> hands back
+entries sorted by value, so the tables arrive pre-sorted by spend. Keep this "fold a log into counters,
+emit a static page" pattern in your pocket — it's the two-minute answer to most "I want a little
+dashboard" problems, with nothing to deploy, secure, or keep running.</p></div>
+
+<h2 id="s-telegram"><span class="kicker">Part 2 · Set it all up</span>2.10 Telegram — the phone in the loop</h2>
+<p>A phone-friendly front-end onto the same state machine: file briefs, get pinged at your gates, approve
+a design with a tap, check status and spend. Every chat action maps to something the loop already
+understands — <code>/new</code> files an issue, a tap flips a label, <code>/say</code> posts a comment. No new
+agent logic: a new mouth and ears on the existing brain.</p>
+<p><strong>Design decisions baked in:</strong> polling, not webhooks (no public URL or open ports — works
+behind a router and on a VPS unchanged); design approval is one tap but <strong>code merge requires opening
+the PR</strong> (you never rubber-stamp a merge from a bus); and every message is filtered on your chat ID.</p>
+<h3>Step 1 — create the bot (2 minutes)</h3>
+<ol>
+<li>In Telegram, chat with <strong>@BotFather</strong> → <code>/newbot</code> → name + username ending in <code>bot</code>.</li>
+<li>Copy the token it returns into <code>orchestrator/.env</code>:</li>
+</ol>
+<pre><span class="lang">bash</span><code>cat &gt;&gt; .env &lt;&lt;'EOF'
+TELEGRAM_BOT_TOKEN=8123456:AAE_replace_me
+TELEGRAM_CHAT_ID=REPLACE_AFTER_NEXT_STEP
+EOF</code></pre>
+<h3>Step 2 — get your chat ID (lock it to you)</h3>
+<p>Send any message to your new bot, then:</p>
+<pre><span class="lang">python</span><code>python3 - &lt;&lt;'PY'
+import os, httpx
+from dotenv import load_dotenv; load_dotenv()
+tok = os.environ["TELEGRAM_BOT_TOKEN"]
+r = httpx.get(f"https://api.telegram.org/bot{tok}/getUpdates", timeout=30).json()
+for u in r.get("result", []):
+    m = u.get("message") or u.get("edited_message") or {}
+    if "chat" in m:
+        print("Your chat id is:", m["chat"]["id"])
+PY</code></pre>
+<p>Put the number into <code>TELEGRAM_CHAT_ID</code>. The code rejects every other chat ID.</p>
+<h3>Step 3 — the bot</h3>
+<p>No new dependencies — it speaks the Telegram HTTP API with <code>httpx</code>. Create
+<code>orchestrator/bot.py</code>. It's ~150 lines built from four small mechanisms — read the box below the
+code and it all clicks:</p>
+<pre><span class="lang">python</span><code>"""Phone front-end for the agentic loop. Polls Telegram in a background thread
+and maps chat actions onto the same gh.py operations the loop uses. Locked to
+one chat id. Pushes a notification whenever an issue parks at a human gate."""
+import os, json, time, csv, threading, pathlib, datetime, httpx
+from dotenv import load_dotenv
+import gh
+
+load_dotenv()
+TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID = str(os.environ.get("TELEGRAM_CHAT_ID", ""))
+ENABLED = bool(TOKEN and CHAT_ID)          # import-safe: no-ops if unconfigured
+API     = f"https://api.telegram.org/bot{TOKEN}"
+PENDING = pathlib.Path(__file__).parent / "pending.json"
+COSTS   = pathlib.Path(__file__).parent / "logs" / "costs.csv"
+
+# ---- pending-gate state: written by the loop, read by the bot ----
+def _read():  return json.loads(PENDING.read_text()) if PENDING.exists() else {}
+def _write(d): PENDING.write_text(json.dumps(d, indent=2))
+
+def set_pending(issue_number, kind, next_label=None, pr_url=None):
+    """Called by the loop when it parks an issue. kind: 'design',
+    'design-final', or 'code'. next_label is what an approval applies."""
+    d = _read()
+    d[str(issue_number)] = {"kind": kind, "next_label": next_label,
+                            "pr_url": pr_url, "notified": False}
+    _write(d)
+
+def clear_pending(issue_number):
+    d = _read(); d.pop(str(issue_number), None); _write(d)
+
+# ---- telegram send helpers ----
+def _send(text, buttons=None):
+    if not ENABLED: return
+    body = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
+    if buttons:
+        body["reply_markup"] = {"inline_keyboard": buttons}
+    httpx.post(f"{API}/sendMessage", json=body, timeout=30)
+
+def notify(text, buttons=None):   # public: loop can push arbitrary messages
+    _send(text, buttons)
+
+# ---- push a notification for any issue newly parked at a gate ----
+def notify_pending():
+    if not ENABLED: return
+    d = _read(); changed = False
+    for num, info in d.items():
+        if info.get("notified"):
+            continue
+        kind = info["kind"]
+        if kind in ("design", "design-final"):
+            label = ("Approve design → reviewers" if kind == "design"
+                     else "Approve → start coding")
+            buttons = [[{"text": f"✅ {label}", "callback_data": f"approve:{num}"}],
+                       [{"text": "✏️ Request changes", "callback_data": f"changes:{num}"}]]
+            if info.get("pr_url"):
+                buttons.append([{"text": "🔗 Open design PR", "url": info["pr_url"]}])
+            _send(f"*Issue #{num}* — design ready for your review.", buttons)
+        else:  # code gate: honest merge — link the PR, never auto-merge
+            btn = ([[{"text": "🔗 Open PR to review &amp; merge", "url": info["pr_url"]}]]
+                   if info.get("pr_url") else None)
+            _send(f"*Issue #{num}* — implementation validated &amp; reviewed. "
+                  f"Open the PR to review and merge.", btn)
+        info["notified"] = True; changed = True
+    if changed: _write(d)
+
+# ---- incoming text commands ----
+def _handle_message(msg):
+    if str(msg["chat"]["id"]) != CHAT_ID:
+        return  # not you — ignore
+    text = (msg.get("text") or "").strip()
+    if text.startswith("/new "):
+        brief = text[5:].strip()
+        issue = gh.repo.create_issue(title=brief[:60], body=brief,
+                                     labels=["agent:ready"])
+        _send(f"📥 Filed issue #{issue.number}: {issue.title}")
+    elif text.startswith("/say "):
+        parts = text[5:].split(" ", 1)
+        if len(parts) == 2 and parts[0].isdigit():
+            gh.comment(int(parts[0]), f"(from phone) {parts[1]}")
+            _send(f"💬 Commented on #{parts[0]}.")
+        else:
+            _send("Usage: `/say &lt;issue#&gt; &lt;message&gt;`")
+    elif text.startswith("/status"):
+        lines = []
+        for lbl in ["agent:ready", "agent:coding", "agent:code-review",
+                    "agent:needs-human"]:
+            for i in gh.issues_with_label(lbl):
+                lines.append(f"#{i.number} `{lbl.split(':')[1]}` {i.title[:40]}")
+        _send("*In flight:*\n" + ("\n".join(lines) if lines else "_nothing active_"))
+    elif text.startswith("/spend"):
+        total = today = 0.0
+        d = datetime.datetime.now(datetime.UTC).date().isoformat()
+        if COSTS.exists():
+            for r in csv.DictReader(COSTS.open()):
+                c = float(r["cost_usd"]); total += c
+                if r["ts"][:10] == d: today += c
+        _send(f"💸 Today: ${today:.3f}   |   All-time: ${total:.3f}")
+    else:
+        _send("Commands: `/new &lt;brief&gt;`, `/say &lt;#&gt; &lt;msg&gt;`, `/status`, `/spend`")
+
+# ---- button taps ----
+def _handle_callback(cq):
+    if str(cq["from"]["id"]) != CHAT_ID:
+        return
+    action, num = cq["data"].split(":")
+    info = _read().get(num, {})
+    if action == "approve":
+        if info.get("next_label"):
+            gh.set_label(int(num), info["next_label"], ["agent:needs-human"])
+        clear_pending(int(num))
+        _answer(cq["id"], "Approved ✅")
+        _edit(cq["message"], f"✅ Issue #{num}: approved, loop continuing.")
+    elif action == "changes":
+        gh.set_label(int(num), "agent:design-draft", ["agent:needs-human"])
+        clear_pending(int(num))
+        _answer(cq["id"], "Sent back")
+        _edit(cq["message"],
+              f"✏️ Issue #{num}: send `/say {num} &lt;feedback&gt;`, then it redrafts.")
+
+def _answer(cq_id, text):
+    httpx.post(f"{API}/answerCallbackQuery",
+               json={"callback_query_id": cq_id, "text": text}, timeout=30)
+
+def _edit(message, text):
+    httpx.post(f"{API}/editMessageText",
+               json={"chat_id": message["chat"]["id"],
+                     "message_id": message["message_id"],
+                     "text": text, "parse_mode": "Markdown"}, timeout=30)
+
+# ---- long-poll loop, in its own daemon thread ----
+def _poll_forever():
+    offset = None
+    while True:
+        try:
+            params = {"timeout": 30}
+            if offset: params["offset"] = offset
+            r = httpx.get(f"{API}/getUpdates", params=params, timeout=40)
+            for upd in r.json().get("result", []):
+                offset = upd["update_id"] + 1
+                if "message" in upd:
+                    _handle_message(upd["message"])
+                elif "callback_query" in upd:
+                    _handle_callback(upd["callback_query"])
+        except Exception as e:
+            print("bot error:", e); time.sleep(5)
+
+def start():
+    if not ENABLED:
+        return
+    threading.Thread(target=_poll_forever, daemon=True).start()
+    _send("🤖 Agent loop bot online. `/status` to see what's cooking.")</code></pre>
+<div class="learn t" data-t="The four mechanisms inside bot.py">
+<ul>
+<li><strong>Long polling</strong> (<code>_poll_forever</code>): <code>getUpdates?timeout=30</code> is a normal
+HTTP GET that Telegram's server deliberately <em>holds open</em> for up to 30 seconds, answering the
+instant something arrives. You get push-like latency with zero infrastructure — no public URL, no open
+ports, no webhook endpoint to secure. The <code>offset = update_id + 1</code> line is the acknowledgment:
+it tells Telegram "processed everything up to here," so nothing is delivered twice (and nothing is lost
+if the bot restarts — unacknowledged updates are re-sent).</li>
+<li><strong>The pending-gate mailbox</strong> (<code>pending.json</code>): the loop and the bot are two threads
+that need to share "which issues are parked, and what should an approval do." Rather than in-memory
+state, they share a tiny JSON file: the loop writes <em>"issue 12 waits at a design gate; approval applies
+label X"</em>, the bot reads it, notifies you, and flips <code>notified</code> so you're pinged exactly once.
+A file rather than a queue, so a restart loses nothing — the same durability philosophy as
+labels-as-state.</li>
+<li><strong>Callback buttons</strong> (<code>_handle_callback</code>): each inline button carries a
+<code>callback_data</code> string like <code>approve:12</code>. A tap sends a <code>callback_query</code>
+update; the bot splits it into action + issue number and performs the same label flip you'd do in a
+terminal. <code>answerCallbackQuery</code> stops the button's loading spinner;
+<code>editMessageText</code> rewrites the original message so stale buttons can't be tapped twice.</li>
+<li><strong>The daemon thread</strong> (<code>start</code>): <code>daemon=True</code> means the bot thread dies
+automatically when the loop process exits — no orphan process. Both threads share <code>gh.py</code>, so
+every phone action is literally the same operation as its terminal equivalent, with the same audit trail
+on the issue.</li>
+</ul></div>
+
+<h3>Step 4 — wire it into the loop (three tiny edits)</h3>
+<pre><span class="lang">python</span><code>import bot   # at the top of loop.py
+
+def main():
+    con.print("[green]Agentic loop started. Ctrl-C to stop.[/]")
+    bot.start()                       # ← add
+    while True:
+        one_pass()
+        bot.notify_pending()          # ← add: push any newly parked gates
+        con.print(f"[dim]pass complete — spent ${spent():.3f} — sleeping 30s[/]")
+        time.sleep(30)</code></pre>
+<p>Then record what each issue is waiting for, wherever a stage parks it at
+<span class="chip r">agent:needs-human</span>:</p>
+<pre><span class="lang">python</span><code># in run_design_draft — after opening/updating the design PR:
+bot.set_pending(issue.number, kind="design",
+                next_label="agent:design-approved", pr_url=pr.html_url)
+
+# in run_design_reviewers — after posting the two reviews:
+bot.set_pending(issue.number, kind="design-final", next_label="agent:coding")
+
+# in run_code_review — link the implementation PR:
+pr = gh.open_pr_for_branch(f"agent/issue-{issue.number}")
+bot.set_pending(issue.number, kind="code", pr_url=pr.html_url if pr else None)</code></pre>
+<div class="warn t" data-t="Bot guardrails (the parts that matter)">
+<p><strong>Locked to you</strong> — every handler checks the chat/user ID; the token is a password to your
+loop. Keep it in <code>.env</code>, rotate via BotFather (<code>/revoke</code>) if it leaks.
+<strong>Limited vocabulary</strong> — the bot only knows loop operations. Resist adding "run this command":
+that turns it into a remote shell on your dev box. <strong>Merges stay honest</strong> — one-tap design
+approval, but code merge requires opening the PR: the most important gate survives you being mobile.</p></div>
+
+<h2 id="s-vps"><span class="kicker">Part 2 · Set it all up</span>2.11 The VPS — going 24/7</h2>
+<p>Everything so far runs on your dev box, which sleeps when you close the lid. A cheap VPS (Hetzner,
+DigitalOcean, anything ~€4–6/mo with 2&nbsp;GB RAM) makes the loop genuinely always-on: file a brief from
+the train, get pinged when the design is ready, approve from the couch.</p>
+<table>
+<tr><th></th><th>Dev box</th><th>VPS</th></tr>
+<tr><td>Best for</td><td>Building, debugging, watching it work</td><td>True 24/7; close the laptop</td></tr>
+<tr><td>Cost</td><td>$0 extra</td><td>A few € / month</td></tr>
+<tr><td>Risk</td><td>Agent shares your machine</td><td>Blast radius contained to the box</td></tr>
+</table>
+<h3>Step 1 — provision the box</h3>
+<pre><span class="lang">bash</span><code># create an Ubuntu 24.04 VPS at your provider, add your SSH key, then:
+ssh root@YOUR_VPS_IP
+
+# on the VPS — the same four tools as 2.1:
+apt update && apt install -y python3.11-venv git gh docker.io tmux nodejs npm
+npm install -g @anthropic-ai/claude-code
+gh auth login          # browser login from your laptop; paste the one-time code
+claude                 # authenticate Claude Code, then exit</code></pre>
+<h3>Step 2 — move the system</h3>
+<p>Nothing in the code changes — that's the payoff of state-in-GitHub:</p>
+<pre><span class="lang">bash</span><code>git clone https://github.com/your-username/agentic-hello
+cd agentic-hello/orchestrator
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+
+# recreate the two gitignored secret files (never in the repo — copy them over):
+#   .env             (scp from your dev box, or re-type)
+#   role_keys.json   (scp — remember, the key material can't be re-downloaded)
+scp your-dev-box:agentic-hello/orchestrator/.env .
+scp your-dev-box:agentic-hello/orchestrator/role_keys.json .</code></pre>
+<h3>Step 3 — run it under tmux</h3>
+<pre><span class="lang">bash</span><code>tmux new -s loop 'cd ~/agentic-hello/orchestrator && source .venv/bin/activate && python loop.py'
+# detach: Ctrl-b then d   |   reattach any time: tmux attach -t loop</code></pre>
+<div class="learn t" data-t="Why tmux, and what actually moved">
+<p><code>tmux</code> is a terminal multiplexer: the session keeps running after you disconnect SSH, and you
+can reattach later to see the live log — the simplest supervision that works (systemd is the fancier
+option once you trust the loop). Notice what did <em>not</em> move: no database, no state files, no
+in-flight work. The loop's entire state is GitHub labels, so the VPS instance picks up exactly where
+your dev box left off — you could even run passes from either machine on different days. Only the two
+secret files travel by hand, because they're deliberately not in git.</p></div>
+<div class="win t" data-t="Checkpoint">
+<p>Message your bot <code>/status</code> from your phone. It answers from the VPS. Close your laptop —
+the system no longer needs it.</p></div>
+
+<h2 id="s-done"><span class="kicker">Part 2 · Set it all up</span>2.12 What you have now</h2>
+<p>The full system from <a href="#pieces">Part 1</a>, assembled and idling:</p>
+<div class="flow" style="max-width:40rem" role="img" aria-label="The finished system">
+  <div class="gate"><span class="who">◆ You — three touch points</span><span class="what">Brief &amp; design steering · (hands-off) · final review &amp; merge — from terminal, Telegram, or the GitHub app</span></div>
+  <div class="down">↕</div>
+  <div class="node"><span class="who">GitHub — source of truth</span><span class="what">Issues (labels = state) · design PR + implementation PR · Actions = outer loop (validate + release)</span></div>
+  <div class="down">↕</div>
+  <div class="node"><span class="who">Orchestrator daemon — VPS, tmux</span><span class="what">One state per pass · per-role budget caps · cost log + dashboard · Telegram thread</span></div>
+  <div class="down">↕</div>
+  <div class="node"><span class="who">Role agents = prompt + capped model + skills + least-privilege tools</span><span class="what">Design agent (design-doc) · design reviewers ×2 · coder = Claude Code headless in a worktree (flask-conventions, run-inner-loop) + independent Docker re-check · code reviewers ×2, read-only (audit, oauth-security)</span></div>
+  <div class="down">↕</div>
+  <div class="node"><span class="who">Memory &amp; guardrails</span><span class="what">AGENTS.md (always) · skills (on demand) · memos (per issue) · hooks (file protection) · subagents · plugins</span></div>
+</div>
+<p>And the repo itself is deliberately <strong>blank</strong> — a hello-world shell with no application code.
+Its entire contents are the agentic scaffolding:</p>
+<pre><code>agentic-hello/
+├── AGENTS.md                    # always-on conventions (all harnesses)
+├── CLAUDE.md                    # @AGENTS.md shim (Claude Code)
+├── .github/workflows/ci.yml    # the outer loop
+├── .claude/
+│   ├── skills/                  # 5 skills: design, flask, inner-loop, audit, oauth
+│   ├── agents/                  # security-reviewer subagent
+│   └── settings.json            # file-protection hook
+├── .gitignore                   # secrets & scratch dirs stay out of git
+├── worktrees/                   # per-issue workbenches appear here
+└── orchestrator/
+    ├── loop.py                  # state machine + stage handlers + coder
+    ├── llm.py                   # model chokepoint: routing, keys, cost
+    ├── agents/roles.py          # role = prompt + model
+    ├── gh.py · worktree.py · skills.py · bot.py
+    ├── provision_keys.py · dashboard.py
+    └── .env (local only) · role_keys.json (local only)</code></pre>
+<p><strong>Checklist — every box should be true before Part 3:</strong></p>
+<ul>
+<li>The loop runs on the VPS under tmux; the spike issue advanced to a design PR and parked at <span class="chip r">agent:needs-human</span>.</li>
+<li>Your Telegram bot answers <code>/status</code> and <code>/spend</code> from your phone.</li>
+<li><code>role_keys.json</code> exists; the OpenRouter dashboard shows one capped key per role.</li>
+<li><code>python dashboard.py</code> produces <code>costs.html</code> with the spike's few cents attributed by role.</li>
+<li><code>.claude/</code> (skills, subagent, hook) and <code>ci.yml</code> are committed and pushed.</li>
+<li>The repo has no application code — the labs will put it there.</li>
+</ul>
+<div class="win t" data-t="End of Part 2">
+<p>You built the whole machine: state machine, workers, expertise, guardrails, budgets, phone control,
+24/7 host — wrapped around an empty repo. Time to drive.</p></div>
+</section>
+<section>
+<h2 id="lab1"><span class="kicker">Part 3 · The labs</span>Lab 1 — Build a real app, design-first, end-to-end</h2>
+<p>Three labs, in order, at your keyboard. <strong>Lab 1</strong> drives the <a href="#feature-flow">full
+journey from Part 1</a> — all ten steps, all three touch points — to build a brand-new app.
+<strong>Lab 2</strong> adds a feature to it. <strong>Lab 3</strong> fixes a bug in it. Each gives you the exact
+issue text to file and the exact steering moves to make.</p>
+<p><strong>What you're building:</strong> <em>Greetbook</em> — deliberately small but real: a landing page
+at <code>/</code>, <strong>Sign in with Google</strong> (real OAuth 2.0 / OIDC), and minimal storage — remember
+each user (Google <code>sub</code>, email, name) and show a personalized <code>/me</code> page. Just enough
+surface — auth, storage, config, secrets, sessions — to make the design phase worth arguing about, and
+still one afternoon of work. <strong>The point of this lab is the loop, not the app.</strong></p>
+
+<h3>1.1 File the app brief</h3>
+<p>This issue is a <strong>brief</strong>, not a spec: it fixes the <em>product</em> (routes, behaviors,
+constraints) and leaves <em>engineering decisions</em> (storage, structure, sessions) open — enough freedom
+that the agent must make and defend choices, enough constraint that it can't wander. Writing briefs like
+this is the actual human skill this lab trains.</p>
+<pre><span class="lang">bash</span><code>gh issue create --title "New app: Greetbook (landing + Google login + remember me)" --label "agent:ready" --body '
+I want to build a small but real web app called **Greetbook**. This issue is a brief — I want a DESIGN.md first, and I expect to iterate on it before any code is written.
+
+## What it should do
+- A public landing page at `/` that greets visitors and has a "Sign in with Google" button.
+- Real Google sign-in (OAuth 2.0 / OpenID Connect).
+- After sign-in, remember the user: store their Google account id, email, and name.
+- A `/me` page (login required) that shows the logged-in user their stored profile and how many times they have signed in.
+- Log out at `/logout`.
+
+## Constraints / preferences
+- Python + Flask.
+- Keep dependencies minimal and mainstream.
+- Secrets (Google client id/secret, Flask secret key) via environment variables, never committed.
+- You choose the storage (e.g. SQLite vs Postgres) — but justify the choice in DESIGN.md for an app this size.
+- Tests must not call Google for real; mock the provider so CI stays hermetic.
+- Include an inner loop (make targets) and assume CI runs lint + tests.
+
+## What I want from you first
+A DESIGN.md covering problem, goals/non-goals, chosen stack + justification, data model, the OAuth sequence, the route list, security considerations, testing strategy, deployment, and any open questions for me. Do NOT write app code yet — design first.
+'</code></pre>
+<div class="learn t" data-t="Why the brief is shaped this way">
+<p>Look at the structure: the <em>What it should do</em> section pins behavior precisely (routes, the
+login-count, logout). The <em>Constraints</em> section pins the non-negotiables (secrets via env vars,
+hermetic tests) — note these mirror <code>AGENTS.md</code>, so agent and conventions can't drift apart. But
+storage, app structure, and session handling are left open <em>on purpose</em>: the design phase needs real
+decisions to make, or touch point 1 is theater. This is loop 3 (<a href="#loops">the steering loop</a>)
+beginning: your leverage is highest right here, in what you choose to specify and what you choose to
+leave open.</p></div>
+
+<h3 id="lab1-tp1">1.2 Touch point 1 — iterate on the design, then sign off</h3>
+<p>Let the loop run one pass (watch the tmux log, or wait for the Telegram ping). It writes
+<code>DESIGN.md</code> on <code>agent/issue-&lt;n&gt;</code> and opens a <strong>design PR</strong> — steps 2–3 of
+the <a href="#feature-flow">journey</a>. Now do design review the way you actually would — read it and
+push back:</p>
+<pre><span class="lang">bash</span><code>gh pr view &lt;DESIGN_PR&gt; --web        # read DESIGN.md in "Files changed"
+
+# leave feedback on the PR (the loop reads PR comments and issue comments alike)
+gh pr comment &lt;DESIGN_PR&gt; --body "The data model keys users on email — use the Google 'sub' claim instead; emails can change. Please revise."
+gh pr comment &lt;DESIGN_PR&gt; --body "Add a login_count to the data model and say where it increments in the auth flow."
+gh pr comment &lt;DESIGN_PR&gt; --body "Testing strategy is vague — specify exactly how you mock Google in pytest so CI never hits the network."
+
+# then tell the loop to redraft
+gh issue edit &lt;ISSUE&gt; --add-label agent:design-draft --remove-label agent:needs-human</code></pre>
+<p>The agent folds your comments into the next draft and pushes a new commit to the <em>same</em> design
+PR. Repeat as many rounds as you like — from the terminal, or from your phone (tap
+<strong>✏️ Request changes</strong>, then <code>/say &lt;issue#&gt; use the sub claim, not email</code>). A good
+design after a couple of rounds has a defended SQLite choice, a <code>users</code> table keyed on
+<code>sub</code>, a numbered OAuth sequence, and a concrete mocking strategy. When you're happy, sign off:</p>
+<pre><span class="lang">bash</span><code>gh pr review &lt;DESIGN_PR&gt; --approve --body "Design LGTM — proceed to reviewers."
+gh issue edit &lt;ISSUE&gt; --add-label agent:design-approved --remove-label agent:needs-human</code></pre>
+<p>That triggers the two design reviewers (feasibility + security — different model families, per
+<a href="#agents-trust">Part 1</a>). They post critiques as a comment. You <strong>arbitrate</strong>: if they
+raise something real ("the OAuth sequence never mentions the <code>state</code> parameter"), send it back
+for one more design round; if it's noise, proceed:</p>
+<pre><span class="lang">bash</span><code>gh issue edit &lt;ISSUE&gt; --add-label agent:coding --remove-label agent:needs-human</code></pre>
+<div class="learn t" data-t="Why you might spend 3–5 rounds here — and should">
+<p>This is the front-loaded human effort from the <a href="#feature-flow">journey's asymmetries</a>: a bug
+caught in <code>DESIGN.md</code> costs a comment; the same bug caught after implementation costs a full
+re-run. Design is where your steering has the highest leverage, which is why touch point 1 is the long
+one. Notice also what the <code>oauth-security-checklist</code> skill is doing for the security reviewer
+here: because this brief mentions login/OAuth, the skill loaded, and the reviewer checks the
+<code>state</code> parameter, secret handling, and cookie flags <em>systematically</em> instead of when the
+model happens to remember. That's the difference between a reviewer that usually catches auth mistakes
+and one that always does — progressive disclosure paying off.</p></div>
+
+<h3 id="lab1-tp2">1.3 Touch point 2 — hands-off: implement, self-validate, cross-review</h3>
+<p>Now <strong>you do nothing.</strong> Watch the comments roll in — steps 7–9 of the journey. In sequence:</p>
+<ol>
+<li><strong>Implement</strong> — the headless coder reads <code>AGENTS.md</code> + <code>DESIGN.md</code> and
+builds the app (Flask factory, Authlib client, storage, templates, tests, Makefile,
+<code>pyproject.toml</code>) in the worktree — running <code>make lint &amp;&amp; make test</code>, reading
+failures, fixing, repeating until green. That red→green cycle is loop 1 doing its job.</li>
+<li><strong>Independent re-check</strong> — the orchestrator re-runs the inner loop in the
+<code>--network none</code> container. Red? The issue stays in <span class="chip b">agent:coding</span> with
+the log in the memo, and the next pass's coder starts from the actual error.</li>
+<li><strong>PR opens</strong> — CI (loop 2) runs on it automatically.</li>
+<li><strong>Cross-review</strong> — reviewer A audits the diff against every acceptance criterion in
+DESIGN.md (the <code>acceptance-criteria-audit</code> skill's procedure); reviewer B hunts security issues.</li>
+<li>Park in <span class="chip r">agent:needs-human</span>: your Telegram pings — your turn.</li>
+</ol>
+<div class="warn t" data-t="On the honesty of self-validation">
+<p>The coder validates against tests <em>it wrote</em>, plus your lint rules. Real signal, not proof —
+which is exactly why the independent Docker check exists, why the reviewers are other model families, and
+why touch point 3 exists. Don't let green substitute for your own look. Resisting the urge to jump in
+during this phase is the discipline that lets one person run many loops.</p></div>
+
+<h3 id="lab1-tp3">1.4 Touch point 3 — you review, validate, approve</h3>
+<p>The loop hands you a PR it believes is done: inner loop green, CI green, two reviews attached. Your
+job is to <em>actually run it</em> — the one verification no agent can do, because it needs real Google
+credentials (set those up once in the box below).</p>
+<pre><span class="lang">bash</span><code>gh pr checks &lt;IMPL_PR&gt;            # outer loop green?
+gh pr view &lt;IMPL_PR&gt;              # read both agent reviews + the diff
+
+gh pr checkout &lt;IMPL_PR&gt;          # the agent's branch, locally on your dev box
+make install
+cp .env.example .env              # add GOOGLE_CLIENT_ID/SECRET, FLASK_SECRET_KEY
+make run                          # http://localhost:5000</code></pre>
+<p>Click through it: <code>/</code> shows the landing page → sign in via the real Google consent screen →
+<code>/me</code> shows your name and a login count that increments → <code>/logout</code> → <code>/me</code> now
+redirects. Then run the inner loop yourself so you trust the tests:</p>
+<pre><span class="lang">bash</span><code>make test && make lint</code></pre>
+<div class="note t" data-t="Automate the click-through with the Playwright plugin">
+<p>With the <strong>playwright</strong> plugin from 2.8, an interactive Claude Code session can drive the
+smoke test for you: <em>"use playwright to open localhost:5000, verify the landing page and the sign-in
+button, confirm /me redirects when logged out."</em> The real Google consent click stays yours — that's
+the point of this gate — but the mechanical checks don't have to be.</p></div>
+<p>If it holds up, approve and merge — the final touch point:</p>
+<pre><span class="lang">bash</span><code>gh pr review &lt;IMPL_PR&gt; --approve --body "Ran it locally, Google login + /me work, tests pass. Shipping."
+gh pr merge &lt;IMPL_PR&gt; --squash --delete-branch
+gh issue edit &lt;ISSUE&gt; --add-label agent:done --remove-label agent:needs-human</code></pre>
+<p>Merging fires the <code>release</code> job — the outer loop's second half.</p>
+<div class="warn t" data-t="If your local validation fails">
+<p>Don't fix it yourself. Comment the precise failure on the PR and bounce it back
+(<code>gh issue edit &lt;n&gt; --add-label agent:coding --remove-label agent:needs-human</code>). The failure
+feeds loop 1's next cycle through the memo — the bounce-back move from <a href="#loops">Part 1</a>.
+Practicing "return it with a repro" instead of "quietly fix it" is the habit that makes the loop scale.</p></div>
+<div class="win t" data-t="Lab 1 complete">
+<p>You built a real app — landing page, live Google sign-in, persistent users — by <em>steering</em>:
+a sharp brief, design pushback to sign-off, a hands-off middle, and the one thing only you can do
+(run it against real Google and approve). All ten steps of the journey, lived once.</p></div>
+</section>
+
+<section>
+<h2 id="oauth-setup"><span class="kicker">Part 3 · The labs</span>One-time: real Google OAuth (~10 minutes)</h2>
+<p>You need a Google OAuth client so the app can do real sign-in. Google organizes this under the
+<strong>Google Auth Platform</strong>; if a menu label differs, look for the nearest equivalent in current
+docs.</p>
+<ol>
+<li><strong>Google Cloud Console</strong> → create (or pick) a project.</li>
+<li><strong>Google Auth Platform → Branding</strong> (the old consent screen): app name + your email; user type <strong>External</strong>.</li>
+<li><strong>Audience</strong>: add your own account as a <strong>test user</strong> (unpublished apps only admit listed testers — fine for the lab).</li>
+<li><strong>Data Access</strong>: scopes <code>openid</code>, <code>email</code>, <code>profile</code>.</li>
+<li><strong>Clients → Create client</strong> → type <strong>Web application</strong>.</li>
+<li><strong>Authorized redirect URIs</strong>: exactly the callback the design chose — commonly <code>http://localhost:5000/auth/callback</code>. Google permits localhost for dev.</li>
+<li>Copy the <strong>Client ID</strong> and <strong>Client secret</strong> into your local <code>.env</code>.</li>
+</ol>
+<div class="note t" data-t="What the security reviewer must also enforce in code">
+<p>Secrets in <code>.env</code> (git-ignored), never in the repo. The flow must use the <code>state</code>
+parameter (Authlib handles it — flag any hand-rolled dance). Session cookie <code>HttpOnly</code>, and
+<code>Secure</code> in production. Missing any of these is a legitimate bounce at touch point 3.
+The mainstream library choice is <strong>Authlib</strong> (<code>authlib.integrations.flask_client</code>)
+against Google's OpenID discovery document; if the design proposes hand-rolling OAuth, push back at
+touch point 1. With the <strong>context7</strong> plugin, the coder pulls current Authlib docs instead of
+half-remembered APIs.</p></div>
+</section>
+
+<section>
+<h2 id="lab2"><span class="kicker">Part 3 · The labs</span>Lab 2 — Add one feature</h2>
+<p>Now exercise the loop on a <strong>change to existing code</strong> — the harder, more common case.
+Feature: a logged-in user can save a short personal note that shows on <code>/me</code>. Lighter than Lab 1
+(the design is small), so you'll mostly practice the code-review gate.</p>
+<h3>2.1 File the feature issue</h3>
+<pre><span class="lang">bash</span><code>gh issue create --title "Feature: let users save a personal note on /me" --label "agent:ready" --body '
+Add a per-user note to Greetbook.
+
+## What
+- On `/me`, a logged-in user can type a short note and save it.
+- The note persists across logins (stored against their user record).
+- `/me` shows the current saved note.
+
+## Requirements
+- `POST /me/note` (login required) saves the note for the current user; redirect back to `/me`.
+- Notes are max 280 characters; longer input is rejected with a clear message, not truncated silently.
+- Empty note is allowed (clears the note).
+- Extend the existing `users` storage with a `note` field — do not create a parallel store.
+- Tests: saving a note, note persists on reload, 280-char boundary (280 ok, 281 rejected), login required (anonymous POST is rejected).
+- Must not break existing routes. Keep the OAuth mocking approach from the existing tests.
+
+## Design note
+This is small — a short DESIGN.md update is fine, but I DO want to see how the note length limit and the "login required" check are handled before you implement.
+'</code></pre>
+<div class="learn t" data-t="This brief is a trap — on purpose">
+<p>Compare it with Lab 1's brief: much more constrained, because a change to existing code needs guarding
+more than freedom. It forces reuse of the existing data model ("do not create a parallel store"), sets a
+concrete boundary (280) that reviewers can verify mechanically, and explicitly demands the auth-required
+test. Those last two are bait: you're about to find out whether your reviewers actually check
+boundary-on-both-sides and authorization — the two things most often done wrong in real apps, and
+exactly what the <code>acceptance-criteria-audit</code> skill tells reviewer A to hunt for.</p></div>
+<h3>2.2 A quick design pass, then the two traps</h3>
+<p>Skim the small design PR for two things: does it extend the existing <code>users</code> row, and does it
+say <em>where</em> the login check happens (decorator vs inline)? Approve and proceed as in Lab 1. At your
+review gate, check the two traps this feature is built to expose:</p>
+<ol>
+<li><strong>The 280 boundary</strong> — tests must cover <em>both</em> sides: 280 accepted and 281 rejected.
+One-sided boundary tests are the most common silent gap in a green suite.</li>
+<li><strong>Login-required enforcement</strong> — an anonymous <code>POST /me/note</code> is rejected, with a
+test proving it. An unauthenticated write is a real vulnerability, not a style nit.</li>
+</ol>
+<p>If a reviewer rubber-stamps a missing case, that's the teachable moment — <strong>correct the memory,
+don't fix it yourself:</strong></p>
+<pre><span class="lang">bash</span><code>gh issue comment &lt;ISSUE&gt; --body \
+"Review gap: no test proves an anonymous POST /me/note is rejected. Coder: add that test and confirm the route enforces login before re-review."
+gh issue edit &lt;ISSUE&gt; --add-label agent:coding --remove-label agent:needs-human</code></pre>
+<div class="learn t" data-t="Why comment-then-bounce beats fixing it yourself">
+<p>Your comment lands in the memo (the loop gathers issue comments), so the coder's next session starts
+knowing exactly what was missed — and the lesson persists in the issue's audit trail. If the same
+<em>class</em> of gap keeps recurring, the fix moves up a layer: a line in <code>AGENTS.md</code>
+("every protected route ships with an anonymous-rejection test") or an upgrade to the rubber-stamping
+reviewer's model — one line in <code>roles.py</code>. Steering means editing the system, not the code.</p></div>
+<p>When both traps are covered and CI is green: checkout, run, save a note, try a 281-char note, then
+approve and merge as in Lab 1.</p>
+<div class="win t" data-t="Lab 2 complete">
+<p>You changed real code through the full loop and practiced the most important review skill: catching a
+<em>missing test for the dangerous case</em> and bouncing it back instead of quietly fixing it.</p></div>
+</section>
+
+<section>
+<h2 id="lab3"><span class="kicker">Part 3 · The labs</span>Lab 3 — Fix one bug</h2>
+<p>Watch the loop triage, fix, and regression-test a bug. We plant one so the lab is deterministic — an
+off-by-one in Lab 1's <code>login_count</code>.</p>
+<h3>3.1 Plant it (you, by hand)</h3>
+<pre><span class="lang">bash</span><code>git checkout -b plant-bug
+# edit the OAuth callback: create new users with login_count = 0 and only
+# increment on subsequent logins (first login shows 0 instead of 1)
+git commit -am "oops: new users show login_count 0 on first login"
+gh pr create --fill && gh pr merge --squash --delete-branch</code></pre>
+<p>(In real life you don't plant bugs — this stands in for a user reporting "it says I've logged in 0
+times.")</p>
+<h3>3.2 File an agent-friendly bug report</h3>
+<pre><span class="lang">bash</span><code>gh issue create --title "Bug: first-time users show login_count 0 on /me" --label "agent:trivial" --body '
+## Observed
+A brand-new user who signs in for the very first time sees `login count: 0` on `/me`.
+
+## Expected
+The first successful sign-in should count as 1. Nth sign-in shows N.
+
+## Repro
+1. Use a Google account that has never logged into this app before (or delete its row from the DB).
+2. Sign in once.
+3. Visit /me → it shows "login count: 0". It should show 1.
+
+## Notes
+Likely an off-by-one in where login_count is incremented in the OAuth callback. Add a regression test: first login yields count 1, second login yields count 2. Keep the OAuth provider mocked in tests.
+'</code></pre>
+<div class="learn t" data-t="Anatomy of an agent-friendly bug report — and the fast path">
+<p>Observed / Expected / Repro, plus an explicit ask for a regression test with <em>exact values</em>
+(1, then 2). The repro tells the coder how to reproduce; the exact values let reviewer A verify the fix
+is real rather than "tests are green." Note the label: <span class="chip" style="background:#C2E0C6;color:#1a3a1f">agent:trivial</span>
+instead of <code>agent:ready</code> — the STAGES table routes it straight to the coder, skipping the design
+phase, because a full design round for a one-line fix is waste. Judging which path an issue deserves is
+a loop-3 steering decision you'll make constantly.</p></div>
+<h3>3.3 Watch, then verify the red→green arc</h3>
+<ul>
+<li>The coder should move the increment so it runs on <em>every</em> successful login and add the
+two-login regression test — which fails before the fix and passes after. That before/after is loop 1's
+whole epistemology: a regression test that never failed proves nothing.</li>
+<li>Reviewer A must confirm the test asserts count <code>1</code> after the <em>first</em> login specifically.
+If it rubber-stamps a vaguer test: bounce, same move as Lab 2.</li>
+</ul>
+<h3>3.4 Confirm locally, ship</h3>
+<pre><span class="lang">bash</span><code>gh pr checkout &lt;IMPL_PR&gt; && make install
+make run    # fresh sign-in → /me shows 1; sign out/in → 2
+make test && make lint
+gh pr review &lt;IMPL_PR&gt; --approve --body "First login counts as 1; regression test covers it."
+gh pr merge &lt;IMPL_PR&gt; --squash --delete-branch
+gh issue edit &lt;ISSUE&gt; --add-label agent:done --remove-label agent:needs-human</code></pre>
+<div class="win t" data-t="Lab 3 complete">
+<p>Triage → fix → regression test → ship, with your local run and CI as the final gates — and the design
+phase correctly skipped.</p></div>
+</section>
+
+<section>
+<h2 id="lab-lessons"><span class="kicker">Part 3 · The labs</span>What you've actually learned</h2>
+<ul>
+<li><strong>Design is where steering has the highest leverage.</strong> Bugs caught in the design PR cost a
+comment; after implementation, a full re-run. That's why touch point 1 is the long one.</li>
+<li><strong>Three touch points, only three.</strong> Steer the design, stay hands-off through the middle, do
+the final review. Resisting the urge to jump in during touch point 2 is the discipline that lets one
+person run many loops.</li>
+<li><strong>Your job is briefs and gates, not typing.</strong> A sharp brief, good design pushback, an honest
+final review — including running the app for real, which no agent can do for you.</li>
+<li><strong>Verification is layered, and nothing certifies its own work.</strong> The coder's inner loop, the
+orchestrator's independent Docker check, CI, two cross-family reviewers, your hands. Each catches what
+the previous missed.</li>
+<li><strong>Correct the system, not the code.</strong> A rubber-stamped missing test means: comment (it feeds
+the memo), or add a line to AGENTS.md, or upgrade that reviewer's model — one line in
+<code>roles.py</code>. The loop improves by editing its parts, not by you doing its job.</li>
+</ul>
+</section>
+
+<section>
+<h2 id="beyond"><span class="kicker">Beyond</span>Where to go next</h2>
+<p>The system runs. These are the directions practitioners take it, in rough order of value:</p>
+<h3>@claude on GitHub — a zero-daemon side channel</h3>
+<p>Tier 3 from <a href="#ways">Part 1</a>: <code>anthropics/claude-code-action</code> lets you comment
+<code>@claude fix the login-count bug</code> on any issue <em>from the GitHub mobile app</em>, and a cloud
+runner implements it and opens a PR. It bypasses your design gates and reviewers — so treat it as the
+<code>agent:trivial</code> path for when you're away from everything, not a replacement for the loop:</p>
+<pre><span class="lang">yaml</span><code># .github/workflows/claude.yml
+name: Claude
+on:
+  issue_comment: { types: [created] }
+  issues:        { types: [opened] }
+jobs:
+  claude:
+    if: contains(github.event.comment.body || github.event.issue.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}</code></pre>
+<div class="learn t" data-t="Reading the Action — who's allowed to do what">
+<p>The <code>on:</code> triggers fire whenever an issue is opened or commented on; the <code>if:</code> guard
+then checks the text actually mentions <code>@claude</code>, so ordinary comments don't burn runner
+minutes. The <code>permissions:</code> block sets the scopes of the run's short-lived
+<code>GITHUB_TOKEN</code> — write access to contents, PRs, and issues for minutes, not forever: least
+privilege at the credential, the same rule as everywhere else in this guide. Your API key rides in as a
+repository <em>secret</em>. Check the action's current README for exact inputs — like model slugs, they
+drift.</p></div>
+<h3>Scaling patterns</h3>
+<ul>
+<li><strong>Parallelism.</strong> Worktrees already isolate issues — run several through the loop at once.
+Add a merge-conflict check before opening each PR.</li>
+<li><strong>Scheduled maintenance agents.</strong> A cron entry (or a scheduled cloud agent) that files
+<code>agent:ready</code> issues on a timer: dependency bumps, CI health, stale-PR triage. Same loop, a
+timer instead of you filing the brief.</li>
+<li><strong>A watchdog.</strong> A tiny separate process watching <code>costs.csv</code> and issue activity;
+it kills the loop (or pages you via <code>bot.notify</code>) if spend spikes or an issue ping-pongs between
+states more than N times. Cheap insurance for 24/7 running.</li>
+<li><strong>A Discord front-end</strong> — if you want a channel per role and to watch the agents like a
+team chat. Same mapping as the Telegram bot (lock to your user ID, loop vocabulary only, honest merges),
+with <code>discord.py</code> and one channel ID per role.</li>
+<li><strong>Upgrade rituals.</strong> When a role keeps underperforming: sharpen its skill, then its prompt,
+then its model — in that order of cost. The <code>costs.csv</code> by-role view tells you what an upgrade
+actually costs you per day.</li>
+</ul>
+<p>The loop is the product. Keep the leash exactly as long as your verifiers are strong — and when in
+doubt, add a verifier, not autonomy.</p>
+</section>
+
+<footer style="margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--line);font-size:.8rem;color:var(--muted)">
+The Agentic Loop — a field guide in three parts · concepts → setup → labs
+</footer>
+</main>
+
+<script>
+(function(){
+  var body = document.body;
+
+  // ----- sidebar toggle (button + keyboard) -----
+  var toggle = document.getElementById('navToggle');
+  var mobile = function(){ return window.matchMedia('(max-width: 900px)').matches; };
+  function flip(){
+    if (mobile()) body.classList.toggle('nav-open-m');
+    else body.classList.toggle('nav-hidden');
+  }
+  toggle.addEventListener('click', flip);
+  document.addEventListener('keydown', function(e){
+    if (e.key === 't' && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) flip();
+  });
+
+  // close mobile drawer after navigating
+  document.querySelectorAll('#sidebar a').forEach(function(a){
+    a.addEventListener('click', function(){ if (mobile()) body.classList.remove('nav-open-m'); });
+  });
+
+  // ----- scrollspy: highlight the current section, auto-open its group -----
+  var links = Array.prototype.slice.call(document.querySelectorAll('#sidebar a[href^="#"]'));
+  var byId = {};
+  links.forEach(function(a){ byId[a.getAttribute('href').slice(1)] = a; });
+  var targets = Object.keys(byId).map(function(id){ return document.getElementById(id); }).filter(Boolean);
+
+  function activate(id){
+    links.forEach(function(a){ a.classList.remove('active'); });
+    var a = byId[id];
+    if (!a) return;
+    a.classList.add('active');
+    var group = a.closest('details');
+    if (group && !group.open) group.open = true;
+    // keep the active link visible in the sidebar
+    var sb = document.getElementById('sidebar');
+    var r = a.getBoundingClientRect();
+    if (r.top < 60 || r.bottom > window.innerHeight - 40)
+      a.scrollIntoView({block: 'center', behavior: 'auto'});
+  }
+
+  var current = null;
+  function onScroll(){
+    var best = null, bestTop = -Infinity;
+    var cutoff = window.innerHeight * 0.28;
+    targets.forEach(function(el){
+      var top = el.getBoundingClientRect().top;
+      if (top <= cutoff && top > bestTop){ bestTop = top; best = el; }
+    });
+    if (!best) best = targets[0];
+    if (best && best.id !== current){ current = best.id; activate(current); }
+  }
+  var ticking = false;
+  window.addEventListener('scroll', function(){
+    if (!ticking){ ticking = true; requestAnimationFrame(function(){ onScroll(); ticking = false; }); }
+  }, {passive: true});
+  onScroll();
+
+  // ----- copy buttons on code blocks -----
+  document.querySelectorAll('pre').forEach(function(pre){
+    var btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', function(){
+      var code = pre.querySelector('code');
+      navigator.clipboard.writeText(code ? code.innerText : pre.innerText).then(function(){
+        btn.textContent = 'Copied';
+        setTimeout(function(){ btn.textContent = 'Copy'; }, 1400);
+      });
+    });
+    pre.appendChild(btn);
+  });
+})();
+</script>
+</body>
+</html>
