@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disk Scout — where is my storage going?</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔭</text></svg>">
+<style>
+  /* ---------- Claude-warm theme (light defaults, dark via media query or data-theme) ---------- */
+  :root {
+    --page:        #f0eee5;   /* warm ivory, claude.ai style */
+    --surface-1:   #faf9f5;
+    --text-1:      #1f1e1d;
+    --text-2:      #5e5d55;
+    --muted:       #8f8d84;
+    --grid:        #e5e2d9;
+    --baseline:    #d3d0c5;
+    --ring:        rgba(31,30,29,0.10);
+    --cat-video:   #2a78d6;
+    --cat-image:   #1baf7a;
+    --cat-audio:   #eda100;
+    --cat-archive: #008300;
+    --cat-code:    #4a3aa7;
+    --cat-doc:     #e34948;
+    --cat-other:   #898781;
+    --accent:      #c15f3c;   /* Claude rust — links, focus, flash */
+    --accent-btn:  #d97757;   /* Claude coral — primary buttons */
+    --warn:        #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --page:        #1b1a19;
+    --surface-1:   #262624;
+    --text-1:      #f5f4ee;
+    --text-2:      #c2c0b6;
+    --muted:       #918f86;
+    --grid:        #3a3833;
+    --baseline:    #4a4843;
+    --ring:        rgba(255,255,255,0.09);
+    --cat-video:   #3987e5;
+    --cat-image:   #199e70;
+    --cat-audio:   #c98500;
+    --cat-archive: #008300;
+    --cat-code:    #9085e9;
+    --cat-doc:     #e66767;
+    --cat-other:   #898781;
+    --accent:      #e0916f;
+    --accent-btn:  #d97757;
+    --warn:        #e66767;
+  }}
+  :root[data-theme="light"] {
+    --page:#f0eee5; --surface-1:#faf9f5; --text-1:#1f1e1d; --text-2:#5e5d55; --muted:#8f8d84;
+    --grid:#e5e2d9; --baseline:#d3d0c5; --ring:rgba(31,30,29,0.10);
+    --cat-video:#2a78d6; --cat-image:#1baf7a; --cat-audio:#eda100; --cat-archive:#008300;
+    --cat-code:#4a3aa7; --cat-doc:#e34948; --cat-other:#898781;
+    --accent:#c15f3c; --accent-btn:#d97757; --warn:#d03b3b;
+  }
+  :root[data-theme="dark"] {
+    --page:#1b1a19; --surface-1:#262624; --text-1:#f5f4ee; --text-2:#c2c0b6; --muted:#918f86;
+    --grid:#3a3833; --baseline:#4a4843; --ring:rgba(255,255,255,0.09);
+    --cat-video:#3987e5; --cat-image:#199e70; --cat-audio:#c98500; --cat-archive:#008300;
+    --cat-code:#9085e9; --cat-doc:#e66767; --cat-other:#898781;
+    --accent:#e0916f; --accent-btn:#d97757; --warn:#e66767;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--page); color: var(--text-1);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  button {
+    font: inherit; color: inherit; background: var(--surface-1);
+    border: 1px solid var(--baseline); border-radius: 8px;
+    padding: 6px 14px; cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent-btn); border-color: var(--accent-btn); color: #fff; font-weight: 600; }
+  button.primary:hover { filter: brightness(0.94); }
+  button.small { padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+    background: var(--surface-1); border-bottom: 1px solid var(--grid); flex: none;
+  }
+  header .logo { font-size: 19px; font-weight: 600; letter-spacing: -.2px;
+                 font-family: Georgia, "Times New Roman", serif; }
+  header .logo span { margin-right: 6px; }
+  #scanstats { color: var(--text-2); font-size: 13px; }
+  #scanstats b { color: var(--text-1); }
+  header .spacer { flex: 1; }
+
+  /* ---------- breadcrumb ---------- */
+  #crumbbar { display: none; align-items: center; gap: 6px; padding: 8px 16px; flex: none; flex-wrap: wrap; }
+  #crumbbar .crumb { color: var(--accent); cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+  #crumbbar .crumb:hover { background: var(--grid); }
+  #crumbbar .crumb.here { color: var(--text-1); font-weight: 600; cursor: default; }
+  #crumbbar .crumb.here:hover { background: none; }
+  #crumbbar .sep { color: var(--muted); }
+  #crumbbar .cursize { margin-left: auto; color: var(--text-2); }
+
+  /* ---------- main layout ---------- */
+  #main { display: none; flex: 1; min-height: 0; gap: 12px; padding: 0 16px 12px; }
+  #mapwrap { flex: 1; min-width: 0; position: relative; background: var(--surface-1);
+             border: 1px solid var(--grid); border-radius: 10px; overflow: hidden; }
+  #treemap { position: absolute; inset: 6px; }
+  .tile {
+    position: absolute; border-radius: 3px; overflow: hidden;
+    outline: 1px solid var(--ring);
+  }
+  .tile.dir { cursor: pointer; }
+  .tile:hover { outline: 2px solid var(--text-1); z-index: 5; }
+  @keyframes dsflash { 0%,100% { outline-color: var(--accent); } 50% { outline-color: transparent; } }
+  .tile.flash { outline: 3px solid var(--accent) !important; animation: dsflash .45s ease 3; z-index: 6; }
+  .tile .lbl {
+    padding: 3px 6px; font-size: 12px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; color: var(--text-1); pointer-events: none;
+  }
+  .tile .lbl .sz { color: var(--text-2); margin-left: 6px; font-size: 11px; }
+  .tile .dot, .lg .dot, .row .dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+    margin-right: 5px; vertical-align: baseline;
+  }
+  .tile .sub { position: absolute; border-radius: 2px; pointer-events: none; outline: 1px solid var(--ring); }
+  .tile .badge { position: absolute; top: 2px; right: 4px; font-size: 11px; pointer-events: none; }
+
+  /* ---------- side panel ---------- */
+  #side { width: 380px; flex: none; display: flex; flex-direction: column;
+          background: var(--surface-1); border: 1px solid var(--grid); border-radius: 10px; min-height: 0; }
+  #tabs { display: flex; gap: 2px; padding: 8px 8px 0; border-bottom: 1px solid var(--grid); flex: none; }
+  #tabs button { border: none; background: none; padding: 7px 10px; border-radius: 8px 8px 0 0;
+                 color: var(--text-2); font-size: 13px; }
+  #tabs button.on { color: var(--text-1); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+  #panel { flex: 1; overflow-y: auto; padding: 10px 12px; min-height: 0; }
+
+  .row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; position: relative; }
+  .row:hover { background: var(--grid); }
+  .row .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .name.link { color: var(--accent); cursor: pointer; }
+  .row .size { color: var(--text-2); font-size: 13px; }
+  .row .pct { color: var(--muted); font-size: 12px; width: 48px; text-align: right; }
+  .row .bar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); opacity: .5; border-radius: 1px; }
+  .row .copy { visibility: hidden; }
+  .row:hover .copy { visibility: visible; }
+  .sechead { margin: 14px 2px 6px; font-size: 12px; font-weight: 700; text-transform: uppercase;
+             letter-spacing: .4px; color: var(--muted); }
+  .hint { color: var(--text-2); font-size: 13px; padding: 4px 6px; }
+
+  /* types tab */
+  #typebar { display: flex; height: 22px; border-radius: 5px; overflow: hidden; gap: 2px; margin: 6px 2px 12px; background: var(--surface-1); }
+  #typebar div { min-width: 3px; }
+  .lg { display: flex; align-items: center; gap: 8px; padding: 5px 6px; }
+  .lg .name { flex: 1; }
+  .lg .size, .lg .pct { color: var(--text-2); font-size: 13px; }
+
+  /* ---------- empty state / progress ---------- */
+  #empty { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  #empty .card { max-width: 560px; background: var(--surface-1); border: 1px solid var(--grid);
+                 border-radius: 14px; padding: 34px 38px; text-align: center; }
+  #empty h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: -.4px;
+              font-family: Georgia, "Times New Roman", serif; font-weight: 600; }
+  #empty p { color: var(--text-2); margin: 8px 0 18px; }
+  #empty .fine { font-size: 12.5px; color: var(--muted); margin-top: 18px; }
+  #progress { display: none; margin-top: 18px; text-align: left; background: var(--page);
+              border: 1px solid var(--grid); border-radius: 10px; padding: 12px 16px; }
+  #progress .cur { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden;
+                   text-overflow: ellipsis; max-width: 460px; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent);
+          border-right-color: transparent; border-radius: 50%; animation: sp 0.8s linear infinite;
+          margin-right: 8px; vertical-align: -1px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+
+  /* tooltip */
+  #tip { position: fixed; z-index: 50; display: none; max-width: 440px; pointer-events: none;
+         background: var(--surface-1); color: var(--text-1); border: 1px solid var(--baseline);
+         border-radius: 8px; padding: 8px 11px; font-size: 12.5px; box-shadow: 0 4px 18px rgba(0,0,0,.25); }
+  #tip .path { color: var(--text-2); word-break: break-all; }
+  #tip .meta { margin-top: 3px; color: var(--text-2); }
+  #tip b { font-size: 13px; }
+
+  footer { flex: none; padding: 6px 16px 10px; color: var(--muted); font-size: 12px; display: flex; gap: 18px; }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text-1);
+           color: var(--page); padding: 7px 16px; border-radius: 8px; font-size: 13px; display: none; z-index: 60; }
+
+  /* context menu */
+  #ctx { position: fixed; z-index: 70; display: none; min-width: 230px;
+         background: var(--surface-1); border: 1px solid var(--baseline); border-radius: 10px;
+         box-shadow: 0 6px 24px rgba(0,0,0,.28); padding: 5px; }
+  #ctx .mi { padding: 7px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+  #ctx .mi:hover { background: var(--grid); }
+  #ctx .mi .k { color: var(--muted); font-size: 12px; margin-left: 8px; }
+  #ctx .mh { padding: 4px 12px 6px; color: var(--muted); font-size: 11.5px; max-width: 300px;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--grid); margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span>🔭</span>Disk Scout</div>
+  <button class="primary" id="pick">Scan a folder…</button>
+  <button id="cancel" style="display:none">Cancel scan</button>
+  <div id="scanstats"></div>
+  <div class="spacer"></div>
+  <button id="theme" class="small" title="Theme: auto / light / dark">◑ auto</button>
+</header>
+
+<div id="crumbbar"></div>
+
+<div id="empty">
+  <div class="card">
+    <h1>🔭 Where is your storage going?</h1>
+    <p>Pick a folder and Disk Scout maps every byte in it: an interactive treemap to dig
+       around, the biggest files at a glance, and cleanup hints — so you can decide what to delete.</p>
+    <button class="primary" id="pick2" style="font-size:16px;padding:10px 26px">Scan a folder…</button>
+    <div id="progress">
+      <div><span class="spin"></span><b id="pfiles" class="num">0</b> files · <b id="pbytes" class="num">0 B</b> · <span id="pdirs" class="num">0</span> folders</div>
+      <div class="cur" id="pcur"></div>
+    </div>
+    <div class="fine">
+      Everything runs <b>locally in your browser</b> — nothing is uploaded, no network is used.<br>
+      Disk Scout never deletes anything; it only measures.<br>
+      Works in Chrome &amp; Edge (native folder picker) and Firefox &amp; Safari (standard picker —
+      its "upload" warning is generic; nothing is uploaded).<br>
+      <span id="nosupport" style="color:var(--warn)"></span>
+    </div>
+  </div>
+</div>
+
+<div id="main">
+  <div id="mapwrap"><div id="treemap"></div></div>
+  <div id="side">
+    <div id="tabs">
+      <button data-tab="files" class="on">Largest files</button>
+      <button data-tab="folders">Folders</button>
+      <button data-tab="types">Types</button>
+      <button data-tab="cleanup">Cleanup</button>
+    </div>
+    <div id="panel"></div>
+  </div>
+</div>
+
+<footer>
+  <span>Click folder tile: drill in · click file tile: copy path · right-click anything: menu · click a file in the lists: show it in the map · Backspace: up</span>
+  <span>Cloud placeholders (Dropbox/OneDrive online-only) report full size without downloading.</span>
+</footer>
+
+<div id="tip"></div>
+<div id="toast"></div>
+<div id="ctx"></div>
+<input type="file" id="fallbackpick" webkitdirectory multiple style="display:none">
+
+<script>
+"use strict";
+/* =============== categories (fixed slot order — see dataviz palette) =============== */
+const CATS = [
+  { id:"video",   label:"Video",                 v:"--cat-video" },
+  { id:"image",   label:"Photos & images",       v:"--cat-image" },
+  { id:"audio",   label:"Audio",                 v:"--cat-audio" },
+  { id:"archive", label:"Archives & disk images",v:"--cat-archive" },
+  { id:"code",    label:"Apps & code",           v:"--cat-code" },
+  { id:"doc",     label:"Documents",             v:"--cat-doc" },
+  { id:"other",   label:"Other",                 v:"--cat-other" },
+];
+const CATIDX = Object.fromEntries(CATS.map((c,i)=>[c.id,i]));
+const EXTCAT = {};
+(function(){
+  const put=(cat,exts)=>exts.split(" ").forEach(e=>EXTCAT[e]=cat);
+  put("video","mp4 mov mkv avi wmv m2ts mts flv webm mpg mpeg 3gp m4v ogv asf vob ts");
+  put("image","jpg jpeg png gif heic heif webp bmp tif tiff cr2 cr3 nef arw dng orf rw2 pef srw psd svg ico raw");
+  put("audio","mp3 m4a wav flac aac ogg wma opus aiff m4b mid");
+  put("archive","zip rar 7z tar gz bz2 xz iso img dmg cab tgz vhd vhdx wim");
+  put("code","js ts jsx tsx py java c cpp h hpp cs go rs rb php json xml yml yaml dll exe msi so lib obj pdb node wasm class jar map pak bin dat db sqlite");
+  put("doc","pdf doc docx xls xlsx ppt pptx txt md csv rtf odt epub mobi one note");
+})();
+const JUNK_DIRS = new Set(["node_modules","__pycache__",".git",".svn",".hg",".cache","cache","caches",
+  "tmp","temp",".tmp","$recycle.bin",".trash",".trash-1000","windows.old",".gradle",".m2",".nuget",
+  ".npm",".yarn",".vs","packages","crashdumps","crash reports","logs"]);
+
+/* =============== state =============== */
+let ROOT=null, CUR=null, cancelFlag=false, scanning=false;
+const $=id=>document.getElementById(id);
+const fmt=n=>{ n=Number(n); const u=["B","KB","MB","GB","TB","PB"]; let i=0;
+  while(n>=1024&&i<u.length-1){n/=1024;i++;} return (i? n.toFixed(n>=100?0:1):n)+" "+u[i]; };
+const fmtN=n=>n.toLocaleString();
+const catColor=id=>getComputedStyle(document.documentElement).getPropertyValue(CATS[CATIDX[id]].v).trim();
+const extOf=n=>{ const i=n.lastIndexOf("."); return i>0? n.slice(i+1).toLowerCase():""; };
+const catOf=n=>EXTCAT[extOf(n)]||"other";
+
+/* =============== scanning (File System Access API) =============== */
+const MAXPAR=96; let inFlight=0; const waitq=[];
+function slot(fn){ return new Promise((res,rej)=>{ const run=()=>{ inFlight++;
+  fn().then(res,rej).finally(()=>{ inFlight--; const nx=waitq.shift(); if(nx) nx(); }); };
+  inFlight<MAXPAR? run() : waitq.push(run); }); }
+
+const prog={files:0,dirs:0,bytes:0,cur:"",skipped:0};
+let progTimer=null;
+function progTick(){ $("pfiles").textContent=fmtN(prog.files); $("pbytes").textContent=fmt(prog.bytes);
+  $("pdirs").textContent=fmtN(prog.dirs); $("pcur").textContent=prog.cur; }
+
+async function scanDir(handle, name, path){
+  if(cancelFlag) throw new Error("cancelled");
+  const node={ name, path, isDir:true, size:0, children:[], fileCount:0,
+               junk: JUNK_DIRS.has(name.toLowerCase()), catBytes:new Array(CATS.length).fill(0) };
+  prog.dirs++; prog.cur=path;
+  const filePromises=[], dirPromises=[];
+  try{
+    for await (const entry of handle.values()){
+      if(cancelFlag) throw new Error("cancelled");
+      if(entry.kind==="file"){
+        filePromises.push(slot(async()=>{
+          try{
+            const f=await entry.getFile();
+            const cat=catOf(entry.name);
+            const fn={ name:entry.name, path:path+"/"+entry.name, isDir:false,
+                       size:f.size, cat, mtime:f.lastModified };
+            prog.files++; prog.bytes+=f.size;
+            return fn;
+          }catch(e){ prog.skipped++; return null; }
+        }));
+      } else if(entry.kind==="directory"){
+        dirPromises.push(scanDir(entry, entry.name, path+"/"+entry.name).catch(e=>{
+          if(String(e.message)==="cancelled") throw e; prog.skipped++; return null; }));
+      }
+    }
+  }catch(e){ if(String(e.message)==="cancelled") throw e; prog.skipped++; }
+  const files=(await Promise.all(filePromises)).filter(Boolean);
+  const dirs=(await Promise.all(dirPromises)).filter(Boolean);
+  for(const f of files){ node.size+=f.size; node.fileCount++; node.catBytes[CATIDX[f.cat]]+=f.size; }
+  for(const d of dirs){ node.size+=d.size; node.fileCount+=d.fileCount;
+    for(let i=0;i<CATS.length;i++) node.catBytes[i]+=d.catBytes[i]; }
+  node.children=dirs.concat(files);
+  node.children.sort((a,b)=>b.size-a.size);
+  node.children.forEach(c=>c.parent=node);
+  node.domCat=CATS[node.catBytes.indexOf(Math.max(...node.catBytes))].id;
+  if(node.size===0) node.domCat="other";
+  return node;
+}
+
+async function startScan(){
+  if(scanning) return;
+  let handle;
+  try{ handle=await window.showDirectoryPicker({mode:"read"}); }
+  catch(e){
+    if(e.name==="AbortError") return;                       // user closed the dialog
+    $("fallbackpick").click(); return;                      // blocked (e.g. file://) -> fallback
+  }
+  scanning=true; cancelFlag=false;
+  Object.assign(prog,{files:0,dirs:0,bytes:0,cur:"",skipped:0});
+  $("main").style.display="none"; $("crumbbar").style.display="none";
+  $("empty").style.display="flex"; $("progress").style.display="block";
+  $("pick").style.display="none"; $("pick2").style.display="none"; $("cancel").style.display="";
+  progTimer=setInterval(progTick,120);
+  const t0=performance.now();
+  try{
+    const root=await scanDir(handle, handle.name, handle.name);
+    ROOT=root; CUR=root;
+    showResults(performance.now()-t0);
+  }catch(e){
+    if(String(e.message)!=="cancelled"){ alert("Scan failed: "+e.message); }
+    $("progress").style.display="none";
+  }finally{
+    scanning=false; clearInterval(progTimer);
+    $("pick").style.display=""; $("pick2").style.display=""; $("cancel").style.display="none";
+  }
+}
+
+/* fallback: <input webkitdirectory> (works everywhere, one big list) */
+$("fallbackpick").addEventListener("change", ev=>{
+  const list=[...ev.target.files]; if(!list.length) return;
+  const t0=performance.now();
+  const rootName=list[0].webkitRelativePath.split("/")[0]||"folder";
+  const mk=(name,path)=>({name,path,isDir:true,size:0,children:[],fileCount:0,
+    junk:JUNK_DIRS.has(name.toLowerCase()),catBytes:new Array(CATS.length).fill(0),dirmap:{}});
+  const root=mk(rootName,rootName);
+  for(const f of list){
+    const parts=f.webkitRelativePath.split("/"); let node=root;
+    for(let i=1;i<parts.length-1;i++){
+      let d=node.dirmap[parts[i]];
+      if(!d){ d=mk(parts[i],node.path+"/"+parts[i]); node.dirmap[parts[i]]=d; node.children.push(d); }
+      node=d;
+    }
+    const cat=catOf(f.name);
+    node.children.push({name:f.name,path:rootName+"/"+f.webkitRelativePath.split("/").slice(1).join("/"),
+                        isDir:false,size:f.size,cat,mtime:f.lastModified});
+  }
+  (function agg(n){ for(const c of n.children){ if(c.isDir){ agg(c);
+      for(let i=0;i<CATS.length;i++) n.catBytes[i]+=c.catBytes[i]; }
+    else n.catBytes[CATIDX[c.cat]]+=c.size;
+    n.size+=c.size; n.fileCount+=c.isDir? c.fileCount:1; }
+    n.children.sort((a,b)=>b.size-a.size); n.children.forEach(c=>c.parent=n); delete n.dirmap;
+    n.domCat=n.size? CATS[n.catBytes.indexOf(Math.max(...n.catBytes))].id : "other"; })(root);
+  prog.files=root.fileCount; prog.bytes=root.size; prog.skipped=0;
+  ROOT=root; CUR=root; showResults(performance.now()-t0);
+  ev.target.value="";
+});
+
+function showResults(ms){
+  try{ REALBASE=localStorage.getItem("ds-base:"+ROOT.name)||null; }catch(e){ REALBASE=null; }
+  $("empty").style.display="none"; $("progress").style.display="none";
+  $("main").style.display="flex"; $("crumbbar").style.display="flex";
+  $("scanstats").innerHTML=`<b>${fmt(ROOT.size)}</b> · <b class="num">${fmtN(ROOT.fileCount)}</b> files · scanned in ${(ms/1000).toFixed(1)}s`+
+    (prog.skipped? ` · <span style="color:var(--warn)">${fmtN(prog.skipped)} unreadable skipped</span>`:"");
+  render();
+}
+
+/* =============== squarified treemap =============== */
+function squarify(items,x,y,w,h,out){
+  if(!items.length||w<=0||h<=0) return;
+  if(items.length===1){ out.push({it:items[0],x,y,w,h}); return; }
+  const vertical=w<h, side=vertical? w:h;
+  const worst=(row,s)=>{ let mx=0,mn=Infinity;
+    for(const d of row){ if(d.a>mx)mx=d.a; if(d.a<mn)mn=d.a; }
+    const s2=s*s, l2=side*side; return Math.max(l2*mx/s2, s2/(l2*mn)); };
+  let row=[items[0]], sum=items[0].a, i=1;
+  while(i<items.length){
+    const cand=items[i];
+    if(worst(row.concat(cand),sum+cand.a)<=worst(row,sum)){ row.push(cand); sum+=cand.a; i++; }
+    else break;
+  }
+  const t=sum/side; let off=0;
+  for(const d of row){
+    const len=d.a/t;
+    if(vertical) out.push({it:d,x:x+off,y,w:len,h:t});
+    else out.push({it:d,x,y:y+off,w:t,h:len});
+    off+=len;
+  }
+  const rest=items.slice(i);
+  if(vertical) squarify(rest,x,y+t,w,h-t,out);
+  else squarify(rest,x+t,y,w-t,h,out);
+}
+
+function layoutNode(node,W,H,maxTiles){
+  const kids=node.children.filter(c=>c.size>0);
+  if(!kids.length) return [];
+  let take=kids, other=null;
+  if(kids.length>maxTiles){
+    take=kids.slice(0,maxTiles);
+    const rest=kids.slice(maxTiles);
+    const restSize=rest.reduce((s,c)=>s+c.size,0);
+    if(restSize>0) other={name:`… ${fmtN(rest.length)} smaller items`,isDir:false,size:restSize,
+                          cat:"other",isOther:true,path:node.path};
+  }
+  const items=take.map(c=>({node:c,a:c.size}));
+  if(other) items.push({node:other,a:other.size});
+  const total=items.reduce((s,d)=>s+d.a,0);
+  const scale=W*H/total;
+  items.forEach(d=>d.a*=scale);
+  const out=[]; squarify(items,0,0,W,H,out);
+  return out;
+}
+
+function render(){
+  renderCrumbs(); renderMap(); renderPanel();
+}
+
+function renderMap(){
+  const el=$("treemap"); el.innerHTML=""; TILEEL.clear();
+  const W=el.clientWidth, H=el.clientHeight;
+  if(W<10||H<10) return;
+  const tiles=layoutNode(CUR,W,H,220);
+  if(!tiles.length){ el.innerHTML='<div class="hint" style="padding:16px">This folder is empty (0 bytes).</div>'; return; }
+  const GAP=2;
+  for(const t of tiles){
+    const n=t.it.node;
+    if(t.w<GAP+1||t.h<GAP+1) continue;
+    const d=document.createElement("div");
+    d.className="tile"+(n.isDir?" dir":"");
+    d.style.left=(t.x+GAP/2)+"px"; d.style.top=(t.y+GAP/2)+"px";
+    d.style.width=Math.max(1,t.w-GAP)+"px"; d.style.height=Math.max(1,t.h-GAP)+"px";
+    const cat=n.isDir? n.domCat : n.cat;
+    const mix=n.isDir? 34:22;
+    d.style.background=tileFill(cat,mix);
+    if(t.w>72&&t.h>24){
+      const l=document.createElement("div"); l.className="lbl";
+      l.innerHTML=`<span class="dot" style="background:${catColor(cat)}"></span>`+
+        `${esc(n.name)}${n.isDir?" /":""}<span class="sz">${fmt(n.size)}</span>`;
+      d.appendChild(l);
+    }
+    if(n.isDir&&n.junk&&t.w>40&&t.h>24){ const b=document.createElement("div"); b.className="badge"; b.textContent="♻"; d.appendChild(b); }
+    /* faint second level inside large folder tiles */
+    if(n.isDir&&t.w*t.h>18000&&t.h>52&&n.children.length){
+      const innerW=t.w-GAP-8, innerH=t.h-GAP-30;
+      if(innerW>24&&innerH>18){
+        const subs=layoutNode(n,innerW,innerH,18);
+        for(const s of subs.slice(0,18)){
+          if(s.w<5||s.h<5) continue;
+          const sd=document.createElement("div"); sd.className="sub";
+          sd.style.left=(4+s.x)+"px"; sd.style.top=(24+s.y)+"px";
+          sd.style.width=Math.max(2,s.w-2)+"px"; sd.style.height=Math.max(2,s.h-2)+"px";
+          const sc=s.it.node.isDir? s.it.node.domCat : s.it.node.cat;
+          sd.style.background=subFill(sc);
+          d.appendChild(sd);
+        }
+      }
+    }
+    d.addEventListener("click",()=>{ if(n.isDir){ CUR=n; render(); } else if(!n.isOther) copyPath(n); });
+    d.addEventListener("contextmenu",ev=>{ if(!n.isOther) ctxMenu(ev,n); else ev.preventDefault(); });
+    d.addEventListener("mousemove",ev=>tip(ev,n));
+    d.addEventListener("mouseleave",hideTip);
+    if(!n.isOther) TILEEL.set(n,d);
+    el.appendChild(d);
+  }
+}
+
+let TILEEL=new Map();
+/* tile fills: color-mix where supported, rgba fallback for older Firefox/Safari */
+const MIXOK=window.CSS&&CSS.supports&&CSS.supports("color","color-mix(in srgb, red 50%, white)");
+function hexRgba(hex,a){ const h=hex.replace("#",""); const v=parseInt(h.length===3? h.split("").map(c=>c+c).join(""):h,16);
+  return `rgba(${(v>>16)&255},${(v>>8)&255},${v&255},${a})`; }
+const tileFill=(cat,mix)=> MIXOK? `color-mix(in srgb, var(${CATS[CATIDX[cat]].v}) ${mix}%, var(--surface-1))`
+                                : hexRgba(catColor(cat),mix/100);
+const subFill =cat=> MIXOK? `color-mix(in srgb, var(${CATS[CATIDX[cat]].v}) 30%, transparent)`
+                          : hexRgba(catColor(cat),0.3);
+function flashNode(n){
+  const el=TILEEL.get(n);
+  if(el){ el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+          setTimeout(()=>el.classList.remove("flash"),1500); return true; }
+  return false;
+}
+function revealNode(n){
+  const target=n.isDir? n : (n.parent||CUR);
+  if(target!==CUR){ CUR=target; render(); }
+  requestAnimationFrame(()=>{ if(!flashNode(n)&&!n.isDir) toast("Opened its folder (file too small to highlight in the map)"); });
+}
+
+function renderCrumbs(){
+  const bar=$("crumbbar"); bar.innerHTML="";
+  const chain=[]; for(let n=CUR;n;n=n.parent) chain.unshift(n);
+  chain.forEach((node,i)=>{
+    const c=document.createElement("span");
+    c.className="crumb"+(i===chain.length-1?" here":"");
+    c.textContent=node.name;
+    if(i<chain.length-1) c.addEventListener("click",()=>{ CUR=node; render(); });
+    bar.appendChild(c);
+    if(i<chain.length-1){ const s=document.createElement("span"); s.className="sep"; s.textContent="›"; bar.appendChild(s); }
+  });
+  const sz=document.createElement("span"); sz.className="cursize num";
+  sz.textContent=`${fmt(CUR.size)} · ${fmtN(CUR.fileCount)} files`;
+  bar.appendChild(sz);
+  const pin=document.createElement("button"); pin.className="small";
+  pin.textContent=REALBASE? "📍 "+REALBASE : "📍 set real path";
+  pin.title="Tell Disk Scout the scanned folder's full path so copied paths are absolute (paste-able into Explorer/Finder)";
+  pin.addEventListener("click",setBase);
+  bar.appendChild(pin);
+}
+
+/* real location of the scanned root -> absolute copied paths */
+let REALBASE=null;
+function setBase(){
+  const v=prompt("Full real path of the scanned folder (e.g. "+(IS_WIN? "Z:\\Dropbox\\files\\media\\camera":"/Users/you/Dropbox/media")+"):", REALBASE||"");
+  if(v===null) return;
+  REALBASE=v.trim().replace(/[\\/]+$/,"")||null;
+  try{ localStorage.setItem("ds-base:"+ROOT.name, REALBASE||""); }catch(e){}
+  render(); if(REALBASE) toast("Copied paths will now be absolute");
+}
+function copyText(t,msg){
+  const done=()=>toast(msg||"Copied");
+  if(navigator.clipboard&&navigator.clipboard.writeText)
+    navigator.clipboard.writeText(t).then(done,()=>prompt("Copy the path:",t));
+  else prompt("Copy the path:",t);
+}
+const IS_WIN=/win/i.test(navigator.platform||"");
+const FM_NAME=IS_WIN? "Explorer":"Finder";
+const FM_HINT=IS_WIN? "paste into Explorer's address bar (Ctrl+L)"
+                    : "paste into Finder's Go to Folder (Cmd+Shift+G)";
+function copyPath(node){
+  const rel=node.path||"";
+  let out=REALBASE? REALBASE+rel.slice(ROOT.name.length) : rel;
+  out=IS_WIN? out.replace(/\//g,"\\") : out.replace(/\\/g,"/");
+  copyText(out, REALBASE? "Path copied — "+FM_HINT
+                        : "Relative path copied — click 📍 in the bar above to make paths absolute");
+}
+
+/* ---------- context menu ---------- */
+function ctxMenu(ev,node){
+  ev.preventDefault(); ev.stopPropagation(); hideTip();
+  const m=$("ctx"); m.innerHTML="";
+  const head=document.createElement("div"); head.className="mh"; head.textContent=node.path; m.appendChild(head);
+  const add=(label,fn)=>{ const d=document.createElement("div"); d.className="mi"; d.textContent=label;
+    d.addEventListener("click",()=>{ hideCtx(); fn(); }); m.appendChild(d); };
+  if(!node.isDir) add("Show in treemap",()=>revealNode(node));
+  else if(node!==CUR) add("Open in treemap",()=>{ CUR=node; render(); });
+  add("Copy path",()=>copyPath(node));
+  if(node.parent) add("Copy folder path",()=>copyPath(node.parent));
+  add("Open in "+FM_NAME+"…",()=>{ copyPath(node.isDir? node : (node.parent||node));
+    setTimeout(()=>toast("Folder path copied — browsers can't launch "+FM_NAME+"; "+FM_HINT),900); });
+  m.style.display="block";
+  const r=m.getBoundingClientRect();
+  m.style.left=Math.min(ev.clientX, innerWidth-r.width-8)+"px";
+  m.style.top =Math.min(ev.clientY, innerHeight-r.height-8)+"px";
+}
+function hideCtx(){ $("ctx").style.display="none"; }
+document.addEventListener("click",ev=>{ if(!ev.target.closest("#ctx")) hideCtx(); });
+document.addEventListener("keydown",ev=>{ if(ev.key==="Escape") hideCtx(); });
+addEventListener("blur",hideCtx);
+
+/* =============== side panel =============== */
+let TAB="files";
+document.querySelectorAll("#tabs button").forEach(b=>b.addEventListener("click",()=>{
+  TAB=b.dataset.tab;
+  document.querySelectorAll("#tabs button").forEach(x=>x.classList.toggle("on",x===b));
+  renderPanel();
+}));
+
+function walkFiles(node,cb){ for(const c of node.children){ if(c.isDir) walkFiles(c,cb); else cb(c); } }
+function topFiles(node,n){
+  const top=[];
+  walkFiles(node,f=>{
+    if(top.length<n){ top.push(f); if(top.length===n) top.sort((a,b)=>a.size-b.size); }
+    else if(f.size>top[0].size){ top[0]=f; top.sort((a,b)=>a.size-b.size); }
+  });
+  return top.sort((a,b)=>b.size-a.size);
+}
+
+function renderPanel(){
+  const p=$("panel"); p.innerHTML="";
+  if(TAB==="files"){
+    const files=topFiles(CUR,100);
+    if(!files.length){ p.innerHTML='<div class="hint">No files in this subtree.</div>'; return; }
+    const max=files[0].size;
+    files.forEach(f=>p.appendChild(fileRow(f,max,CUR.size)));
+  }
+  else if(TAB==="folders"){
+    const dirs=CUR.children.filter(c=>c.isDir);
+    const loose=CUR.children.filter(c=>!c.isDir);
+    if(dirs.length){
+      const max=dirs[0].size;
+      dirs.forEach(d=>{
+        const r=row();
+        r.innerHTML=`<span class="dot" style="background:${catColor(d.domCat)}"></span>
+          <span class="name link">${esc(d.name)}${d.junk?" ♻":""}</span>
+          <span class="size num">${fmt(d.size)}</span><span class="pct num">${pct(d.size,CUR.size)}</span>
+          <div class="bar" style="width:${max? (100*d.size/max):0}%"></div>`;
+        r.querySelector(".name").addEventListener("click",()=>{ CUR=d; render(); });
+        r.addEventListener("contextmenu",ev=>ctxMenu(ev,d));
+        r.addEventListener("mousemove",ev=>tip(ev,d)); r.addEventListener("mouseleave",hideTip);
+        p.appendChild(r);
+      });
+    }
+    if(loose.length){
+      const h=document.createElement("div"); h.className="sechead";
+      h.textContent=`Files directly here (${fmtN(loose.length)})`; p.appendChild(h);
+      const max=loose[0].size;
+      loose.slice(0,60).forEach(f=>p.appendChild(fileRow(f,max,CUR.size)));
+    }
+    if(!dirs.length&&!loose.length) p.innerHTML='<div class="hint">Empty folder.</div>';
+  }
+  else if(TAB==="types"){
+    const bar=document.createElement("div"); bar.id="typebar";
+    const total=CUR.size||1;
+    const entries=CATS.map((c,i)=>({c,bytes:CUR.catBytes[i]})).filter(e=>e.bytes>0)
+                      .sort((a,b)=>b.bytes-a.bytes);
+    entries.forEach(e=>{
+      const seg=document.createElement("div");
+      seg.style.width=(100*e.bytes/total)+"%"; seg.style.background=catColor(e.c.id);
+      seg.title=`${e.c.label}: ${fmt(e.bytes)}`;
+      bar.appendChild(seg);
+    });
+    p.appendChild(bar);
+    entries.forEach(e=>{
+      const r=document.createElement("div"); r.className="lg";
+      r.innerHTML=`<span class="dot" style="background:${catColor(e.c.id)}"></span>
+        <span class="name">${e.c.label}</span>
+        <span class="size num">${fmt(e.bytes)}</span><span class="pct num">${pct(e.bytes,total)}</span>`;
+      p.appendChild(r);
+    });
+    if(!entries.length) p.innerHTML='<div class="hint">Nothing here.</div>';
+  }
+  else if(TAB==="cleanup"){
+    const junk=[];
+    (function findJunk(n){ for(const c of n.children){ if(!c.isDir) continue;
+        if(c.junk&&c.size>0) junk.push(c); else findJunk(c); } })(CUR);
+    junk.sort((a,b)=>b.size-a.size);
+    const h1=document.createElement("div"); h1.className="sechead";
+    h1.textContent=`Junk-named folders (${fmtN(junk.length)}, ${fmt(junk.reduce((s,d)=>s+d.size,0))})`;
+    p.appendChild(h1);
+    if(junk.length) junk.slice(0,80).forEach(d=>{
+      const r=row();
+      r.innerHTML=`<span>♻</span><span class="name link" title="${esc(d.path)}">${esc(d.name)}</span>
+        <span class="size num">${fmt(d.size)}</span>${copyBtn()}`;
+      r.querySelector(".name").addEventListener("click",()=>{ CUR=d; render(); });
+      r.addEventListener("contextmenu",ev=>ctxMenu(ev,d));
+      hookCopy(r,d); p.appendChild(r);
+    });
+    else p.appendChild(hint("None found — caches, node_modules, recycle bins, temp folders would show here."));
+    const cut=Date.now()-2*365*24*3600*1000;
+    const old=[]; walkFiles(CUR,f=>{ if(f.size>=100*1024*1024&&f.mtime&&f.mtime<cut) old.push(f); });
+    old.sort((a,b)=>b.size-a.size);
+    const h2=document.createElement("div"); h2.className="sechead";
+    h2.textContent=`Large & untouched ≥ 2 years (${fmtN(old.length)}, ${fmt(old.reduce((s,f)=>s+f.size,0))})`;
+    p.appendChild(h2);
+    if(old.length) old.slice(0,80).forEach(f=>{
+      const r=row();
+      r.innerHTML=`<span class="dot" style="background:${catColor(f.cat)}"></span>
+        <span class="name link" title="${esc(f.path)} — click to show in the treemap">${esc(f.name)}</span>
+        <span class="size num">${fmt(f.size)}</span>${copyBtn()}`;
+      hookCopy(r,f);
+      r.querySelector(".name").addEventListener("click",()=>revealNode(f));
+      r.addEventListener("contextmenu",ev=>ctxMenu(ev,f));
+      r.addEventListener("mousemove",ev=>tip(ev,f)); r.addEventListener("mouseleave",hideTip);
+      p.appendChild(r);
+    });
+    else p.appendChild(hint("No files ≥ 100 MB that haven't been touched in 2+ years."));
+    p.appendChild(hint("Disk Scout never deletes — copy a path and handle it in Explorer, or ask Claude/Cowork to review the candidates with you."));
+  }
+}
+
+const row=()=>{ const r=document.createElement("div"); r.className="row"; return r; };
+const hint=t=>{ const d=document.createElement("div"); d.className="hint"; d.textContent=t; return d; };
+const pct=(a,b)=>b? (100*a/b).toFixed(a/b>0.1?0:1)+"%":"—";
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const copyBtn=()=>`<button class="small copy" title="Copy path">📋</button>`;
+function hookCopy(r,node){ const b=r.querySelector(".copy"); if(!b) return;
+  b.addEventListener("click",ev=>{ ev.stopPropagation(); copyPath(node); }); }
+function fileRow(f,max,total){
+  const r=row();
+  r.innerHTML=`<span class="dot" style="background:${catColor(f.cat)}"></span>
+    <span class="name link" title="${esc(f.path)} — click to show in the treemap">${esc(f.name)}</span>
+    <span class="size num">${fmt(f.size)}</span><span class="pct num">${pct(f.size,total)}</span>
+    ${copyBtn()}<div class="bar" style="width:${max? (100*f.size/max):0}%"></div>`;
+  hookCopy(r,f);
+  r.querySelector(".name").addEventListener("click",()=>revealNode(f));
+  r.addEventListener("contextmenu",ev=>ctxMenu(ev,f));
+  r.addEventListener("mousemove",ev=>tip(ev,f)); r.addEventListener("mouseleave",hideTip);
+  return r;
+}
+
+/* =============== tooltip / toast / chrome =============== */
+function tip(ev,n){
+  const t=$("tip");
+  const cat=n.isDir? `mostly ${CATS[CATIDX[n.domCat]].label.toLowerCase()}` : CATS[CATIDX[n.cat]].label;
+  t.innerHTML=`<b>${esc(n.name)}${n.isDir?" /":""}</b><div class="path">${esc(n.path||"")}</div>
+    <div class="meta">${fmt(n.size)} · ${pct(n.size,CUR.size)} of this view · ${n.isDir? fmtN(n.fileCount)+" files · ":""}${cat}${n.junk?" · ♻ junk-named":""}</div>`;
+  t.style.display="block";
+  const pad=14, vw=innerWidth, vh=innerHeight, r=t.getBoundingClientRect();
+  t.style.left=Math.min(ev.clientX+pad, vw-r.width-8)+"px";
+  t.style.top=Math.min(ev.clientY+pad, vh-r.height-8)+"px";
+}
+function hideTip(){ $("tip").style.display="none"; }
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.style.display="block";
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display="none",1600); }
+
+$("pick").addEventListener("click",startScan);
+$("pick2").addEventListener("click",startScan);
+$("cancel").addEventListener("click",()=>{ cancelFlag=true; });
+document.addEventListener("keydown",ev=>{
+  if(ev.key==="Backspace"&&CUR&&CUR!==ROOT&&!ev.target.matches("input")){
+    ev.preventDefault(); CUR=CUR.parent||ROOT; render();
+  }
+});
+let rsz; addEventListener("resize",()=>{ clearTimeout(rsz); rsz=setTimeout(()=>{ if(ROOT) renderMap(); },150); });
+
+/* theme toggle: auto -> light -> dark */
+const THEMES=["auto","light","dark"];
+let themeIx=Math.max(0,THEMES.indexOf(localStorage.getItem("ds-theme")||"auto"));
+function applyTheme(){ const t=THEMES[themeIx];
+  if(t==="auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme",t);
+  $("theme").textContent="◑ "+t; localStorage.setItem("ds-theme",t);
+  if(ROOT) render(); }
+$("theme").addEventListener("click",()=>{ themeIx=(themeIx+1)%3; applyTheme(); });
+applyTheme();
+
+if(!window.showDirectoryPicker){
+  /* startScan falls back to the webkitdirectory input automatically */
+  $("nosupport").textContent="This browser lacks the folder-picker API — the fallback picker will be used (works, but shows a generic 'upload' warning; nothing is uploaded).";
+}
+</script>
+</body>
+</html>
