@@ -18,7 +18,8 @@ Drop-in successor to media_organizer.py. Same flow (scan -> date -> plan -> revi
     (v5 parked the whole folder under the EARLIEST date, mixing years)
   - incremental skip: library.md5 now records hash<TAB>destination, so re-runs recognize
     content even when numbered filenames shift (old plain-hash manifests still read fine)
-  - execute progress prints each NEW destination folder as it is first created
+  - execute prints ONE line per file (source -> destination), with a short reason on any
+    file that is not placed into the timeline (e.g. "untouched: nested >1 folder deep")
   - PIL images are closed after EXIF read (no fd leak); HEIC/HEIF EXIF works when pillow-heif
     is installed; png/webp EXIF attempted; ffprobe check is lazy (not at import)
   - guards against source/destination overlap
@@ -135,6 +136,11 @@ def _info(msg):
     if HAVE_RICH: _console.print(msg)
     else: print(re.sub(r"\[/?[a-z ]*\]","",msg))
 
+def _line(msg):
+    # per-file output: markup disabled so paths containing [brackets] print verbatim
+    if HAVE_RICH: _console.print(msg, markup=False, highlight=False)
+    else: print(msg, flush=True)
+
 @contextlib.contextmanager
 def status(msg):
     if HAVE_RICH:
@@ -146,7 +152,7 @@ def _short(p, n=48):
     p=p if p not in (".","") else "(root)"
     return p if len(p)<=n else "..."+p[-(n-1):]
 
-def track(seq, phase, folder_of, log_folders=False):
+def track(seq, phase, folder_of, log_folders=False, quiet=False):
     seq=list(seq); total=len(seq); seen=set(); tf=0
     for it in seq:
         fo=folder_of(it)
@@ -173,7 +179,8 @@ def track(seq, phase, folder_of, log_folders=False):
             fo=folder_of(it)
             if fo!=cur:
                 if cur is not None: fd+=1
-                cur=fo; print(f"[{phase}] {fd}/{tf} folders - now: {_short(fo)}", flush=True)
+                cur=fo
+                if not quiet: print(f"[{phase}] {fd}/{tf} folders - now: {_short(fo)}", flush=True)
             yield it
         print(f"[{phase}] complete: {total} files, {tf} folders", flush=True)
 
@@ -524,6 +531,20 @@ def _save_state(rundir, state):
     with open(os.path.join(rundir,"state.json"),"w",encoding="utf-8") as fh:
         json.dump(state,fh,indent=2)
 
+def _route_reason(row):
+    """Short human-readable reason (from plan.csv route/notes) for any file that is NOT
+    placed into the year/month timeline -- shown on that file's copy line."""
+    route=(row.get("route") or "").strip(); notes=(row.get("notes") or "").strip()
+    if route=="nested":       return "untouched: nested >1 folder deep in source"
+    if route=="corrupt":      return "untouched: corrupt/zero-byte"
+    if route=="duplicate":
+        m=re.search(r"duplicate of .+",notes)
+        return "untouched: "+(m.group(0) if m else "duplicate of a kept file")
+    if route=="needs-review": return "needs-review: no reliable date found"
+    if route=="phone-misc":   return "phone junk (screenshot/messaging save)"
+    if route=="not-media":    return "not a media file"
+    return ""
+
 def cmd_execute(args):
     DST=os.path.abspath(args.dest); org=os.path.join(DST,"_organizer")
     row=_pick_run(org,args.run)
@@ -555,23 +576,23 @@ def cmd_execute(args):
     copied=skipped=skipped_inc=0; failed=[]; resolved=0; seen_dirs=set()
     try:
         with open(logpath,"a",encoding="utf-8") as logf:
-            for r in track(planned, "Copying", lambda r: os.path.dirname(r["source_path"]) or ".", log_folders=True):
+            for r in track(planned, "Copying", lambda r: os.path.dirname(r["source_path"]) or ".", quiet=True):
                 srel=r["source_path"]; dest=r["proposed_destination"]; exp=r["md5"]
                 srcp=os.path.join(SRC,srel); dstp=os.path.join(DST,dest)
+                why=_route_reason(r); tail=f"  [{why}]" if why else ""
                 # (a) already finished earlier in THIS run (resume)
                 if srel in done and os.path.exists(dstp):
                     skipped+=1; resolved+=1
                     if exp: lib.setdefault(exp,dest)
-                    continue
+                    _line(f"  skip {srel}  (already copied in this run)"); continue
                 # (b) already imported by a PRIOR run (incremental skip)
                 if exp and exp in prior:
                     known=prior[exp]; knownp=os.path.join(DST,known) if known else None
                     if skip_library or (knownp and os.path.exists(knownp)) or os.path.exists(dstp):
-                        skipped_inc+=1; resolved+=1; lib.setdefault(exp,known or dest); continue
-                # (c) copy it -- announce each destination folder the first time we create it
-                ddir=os.path.dirname(dest)
-                if ddir not in seen_dirs:
-                    seen_dirs.add(ddir); _info(f"  [cyan]+ dest[/] {ddir or '(root)'}")
+                        skipped_inc+=1; resolved+=1; lib.setdefault(exp,known or dest)
+                        _line(f"  skip {srel}  (already in library)"); continue
+                # (c) copy it -- one line per file: source -> destination [reason if not placed]
+                seen_dirs.add(os.path.dirname(dest))
                 now=datetime.datetime.now().isoformat(timespec="seconds")
                 try:
                     os.makedirs(os.path.dirname(dstp),exist_ok=True)
@@ -579,12 +600,15 @@ def cmd_execute(args):
                 except OSError as e:
                     # v5 crashed the whole run here; now: log FAILED, keep going, retry on resume
                     failed.append((srel,dest,str(e)))
-                    logf.write(f"{now}\t{srel}\t{dest}\t\tFAILED\t{e}\n"); logf.flush(); continue
+                    logf.write(f"{now}\t{srel}\t{dest}\t\tFAILED\t{e}\n"); logf.flush()
+                    _line(f"  FAILED {srel} -> {dest}  ({e})"); continue
                 if exp and h!=exp:
                     failed.append((srel,dest,"hash mismatch after copy"))
-                    logf.write(f"{now}\t{srel}\t{dest}\t{h}\tFAILED\thash mismatch\n"); logf.flush(); continue
+                    logf.write(f"{now}\t{srel}\t{dest}\t{h}\tFAILED\thash mismatch\n"); logf.flush()
+                    _line(f"  FAILED {srel} -> {dest}  (hash mismatch after copy)"); continue
                 logf.write(f"{now}\t{srel}\t{dest}\t{h}\tOK\n"); logf.flush()
                 copied+=1; resolved+=1; lib[exp or h]=dest
+                _line(f"  {srel} -> {dest}{tail}")
     finally:
         # persist the manifest even on Ctrl-C so incremental skip keeps working
         with open(manifest,"w",encoding="utf-8") as mf:
@@ -592,6 +616,9 @@ def cmd_execute(args):
                 if hsh: mf.write(f"{hsh}\t{lib[hsh]}\n")
     print(f"run {run_id}: copied={copied} skipped-in-run={skipped} skipped-already-imported={skipped_inc} failed={len(failed)}")
     print(f"  destination folders touched: {len(seen_dirs)}")
+    routes=defaultdict(int)
+    for r in planned: routes[(r.get("route") or "?").strip() or "?"]+=1
+    print("  routes:"," ".join(f"{k}={routes[k]}" for k in sorted(routes)))
     on_disk=[r for r in planned if os.path.exists(os.path.join(DST,r["proposed_destination"]))]
     for r in (random.sample(on_disk,min(10,len(on_disk))) if on_disk else []):
         ok=md5(os.path.join(SRC,r["source_path"]))==md5(os.path.join(DST,r["proposed_destination"]))
