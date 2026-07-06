@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import type { AppDeps } from '../app';
 import { resolveUser, sessionUser } from '../authz';
-import { getProfile } from '../profiles';
+import { getProfile, recordGooglePicture } from '../profiles';
 import type { SessionUser } from '../types';
 
 type SessionData = { user?: SessionUser; oauthState?: string } | null;
@@ -50,10 +50,14 @@ export function authRoutes(deps: AppDeps): Router {
     }
     if (user.role === 'parent') {
       const profile = getProfile(repo, user.email);
-      res.json({ user: { ...user, name: profile.name ?? user.name, avatar: profile.avatar } });
+      res.json({
+        user: { ...user, name: profile.name ?? user.name, avatar: profile.avatar ?? profile.googlePicture },
+      });
     } else {
       const kid = user.kidId !== undefined ? repo.getKid(user.kidId) : undefined;
-      res.json({ user: { ...user, name: kid?.name ?? user.name, avatar: kid?.avatar ?? null } });
+      res.json({
+        user: { ...user, name: kid?.name ?? user.name, avatar: kid?.avatar ?? kid?.googlePicture ?? null },
+      });
     }
   });
 
@@ -71,12 +75,12 @@ export function authRoutes(deps: AppDeps): Router {
           email,
           role: 'parent' as const,
           name: profile.name ?? email.split('@')[0],
-          avatar: profile.avatar,
+          avatar: profile.avatar ?? profile.googlePicture,
         };
       });
       const kids = repo
         .listKids()
-        .map((k) => ({ email: k.email.toLowerCase(), role: 'kid' as const, name: k.name, avatar: k.avatar }));
+        .map((k) => ({ email: k.email.toLowerCase(), role: 'kid' as const, name: k.name, avatar: k.avatar ?? k.googlePicture }));
       res.json({ users: [...parents, ...kids] });
     });
 
@@ -121,13 +125,15 @@ export function authRoutes(deps: AppDeps): Router {
         delete s.oauthState;
         const { tokens } = await client.getToken(code);
         const ticket = await client.verifyIdToken({ idToken: tokens.id_token ?? '', audience: config.googleClientId });
-        const email = ticket.getPayload()?.email;
+        const payload = ticket.getPayload();
+        const email = payload?.email;
         const user = email ? resolveUser(email, config, repo) : null;
         if (!user) {
           req.session = s;
           res.redirect('/not-allowed');
           return;
         }
+        recordGooglePicture(repo, user, payload?.picture);
         s.user = user;
         req.session = s;
         res.redirect('/');

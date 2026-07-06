@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { getProfile, getSettings, updateKidAvatar, updateProfile, updateSettings } from '../api';
+import { getKidProfile, getProfile, getSettings, updateKidAvatar, updateProfile, updateSettings } from '../api';
 import { useAuth } from '../auth';
 import AppHeader from '../components/AppHeader';
 import AvatarPicker from '../components/AvatarPicker';
@@ -118,9 +118,19 @@ function ParentSettings() {
 
 function KidSettings() {
   const { user, refresh } = useAuth();
-  const [avatar, setAvatar] = useState<string | null>(user?.avatar ?? null);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [googlePicture, setGooglePicture] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getKidProfile()
+      .then((p) => {
+        setAvatar(p.avatar);
+        setGooglePicture(p.googlePicture);
+      })
+      .catch(() => setError('Couldn’t load your picture. Refresh to try again.'));
+  }, []);
 
   const save = async (next: string | null) => {
     setAvatar(next);
@@ -154,7 +164,12 @@ function KidSettings() {
         <section className="rounded-sheet border border-line bg-surface p-5 shadow-card sm:p-6">
           <h2 className="mb-1 font-medium text-ink">Your picture</h2>
           <p className="mb-4 text-sm text-ink-muted">How you appear across Ƀuckos.</p>
-          <AvatarPicker name={user?.name ?? ''} value={avatar} onChange={(v) => void save(v)} />
+          <AvatarPicker
+            name={user?.name ?? ''}
+            value={avatar}
+            fallbackSrc={googlePicture}
+            onChange={(v) => void save(v)}
+          />
           {error && (
             <p role="alert" className="mt-4 rounded-chip bg-negative-soft px-3 py-2 text-sm text-negative">
               {error}
@@ -175,6 +190,7 @@ function ProfileSection() {
   const { user, refresh } = useAuth();
   const [name, setName] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [googlePicture, setGooglePicture] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,6 +200,7 @@ function ProfileSection() {
       .then((p) => {
         setName(p.name ?? user?.email.split('@')[0] ?? '');
         setAvatar(p.avatar);
+        setGooglePicture(p.googlePicture);
       })
       .catch(() => setError('Couldn’t load your profile. Refresh to try again.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -216,7 +233,15 @@ function ProfileSection() {
 
       <form onSubmit={submit} noValidate>
         <div className="mb-4">
-          <AvatarPicker name={name ?? ''} value={avatar} onChange={(v) => { setAvatar(v); setSaved(false); }} />
+          <AvatarPicker
+            name={name ?? ''}
+            value={avatar}
+            fallbackSrc={googlePicture}
+            onChange={(v) => {
+              setAvatar(v);
+              setSaved(false);
+            }}
+          />
         </div>
 
         <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="profile-name">

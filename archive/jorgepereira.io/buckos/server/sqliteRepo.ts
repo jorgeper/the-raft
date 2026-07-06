@@ -10,6 +10,7 @@ interface KidRow {
   archived: number;
   created_at: string;
   avatar: string | null;
+  google_picture: string | null;
 }
 
 interface TxnRow {
@@ -31,6 +32,7 @@ function toKid(row: KidRow): Kid {
     archived: row.archived === 1,
     createdAt: row.created_at,
     avatar: row.avatar,
+    googlePicture: row.google_picture,
   };
 }
 
@@ -77,16 +79,17 @@ export class SqliteRepo implements Repo {
     return this.mustGetAnyKid(Number(result.lastInsertRowid));
   }
 
-  updateKid(id: number, patch: Partial<Pick<Kid, 'name' | 'email' | 'weeklyAllowance' | 'avatar'>>): Kid {
+  updateKid(id: number, patch: Partial<Pick<Kid, 'name' | 'email' | 'weeklyAllowance' | 'avatar' | 'googlePicture'>>): Kid {
     const current = this.getKid(id);
     if (!current) throw new Error(`kid ${id} not found`);
     this.db
-      .prepare('UPDATE kids SET name = ?, email = ?, weekly_allowance = ?, avatar = ? WHERE id = ?')
+      .prepare('UPDATE kids SET name = ?, email = ?, weekly_allowance = ?, avatar = ?, google_picture = ? WHERE id = ?')
       .run(
         patch.name ?? current.name,
         patch.email ?? current.email,
         patch.weeklyAllowance ?? current.weeklyAllowance,
         patch.avatar === undefined ? current.avatar : patch.avatar,
+        patch.googlePicture === undefined ? current.googlePicture : patch.googlePicture,
         id
       );
     return this.mustGetAnyKid(id);

@@ -18,7 +18,8 @@ async function cropToDataUrl(src: string, area: Area): Promise<string> {
 
 interface Props {
   name: string; // for the initials fallback
-  value: string | null;
+  value: string | null; // the app-set photo — always wins
+  fallbackSrc?: string | null; // e.g. the Google account photo
   onChange: (avatar: string | null) => void;
 }
 
@@ -27,7 +28,7 @@ interface Props {
  * mask until it looks right. The result is stored as a small square image and
  * displayed as a circle.
  */
-export default function AvatarPicker({ name, value, onChange }: Props) {
+export default function AvatarPicker({ name, value, fallbackSrc, onChange }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [rawImage, setRawImage] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -60,23 +61,31 @@ export default function AvatarPicker({ name, value, onChange }: Props) {
 
   return (
     <div className="flex items-center gap-4">
-      <Avatar name={name || '?'} src={value} size={64} />
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="min-h-11 rounded-pill border border-line px-4 font-medium text-ink transition-colors hover:bg-sunken"
-        >
-          {value ? 'Change photo' : 'Upload photo'}
-        </button>
-        {value && (
+      <Avatar name={name || '?'} src={value ?? fallbackSrc} size={64} />
+      <div className="min-w-0">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => onChange(null)}
-            className="min-h-11 rounded-pill px-4 font-medium text-ink-muted transition-colors hover:bg-sunken hover:text-negative"
+            onClick={() => fileRef.current?.click()}
+            className="min-h-11 rounded-pill border border-line px-4 font-medium text-ink transition-colors hover:bg-sunken"
           >
-            Remove
+            {value || fallbackSrc ? 'Change photo' : 'Upload photo'}
           </button>
+          {value && (
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              className="min-h-11 rounded-pill px-4 font-medium text-ink-muted transition-colors hover:bg-sunken hover:text-negative"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        {!value && fallbackSrc && (
+          <p className="mt-1.5 text-sm text-ink-faint">Using the Google account photo.</p>
+        )}
+        {value && fallbackSrc && (
+          <p className="mt-1.5 text-sm text-ink-faint">Remove to go back to the Google account photo.</p>
         )}
       </div>
       <input

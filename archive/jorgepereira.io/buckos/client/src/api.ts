@@ -51,6 +51,8 @@ export const addTransaction = (kidId: number, body: { amount: number; note: stri
     body: JSON.stringify(body),
   });
 export const getKidSummary = () => api<KidSummary>('/api/kid/summary');
+export const getKidProfile = () =>
+  api<{ avatar: string | null; googlePicture: string | null }>('/api/kid/profile');
 export const updateKidAvatar = (avatar: string | null) =>
   api<{ avatar: string | null }>('/api/kid/profile', { method: 'PATCH', body: JSON.stringify({ avatar }) });
 
@@ -61,6 +63,7 @@ export const updateSettings = (body: { weeklyAllowance: number }) =>
 export interface Profile {
   name: string | null;
   avatar: string | null;
+  googlePicture: string | null;
 }
 export const getProfile = () => api<Profile>('/api/profile');
 export const updateProfile = (body: { name?: string; avatar?: string | null }) =>

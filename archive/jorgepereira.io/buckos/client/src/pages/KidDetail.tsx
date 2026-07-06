@@ -69,7 +69,7 @@ export default function KidDetail() {
           <>
             <section className="mb-6 rounded-sheet border border-line bg-surface p-5 shadow-card sm:p-6">
               <div className="mb-4 flex flex-wrap items-center gap-3">
-                <Avatar name={data.kid.name} src={data.kid.avatar} size={52} />
+                <Avatar name={data.kid.name} src={data.kid.avatar ?? data.kid.googlePicture} size={52} />
                 <div className="min-w-0 flex-1 basis-[calc(100%-4rem)] sm:basis-auto">
                   <h1 className="truncate font-display text-2xl font-semibold text-ink">{data.kid.name}</h1>
                   <p className="truncate text-sm text-ink-faint">

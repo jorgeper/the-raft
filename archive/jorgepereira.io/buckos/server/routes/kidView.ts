@@ -28,6 +28,16 @@ export function kidViewRoutes(deps: AppDeps): Router {
 
   // The one thing a kid may change: their own profile picture. The kid id
   // comes from the session, so they can never touch another kid's profile.
+  router.get('/api/kid/profile', requireKid, (req, res) => {
+    const user = sessionUser(req)!;
+    const kid = repo.getKid(user.kidId!);
+    if (!kid) {
+      res.status(401).json({ error: 'unauthenticated' });
+      return;
+    }
+    res.json({ avatar: kid.avatar, googlePicture: kid.googlePicture });
+  });
+
   router.patch('/api/kid/profile', requireKid, (req, res) => {
     const user = sessionUser(req)!;
     const kid = repo.getKid(user.kidId!);
@@ -40,7 +50,7 @@ export function kidViewRoutes(deps: AppDeps): Router {
       return;
     }
     const updated = repo.updateKid(kid.id, { avatar: req.body.avatar });
-    res.json({ avatar: updated.avatar });
+    res.json({ avatar: updated.avatar, googlePicture: updated.googlePicture });
   });
 
   return router;

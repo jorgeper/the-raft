@@ -7,7 +7,8 @@ export interface Kid {
   weeklyAllowance: number;
   archived: boolean;
   createdAt: string; // ISO 8601
-  avatar: string | null; // small data URL, cropped square
+  avatar: string | null; // app-set photo (small data URL, cropped square)
+  googlePicture: string | null; // Google account photo URL, refreshed at sign-in
 }
 
 export interface Txn {

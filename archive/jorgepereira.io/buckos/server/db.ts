@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS kids (
   weekly_allowance INTEGER NOT NULL DEFAULT 100,
   archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
-  avatar TEXT
+  avatar TEXT,
+  google_picture TEXT
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -41,8 +42,10 @@ export function openDb(databasePath: string): Database.Database {
   db.exec(SCHEMA);
   // Migrations for databases created before a column existed.
   const kidCols = db.pragma("table_info('kids')") as Array<{ name: string }>;
-  if (!kidCols.some((c) => c.name === 'avatar')) {
-    db.exec('ALTER TABLE kids ADD COLUMN avatar TEXT');
+  for (const col of ['avatar', 'google_picture']) {
+    if (!kidCols.some((c) => c.name === col)) {
+      db.exec(`ALTER TABLE kids ADD COLUMN ${col} TEXT`);
+    }
   }
   return db;
 }

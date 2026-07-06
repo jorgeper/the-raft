@@ -35,6 +35,7 @@ export default function Avatar({
       <img
         src={src}
         alt=""
+        referrerPolicy="no-referrer"
         aria-hidden="true"
         className="inline-block shrink-0 rounded-full object-cover select-none"
         style={{ width: size, height: size }}

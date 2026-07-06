@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { makeTestApp } from './helpers';
+import { recordGooglePicture } from '../../server/profiles';
 
 async function parentAgent(t: ReturnType<typeof makeTestApp>) {
   const agent = request.agent(t.app);
@@ -49,12 +50,12 @@ describe('family settings', () => {
     const t = makeTestApp();
     const agent = await parentAgent(t);
 
-    expect((await agent.get('/api/profile')).body).toEqual({ name: null, avatar: null });
+    expect((await agent.get('/api/profile')).body).toEqual({ name: null, avatar: null, googlePicture: null });
 
     const avatar = 'data:image/jpeg;base64,abc123';
     const patch = await agent.patch('/api/profile').send({ name: 'Mamá', avatar });
     expect(patch.status).toBe(200);
-    expect(patch.body).toEqual({ name: 'Mamá', avatar });
+    expect(patch.body).toEqual({ name: 'Mamá', avatar, googlePicture: null });
 
     // /api/me and the dev user picker pick up the new profile.
     expect((await agent.get('/api/me')).body.user).toMatchObject({ name: 'Mamá', avatar });
@@ -90,6 +91,43 @@ describe('family settings', () => {
     // Parents use the kid form for this; anon is rejected.
     expect((await parent.patch('/api/kid/profile').send({ avatar })).status).toBe(403);
     expect((await request(t.app).patch('/api/kid/profile').send({ avatar })).status).toBe(401);
+  });
+
+  it('falls back to the Google photo and lets the app photo win', async () => {
+    const t = makeTestApp();
+    const parent = await parentAgent(t);
+    await parent.post('/api/kids').send({ name: 'Ana', email: 'ana@gmail.com' });
+    const kidAgent = request.agent(t.app);
+    await kidAgent.post('/api/auth/dev-login').send({ email: 'ana@gmail.com' });
+
+    // Simulate what the Google callback records at sign-in.
+    recordGooglePicture(t.repo, { role: 'kid', email: 'ana@gmail.com', kidId: 1 }, 'https://lh3.googleusercontent.com/ana');
+    recordGooglePicture(t.repo, { role: 'parent', email: 'mom@gmail.com' }, 'https://lh3.googleusercontent.com/mom');
+
+    // No app photo yet → Google photo is the effective avatar everywhere.
+    expect((await kidAgent.get('/api/me')).body.user.avatar).toBe('https://lh3.googleusercontent.com/ana');
+    expect((await parent.get('/api/me')).body.user.avatar).toBe('https://lh3.googleusercontent.com/mom');
+    expect((await kidAgent.get('/api/kid/profile')).body).toEqual({
+      avatar: null,
+      googlePicture: 'https://lh3.googleusercontent.com/ana',
+    });
+
+    // App-set photo overrides…
+    const custom = 'data:image/jpeg;base64,custom';
+    await kidAgent.patch('/api/kid/profile').send({ avatar: custom });
+    expect((await kidAgent.get('/api/me')).body.user.avatar).toBe(custom);
+    await parent.patch('/api/profile').send({ avatar: custom });
+    expect((await parent.get('/api/me')).body.user.avatar).toBe(custom);
+
+    // …and removing it falls back to the Google photo.
+    await kidAgent.patch('/api/kid/profile').send({ avatar: null });
+    expect((await kidAgent.get('/api/me')).body.user.avatar).toBe('https://lh3.googleusercontent.com/ana');
+    await parent.patch('/api/profile').send({ avatar: null });
+    expect((await parent.get('/api/me')).body.user.avatar).toBe('https://lh3.googleusercontent.com/mom');
+
+    // Non-https values are ignored rather than stored.
+    recordGooglePicture(t.repo, { role: 'kid', email: 'ana@gmail.com', kidId: 1 }, 'javascript:alert(1)');
+    expect((await kidAgent.get('/api/kid/profile')).body.googlePicture).toBeNull();
   });
 
   it('is parent-only', async () => {

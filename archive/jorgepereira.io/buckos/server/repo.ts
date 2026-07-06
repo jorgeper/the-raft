@@ -10,7 +10,7 @@ export interface Repo {
   getKid(id: number): Kid | undefined; // non-archived only
   findKidByEmail(email: string): Kid | undefined; // non-archived, case-insensitive
   createKid(k: { name: string; email: string; weeklyAllowance: number; createdAt: string; avatar?: string | null }): Kid;
-  updateKid(id: number, patch: Partial<Pick<Kid, 'name' | 'email' | 'weeklyAllowance' | 'avatar'>>): Kid;
+  updateKid(id: number, patch: Partial<Pick<Kid, 'name' | 'email' | 'weeklyAllowance' | 'avatar' | 'googlePicture'>>): Kid;
   archiveKid(id: number): void;
 
   listTxns(kidId: number): Txn[]; // newest first

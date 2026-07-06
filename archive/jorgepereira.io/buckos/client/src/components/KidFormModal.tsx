@@ -57,7 +57,7 @@ export default function KidFormModal({ kid, onClose, onSaved }: Props) {
     <Modal title={kid ? `Edit ${kid.name}` : 'Add a kid'} onClose={onClose}>
       <form onSubmit={submit} noValidate>
         <div className="mb-4">
-          <AvatarPicker name={name} value={avatar} onChange={setAvatar} />
+          <AvatarPicker name={name} value={avatar} fallbackSrc={kid?.googlePicture} onChange={setAvatar} />
         </div>
 
         <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="kid-name">

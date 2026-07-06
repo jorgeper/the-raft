@@ -15,7 +15,7 @@ export default function KidCard({ kid, onAdd, onWithdraw }: Props) {
     <article className="flex flex-col rounded-sheet border border-line bg-surface p-5 shadow-card transition-shadow hover:shadow-pop">
       <Link to={`/kids/${kid.id}`} className="group -m-2 mb-0 block rounded-card p-2">
         <div className="mb-3 flex items-center gap-3">
-          <Avatar name={kid.name} src={kid.avatar} size={44} />
+          <Avatar name={kid.name} src={kid.avatar ?? kid.googlePicture} size={44} />
           <div className="min-w-0">
             <h2 className="truncate font-display text-xl font-semibold text-ink group-hover:underline">
               {kid.name}

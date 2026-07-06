@@ -31,6 +31,7 @@ export interface Kid {
   weeklyAllowance: number;
   createdAt: string;
   avatar: string | null;
+  googlePicture: string | null;
 }
 
 export interface KidWithDerived extends Kid {
