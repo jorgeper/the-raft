@@ -50,7 +50,10 @@ Whatever the stack, an app `foo` provides:
    default). Containers are disposable; volumes survive redeploys.
 6. **`trust proxy` enabled** (or the framework equivalent) — the app sits behind Caddy and must
    trust `X-Forwarded-*` headers so secure cookies and origin checks work.
-7. **A `README.md`** following the [README conventions](#readme-conventions) below, plus a row
+7. **The shared look and feel** — [`THEME.md`](THEME.md) defines the default theme for every
+   app here (claude.ai-inspired off-whites, terracotta accent, the full token set and component
+   recipes). Copy its token block into the app's `theme.css` and build on `var(--…)` tokens only.
+8. **A `README.md`** following the [README conventions](#readme-conventions) below, plus a row
    and deploy section in the root [`README.md`](README.md).
 
 ## The buckos application architecture (recommended for new apps)
@@ -92,6 +95,7 @@ Key decisions that make this pattern pleasant:
   serves the built client from `dist/client` with an SPA fallback that excludes `/api/` and
   `/auth/`.
 - **Design tokens in `theme.css`** — a second theme is one more `:root[data-theme='…']` block.
+  New apps start from the shared token set in [`THEME.md`](THEME.md) rather than inventing one.
 
 ### The auth pattern (Google sign-in + allowlist)
 

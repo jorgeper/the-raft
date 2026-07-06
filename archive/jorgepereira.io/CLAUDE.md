@@ -22,6 +22,10 @@ Non-negotiable conventions for a new app `foo` at `foo.jorgepereira.io`:
   committed; the real `foo/.env.cloud` exists only on the VPS. Compose reads
   `env_file: ${FOO_ENV_FILE:-foo/.env}`.
 - Persistent data in a named volume mounted at `/app/data` (SQLite via a repo interface).
+- **Look and feel: follow [THEME.md](THEME.md)** — the shared claude.ai-inspired theme (warm
+  off-whites, ink text, terracotta accent, small dense type, serif for headings/big numbers).
+  Copy its token block into the app's `theme.css` and style everything with `var(--…)` only;
+  no hardcoded colors/fonts/radii outside that file.
 - Apps with sign-in copy the buckos auth pattern: `AUTH_MODE=dev|google` (dev = pick-a-user
   screen, no Google needed), server-side Google OAuth, email-allowlist authorization enforced
   server-side on every route, `cookie-session` cookies, session revalidation middleware.

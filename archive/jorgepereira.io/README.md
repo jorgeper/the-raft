@@ -75,6 +75,7 @@ jorgepereira.io/
 ├── docker-compose.yml     # All services
 ├── redeploy.sh            # Rebuild + restart a service on the VPS
 ├── ADDING-AN-APP.md       # The pattern for building/deploying a new app here
+├── THEME.md               # Shared look & feel (design tokens) every app starts from
 ├── CLAUDE.md              # Points Claude Code at the pattern when building apps
 ├── buckos/                # buckos.jorgepereira.io family app (see buckos/README.md)
 ├── playground/            # playground.jorgepereira.io mini-apps (see playground/README.md)
