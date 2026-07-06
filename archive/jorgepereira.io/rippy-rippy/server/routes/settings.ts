@@ -28,6 +28,21 @@ export function settingsRoutes(deps: AppDeps): Router {
     res.json({ settings });
   });
 
+  // What the settings screen needs: the custom avatar and the Google photo
+  // separately (unlike /api/me, which resolves them into one).
+  router.get('/api/profile', requireAuth, (req, res) => {
+    const session = sessionUser(req)!;
+    const user = repo.getUser(session.userId)!;
+    res.json({
+      profile: {
+        email: user.email,
+        name: user.name ?? user.email.split('@')[0],
+        customAvatar: user.avatar,
+        googlePicture: user.googlePicture,
+      },
+    });
+  });
+
   // Profile: display name and avatar. `avatar: null` or `useGooglePhoto`
   // reverts to the Google account photo (the fallback in /api/me).
   router.put('/api/profile', requireAuth, (req, res) => {
