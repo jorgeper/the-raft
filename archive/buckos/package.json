@@ -20,14 +20,14 @@
     "better-sqlite3": "^11.10.0",
     "cookie-session": "^2.1.0",
     "express": "^4.21.2",
-    "google-auth-library": "^9.15.0",
+    "google-auth-library": "^9.15.0"
+  },
+  "devDependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-easy-crop": "^6.1.0",
     "react-router-dom": "^6.28.0",
-    "recharts": "^2.15.0"
-  },
-  "devDependencies": {
+    "recharts": "^2.15.0",
     "@playwright/test": "^1.49.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/better-sqlite3": "^7.6.12",

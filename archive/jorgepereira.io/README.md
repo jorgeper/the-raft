@@ -25,6 +25,7 @@ Three Docker containers managed by docker-compose:
 | **site** | Static website (nginx) | 80 (internal) |
 | **hank** | Telegram bot (FastAPI) | 8000 (internal) |
 | **hank-web** | Memory browser web UI (FastAPI) | 8001 (internal) |
+| **buckos** | Family Ƀuckos app (Express + React, code in [`../buckos`](../buckos)) | 3000 (internal) |
 
 ## How HTTPS and the reverse proxy work
 
@@ -261,6 +262,17 @@ cd /opt/sandbox/jorgepereira.io
 git pull
 docker rm -f $(docker ps -aq --filter name=hank-web)
 docker-compose up -d --build hank-web
+```
+
+### Deploying buckos changes
+
+See [buckos/README.md](../buckos/README.md#vps-deployment-docker--caddy) for full setup. After pushing changes to `main`:
+
+```bash
+ssh jorge@<your-vps-ip>
+cd /opt/sandbox && git pull
+cd jorgepereira.io
+docker-compose up -d --build buckos
 ```
 
 ### Deploying Caddy config changes

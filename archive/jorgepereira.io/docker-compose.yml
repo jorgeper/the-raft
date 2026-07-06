@@ -13,6 +13,7 @@ services:
       - hank
       - hank-web
       - playground
+      - buckos
 
   site:
     build: site
@@ -39,10 +40,18 @@ services:
     volumes:
       - playground_data:/app/data
 
+  buckos:
+    build: ../buckos
+    env_file: ${BUCKOS_ENV_FILE:-../buckos/.env}
+    restart: unless-stopped
+    volumes:
+      - buckos_data:/app/data
+
 volumes:
   caddy_data:
   hank_data:
   playground_data:
+  buckos_data:
   # Legacy volume kept so Docker doesn't error on existing deployments.
   # Data should be migrated from hank_memories to hank_data.
   hank_memories:

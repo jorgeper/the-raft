@@ -65,41 +65,92 @@ may go negative (Bucko debt), and the data model keeps that intact for future fe
 3. Add `https://buckos.example.com/auth/google/callback` to **Authorized redirect URIs**.
 4. Put the client ID/secret in `.env`, set `AUTH_MODE=google` and `APP_ORIGIN=https://buckos.example.com`.
 
-## Deploying to a VPS
+## VPS deployment (Docker + Caddy)
 
-**Requires Node 20+** (Tailwind v4's native tooling won't run on Node 18). On Ubuntu/Debian the
-distro Node is usually too old — install Node 22 LTS first:
+Buckos deploys as one more service in the [jorgepereira.io](../jorgepereira.io/README.md) stack:
+Caddy terminates HTTPS and reverse-proxies `buckos.jorgepereira.io` to the `buckos` container,
+which builds and runs the app on its own Node 22 (the host's Node version doesn't matter). The
+SQLite database lives in the `buckos_data` Docker volume.
+
+```
+Browser → https://buckos.jorgepereira.io → Caddy → buckos:3000 (plain HTTP)
+```
+
+The pieces (already in the repo):
+- `buckos/Dockerfile` — multi-stage build, slim runtime image, `node dist/server/index.js`
+- `buckos/.env.cloud.example` — production config template
+- `jorgepereira.io/docker-compose.yml` — the `buckos` service + `buckos_data` volume
+- `jorgepereira.io/Caddyfile` — the `buckos.jorgepereira.io` block
+
+### One-time setup
+
+**1. DNS:** in Porkbun, add an A record `buckos` → your VPS IP (same as `jorgepereira.io`).
+Verify with `dig buckos.jorgepereira.io +short`.
+
+**2. Google OAuth:** create credentials (section above) with
+`https://buckos.jorgepereira.io` as the origin and
+`https://buckos.jorgepereira.io/auth/google/callback` as the redirect URI.
+
+**3. Configure the environment on the VPS:**
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt-get install -y nodejs
-node --version   # should print v22.x
+ssh jorge@<your-vps-ip>
+cd /opt/sandbox && git pull
+cp buckos/.env.cloud.example buckos/.env.cloud
+nano buckos/.env.cloud     # PARENT_EMAILS, Google client id/secret, SESSION_SECRET
 ```
+
+Generate the session secret with `openssl rand -hex 32`. Leave `DATABASE_PATH=/app/data/buckos.db`
+as is — that's the volume mount.
+
+**4. Point docker-compose at the env file:**
 
 ```bash
-git clone <your-repo> && cd buckos
-npm ci
-cp .env.example .env      # set AUTH_MODE=google, PARENT_EMAILS, secrets, APP_ORIGIN
-npm run build
-npm start                 # or run under systemd/pm2 so it restarts on boot
+cd /opt/sandbox/jorgepereira.io
+echo "BUCKOS_ENV_FILE=../buckos/.env.cloud" >> .env
 ```
 
-The production server serves both the API and the built client from a single port, so a reverse
-proxy just forwards everything:
+**5. Build and start:**
 
-```nginx
-server {
-  server_name buckos.example.com;
-  location / {
-    proxy_pass http://127.0.0.1:3000;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-}
+```bash
+docker-compose up -d --build buckos
+docker-compose restart caddy    # picks up the new Caddyfile block + gets the certificate
 ```
 
-Use HTTPS (e.g. certbot) — Google OAuth requires a secure origin in production. Back up the SQLite
-file at `DATABASE_PATH` to keep your family's history safe.
+**6. Verify:**
+
+```bash
+docker-compose ps
+curl https://buckos.jorgepereira.io/api/health   # {"ok":true}
+```
+
+Then open https://buckos.jorgepereira.io and sign in with a parent Google account.
+
+### Deploying Buckos changes
+
+After pushing changes to `main`:
+
+```bash
+ssh jorge@<your-vps-ip>
+cd /opt/sandbox && git pull
+cd jorgepereira.io
+docker-compose up -d --build buckos
+```
+
+### Useful commands
+
+```bash
+docker-compose logs -f buckos      # follow app logs
+docker-compose restart buckos      # restart the app (data persists in the volume)
+# Back up the family's history:
+docker run --rm -v jorgepereiraio_buckos_data:/data -v "$PWD":/backup alpine \
+  cp /data/buckos.db /backup/buckos-backup.db
+```
+
+### Without Docker
+
+`npm ci && npm run build && npm start` works on any box with **Node 20+** (Tailwind v4 won't run
+on Node 18) — put a reverse proxy with HTTPS in front; Google OAuth requires a secure origin.
 
 ## Theming
 
