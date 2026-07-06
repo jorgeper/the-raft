@@ -32,6 +32,7 @@ Docker containers managed by docker-compose, one per service:
 | **hank-web** | Memory browser web UI (FastAPI) | 8001 (internal) | [hank/README.md](hank/README.md) |
 | **playground** | Mini-apps playground | 8002 (internal) | [playground/README.md](playground/README.md) |
 | **buckos** | Family Ƀuckos app (Express + React) | 3000 (internal) | [buckos/README.md](buckos/README.md) |
+| **rippy-rippy** | Workout tracker for friends (Express + React) | 3001 (internal) | [rippy-rippy/README.md](rippy-rippy/README.md) |
 
 ## How HTTPS and the reverse proxy work
 
@@ -78,6 +79,7 @@ jorgepereira.io/
 ├── THEME.md               # Shared look & feel (design tokens) every app starts from
 ├── CLAUDE.md              # Points Claude Code at the pattern when building apps
 ├── buckos/                # buckos.jorgepereira.io family app (see buckos/README.md)
+├── rippy-rippy/           # rippy-rippy.jorgepereira.io workout tracker (see rippy-rippy/README.md)
 ├── playground/            # playground.jorgepereira.io mini-apps (see playground/README.md)
 ├── site/                  # jorgepereira.io static website
 │   ├── Dockerfile         # nginx serving static files
@@ -286,6 +288,19 @@ cd /opt/sandbox && git pull
 cd jorgepereira.io
 docker rm -f $(docker ps -aq --filter name=buckos)
 docker-compose up -d --build buckos
+```
+
+### Deploying rippy-rippy changes
+
+See [rippy-rippy/README.md](rippy-rippy/README.md#vps-deployment-docker--caddy) for full setup.
+After pushing changes to `main`:
+
+```bash
+ssh jorge@<your-vps-ip>
+cd /opt/sandbox && git pull
+cd jorgepereira.io
+docker rm -f $(docker ps -aq --filter name=rippy-rippy)
+docker-compose up -d --build rippy-rippy
 ```
 
 ### Deploying Caddy config changes

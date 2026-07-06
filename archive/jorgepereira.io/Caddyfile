@@ -10,6 +10,10 @@ buckos.jorgepereira.io {
 	reverse_proxy buckos:3000
 }
 
+rippy-rippy.jorgepereira.io {
+	reverse_proxy rippy-rippy:3001
+}
+
 hank.jorgepereira.io {
 	# Bot endpoints — telegram webhook, email webhook, health check
 	@bot {
