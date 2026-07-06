@@ -1,0 +1,112 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   Buckos design tokens — the single source of truth for theming.
+
+   To add a second theme, define another block like:
+     :root[data-theme='midnight'] { --bg: #14131a; ... }
+   overriding the same custom properties. Everything below (and all
+   Tailwind utilities via the @theme mapping) picks it up automatically.
+   ============================================================ */
+:root {
+  /* Color — warm, Claude-like palette */
+  --bg: #faf9f5; /* cream page background */
+  --surface: #ffffff; /* cards, modals */
+  --surface-sunken: #f2f0e9; /* wells, chart track, table stripes */
+  --ink: #2d2a26; /* primary text, dark charcoal */
+  --ink-muted: #6f6a61; /* secondary text */
+  --ink-faint: #a39d92; /* placeholders, disabled */
+  --line: #e6e2d8; /* hairline borders */
+
+  --accent: #d97757; /* warm coral/terracotta */
+  --accent-strong: #c2603f; /* hover / pressed */
+  --accent-soft: #f7e8e1; /* tinted backgrounds, chips */
+  --accent-ink: #ffffff; /* text on accent */
+
+  --positive: #4f7a4f; /* Bucko gains */
+  --positive-soft: #e9f0e6;
+  --negative: #b0483b; /* Bucko withdrawals / debt */
+  --negative-soft: #f7e7e3;
+
+  --focus-ring: #d97757;
+
+  /* Type */
+  --font-display: 'Lora', Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+
+  /* Shape & depth */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgb(45 42 38 / 0.05), 0 4px 16px rgb(45 42 38 / 0.06);
+  --shadow-pop: 0 4px 12px rgb(45 42 38 / 0.1), 0 12px 40px rgb(45 42 38 / 0.14);
+
+  /* Spacing scale hook (Tailwind's own scale is used for most spacing;
+     this token exists so a denser theme can shrink the whole app) */
+  --space-unit: 0.25rem;
+}
+
+/* Map tokens into Tailwind v4 utilities: bg-page, text-ink, bg-accent,
+   font-display, rounded-card, shadow-card, etc. */
+@theme inline {
+  --color-page: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--surface-sunken);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+
+  --radius-chip: var(--radius-sm);
+  --radius-card: var(--radius-md);
+  --radius-sheet: var(--radius-lg);
+  --radius-pill: var(--radius-pill);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+
+  --spacing: var(--space-unit);
+}
+
+html {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Comfortable tap targets + focus visibility everywhere */
+button,
+a,
+input,
+select {
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Gentle, tasteful motion; respect reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
