@@ -42,9 +42,12 @@ export function buildApp(deps: AppDeps): express.Express {
   app.use(testClockRoutes(deps));
 
   // Serve the built client (production). In dev, Vite serves the client and
-  // proxies /api and /auth here.
-  const clientDir = path.resolve(__dirname, '../client');
-  if (fs.existsSync(clientDir)) {
+  // proxies /api and /auth here — so only ever serve from a real dist/client,
+  // never the raw source tree (which __dirname/../client is under tsx).
+  const clientDir = [path.resolve(__dirname, '../client'), path.resolve(process.cwd(), 'dist/client')].find(
+    (dir) => dir.includes(path.join('dist', 'client')) && fs.existsSync(path.join(dir, 'index.html'))
+  );
+  if (clientDir) {
     app.use(express.static(clientDir));
     app.get(/^\/(?!api\/|auth\/).*/, (_req, res) => {
       res.sendFile(path.join(clientDir, 'index.html'));
