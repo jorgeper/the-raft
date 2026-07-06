@@ -1,0 +1,143 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   Rippy Rippy design tokens — copied from jorgepereira.io/THEME.md,
+   the shared claude.ai-inspired look for every app on the domain.
+   All styling goes through these variables; no hardcoded colors,
+   fonts, radii, or shadows anywhere else.
+   ============================================================ */
+:root {
+  /* surfaces — warm off-whites, elevation by stepping */
+  --page: #faf9f5;
+  --surface: #ffffff;
+  --surface2: #f4f2ec;
+  --surface3: #ece9e2;
+
+  /* text — three steps of warm ink */
+  --ink: #1a1915;
+  --ink2: #52514e;
+  --muted: #87867f;
+
+  /* lines */
+  --border: rgba(26, 25, 21, 0.09);
+  --grid: #e8e6df;
+  --baseline: #d5d3ca;
+
+  /* accent — terracotta, used sparingly */
+  --accent: #d97757;
+  --accent-deep: #a54a2a;
+  --accent-tint: #f7e8e0;
+
+  /* tinted fills */
+  --note-bg: #f2ede4;
+  --hero-grad: linear-gradient(135deg, #f5eee3, #faf3ea);
+  --good-bg: #e9f4e9;
+  --warn-bg: #f8efdd;
+  --crit-bg: #fbeaea;
+
+  /* semantic */
+  --good: #0ca30c;
+  --warn: #b97e0a;
+  --crit: #d03b3b;
+
+  /* categorical chart palette (dataviz light, validated) */
+  --s1: #2a78d6;
+  --s2: #1baf7a;
+  --s3: #eda100;
+  --s4: #008300;
+  --s5: #4a3aa7;
+  --s6: #e34948;
+  --s7: #e87ba4;
+  --s8: #eb6834;
+  --gray: #a3a199;
+
+  /* type — Anthropic Sans / Anthropic Serif first, graceful fallbacks after */
+  --font-sans: 'Anthropic Sans', 'Styrene A', 'Avenir Next', Avenir, -apple-system, 'Segoe UI',
+    system-ui, sans-serif;
+  --font-serif: 'Anthropic Serif', 'Tiempos Headline', ui-serif, Georgia, 'Times New Roman', serif;
+
+  /* shape + depth */
+  --r-ctl: 7px;
+  --r-chip: 18px;
+  --r-card: 12px;
+  --r-panel: 14px;
+  --shadow-card: 0 1px 2px rgba(26, 25, 21, 0.03);
+  --shadow-modal: 0 24px 60px rgba(26, 25, 21, 0.25);
+  --backdrop: rgba(26, 25, 21, 0.35);
+}
+
+/* Map tokens into Tailwind v4 utilities: bg-page, text-ink, border-line,
+   font-serif, rounded-card, shadow-card, text-s1, etc. */
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-surface3: var(--surface3);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-muted: var(--muted);
+  --color-line: var(--border);
+  --color-grid: var(--grid);
+  --color-baseline: var(--baseline);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-tint: var(--accent-tint);
+  --color-note: var(--note-bg);
+  --color-good: var(--good);
+  --color-good-bg: var(--good-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-crit: var(--crit);
+  --color-crit-bg: var(--crit-bg);
+  --color-s1: var(--s1);
+  --color-s2: var(--s2);
+  --color-s3: var(--s3);
+  --color-s4: var(--s4);
+  --color-s5: var(--s5);
+  --color-s6: var(--s6);
+  --color-s7: var(--s7);
+  --color-s8: var(--s8);
+  --color-chart-gray: var(--gray);
+
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+
+  --radius-ctl: var(--r-ctl);
+  --radius-chip: var(--r-chip);
+  --radius-card: var(--r-card);
+  --radius-panel: var(--r-panel);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-modal: var(--shadow-modal);
+}
+
+html {
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent-deep);
+}
+
+button,
+a,
+input,
+select {
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Numbers are data — tabular everywhere they line up. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
