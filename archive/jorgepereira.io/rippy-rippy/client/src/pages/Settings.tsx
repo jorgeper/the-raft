@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { devGenerateDays, devGenerateWorkouts, devReset, importData, putProfile } from '../api';
+import { devGenerateDays, devGenerateWorkouts, devReset, getProfile, importData, putProfile } from '../api';
 import AvatarPicker from '../components/AvatarPicker';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../auth';
@@ -67,12 +67,10 @@ export default function Settings() {
   const importFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    void fetch('/api/profile')
-      .then((r) => r.json())
-      .then(({ profile }: { profile: Profile }) => {
-        setProfile(profile);
-        setName(profile.name);
-      });
+    void getProfile().then(({ profile }) => {
+      setProfile(profile);
+      setName(profile.name);
+    });
   }, []);
 
   async function changeAvatar(avatar: string | null) {

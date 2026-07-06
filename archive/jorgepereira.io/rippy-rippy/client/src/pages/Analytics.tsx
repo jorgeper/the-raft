@@ -62,13 +62,17 @@ export default function Analytics() {
       <h1 className="font-serif text-[17px] font-[600] tracking-[-0.2px] text-ink">Analytics</h1>
 
       <div className="grid grid-cols-3 gap-3">
-        {[
-          [stats.totalDays, 'Workouts'],
-          [stats.uniqueExercises, 'Exercises'],
-          [stats.bestStreak, 'Best streak'],
-        ].map(([value, label]) => (
+        {(
+          [
+            [stats.totalDays, 'Workouts', 'stat-workouts'],
+            [stats.uniqueExercises, 'Exercises', 'stat-exercises'],
+            [stats.bestStreak, 'Best streak', 'stat-streak'],
+          ] as const
+        ).map(([value, label, testId]) => (
           <div key={label} className="rounded-card border border-line bg-surface p-3 text-center shadow-card">
-            <p className="tnum text-[20px] font-[650] tracking-[-0.3px] text-ink">{value}</p>
+            <p data-testid={testId} className="tnum text-[20px] font-[650] tracking-[-0.3px] text-ink">
+              {value}
+            </p>
             <p className="text-[10.5px] uppercase tracking-wider text-muted">{label}</p>
           </div>
         ))}

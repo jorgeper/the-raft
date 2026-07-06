@@ -47,7 +47,7 @@ export default function ExerciseCard({
   const moveBtn = 'rounded-ctl px-2 py-1 text-[13px] text-ink2 hover:bg-surface2 disabled:opacity-30';
 
   return (
-    <div className="rounded-card border border-line bg-surface p-3.5 shadow-card">
+    <div data-testid="exercise-card" className="rounded-card border border-line bg-surface p-3.5 shadow-card">
       <div className="flex items-start justify-between gap-2">
         <span className="font-[600] text-ink">{exercise.exerciseName}</span>
         <span className="flex flex-none items-center gap-0.5">

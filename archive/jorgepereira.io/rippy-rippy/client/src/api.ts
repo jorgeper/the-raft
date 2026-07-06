@@ -91,6 +91,11 @@ export const putSettings = (settings: UserSettings) =>
   http<{ settings: UserSettings }>('PUT', '/api/settings', settings);
 export const putProfile = (patch: { name?: string; avatar?: string | null; useGooglePhoto?: boolean }) =>
   http<{ user: SessionUser & { hasCustomAvatar: boolean } }>('PUT', '/api/profile', patch);
+export const getProfile = () =>
+  http<{ profile: { email: string; name: string; customAvatar: string | null; googlePicture: string | null } }>(
+    'GET',
+    '/api/profile'
+  );
 
 // --- Library ---
 export const getLibrary = () => http<{ library: Library }>('GET', '/api/library');

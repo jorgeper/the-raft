@@ -20,13 +20,13 @@ export default function NumberField({
   onChange,
   integer = false,
   ariaLabel,
-  className = '',
+  className = 'w-16',
 }: {
   value: number;
   onChange: (n: number) => void;
   integer?: boolean;
   ariaLabel: string;
-  className?: string;
+  className?: string; // width class — replaces the default, never combined with it
 }) {
   const [text, setText] = useState(String(value));
   const [focused, setFocused] = useState(false);
@@ -58,7 +58,7 @@ export default function NumberField({
         }
       }}
       className={
-        'tnum w-16 rounded-ctl border border-line bg-surface2 px-2 py-1.5 text-center text-ink ' + className
+        'tnum rounded-ctl border border-line bg-surface2 px-2 py-1.5 text-center text-ink ' + className
       }
     />
   );

@@ -261,14 +261,14 @@ Mirror buckos' test layout: `tests/unit/`, `tests/api/` (Vitest + Supertest), `t
 
 Everything in [`../ADDING-AN-APP.md`](../ADDING-AN-APP.md) §"What every app must have", i.e.:
 
-- [ ] `rippy-rippy/` app: client, server, tests, seed script, this SPEC.md kept up to date
-- [ ] Multi-stage `Dockerfile` (node:22-slim, like buckos), `.dockerignore`
-- [ ] `.env.example` (dev: `AUTH_MODE=dev`, `ALLOWED_EMAILS=jorgeper@gmail.com,friend@gmail.com`,
+- [x] `rippy-rippy/` app: client, server, tests, seed script, this SPEC.md kept up to date
+- [x] Multi-stage `Dockerfile` (node:22-slim, like buckos), `.dockerignore`
+- [x] `.env.example` (dev: `AUTH_MODE=dev`, `ALLOWED_EMAILS=jorgeper@gmail.com,friend@gmail.com`,
       annotated) and `.env.cloud.example` (google mode, `APP_ORIGIN=https://rippy-rippy.jorgepereira.io`)
-- [ ] `docker-compose.yml`: `rippy-rippy` service (`env_file: ${RIPPY_RIPPY_ENV_FILE:-rippy-rippy/.env}`,
+- [x] `docker-compose.yml`: `rippy-rippy` service (`env_file: ${RIPPY_RIPPY_ENV_FILE:-rippy-rippy/.env}`,
       volume `rippy-rippy_data:/app/data`) + caddy `depends_on`
-- [ ] `Caddyfile`: `rippy-rippy.jorgepereira.io { reverse_proxy rippy-rippy:3001 }`
-- [ ] `rippy-rippy/README.md` per the README conventions (quick start, scripts, config, OAuth
+- [x] `Caddyfile`: `rippy-rippy.jorgepereira.io { reverse_proxy rippy-rippy:3001 }`
+- [x] `rippy-rippy/README.md` per the README conventions (quick start, scripts, config, OAuth
       setup, VPS deployment incl. Porkbun DNS A record `rippy-rippy`, redeploy commands, backup)
-- [ ] Root `README.md` updated: services table row, deploy section, README link
-- [ ] All tests green per §9
+- [x] Root `README.md` updated: services table row, deploy section, README link
+- [x] All tests green per §9 (see DECISIONS.md for choices made where the spec left room)

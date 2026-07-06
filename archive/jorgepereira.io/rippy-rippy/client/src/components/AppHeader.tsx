@@ -9,7 +9,10 @@ export default function AppHeader() {
       style={{ background: 'rgba(250,249,245,.94)', backdropFilter: 'blur(10px)' }}
     >
       <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-2">
-        <Link to="/" className="font-serif text-[17px] font-semibold tracking-[-0.2px] text-ink no-underline">
+        <Link
+          to="/"
+          className="font-serif text-[17px] font-semibold tracking-[-0.2px] text-accent-deep no-underline"
+        >
           Rippy Rippy
         </Link>
         <AccountMenu />

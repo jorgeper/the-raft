@@ -111,30 +111,34 @@
   --shadow-modal: var(--shadow-modal);
 }
 
-html {
-  background: var(--page);
-  color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 13.5px;
-  line-height: 1.45;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
+/* Base styles live in the base layer so Tailwind utilities can override
+   them (an unlayered rule would always win over layered utilities). */
+@layer base {
+  html {
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
 
-a {
-  color: var(--accent-deep);
-}
+  a {
+    color: var(--accent-deep);
+  }
 
-button,
-a,
-input,
-select {
-  touch-action: manipulation;
-}
+  button,
+  a,
+  input,
+  select {
+    touch-action: manipulation;
+  }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
 /* Numbers are data — tabular everywhere they line up. */
