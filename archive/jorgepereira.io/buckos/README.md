@@ -135,8 +135,12 @@ After pushing changes to `main`:
 ssh jorge@<your-vps-ip>
 cd /opt/sandbox && git pull
 cd jorgepereira.io
+docker rm -f $(docker ps -aq --filter name=buckos)
 docker-compose up -d --build buckos
 ```
+
+(The `docker rm -f` sidesteps docker-compose v1's `KeyError: 'ContainerConfig'` bug when
+recreating containers — same as the other services. Data is safe in the `buckos_data` volume.)
 
 ### Useful commands
 

@@ -273,6 +273,7 @@ See [buckos/README.md](buckos/README.md#vps-deployment-docker--caddy) for full s
 ssh jorge@<your-vps-ip>
 cd /opt/sandbox && git pull
 cd jorgepereira.io
+docker rm -f $(docker ps -aq --filter name=buckos)
 docker-compose up -d --build buckos
 ```
 
