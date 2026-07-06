@@ -1,0 +1,336 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ---------- sidebar ---------- */
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid #e5e7eb;
+  background: #fff;
+  padding: 16px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar h1 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+.file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.file-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  margin-bottom: 2px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+}
+
+.file-list button:hover {
+  background: #f3f4f6;
+}
+
+.file-list button.selected {
+  background: #e0e7ff;
+  color: #3730a3;
+  font-weight: 600;
+}
+
+/* ---------- layout ---------- */
+.content {
+  flex: 1;
+  padding: 0 24px 64px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  position: sticky;
+  top: 0;
+  background: #f3f4f6;
+  z-index: 5;
+}
+
+.docname {
+  font-weight: 600;
+}
+
+.workspace {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.docwrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.placeholder {
+  color: #6b7280;
+  padding: 32px;
+}
+
+.doc {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  padding: 40px 48px;
+  max-width: 780px;
+  line-height: 1.65;
+}
+
+.panel {
+  width: 320px;
+  flex-shrink: 0;
+}
+
+/* ---------- markdown ---------- */
+.doc h1,
+.doc h2,
+.doc h3 {
+  line-height: 1.25;
+}
+
+.doc pre {
+  background: #f6f8fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+
+.doc code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.doc blockquote {
+  margin: 0;
+  padding: 4px 16px;
+  border-left: 4px solid #d1d5db;
+  color: #4b5563;
+}
+
+.doc table {
+  border-collapse: collapse;
+}
+
+.doc th,
+.doc td {
+  border: 1px solid #d1d5db;
+  padding: 6px 12px;
+}
+
+.doc th {
+  background: #f9fafb;
+}
+
+/* ---------- highlights ---------- */
+mark.hl {
+  background: rgba(250, 204, 21, 0.4);
+  color: inherit;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+mark.hl mark.hl {
+  background: rgba(245, 158, 11, 0.45); /* overlap = darker */
+}
+
+mark.hl.active {
+  background: rgba(245, 158, 11, 0.8);
+}
+
+mark.hl.flash {
+  animation: hl-flash 0.9s ease-out;
+}
+
+@keyframes hl-flash {
+  0% {
+    background: rgba(239, 68, 68, 0.55);
+  }
+  100% {
+    background: rgba(250, 204, 21, 0.4);
+  }
+}
+
+/* ---------- floating add button ---------- */
+.add-comment-btn {
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 50;
+  background: #111827;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* ---------- cards ---------- */
+.card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.card.active {
+  border-color: #f59e0b;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.card.orphaned {
+  border-style: dashed;
+}
+
+.card textarea {
+  width: 100%;
+  min-height: 56px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  resize: vertical;
+}
+
+.card .row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.card .row button {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.card .row button:hover {
+  background: #f3f4f6;
+}
+
+.card .row button.danger {
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+
+.entry {
+  margin-bottom: 6px;
+}
+
+.entry.reply {
+  border-top: 1px solid #f3f4f6;
+  padding-top: 6px;
+  margin-left: 10px;
+}
+
+.entry-meta .time {
+  color: #9ca3af;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.entry .body {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+
+.badge.orphan {
+  display: inline-block;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.orphan-quote {
+  margin: 4px 0;
+  padding: 2px 8px;
+  border-left: 3px solid #fca5a5;
+  color: #6b7280;
+  font-style: italic;
+  font-size: 12px;
+}
+
+.confirm-label {
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+.resolved-section {
+  margin-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+}
+
+.resolved-section summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.card.resolved-card {
+  opacity: 0.75;
+}
+
+/* ---------- toolbar button ---------- */
+.toolbar button {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.toolbar button:hover {
+  background: #f9fafb;
+}

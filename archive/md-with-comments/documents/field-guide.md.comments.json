@@ -1,0 +1,86 @@
+{
+  "comments": [
+    {
+      "id": "f45233b8-8bf9-4860-96e5-298959382378",
+      "author": "Reviewer",
+      "createdAt": "2026-07-06T12:39:03.950Z",
+      "body": "test",
+      "resolved": false,
+      "thread": [
+        {
+          "id": "483bfef2-d739-40d9-b380-c05bcd76f382",
+          "author": "Reviewer",
+          "createdAt": "2026-07-06T12:39:12.669Z",
+          "body": "foo"
+        }
+      ],
+      "anchor": {
+        "exact": " fofofof type the renderer supports, and it is comfortably longer than two thousand words so that margin a",
+        "prefix": "entionally mixes every block fof",
+        "suffix": "lignment can be tested far below",
+        "start": 173,
+        "end": 279
+      }
+    },
+    {
+      "id": "d3a35e22-863f-4303-978c-68949da7be39",
+      "author": "Reviewer",
+      "createdAt": "2026-07-06T12:39:32.285Z",
+      "body": "bar",
+      "resolved": false,
+      "thread": [],
+      "anchor": {
+        "exact": "This section covers the mental model behind the system. Clicking a highlight brings its card into focus and the reverse works the same way.",
+        "prefix": " reference notes.\nCore Concepts\n",
+        "suffix": " Resolved conversations collapse",
+        "start": 1962,
+        "end": 2101
+      }
+    },
+    {
+      "id": "734c9a7b-34c4-481f-9fa4-57e954344b1e",
+      "author": "Reviewer",
+      "createdAt": "2026-07-06T12:41:22.754Z",
+      "body": "test test",
+      "resolved": false,
+      "thread": [],
+      "anchor": {
+        "exact": "documents stay responsive because re-anchoring runs in a single linear pass. The document model treats the rendered text as the single source of truth for positions. Every selection is captured ",
+        "prefix": "re notes for the project.\nLarge ",
+        "suffix": "with enough redundancy to surviv",
+        "start": 2279,
+        "end": 2473
+      }
+    },
+    {
+      "id": "dfcff2b5-c1a0-4e64-bf72-61054046ef49",
+      "author": "Reviewer",
+      "createdAt": "2026-07-06T12:41:56.359Z",
+      "body": "I am not sure I like this text",
+      "resolved": false,
+      "thread": [],
+      "anchor": {
+        "exact": "This section covers installation and first steps. The document model treats the rendered text as the single source of truth for positions. Every selection is captured with",
+        "prefix": "e requirements.\nGetting Started\n",
+        "suffix": " enough redundancy to survive or",
+        "start": 395,
+        "end": 566
+      }
+    },
+    {
+      "id": "56fb9628-1504-4914-a4af-58f0f722a135",
+      "author": "Reviewer",
+      "createdAt": "2026-07-06T12:42:06.877Z",
+      "body": "Getting Started??",
+      "resolved": false,
+      "thread": [],
+      "anchor": {
+        "exact": "// Getting Started:",
+        "prefix": "e the anchored passage itself.\n\n",
+        "suffix": " illustrative snippet, not execu",
+        "start": 1483,
+        "end": 1502
+      }
+    }
+  ]
+}
