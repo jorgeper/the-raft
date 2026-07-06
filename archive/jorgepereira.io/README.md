@@ -1,6 +1,9 @@
 # jorgepereira.io
 
-Everything that runs under the `jorgepereira.io` domain — the main website and the Hank Telegram bot.
+Everything that runs under the `jorgepereira.io` domain — the main website plus one app per subdomain.
+
+**Adding a new app?** Follow [ADDING-AN-APP.md](ADDING-AN-APP.md) — the full pattern (app
+architecture, Google auth, Caddy/compose/DNS wiring, deployment, README conventions).
 
 ## Architecture
 
@@ -8,24 +11,27 @@ Everything that runs under the `jorgepereira.io` domain — the main website and
 Internet
   │
   ▼
-┌─────────────────────────────────────────────┐
-│  Caddy (ports 80 + 443)                     │
-│  Automatic HTTPS via Let's Encrypt          │
-│                                             │
-│  jorgepereira.io      → site container :80  │
-│  hank.jorgepereira.io → hank container :8000│
-└─────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  Caddy (ports 80 + 443)                                │
+│  Automatic HTTPS via Let's Encrypt                     │
+│                                                        │
+│  jorgepereira.io            → site container :80       │
+│  hank.jorgepereira.io       → hank :8000 / hank-web :8001 │
+│  playground.jorgepereira.io → playground container :8002 │
+│  buckos.jorgepereira.io     → buckos container :3000   │
+└────────────────────────────────────────────────────────┘
 ```
 
-Three Docker containers managed by docker-compose:
+Docker containers managed by docker-compose, one per service:
 
-| Service | What it does | Internal port |
-|---------|-------------|---------------|
-| **caddy** | Reverse proxy + HTTPS termination | 80, 443 (exposed) |
-| **site** | Static website (nginx) | 80 (internal) |
-| **hank** | Telegram bot (FastAPI) | 8000 (internal) |
-| **hank-web** | Memory browser web UI (FastAPI) | 8001 (internal) |
-| **buckos** | Family Ƀuckos app (Express + React, code in [`buckos/`](buckos)) | 3000 (internal) |
+| Service | What it does | Internal port | Docs |
+|---------|-------------|---------------|------|
+| **caddy** | Reverse proxy + HTTPS termination | 80, 443 (exposed) | — |
+| **site** | Static website (nginx) | 80 (internal) | — |
+| **hank** | Telegram bot (FastAPI) | 8000 (internal) | [hank/README.md](hank/README.md) |
+| **hank-web** | Memory browser web UI (FastAPI) | 8001 (internal) | [hank/README.md](hank/README.md) |
+| **playground** | Mini-apps playground | 8002 (internal) | [playground/README.md](playground/README.md) |
+| **buckos** | Family Ƀuckos app (Express + React) | 3000 (internal) | [buckos/README.md](buckos/README.md) |
 
 ## How HTTPS and the reverse proxy work
 
@@ -67,7 +73,11 @@ Docker networking lets Caddy reach the other containers by service name (`site`,
 jorgepereira.io/
 ├── Caddyfile              # Shared Caddy config — routes domains to services
 ├── docker-compose.yml     # All services
+├── redeploy.sh            # Rebuild + restart a service on the VPS
+├── ADDING-AN-APP.md       # The pattern for building/deploying a new app here
+├── CLAUDE.md              # Points Claude Code at the pattern when building apps
 ├── buckos/                # buckos.jorgepereira.io family app (see buckos/README.md)
+├── playground/            # playground.jorgepereira.io mini-apps (see playground/README.md)
 ├── site/                  # jorgepereira.io static website
 │   ├── Dockerfile         # nginx serving static files
 │   └── html/
@@ -305,15 +315,21 @@ docker-compose start hank          # start it again
 
 ## Adding a new service
 
-To add another subdomain (e.g. `foo.jorgepereira.io`):
+**Read [ADDING-AN-APP.md](ADDING-AN-APP.md)** — the full pattern for building and shipping a new
+app at `foo.jorgepereira.io`, with [`buckos/`](buckos) as the reference implementation. The short
+version:
 
-1. Create a `foo/` directory with a Dockerfile
-2. Add the service to `docker-compose.yml`
+1. Build the app in a self-contained `foo/` directory: multi-stage Dockerfile, `/api/health`
+   endpoint, `.env.example` + `.env.cloud.example`, data in a volume at `/app/data`
+2. Add the service (and its volume) to `docker-compose.yml`
 3. Add a block to the `Caddyfile`:
    ```
    foo.jorgepereira.io {
        reverse_proxy foo:<port>
    }
    ```
-4. Add a DNS A record for `foo.jorgepereira.io` pointing to the VPS
-5. Redeploy — Caddy will automatically get a certificate for the new domain
+4. Add a DNS A record for `foo` in Porkbun pointing to the VPS
+5. On the VPS: create `foo/.env.cloud`, add `FOO_ENV_FILE=foo/.env.cloud` to `.env`, then
+   `docker-compose up -d --build foo && docker-compose restart caddy` — Caddy gets the
+   certificate automatically
+6. Write `foo/README.md` and update this README (services table + deploy section)
