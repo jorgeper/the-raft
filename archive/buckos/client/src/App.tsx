@@ -5,12 +5,13 @@ import NotAllowed from './pages/NotAllowed';
 import ParentDashboard from './pages/ParentDashboard';
 import KidDetail from './pages/KidDetail';
 import KidHome from './pages/KidHome';
+import Settings from './pages/Settings';
 import type { ReactNode } from 'react';
 
 function FullScreenLoader() {
   return (
     <main className="flex min-h-screen items-center justify-center" aria-busy="true">
-      <p className="animate-pulse font-display text-2xl text-ink-faint">Buckos…</p>
+      <p className="animate-pulse font-display text-2xl text-ink-faint">Ƀuckos…</p>
     </main>
   );
 }
@@ -42,6 +43,14 @@ export default function App() {
           element={
             <ParentOnly>
               <KidDetail />
+            </ParentOnly>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ParentOnly>
+              <Settings />
             </ParentOnly>
           }
         />

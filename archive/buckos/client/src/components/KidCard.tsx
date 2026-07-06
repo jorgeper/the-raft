@@ -20,7 +20,7 @@ export default function KidCard({ kid, onAdd, onWithdraw }: Props) {
             <h2 className="truncate font-display text-xl font-semibold text-ink group-hover:underline">
               {kid.name}
             </h2>
-            <p className="text-sm text-ink-faint">Resets to Ƀ {kid.weeklyAllowance} on Monday</p>
+            <p className="text-sm text-ink-faint">Resets to Ƀ{kid.weeklyAllowance} on Monday</p>
           </div>
         </div>
 

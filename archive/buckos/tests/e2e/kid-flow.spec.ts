@@ -13,7 +13,7 @@ test('kid sees a read-only view of only their own data', async ({ page }) => {
 
   // Their own read-only page: balance, chart, ledger.
   await expect(page.getByText(`, ${name}! You have`)).toBeVisible();
-  await expect(page.getByText('Your week in Buckos')).toBeVisible();
+  await expect(page.getByText('Your week in Ƀuckos')).toBeVisible();
   await expect(page.getByText('Weekly reset to 100')).toBeVisible();
 
   // No admin affordances anywhere.
@@ -25,7 +25,7 @@ test('kid sees a read-only view of only their own data', async ({ page }) => {
   // Deep-linking into parent routes bounces back to their own page.
   await page.goto('/kids/1');
   await page.waitForURL('**/');
-  await expect(page.getByText('Your week in Buckos')).toBeVisible();
+  await expect(page.getByText('Your week in Ƀuckos')).toBeVisible();
 
   // And the parent API is forbidden server-side, not just hidden.
   expect((await page.request.get('/api/kids')).status()).toBe(403);

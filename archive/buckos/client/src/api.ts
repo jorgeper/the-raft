@@ -47,3 +47,7 @@ export const addTransaction = (kidId: number, body: { amount: number; note: stri
     body: JSON.stringify(body),
   });
 export const getKidSummary = () => api<KidSummary>('/api/kid/summary');
+
+export const getSettings = () => api<{ weeklyAllowance: number }>('/api/settings');
+export const updateSettings = (body: { weeklyAllowance: number }) =>
+  api<{ weeklyAllowance: number }>('/api/settings', { method: 'PATCH', body: JSON.stringify(body) });

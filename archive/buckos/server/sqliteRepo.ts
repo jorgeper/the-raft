@@ -123,6 +123,19 @@ export class SqliteRepo implements Repo {
     return row?.created_at;
   }
 
+  getSetting(key: string): string | undefined {
+    const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined;
+    return row?.value;
+  }
+
+  setSetting(key: string, value: string): void {
+    this.db
+      .prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+      .run(key, value);
+  }
+
   private mustGetAnyKid(id: number): Kid {
     const row = this.db.prepare('SELECT * FROM kids WHERE id = ?').get(id) as KidRow;
     return toKid(row);

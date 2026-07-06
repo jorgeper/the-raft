@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { AppDeps } from '../app';
 import { requireParent, sessionUser } from '../authz';
 import { chartData, ensureResets, RESET_NOTE } from '../ledger';
+import { defaultAllowance } from './settings';
 import type { Kid } from '../types';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -35,7 +36,7 @@ export function kidsRoutes(deps: AppDeps): Router {
   router.post('/api/kids', (req, res) => {
     const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
     const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-    const weeklyAllowance = parseAllowance(req.body?.weeklyAllowance, 100);
+    const weeklyAllowance = parseAllowance(req.body?.weeklyAllowance, defaultAllowance(repo));
     if (!name) return badRequest(res, 'name-required');
     if (!EMAIL_RE.test(email)) return badRequest(res, 'invalid-email');
     if (weeklyAllowance === null) return badRequest(res, 'invalid-allowance');
@@ -111,7 +112,6 @@ export function kidsRoutes(deps: AppDeps): Router {
     const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
     const direction = req.body?.direction;
     if (!Number.isInteger(amount) || amount <= 0) return badRequest(res, 'invalid-amount');
-    if (!note) return badRequest(res, 'note-required');
     if (direction !== 'add' && direction !== 'withdraw') return badRequest(res, 'invalid-direction');
 
     // Apply any pending weekly reset first so it lands before this entry.

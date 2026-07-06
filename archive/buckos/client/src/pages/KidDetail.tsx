@@ -71,7 +71,7 @@ export default function KidDetail() {
                 <div className="min-w-0 flex-1 basis-[calc(100%-4rem)] sm:basis-auto">
                   <h1 className="truncate font-display text-2xl font-semibold text-ink">{data.kid.name}</h1>
                   <p className="truncate text-sm text-ink-faint">
-                    {data.kid.email} · resets to Ƀ {data.kid.weeklyAllowance} on Monday
+                    {data.kid.email} · resets to Ƀ{data.kid.weeklyAllowance} on Monday
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -100,7 +100,7 @@ export default function KidDetail() {
                 {formatBuckos(data.balance)}
               </p>
               {data.balance < 0 && (
-                <p className="mb-3 -mt-1 text-sm text-negative">In Bucko debt — good deeds pay it down.</p>
+                <p className="mb-3 -mt-1 text-sm text-negative">In Ƀucko debt — good deeds pay it down.</p>
               )}
 
               <BalanceChart data={data.chart} height={120} />
@@ -111,14 +111,14 @@ export default function KidDetail() {
                   onClick={() => setDirection('add')}
                   className="min-h-12 flex-1 rounded-pill bg-accent font-medium text-accent-ink transition-colors hover:bg-accent-strong"
                 >
-                  Give Buckos
+                  Give Ƀuckos
                 </button>
                 <button
                   type="button"
                   onClick={() => setDirection('withdraw')}
                   className="min-h-12 flex-1 rounded-pill border border-line font-medium text-ink transition-colors hover:bg-sunken"
                 >
-                  Take Buckos
+                  Take Ƀuckos
                 </button>
               </div>
             </section>

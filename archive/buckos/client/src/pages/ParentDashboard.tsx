@@ -36,9 +36,8 @@ export default function ParentDashboard() {
     <div className="min-h-screen pb-16">
       <AppHeader />
       <main className="mx-auto w-full max-w-5xl px-4 sm:px-6">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">The family</h1>
-          {kids !== null && kids.length > 0 && (
+        {kids !== null && kids.length > 0 && (
+          <div className="mb-4 flex items-center justify-end">
             <button
               type="button"
               onClick={() => setShowAddKid(true)}
@@ -46,8 +45,8 @@ export default function ParentDashboard() {
             >
               + Add kid
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {kids === null && <SkeletonGrid />}
 
@@ -122,7 +121,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
       </div>
       <h2 className="font-display text-2xl font-semibold text-ink">Start the family bank</h2>
       <p className="mt-2 mb-6 text-ink-muted">
-        Add your first kid and they’ll get their weekly allowance of Buckos right away.
+        Add your first kid and they’ll get their weekly allowance of Ƀuckos right away.
       </p>
       <button
         type="button"

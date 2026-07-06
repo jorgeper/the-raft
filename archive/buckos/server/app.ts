@@ -9,6 +9,7 @@ import { authRoutes, revalidateSession } from './routes/auth';
 import { kidsRoutes } from './routes/kids';
 import { kidViewRoutes } from './routes/kidView';
 import { testClockRoutes } from './routes/testClock';
+import { settingsRoutes } from './routes/settings';
 
 export interface AppDeps {
   config: Config;
@@ -39,6 +40,7 @@ export function buildApp(deps: AppDeps): express.Express {
   app.use(authRoutes(deps));
   app.use(kidsRoutes(deps));
   app.use(kidViewRoutes(deps));
+  app.use(settingsRoutes(deps));
   app.use(testClockRoutes(deps));
 
   // Serve the built client (production). In dev, Vite serves the client and

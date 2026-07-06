@@ -15,5 +15,5 @@ test('an email that is not on the list is rejected', async ({ page }) => {
 test('anonymous visitors are sent to the login screen', async ({ page }) => {
   await page.goto('/');
   await page.waitForURL('**/login');
-  await expect(page.getByText('The family bank of good choices.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ƀuckos' })).toBeVisible();
 });

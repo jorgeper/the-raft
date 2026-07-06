@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { devLogin, getAuthMode, getDevUsers } from '../api';
 import { useAuth } from '../auth';
 import type { DevUser } from '../types';
-import Coin from '../components/Coin';
 import Avatar from '../components/Avatar';
 
 export default function Login() {
@@ -27,7 +26,7 @@ export default function Login() {
           setDevUsers(users);
         }
       })
-      .catch(() => setError('Buckos could not reach its server. Refresh to try again.'));
+      .catch(() => setError('Ƀuckos could not reach its server. Refresh to try again.'));
   }, []);
 
   const pick = async (email: string) => {
@@ -50,11 +49,9 @@ export default function Login() {
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex animate-[coin-drop_0.6s_cubic-bezier(0.34,1.56,0.64,1)]">
-            <Coin size={64} />
-          </div>
-          <h1 className="font-display text-5xl font-semibold tracking-tight text-ink">Buckos</h1>
-          <p className="mt-3 text-lg text-ink-muted">The family bank of good choices.</p>
+          <h1 className="animate-[coin-drop_0.6s_cubic-bezier(0.34,1.56,0.64,1)] font-display text-6xl font-semibold tracking-tight text-ink">
+            Ƀuckos
+          </h1>
         </div>
 
         <div className="rounded-sheet border border-line bg-surface p-6 shadow-card">

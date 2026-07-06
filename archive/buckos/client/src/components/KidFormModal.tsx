@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import Modal from './Modal';
-import { createKid, updateKid, ApiError } from '../api';
+import { createKid, getSettings, updateKid, ApiError } from '../api';
 import type { Kid } from '../types';
 
 interface Props {
@@ -22,6 +22,15 @@ export default function KidFormModal({ kid, onClose, onSaved }: Props) {
   const [allowance, setAllowance] = useState(String(kid?.weeklyAllowance ?? 100));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // New kids start from the family-wide default allowance (see Settings).
+  useEffect(() => {
+    if (!kid) {
+      void getSettings()
+        .then(({ weeklyAllowance }) => setAllowance(String(weeklyAllowance)))
+        .catch(() => {});
+    }
+  }, [kid]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -70,7 +79,7 @@ export default function KidFormModal({ kid, onClose, onSaved }: Props) {
           placeholder="maya@gmail.com"
           className="mb-1 min-h-12 w-full rounded-card border border-line bg-surface px-4 text-ink placeholder:text-ink-faint focus:border-accent"
         />
-        <p className="mb-4 text-sm text-ink-faint">They’ll use this Google account to see their Buckos.</p>
+        <p className="mb-4 text-sm text-ink-faint">They’ll use this Google account to see their Ƀuckos.</p>
 
         <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="kid-allowance">
           Weekly allowance

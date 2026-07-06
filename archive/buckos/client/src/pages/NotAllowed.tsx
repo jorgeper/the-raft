@@ -14,7 +14,7 @@ export default function NotAllowed() {
         </div>
         <h1 className="font-display text-3xl font-semibold text-ink">You're not on the list yet</h1>
         <p className="mt-3 text-ink-muted">
-          Buckos is invite-only for each family. Ask a parent to add your Gmail address, then sign in
+          Ƀuckos is invite-only for each family. Ask a parent to add your Gmail address, then sign in
           again.
         </p>
         <button

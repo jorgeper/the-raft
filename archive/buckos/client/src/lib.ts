@@ -1,8 +1,8 @@
 import type { Txn } from './types';
 
-/** "Ƀ 85" or "−Ƀ 15" — the minus sits outside the coin sign. */
+/** "Ƀ85" or "−Ƀ15" — the minus sits outside the coin sign. */
 export function formatBuckos(n: number): string {
-  return `${n < 0 ? '−' : ''}Ƀ ${Math.abs(n)}`;
+  return `${n < 0 ? '−' : ''}Ƀ${Math.abs(n)}`;
 }
 
 /** "+5" / "−15" for ledger rows. */

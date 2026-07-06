@@ -9,21 +9,21 @@ test('parent adds a kid, gives and takes Buckos, and sees the ledger update', as
   await addKid(page, { name, email });
 
   const card = page.locator('article').filter({ hasText: name });
-  await expect(card.getByText('Ƀ 100', { exact: true })).toBeVisible();
+  await expect(card.getByText('Ƀ100', { exact: true })).toBeVisible();
 
   // Give 5 with a note
   await card.getByRole('button', { name: 'Give' }).click();
-  await page.getByLabel('How many Buckos?').fill('5');
+  await page.getByLabel('How many Ƀuckos?').fill('5');
   await page.getByLabel('What for?').fill('Helped with dishes');
-  await page.getByRole('button', { name: 'Give Buckos' }).click();
-  await expect(card.getByText('Ƀ 105', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Give Ƀuckos' }).click();
+  await expect(card.getByText('Ƀ105', { exact: true })).toBeVisible();
 
   // Take 15 with a note
   await card.getByRole('button', { name: 'Take' }).click();
-  await page.getByLabel('How many Buckos?').fill('15');
+  await page.getByLabel('How many Ƀuckos?').fill('15');
   await page.getByLabel('What for?').fill('Left bike in the rain');
-  await page.getByRole('button', { name: 'Take Buckos' }).click();
-  await expect(card.getByText('Ƀ 90', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Take Ƀuckos' }).click();
+  await expect(card.getByText('Ƀ90', { exact: true })).toBeVisible();
 
   // Detail page shows the full ledger with signed amounts
   await page.getByRole('heading', { name }).click();

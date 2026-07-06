@@ -4,7 +4,6 @@ import type { KidSummary } from '../types';
 import AppHeader from '../components/AppHeader';
 import BalanceChart from '../components/BalanceChart';
 import TransactionList from '../components/TransactionList';
-import Coin from '../components/Coin';
 import { formatBuckos } from '../lib';
 
 /** The kid's whole world: balance, week, ledger. Strictly read-only. */
@@ -24,7 +23,7 @@ export default function KidHome() {
       <main className="mx-auto w-full max-w-2xl px-4 sm:px-6">
         {error && (
           <p role="alert" className="rounded-card bg-negative-soft px-4 py-3 text-negative">
-            Couldn’t load your Buckos. Pull to refresh or try again in a bit.
+            Couldn’t load your Ƀuckos. Pull to refresh or try again in a bit.
           </p>
         )}
 
@@ -39,23 +38,19 @@ export default function KidHome() {
                 {greeting()}, {data.kid.name}! You have
               </p>
               <p
-                className={`mb-1 inline-flex items-center gap-3 font-display text-7xl font-semibold tracking-tight ${
+                className={`animate-[coin-drop_0.5s_cubic-bezier(0.34,1.56,0.64,1)] font-display text-7xl font-semibold tracking-tight ${
                   data.balance < 0 ? 'text-negative' : 'text-ink'
                 }`}
               >
-                <span className="animate-[coin-drop_0.5s_cubic-bezier(0.34,1.56,0.64,1)]">
-                  <Coin size={44} />
-                </span>
-                {formatBuckos(data.balance).replace('Ƀ ', '')}
+                {formatBuckos(data.balance)}
               </p>
-              <p className="text-lg text-ink-muted">Buckos</p>
               {data.balance < 0 ? (
                 <p className="mt-3 text-sm text-negative">
-                  You’re in Bucko debt — good choices will earn it back.
+                  You’re in Ƀucko debt — good choices will earn it back.
                 </p>
               ) : (
                 <p className="mt-3 text-sm text-ink-faint">
-                  Your allowance of Ƀ {data.kid.weeklyAllowance} lands every Monday.
+                  Your allowance of Ƀ{data.kid.weeklyAllowance} lands every Monday.
                 </p>
               )}
 
@@ -65,7 +60,7 @@ export default function KidHome() {
             </section>
 
             <section>
-              <h2 className="mb-2 px-1 font-display text-xl font-semibold text-ink">Your week in Buckos</h2>
+              <h2 className="mb-2 px-1 font-display text-xl font-semibold text-ink">Your week in Ƀuckos</h2>
               <TransactionList txns={data.transactions} />
             </section>
           </>

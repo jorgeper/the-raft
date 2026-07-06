@@ -17,4 +17,7 @@ export interface Repo {
   addTxn(t: Omit<Txn, 'id'>): Txn;
   balance(kidId: number): number; // SUM(amount) over the kid's ledger
   lastResetAt(kidId: number): string | undefined; // created_at of most recent reset entry
+
+  getSetting(key: string): string | undefined;
+  setSetting(key: string, value: string): void;
 }

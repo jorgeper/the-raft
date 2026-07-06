@@ -119,17 +119,22 @@ describe('transactions', () => {
     expect(res.body.transaction.amount).toBe(-150);
   });
 
-  it('validates amount and note', async () => {
+  it('validates amount and direction', async () => {
     const bad = [
       { amount: 0, note: 'x', direction: 'add' },
       { amount: -5, note: 'x', direction: 'add' },
       { amount: 1.5, note: 'x', direction: 'add' },
-      { amount: 5, note: '   ', direction: 'add' },
       { amount: 5, note: 'x', direction: 'sideways' },
     ];
     for (const body of bad) {
       expect((await agent.post(`/api/kids/${kidId}/transactions`).send(body)).status).toBe(400);
     }
+  });
+
+  it('treats the note as optional', async () => {
+    const res = await agent.post(`/api/kids/${kidId}/transactions`).send({ amount: 5, direction: 'add' });
+    expect(res.status).toBe(201);
+    expect(res.body.transaction.note).toBe('');
   });
 });
 

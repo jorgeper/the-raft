@@ -8,7 +8,7 @@ import Coin from './Coin';
  */
 export default function TransactionList({ txns, showActor = false }: { txns: Txn[]; showActor?: boolean }) {
   if (txns.length === 0) {
-    return <p className="py-8 text-center text-ink-faint">No Buckos moved yet.</p>;
+    return <p className="py-8 text-center text-ink-faint">No Ƀuckos moved yet.</p>;
   }
 
   return (
@@ -45,7 +45,9 @@ export default function TransactionList({ txns, showActor = false }: { txns: Txn
                       {t.amount >= 0 ? '+' : '−'}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-ink">{t.note}</span>
+                      <span className={`block truncate font-medium ${t.note ? 'text-ink' : 'text-ink-faint italic'}`}>
+                        {t.note || (t.amount >= 0 ? 'Ƀuckos given' : 'Ƀuckos taken')}
+                      </span>
                       <span className="block truncate text-sm text-ink-faint">
                         {timeLabel(t.createdAt)}
                         {showActor && t.actorEmail ? ` · by ${t.actorEmail.split('@')[0]}` : ''}

@@ -23,17 +23,17 @@ test('weekly reset restores the allowance and writes a ledger entry', async ({ p
 
   const card = page.locator('article').filter({ hasText: name });
   await card.getByRole('button', { name: 'Take' }).click();
-  await page.getByLabel('How many Buckos?').fill('40');
+  await page.getByLabel('How many Ƀuckos?').fill('40');
   await page.getByLabel('What for?').fill('Skipped chores');
-  await page.getByRole('button', { name: 'Take Buckos' }).click();
-  await expect(card.getByText('Ƀ 60', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Take Ƀuckos' }).click();
+  await expect(card.getByText('Ƀ60', { exact: true })).toBeVisible();
 
   // Freeze time just past the next Monday boundary and reload.
   await page.request.post('/api/test/clock', {
     data: { time: nextMondayMorning(new Date()).toISOString() },
   });
   await page.reload();
-  await expect(card.getByText('Ƀ 100', { exact: true })).toBeVisible();
+  await expect(card.getByText('Ƀ100', { exact: true })).toBeVisible();
 
   await page.getByRole('heading', { name }).click();
   await page.waitForURL('**/kids/*');
