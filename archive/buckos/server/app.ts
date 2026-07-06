@@ -21,6 +21,10 @@ export function buildApp(deps: AppDeps): express.Express {
   const { config } = deps;
   const app = express();
 
+  // In production the app sits behind a reverse proxy (Caddy) that
+  // terminates HTTPS; trust its X-Forwarded-* headers.
+  app.set('trust proxy', 1);
+
   // Avatars travel as small data URLs in JSON, so allow a couple of MB.
   app.use(express.json({ limit: '2mb' }));
   app.use(

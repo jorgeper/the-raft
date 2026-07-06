@@ -43,19 +43,17 @@ export default function AccountMenu() {
             <p className="truncate text-sm text-ink-muted">{user.email}</p>
           </div>
           <hr className="my-1 border-line" />
-          {user.role === 'parent' && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                navigate('/settings');
-              }}
-              className="w-full rounded-chip px-3 py-2.5 text-left text-ink transition-colors hover:bg-sunken"
-            >
-              Settings
-            </button>
-          )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              navigate('/settings');
+            }}
+            className="w-full rounded-chip px-3 py-2.5 text-left text-ink transition-colors hover:bg-sunken"
+          >
+            Settings
+          </button>
           <button
             type="button"
             role="menuitem"

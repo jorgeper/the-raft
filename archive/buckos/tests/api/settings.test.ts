@@ -73,6 +73,25 @@ describe('family settings', () => {
     expect((await agent.patch('/api/profile').send({ avatar: `data:image/png;base64,${'a'.repeat(600_000)}` })).status).toBe(400);
   });
 
+  it('lets a kid update only their own profile picture', async () => {
+    const t = makeTestApp();
+    const parent = await parentAgent(t);
+    await parent.post('/api/kids').send({ name: 'Ana', email: 'ana@gmail.com' });
+    const kidAgent = request.agent(t.app);
+    await kidAgent.post('/api/auth/dev-login').send({ email: 'ana@gmail.com' });
+
+    const avatar = 'data:image/jpeg;base64,selfie';
+    const res = await kidAgent.patch('/api/kid/profile').send({ avatar });
+    expect(res.status).toBe(200);
+    expect(res.body.avatar).toBe(avatar);
+    expect((await kidAgent.get('/api/me')).body.user.avatar).toBe(avatar);
+
+    expect((await kidAgent.patch('/api/kid/profile').send({ avatar: 'nope' })).status).toBe(400);
+    // Parents use the kid form for this; anon is rejected.
+    expect((await parent.patch('/api/kid/profile').send({ avatar })).status).toBe(403);
+    expect((await request(t.app).patch('/api/kid/profile').send({ avatar })).status).toBe(401);
+  });
+
   it('is parent-only', async () => {
     const t = makeTestApp();
     const parent = await parentAgent(t);

@@ -27,6 +27,14 @@ test('kid sees a read-only view of only their own data', async ({ page }) => {
   await page.waitForURL('**/');
   await expect(page.getByText('Your week in Ƀuckos')).toBeVisible();
 
+  // Kids get a settings page with only their own picture — no family controls.
+  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.waitForURL('**/settings');
+  await expect(page.getByText('Your picture')).toBeVisible();
+  await expect(page.getByText('Weekly allowance')).toHaveCount(0);
+  await page.goto('/');
+
   // And the parent API is forbidden server-side, not just hidden.
   expect((await page.request.get('/api/kids')).status()).toBe(403);
   expect(

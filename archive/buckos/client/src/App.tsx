@@ -31,6 +31,13 @@ function ParentOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <FullScreenLoader />;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -46,14 +53,7 @@ export default function App() {
             </ParentOnly>
           }
         />
-        <Route
-          path="/settings"
-          element={
-            <ParentOnly>
-              <Settings />
-            </ParentOnly>
-          }
-        />
+        <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>

@@ -51,6 +51,8 @@ export const addTransaction = (kidId: number, body: { amount: number; note: stri
     body: JSON.stringify(body),
   });
 export const getKidSummary = () => api<KidSummary>('/api/kid/summary');
+export const updateKidAvatar = (avatar: string | null) =>
+  api<{ avatar: string | null }>('/api/kid/profile', { method: 'PATCH', body: JSON.stringify({ avatar }) });
 
 export const getSettings = () => api<{ weeklyAllowance: number }>('/api/settings');
 export const updateSettings = (body: { weeklyAllowance: number }) =>
