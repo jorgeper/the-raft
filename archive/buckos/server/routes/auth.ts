@@ -38,13 +38,10 @@ export function authRoutes(deps: AppDeps): Router {
     res.json({ mode: config.authMode });
   });
 
+  // Always 200 — a logged-out visitor is a normal state, not an error, and a
+  // 401 here would log console noise on every login-page load.
   router.get('/api/me', (req, res) => {
-    const user = sessionUser(req);
-    if (!user) {
-      res.status(401).json({ error: 'unauthenticated' });
-      return;
-    }
-    res.json({ user });
+    res.json({ user: sessionUser(req) });
   });
 
   router.post('/api/auth/logout', (req, res) => {

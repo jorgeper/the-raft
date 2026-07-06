@@ -30,6 +30,10 @@
 
   --focus-ring: #d97757;
 
+  /* Chart */
+  --chart-bar-muted: #ebddd2; /* past days — recessive, same warm family */
+  --chart-grid: #efece4;
+
   /* Type */
   --font-display: 'Lora', Georgia, 'Times New Roman', serif;
   --font-body: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
@@ -99,6 +103,40 @@ select {
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+/* Signature motion: the Bucko coin drop (login) and coin burst (celebration) */
+@keyframes coin-drop {
+  0% {
+    transform: translateY(-24px) scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes coin-burst {
+  0% {
+    transform: translate(0, 0) scale(0.4) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--burst-x), var(--burst-y)) scale(1) rotate(var(--burst-spin));
+    opacity: 0;
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    transform: scale(0.96) translateY(6px);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
 }
 
 /* Gentle, tasteful motion; respect reduced-motion */

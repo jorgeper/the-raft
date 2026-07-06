@@ -50,10 +50,11 @@ describe('auth API (dev mode)', () => {
     expect(res.body).toEqual({ error: 'not-on-list' });
   });
 
-  it('returns 401 from /api/me when not logged in', async () => {
+  it('returns a null user from /api/me when not logged in', async () => {
     const { app } = makeTestApp();
     const res = await request(app).get('/api/me');
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
+    expect(res.body.user).toBeNull();
   });
 
   it('logout clears the session', async () => {
@@ -63,7 +64,7 @@ describe('auth API (dev mode)', () => {
     const out = await agent.post('/api/auth/logout');
     expect(out.status).toBe(204);
     const me = await agent.get('/api/me');
-    expect(me.status).toBe(401);
+    expect(me.body.user).toBeNull();
   });
 
   it('drops a kid session once the kid is archived', async () => {
@@ -73,7 +74,9 @@ describe('auth API (dev mode)', () => {
     await agent.post('/api/auth/dev-login').send({ email: 'ana@gmail.com' });
     repo.archiveKid(kid.id);
     const me = await agent.get('/api/me');
-    expect(me.status).toBe(401);
+    expect(me.body.user).toBeFalsy();
+    // …and protected kid routes reject the stale session outright.
+    expect((await agent.get('/api/kid/summary')).status).toBe(401);
   });
 });
 
