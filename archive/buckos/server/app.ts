@@ -5,6 +5,7 @@ import cookieSession from 'cookie-session';
 import type { Config } from './config';
 import type { Clock } from './clock';
 import type { Repo } from './repo';
+import { authRoutes, revalidateSession } from './routes/auth';
 
 export interface AppDeps {
   config: Config;
@@ -30,6 +31,9 @@ export function buildApp(deps: AppDeps): express.Express {
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
   });
+
+  app.use(revalidateSession(deps));
+  app.use(authRoutes(deps));
 
   // Serve the built client (production). In dev, Vite serves the client and
   // proxies /api and /auth here.
