@@ -41,8 +41,8 @@ services:
       - playground_data:/app/data
 
   buckos:
-    build: ../buckos
-    env_file: ${BUCKOS_ENV_FILE:-../buckos/.env}
+    build: buckos
+    env_file: ${BUCKOS_ENV_FILE:-buckos/.env}
     restart: unless-stopped
     volumes:
       - buckos_data:/app/data

@@ -25,7 +25,7 @@ Three Docker containers managed by docker-compose:
 | **site** | Static website (nginx) | 80 (internal) |
 | **hank** | Telegram bot (FastAPI) | 8000 (internal) |
 | **hank-web** | Memory browser web UI (FastAPI) | 8001 (internal) |
-| **buckos** | Family Ƀuckos app (Express + React, code in [`../buckos`](../buckos)) | 3000 (internal) |
+| **buckos** | Family Ƀuckos app (Express + React, code in [`buckos/`](buckos)) | 3000 (internal) |
 
 ## How HTTPS and the reverse proxy work
 
@@ -66,7 +66,8 @@ Docker networking lets Caddy reach the other containers by service name (`site`,
 ```
 jorgepereira.io/
 ├── Caddyfile              # Shared Caddy config — routes domains to services
-├── docker-compose.yml     # All three services
+├── docker-compose.yml     # All services
+├── buckos/                # buckos.jorgepereira.io family app (see buckos/README.md)
 ├── site/                  # jorgepereira.io static website
 │   ├── Dockerfile         # nginx serving static files
 │   └── html/
@@ -266,7 +267,7 @@ docker-compose up -d --build hank-web
 
 ### Deploying buckos changes
 
-See [buckos/README.md](../buckos/README.md#vps-deployment-docker--caddy) for full setup. After pushing changes to `main`:
+See [buckos/README.md](buckos/README.md#vps-deployment-docker--caddy) for full setup. After pushing changes to `main`:
 
 ```bash
 ssh jorge@<your-vps-ip>

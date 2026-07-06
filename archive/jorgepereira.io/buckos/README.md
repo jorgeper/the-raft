@@ -67,7 +67,7 @@ may go negative (Bucko debt), and the data model keeps that intact for future fe
 
 ## VPS deployment (Docker + Caddy)
 
-Buckos deploys as one more service in the [jorgepereira.io](../jorgepereira.io/README.md) stack:
+Buckos lives inside the [jorgepereira.io](../README.md) stack and deploys as one more service:
 Caddy terminates HTTPS and reverse-proxies `buckos.jorgepereira.io` to the `buckos` container,
 which builds and runs the app on its own Node 22 (the host's Node version doesn't matter). The
 SQLite database lives in the `buckos_data` Docker volume.
@@ -76,11 +76,11 @@ SQLite database lives in the `buckos_data` Docker volume.
 Browser → https://buckos.jorgepereira.io → Caddy → buckos:3000 (plain HTTP)
 ```
 
-The pieces (already in the repo):
+The pieces (already in the repo, all under `jorgepereira.io/`):
 - `buckos/Dockerfile` — multi-stage build, slim runtime image, `node dist/server/index.js`
 - `buckos/.env.cloud.example` — production config template
-- `jorgepereira.io/docker-compose.yml` — the `buckos` service + `buckos_data` volume
-- `jorgepereira.io/Caddyfile` — the `buckos.jorgepereira.io` block
+- `docker-compose.yml` — the `buckos` service + `buckos_data` volume
+- `Caddyfile` — the `buckos.jorgepereira.io` block
 
 ### One-time setup
 
@@ -96,6 +96,7 @@ Verify with `dig buckos.jorgepereira.io +short`.
 ```bash
 ssh jorge@<your-vps-ip>
 cd /opt/sandbox && git pull
+cd jorgepereira.io
 cp buckos/.env.cloud.example buckos/.env.cloud
 nano buckos/.env.cloud     # PARENT_EMAILS, Google client id/secret, SESSION_SECRET
 ```
@@ -107,7 +108,7 @@ as is — that's the volume mount.
 
 ```bash
 cd /opt/sandbox/jorgepereira.io
-echo "BUCKOS_ENV_FILE=../buckos/.env.cloud" >> .env
+echo "BUCKOS_ENV_FILE=buckos/.env.cloud" >> .env
 ```
 
 **5. Build and start:**
