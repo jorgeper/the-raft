@@ -31,7 +31,7 @@ export default function AccountMenu() {
         aria-label="Account"
         className="flex min-h-11 min-w-11 items-center justify-center rounded-full transition-transform hover:scale-105"
       >
-        <Avatar name={displayName} size={40} />
+        <Avatar name={displayName} src={user.avatar} size={40} />
       </button>
       {open && (
         <div

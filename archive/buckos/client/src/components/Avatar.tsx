@@ -21,7 +21,26 @@ function hue(name: string): (typeof PALETTE)[number] {
   return PALETTE[h % PALETTE.length];
 }
 
-export default function Avatar({ name, size = 40 }: { name: string; size?: number }) {
+export default function Avatar({
+  name,
+  size = 40,
+  src,
+}: {
+  name: string;
+  size?: number;
+  src?: string | null;
+}) {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        aria-hidden="true"
+        className="inline-block shrink-0 rounded-full object-cover select-none"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   const c = hue(name);
   return (
     <span

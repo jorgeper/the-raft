@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { AppDeps } from '../app';
-import { requireParent } from '../authz';
+import { requireParent, sessionUser } from '../authz';
+import { getProfile, isValidAvatar, setProfile } from '../profiles';
 
 export const DEFAULT_ALLOWANCE_KEY = 'default_weekly_allowance';
 
@@ -35,6 +36,38 @@ export function settingsRoutes(deps: AppDeps): Router {
       repo.updateKid(kid.id, { weeklyAllowance: n });
     }
     res.json({ weeklyAllowance: n });
+  });
+
+  // The logged-in parent's own profile (display name + photo).
+  router.use('/api/profile', requireParent);
+
+  router.get('/api/profile', (req, res) => {
+    res.json(getProfile(repo, sessionUser(req)!.email));
+  });
+
+  router.patch('/api/profile', (req, res) => {
+    const email = sessionUser(req)!.email;
+    const current = getProfile(repo, email);
+    const next = { ...current };
+
+    if (req.body?.name !== undefined) {
+      const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+      if (!name || name.length > 60) {
+        res.status(400).json({ error: 'invalid-name' });
+        return;
+      }
+      next.name = name;
+    }
+    if (req.body?.avatar !== undefined) {
+      if (!isValidAvatar(req.body.avatar)) {
+        res.status(400).json({ error: 'invalid-avatar' });
+        return;
+      }
+      next.avatar = req.body.avatar;
+    }
+
+    setProfile(repo, email, next);
+    res.json(next);
   });
 
   return router;

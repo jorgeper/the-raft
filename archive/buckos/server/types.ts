@@ -7,6 +7,7 @@ export interface Kid {
   weeklyAllowance: number;
   archived: boolean;
   createdAt: string; // ISO 8601
+  avatar: string | null; // small data URL, cropped square
 }
 
 export interface Txn {

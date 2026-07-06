@@ -9,6 +9,7 @@ interface KidRow {
   weekly_allowance: number;
   archived: number;
   created_at: string;
+  avatar: string | null;
 }
 
 interface TxnRow {
@@ -29,6 +30,7 @@ function toKid(row: KidRow): Kid {
     weeklyAllowance: row.weekly_allowance,
     archived: row.archived === 1,
     createdAt: row.created_at,
+    avatar: row.avatar,
   };
 }
 
@@ -68,19 +70,25 @@ export class SqliteRepo implements Repo {
     return row ? toKid(row) : undefined;
   }
 
-  createKid(k: { name: string; email: string; weeklyAllowance: number; createdAt: string }): Kid {
+  createKid(k: { name: string; email: string; weeklyAllowance: number; createdAt: string; avatar?: string | null }): Kid {
     const result = this.db
-      .prepare('INSERT INTO kids (name, email, weekly_allowance, created_at) VALUES (?, ?, ?, ?)')
-      .run(k.name, k.email, k.weeklyAllowance, k.createdAt);
+      .prepare('INSERT INTO kids (name, email, weekly_allowance, created_at, avatar) VALUES (?, ?, ?, ?, ?)')
+      .run(k.name, k.email, k.weeklyAllowance, k.createdAt, k.avatar ?? null);
     return this.mustGetAnyKid(Number(result.lastInsertRowid));
   }
 
-  updateKid(id: number, patch: Partial<Pick<Kid, 'name' | 'email' | 'weeklyAllowance'>>): Kid {
+  updateKid(id: number, patch: Partial<Pick<Kid, 'name' | 'email' | 'weeklyAllowance' | 'avatar'>>): Kid {
     const current = this.getKid(id);
     if (!current) throw new Error(`kid ${id} not found`);
     this.db
-      .prepare('UPDATE kids SET name = ?, email = ?, weekly_allowance = ? WHERE id = ?')
-      .run(patch.name ?? current.name, patch.email ?? current.email, patch.weeklyAllowance ?? current.weeklyAllowance, id);
+      .prepare('UPDATE kids SET name = ?, email = ?, weekly_allowance = ?, avatar = ? WHERE id = ?')
+      .run(
+        patch.name ?? current.name,
+        patch.email ?? current.email,
+        patch.weeklyAllowance ?? current.weeklyAllowance,
+        patch.avatar === undefined ? current.avatar : patch.avatar,
+        id
+      );
     return this.mustGetAnyKid(id);
   }
 
@@ -105,6 +113,19 @@ export class SqliteRepo implements Repo {
       .prepare('SELECT * FROM transactions WHERE id = ?')
       .get(Number(result.lastInsertRowid)) as TxnRow;
     return toTxn(row);
+  }
+
+  getTxn(id: number): Txn | undefined {
+    const row = this.db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as TxnRow | undefined;
+    return row ? toTxn(row) : undefined;
+  }
+
+  deleteTxn(id: number): void {
+    this.db.prepare('DELETE FROM transactions WHERE id = ?').run(id);
+  }
+
+  setTxnAmount(id: number, amount: number): void {
+    this.db.prepare('UPDATE transactions SET amount = ? WHERE id = ?').run(amount, id);
   }
 
   balance(kidId: number): number {

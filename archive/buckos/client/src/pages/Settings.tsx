@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { getSettings, updateSettings } from '../api';
+import { getProfile, getSettings, updateProfile, updateSettings } from '../api';
+import { useAuth } from '../auth';
 import AppHeader from '../components/AppHeader';
+import AvatarPicker from '../components/AvatarPicker';
 
 export default function Settings() {
   const [allowance, setAllowance] = useState<string | null>(null);
@@ -50,6 +52,8 @@ export default function Settings() {
         </Link>
 
         <h1 className="mb-4 font-display text-3xl font-semibold tracking-tight text-ink">Settings</h1>
+
+        <ProfileSection />
 
         <section className="rounded-sheet border border-line bg-surface p-5 shadow-card sm:p-6">
           <form onSubmit={submit} noValidate>
@@ -103,5 +107,92 @@ export default function Settings() {
         </section>
       </main>
     </div>
+  );
+}
+
+function ProfileSection() {
+  const { user, refresh } = useAuth();
+  const [name, setName] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getProfile()
+      .then((p) => {
+        setName(p.name ?? user?.email.split('@')[0] ?? '');
+        setAvatar(p.avatar);
+      })
+      .catch(() => setError('Couldn’t load your profile. Refresh to try again.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!name?.trim()) {
+      setError('Your name can’t be empty.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await updateProfile({ name: name.trim(), avatar });
+      await refresh(); // header avatar + name update immediately
+      setSaved(true);
+    } catch {
+      setError('That didn’t save. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="mb-6 rounded-sheet border border-line bg-surface p-5 shadow-card sm:p-6">
+      <h2 className="mb-1 font-medium text-ink">Your profile</h2>
+      <p className="mb-4 text-sm text-ink-muted">How you appear across Ƀuckos.</p>
+
+      <form onSubmit={submit} noValidate>
+        <div className="mb-4">
+          <AvatarPicker name={name ?? ''} value={avatar} onChange={(v) => { setAvatar(v); setSaved(false); }} />
+        </div>
+
+        <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="profile-name">
+          Your name
+        </label>
+        <input
+          id="profile-name"
+          type="text"
+          required
+          disabled={name === null}
+          value={name ?? ''}
+          onChange={(e) => {
+            setName(e.target.value);
+            setSaved(false);
+          }}
+          className="mb-4 min-h-12 w-full max-w-sm rounded-card border border-line bg-surface px-4 text-ink placeholder:text-ink-faint focus:border-accent disabled:opacity-60"
+        />
+
+        {error && (
+          <p role="alert" className="mb-4 rounded-chip bg-negative-soft px-3 py-2 text-sm text-negative">
+            {error}
+          </p>
+        )}
+        {saved && (
+          <p role="status" className="mb-4 rounded-chip bg-positive-soft px-3 py-2 text-sm text-positive">
+            Profile saved.
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={busy || name === null}
+          className="min-h-12 rounded-pill bg-accent px-8 font-medium text-accent-ink transition-colors hover:bg-accent-strong disabled:opacity-60"
+        >
+          {busy ? 'Saving…' : 'Save profile'}
+        </button>
+      </form>
+    </section>
   );
 }

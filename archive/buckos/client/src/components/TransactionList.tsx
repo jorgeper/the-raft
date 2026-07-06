@@ -1,12 +1,20 @@
 import type { Txn } from '../types';
 import { formatSigned, groupByDay, timeLabel } from '../lib';
-import Coin from './Coin';
 
 /**
  * The ledger. Adjustments show the parent's note verbatim; weekly resets are
- * styled as quiet system entries so history is never ambiguous.
+ * styled as quiet system entries so history is never ambiguous. When
+ * `onDelete` is provided (parents), adjustment rows get a delete affordance.
  */
-export default function TransactionList({ txns, showActor = false }: { txns: Txn[]; showActor?: boolean }) {
+export default function TransactionList({
+  txns,
+  showActor = false,
+  onDelete,
+}: {
+  txns: Txn[];
+  showActor?: boolean;
+  onDelete?: (txn: Txn) => void;
+}) {
   if (txns.length === 0) {
     return <p className="py-8 text-center text-ink-faint">No Ƀuckos moved yet.</p>;
   }
@@ -23,8 +31,17 @@ export default function TransactionList({ txns, showActor = false }: { txns: Txn
               <li key={t.id} className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
                 {t.type === 'reset' ? (
                   <>
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunken">
-                      <Coin size={18} className="opacity-70" />
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunken text-ink-faint">
+                      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M13.5 8a5.5 5.5 0 1 1-1.61-3.89M13.5 1.5v3h-3"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-ink-muted italic">{t.note}</span>
@@ -60,6 +77,25 @@ export default function TransactionList({ txns, showActor = false }: { txns: Txn
                     >
                       {formatSigned(t.amount)}
                     </span>
+                    {onDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(t)}
+                        aria-label={`Delete entry: ${t.note || formatSigned(t.amount)}`}
+                        className="-mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-negative-soft hover:text-negative"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+                          <path
+                            d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L12 4M6.5 7v4.5M9.5 7v4.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    )}
                   </>
                 )}
               </li>

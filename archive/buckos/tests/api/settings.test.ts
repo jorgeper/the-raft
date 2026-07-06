@@ -45,6 +45,34 @@ describe('family settings', () => {
     }
   });
 
+  it('stores the parent profile name and avatar', async () => {
+    const t = makeTestApp();
+    const agent = await parentAgent(t);
+
+    expect((await agent.get('/api/profile')).body).toEqual({ name: null, avatar: null });
+
+    const avatar = 'data:image/jpeg;base64,abc123';
+    const patch = await agent.patch('/api/profile').send({ name: 'Mamá', avatar });
+    expect(patch.status).toBe(200);
+    expect(patch.body).toEqual({ name: 'Mamá', avatar });
+
+    // /api/me and the dev user picker pick up the new profile.
+    expect((await agent.get('/api/me')).body.user).toMatchObject({ name: 'Mamá', avatar });
+    const users = (await agent.get('/api/auth/dev-users')).body.users;
+    expect(users.find((u: { email: string }) => u.email === 'mom@gmail.com')).toMatchObject({ name: 'Mamá', avatar });
+
+    // Removing the photo.
+    expect((await agent.patch('/api/profile').send({ avatar: null })).body.avatar).toBeNull();
+  });
+
+  it('rejects bad profile input', async () => {
+    const t = makeTestApp();
+    const agent = await parentAgent(t);
+    expect((await agent.patch('/api/profile').send({ name: '  ' })).status).toBe(400);
+    expect((await agent.patch('/api/profile').send({ avatar: 'http://evil/x.png' })).status).toBe(400);
+    expect((await agent.patch('/api/profile').send({ avatar: `data:image/png;base64,${'a'.repeat(600_000)}` })).status).toBe(400);
+  });
+
   it('is parent-only', async () => {
     const t = makeTestApp();
     const parent = await parentAgent(t);
@@ -55,5 +83,8 @@ describe('family settings', () => {
     expect((await kidAgent.get('/api/settings')).status).toBe(403);
     expect((await kidAgent.patch('/api/settings').send({ weeklyAllowance: 1 })).status).toBe(403);
     expect((await request(t.app).get('/api/settings')).status).toBe(401);
+    expect((await kidAgent.get('/api/profile')).status).toBe(403);
+    expect((await kidAgent.patch('/api/profile').send({ name: 'X' })).status).toBe(403);
+    expect((await request(t.app).get('/api/profile')).status).toBe(401);
   });
 });

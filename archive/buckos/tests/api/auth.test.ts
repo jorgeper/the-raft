@@ -16,9 +16,9 @@ describe('auth API (dev mode)', () => {
     const res = await request(app).get('/api/auth/dev-users');
     expect(res.status).toBe(200);
     expect(res.body.users).toEqual([
-      { email: 'mom@gmail.com', role: 'parent', name: 'mom' },
-      { email: 'dad@gmail.com', role: 'parent', name: 'dad' },
-      { email: 'ana@gmail.com', role: 'kid', name: 'Ana' },
+      { email: 'mom@gmail.com', role: 'parent', name: 'mom', avatar: null },
+      { email: 'dad@gmail.com', role: 'parent', name: 'dad', avatar: null },
+      { email: 'ana@gmail.com', role: 'kid', name: 'Ana', avatar: null },
     ]);
   });
 

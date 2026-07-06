@@ -21,7 +21,8 @@ export function buildApp(deps: AppDeps): express.Express {
   const { config } = deps;
   const app = express();
 
-  app.use(express.json());
+  // Avatars travel as small data URLs in JSON, so allow a couple of MB.
+  app.use(express.json({ limit: '2mb' }));
   app.use(
     cookieSession({
       name: 'buckos.session',

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Family behavior currency app — Buckos",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "concurrently -k -n server,client -c yellow,cyan \"tsx watch server/index.ts\" \"vite\"",
     "build": "tsc -p tsconfig.server.json && vite build",
@@ -20,6 +23,7 @@
     "google-auth-library": "^9.15.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-easy-crop": "^6.1.0",
     "react-router-dom": "^6.28.0",
     "recharts": "^2.15.0"
   },

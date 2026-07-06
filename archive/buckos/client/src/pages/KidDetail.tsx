@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { getKidDetail, removeKid } from '../api';
-import type { KidDetail as KidDetailData } from '../types';
+import { deleteTransaction, getKidDetail, removeKid } from '../api';
+import type { KidDetail as KidDetailData, Txn } from '../types';
 import AppHeader from '../components/AppHeader';
 import Avatar from '../components/Avatar';
 import BalanceChart from '../components/BalanceChart';
@@ -23,6 +23,8 @@ export default function KidDetail() {
   const [removing, setRemoving] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
+  const [deletingTxn, setDeletingTxn] = useState<Txn | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -67,7 +69,7 @@ export default function KidDetail() {
           <>
             <section className="mb-6 rounded-sheet border border-line bg-surface p-5 shadow-card sm:p-6">
               <div className="mb-4 flex flex-wrap items-center gap-3">
-                <Avatar name={data.kid.name} size={52} />
+                <Avatar name={data.kid.name} src={data.kid.avatar} size={52} />
                 <div className="min-w-0 flex-1 basis-[calc(100%-4rem)] sm:basis-auto">
                   <h1 className="truncate font-display text-2xl font-semibold text-ink">{data.kid.name}</h1>
                   <p className="truncate text-sm text-ink-faint">
@@ -125,7 +127,7 @@ export default function KidDetail() {
 
             <section>
               <h2 className="mb-2 px-1 font-display text-xl font-semibold text-ink">Ledger</h2>
-              <TransactionList txns={data.transactions} showActor />
+              <TransactionList txns={data.transactions} showActor onDelete={setDeletingTxn} />
             </section>
           </>
         )}
@@ -168,6 +170,27 @@ export default function KidDetail() {
             void removeKid(data.kid.id)
               .then(() => navigate('/', { replace: true }))
               .catch(() => setRemoveBusy(false));
+          }}
+        />
+      )}
+
+      {deletingTxn && data && (
+        <ConfirmDialog
+          title="Delete this entry?"
+          body={`“${deletingTxn.note || (deletingTxn.amount >= 0 ? 'Ƀuckos given' : 'Ƀuckos taken')}” (${
+            deletingTxn.amount >= 0 ? '+' : '−'
+          }${Math.abs(deletingTxn.amount)}) will be removed from ${data.kid.name}’s ledger. Entries from this week change the balance; older ones don’t, since a weekly reset already happened.`}
+          confirmLabel="Delete entry"
+          busy={deleteBusy}
+          onCancel={() => setDeletingTxn(null)}
+          onConfirm={() => {
+            setDeleteBusy(true);
+            void deleteTransaction(data.kid.id, deletingTxn.id)
+              .then(() => load())
+              .finally(() => {
+                setDeleteBusy(false);
+                setDeletingTxn(null);
+              });
           }}
         />
       )}

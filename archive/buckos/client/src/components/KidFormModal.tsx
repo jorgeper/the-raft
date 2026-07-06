@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import Modal from './Modal';
+import AvatarPicker from './AvatarPicker';
 import { createKid, getSettings, updateKid, ApiError } from '../api';
 import type { Kid } from '../types';
 
@@ -20,6 +21,7 @@ export default function KidFormModal({ kid, onClose, onSaved }: Props) {
   const [name, setName] = useState(kid?.name ?? '');
   const [email, setEmail] = useState(kid?.email ?? '');
   const [allowance, setAllowance] = useState(String(kid?.weeklyAllowance ?? 100));
+  const [avatar, setAvatar] = useState<string | null>(kid?.avatar ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,8 +44,8 @@ export default function KidFormModal({ kid, onClose, onSaved }: Props) {
     setBusy(true);
     setError(null);
     try {
-      if (kid) await updateKid(kid.id, { name: name.trim(), email: email.trim(), weeklyAllowance });
-      else await createKid({ name: name.trim(), email: email.trim(), weeklyAllowance });
+      if (kid) await updateKid(kid.id, { name: name.trim(), email: email.trim(), weeklyAllowance, avatar });
+      else await createKid({ name: name.trim(), email: email.trim(), weeklyAllowance, avatar });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? (ERROR_COPY[err.code] ?? 'That didn’t save. Try again.') : 'That didn’t save. Try again.');
@@ -54,6 +56,10 @@ export default function KidFormModal({ kid, onClose, onSaved }: Props) {
   return (
     <Modal title={kid ? `Edit ${kid.name}` : 'Add a kid'} onClose={onClose}>
       <form onSubmit={submit} noValidate>
+        <div className="mb-4">
+          <AvatarPicker name={name} value={avatar} onChange={setAvatar} />
+        </div>
+
         <label className="mb-1.5 block text-sm font-medium text-ink" htmlFor="kid-name">
           Name
         </label>

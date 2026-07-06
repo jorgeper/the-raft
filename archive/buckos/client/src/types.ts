@@ -5,6 +5,7 @@ export interface SessionUser {
   role: Role;
   kidId?: number;
   name?: string;
+  avatar?: string | null;
 }
 
 export interface ChartPoint {
@@ -29,6 +30,7 @@ export interface Kid {
   email: string;
   weeklyAllowance: number;
   createdAt: string;
+  avatar: string | null;
 }
 
 export interface KidWithDerived extends Kid {
@@ -54,4 +56,5 @@ export interface DevUser {
   email: string;
   role: Role;
   name: string;
+  avatar: string | null;
 }

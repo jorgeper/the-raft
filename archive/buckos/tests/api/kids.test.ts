@@ -136,6 +136,67 @@ describe('transactions', () => {
     expect(res.status).toBe(201);
     expect(res.body.transaction.note).toBe('');
   });
+
+  it('stores and updates kid avatars', async () => {
+    const avatar = 'data:image/jpeg;base64,kidpic';
+    const created = await agent.post('/api/kids').send({ name: 'Zed', email: 'zed@gmail.com', avatar });
+    expect(created.status).toBe(201);
+    expect(created.body.kid.avatar).toBe(avatar);
+
+    const cleared = await agent.patch(`/api/kids/${created.body.kid.id}`).send({ avatar: null });
+    expect(cleared.body.kid.avatar).toBeNull();
+
+    expect((await agent.patch(`/api/kids/${created.body.kid.id}`).send({ avatar: 'nope' })).status).toBe(400);
+  });
+});
+
+describe('deleting transactions', () => {
+  it('deleting a current-week entry updates the balance and needs a parent', async () => {
+    const t = makeTestApp();
+    const agent = await loginParent(t);
+    const { body } = await agent.post('/api/kids').send({ name: 'Ana', email: 'ana@gmail.com' });
+    const txn = (await agent.post(`/api/kids/${body.kid.id}/transactions`).send({ amount: 30, note: 'oops', direction: 'withdraw' })).body.transaction;
+    expect((await agent.get(`/api/kids/${body.kid.id}`)).body.balance).toBe(70);
+
+    const kidAgent = await loginKid(t, 'ana@gmail.com');
+    expect((await kidAgent.delete(`/api/kids/${body.kid.id}/transactions/${txn.id}`)).status).toBe(403);
+
+    const del = await agent.delete(`/api/kids/${body.kid.id}/transactions/${txn.id}`);
+    expect(del.status).toBe(200);
+    expect(del.body.balance).toBe(100);
+    expect((await agent.get(`/api/kids/${body.kid.id}`)).body.transactions).toHaveLength(1);
+  });
+
+  it('deleting an entry from a previous week leaves post-reset balances untouched', async () => {
+    const t = makeTestApp();
+    const agent = await loginParent(t);
+    const { body } = await agent.post('/api/kids').send({ name: 'Ana', email: 'ana@gmail.com' });
+    const txn = (await agent.post(`/api/kids/${body.kid.id}/transactions`).send({ amount: 40, note: 'old sin', direction: 'withdraw' })).body.transaction;
+
+    // Cross the Monday boundary (reset lands the balance back on 100), then earn 5.
+    t.clock.set(new Date(2026, 5, 9, 8));
+    await agent.post(`/api/kids/${body.kid.id}/transactions`).send({ amount: 5, note: 'chores', direction: 'add' });
+    expect((await agent.get(`/api/kids/${body.kid.id}`)).body.balance).toBe(105);
+
+    // Deleting last week's entry must not move this week's balance…
+    const del = await agent.delete(`/api/kids/${body.kid.id}/transactions/${txn.id}`);
+    expect(del.status).toBe(200);
+    expect(del.body.balance).toBe(105);
+    // …because the reset row absorbed the delta (60→100 became 100→100).
+    const resets = (await agent.get(`/api/kids/${body.kid.id}`)).body.transactions.filter(
+      (x: { type: string }) => x.type === 'reset'
+    );
+    expect(resets[0].amount).toBe(0);
+  });
+
+  it('refuses to delete reset rows and missing entries', async () => {
+    const t = makeTestApp();
+    const agent = await loginParent(t);
+    const { body } = await agent.post('/api/kids').send({ name: 'Ana', email: 'ana@gmail.com' });
+    const reset = (await agent.get(`/api/kids/${body.kid.id}`)).body.transactions[0];
+    expect((await agent.delete(`/api/kids/${body.kid.id}/transactions/${reset.id}`)).status).toBe(400);
+    expect((await agent.delete(`/api/kids/${body.kid.id}/transactions/9999`)).status).toBe(404);
+  });
 });
 
 describe('weekly reset via API access', () => {

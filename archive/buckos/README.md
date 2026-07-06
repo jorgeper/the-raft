@@ -67,6 +67,15 @@ may go negative (Bucko debt), and the data model keeps that intact for future fe
 
 ## Deploying to a VPS
 
+**Requires Node 20+** (Tailwind v4's native tooling won't run on Node 18). On Ubuntu/Debian the
+distro Node is usually too old — install Node 22 LTS first:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node --version   # should print v22.x
+```
+
 ```bash
 git clone <your-repo> && cd buckos
 npm ci

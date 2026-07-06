@@ -121,7 +121,7 @@ function UserGroup({
               onClick={() => onPick(u.email)}
               className="flex min-h-12 w-full items-center gap-3 rounded-card border border-line px-3 py-2 text-left transition-colors hover:border-accent hover:bg-accent-soft disabled:opacity-60"
             >
-              <Avatar name={u.name} size={32} />
+              <Avatar name={u.name} src={u.avatar} size={32} />
               <span className="min-w-0">
                 <span className="block font-medium text-ink capitalize">{u.name}</span>
                 <span className="block truncate text-sm text-ink-muted">{u.email}</span>

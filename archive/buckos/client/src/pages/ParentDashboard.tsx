@@ -34,10 +34,9 @@ export default function ParentDashboard() {
 
   return (
     <div className="min-h-screen pb-16">
-      <AppHeader />
-      <main className="mx-auto w-full max-w-5xl px-4 sm:px-6">
-        {kids !== null && kids.length > 0 && (
-          <div className="mb-4 flex items-center justify-end">
+      <AppHeader
+        actions={
+          kids !== null && kids.length > 0 ? (
             <button
               type="button"
               onClick={() => setShowAddKid(true)}
@@ -45,9 +44,10 @@ export default function ParentDashboard() {
             >
               + Add kid
             </button>
-          </div>
-        )}
-
+          ) : undefined
+        }
+      />
+      <main className="mx-auto w-full max-w-5xl px-4 sm:px-6">
         {kids === null && <SkeletonGrid />}
 
         {loadError && (

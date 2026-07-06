@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import type { AppDeps } from '../app';
 import { resolveUser, sessionUser } from '../authz';
+import { getProfile } from '../profiles';
 import type { SessionUser } from '../types';
 
 type SessionData = { user?: SessionUser; oauthState?: string } | null;
@@ -39,9 +40,21 @@ export function authRoutes(deps: AppDeps): Router {
   });
 
   // Always 200 — a logged-out visitor is a normal state, not an error, and a
-  // 401 here would log console noise on every login-page load.
+  // 401 here would log console noise on every login-page load. Name and photo
+  // are looked up fresh (never stored in the cookie — avatars are far too big).
   router.get('/api/me', (req, res) => {
-    res.json({ user: sessionUser(req) });
+    const user = sessionUser(req);
+    if (!user) {
+      res.json({ user: null });
+      return;
+    }
+    if (user.role === 'parent') {
+      const profile = getProfile(repo, user.email);
+      res.json({ user: { ...user, name: profile.name ?? user.name, avatar: profile.avatar } });
+    } else {
+      const kid = user.kidId !== undefined ? repo.getKid(user.kidId) : undefined;
+      res.json({ user: { ...user, name: kid?.name ?? user.name, avatar: kid?.avatar ?? null } });
+    }
   });
 
   router.post('/api/auth/logout', (req, res) => {
@@ -52,12 +65,18 @@ export function authRoutes(deps: AppDeps): Router {
   if (config.authMode === 'dev') {
     // Dev auth: pick any allowed user, no Google needed.
     router.get('/api/auth/dev-users', (_req, res) => {
-      const parents = config.parentEmails.map((email) => ({
-        email,
-        role: 'parent' as const,
-        name: email.split('@')[0],
-      }));
-      const kids = repo.listKids().map((k) => ({ email: k.email.toLowerCase(), role: 'kid' as const, name: k.name }));
+      const parents = config.parentEmails.map((email) => {
+        const profile = getProfile(repo, email);
+        return {
+          email,
+          role: 'parent' as const,
+          name: profile.name ?? email.split('@')[0],
+          avatar: profile.avatar,
+        };
+      });
+      const kids = repo
+        .listKids()
+        .map((k) => ({ email: k.email.toLowerCase(), role: 'kid' as const, name: k.name, avatar: k.avatar }));
       res.json({ users: [...parents, ...kids] });
     });
 

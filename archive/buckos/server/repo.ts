@@ -9,12 +9,15 @@ export interface Repo {
   listKids(): Kid[]; // non-archived only
   getKid(id: number): Kid | undefined; // non-archived only
   findKidByEmail(email: string): Kid | undefined; // non-archived, case-insensitive
-  createKid(k: { name: string; email: string; weeklyAllowance: number; createdAt: string }): Kid;
-  updateKid(id: number, patch: Partial<Pick<Kid, 'name' | 'email' | 'weeklyAllowance'>>): Kid;
+  createKid(k: { name: string; email: string; weeklyAllowance: number; createdAt: string; avatar?: string | null }): Kid;
+  updateKid(id: number, patch: Partial<Pick<Kid, 'name' | 'email' | 'weeklyAllowance' | 'avatar'>>): Kid;
   archiveKid(id: number): void;
 
   listTxns(kidId: number): Txn[]; // newest first
   addTxn(t: Omit<Txn, 'id'>): Txn;
+  getTxn(id: number): Txn | undefined;
+  deleteTxn(id: number): void;
+  setTxnAmount(id: number, amount: number): void;
   balance(kidId: number): number; // SUM(amount) over the kid's ledger
   lastResetAt(kidId: number): string | undefined; // created_at of most recent reset entry
 
