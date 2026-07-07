@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 
+from studio.events import NullEventLog
 from studio.execution import CommandExecutor
 from studio.state import STATES, Actor, check_transition
 from studio.tracker.base import Comment, Tracker, TrackerError, WorkItem
@@ -26,9 +27,10 @@ def claim_label(agent: str) -> str:
 
 
 class GitHubIssuesTracker(Tracker):
-    def __init__(self, repo: str, executor: CommandExecutor) -> None:
+    def __init__(self, repo: str, executor: CommandExecutor, events=None) -> None:
         self.repo = repo
         self.executor = executor
+        self.events = events or NullEventLog()
 
     def _gh(self, *args: str, input_text: str | None = None) -> str:
         result = self.executor.run(["gh", *args, "--repo", self.repo], input_text=input_text)
@@ -66,6 +68,7 @@ class GitHubIssuesTracker(Tracker):
             "--label", f"{state_label(state)},{kind_label(kind)}",
         )
         item_id = out.strip().rstrip("/").rsplit("/", 1)[-1]
+        self.events.emit("item_created", item=item_id, title=title, kind=kind, state=state)
         return WorkItem(id=item_id, title=title, body=body, state=state, kind=kind, url=out.strip())
 
     def get(self, item_id: str) -> WorkItem:
@@ -82,6 +85,9 @@ class GitHubIssuesTracker(Tracker):
 
     def comment(self, item_id: str, body: str, author: str) -> None:
         self._gh("issue", "comment", item_id, "--body", f"**[{author}]**\n\n{body}")
+        self.events.emit(
+            "comment_added", item=item_id, author=author, chars=len(body), comment_tail=body
+        )
 
     def comments(self, item_id: str) -> list[Comment]:
         out = self._gh("issue", "view", item_id, "--json", "comments")
@@ -105,15 +111,21 @@ class GitHubIssuesTracker(Tracker):
             "--remove-label", state_label(item.state),
             "--add-label", state_label(to_state),
         )
+        self.events.emit(
+            "transition", item=item_id,
+            **{"from": item.state, "to": to_state, "actor": actor.value},
+        )
 
     def claim(self, item_id: str, agent_name: str) -> bool:
         item = self.get(item_id)
         if item.claimed_by:
             return item.claimed_by == agent_name
         self._gh("issue", "edit", item_id, "--add-label", claim_label(agent_name))
+        self.events.emit("claimed", item=item_id, agent=agent_name)
         return True
 
     def release(self, item_id: str, agent_name: str) -> None:
         item = self.get(item_id)
         if item.claimed_by == agent_name:
             self._gh("issue", "edit", item_id, "--remove-label", claim_label(agent_name))
+            self.events.emit("released", item=item_id, agent=agent_name)

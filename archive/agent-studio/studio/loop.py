@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from studio.events import NullEventLog
 from studio.execution import CommandExecutor
 from studio.runtime.base import ModelRuntime
 
@@ -148,12 +149,15 @@ class GoalLoop:
         agent: str | None = None,
         clock=time.monotonic,
         run_timeout_s: int = 3600,
+        events=None,
     ) -> None:
         self.runtime = runtime
         self.executor = executor or CommandExecutor()
         self.agent = agent
         self.clock = clock
         self.run_timeout_s = run_timeout_s
+        # The orchestrator rebinds this per dispatch (events.bound(item=..., agent=...)).
+        self.events = events or NullEventLog()
 
     # ---------------------------------------------------------------- files
 
@@ -206,6 +210,7 @@ class GoalLoop:
         )
         with (workdir / ".loop" / "guardrails.md").open("a") as fh:
             fh.write(entry)
+        self.events.emit("guardrail_added", trigger=trigger)
 
     # ---------------------------------------------------------------- git & gates
 
@@ -240,8 +245,10 @@ class GoalLoop:
             result = self._sh(cmd, workdir)
             status = "PASS" if result.ok else f"FAIL (exit {result.returncode})"
             report_lines.append(f"$ {cmd}\n{status}")
+            combined = (result.stdout + "\n" + result.stderr).strip()
+            self.events.emit("gate_result", command=cmd, ok=result.ok, gate_tail=combined)
             if not result.ok and not failure:
-                tail = "\n".join((result.stdout + "\n" + result.stderr).strip().splitlines()[-50:])
+                tail = "\n".join(combined.splitlines()[-50:])
                 failure = f"$ {cmd}\nexit {result.returncode}\n{tail}"
         return not failure, "\n".join(report_lines), failure
 
@@ -297,6 +304,12 @@ class GoalLoop:
         state = _State()
         canonical = self._read_canonical(workdir)
         state.max_green_tests = self._count_tests(workdir) if canonical else 0
+        self.events.emit(
+            "loop_start", workdir=str(workdir),
+            max_iterations=goal.max_iterations, max_minutes=goal.max_minutes,
+            tasks_total=len(canonical.tasks) if canonical else 0,
+            tasks_passed=sum(t.passes for t in canonical.tasks) if canonical else 0,
+        )
 
         for iteration in range(1, goal.max_iterations + 1):
             if (self.clock() - start) / 60 >= goal.max_minutes:
@@ -305,8 +318,22 @@ class GoalLoop:
 
             canonical = self._read_canonical(workdir) or canonical  # _set_pass persists here
             plan = self._reconcile_plan(workdir, canonical) if canonical else None
+            current = plan.next_task() if plan else None
+            self.events.emit(
+                "iteration_start", n=iteration,
+                task_id=current.id if current else None,
+                task_title=current.title if current else None,
+            )
             prompt = self._build_prompt(base_prompt, workdir, plan, state)
+            self.events.emit(
+                "runtime_start", runtime=self.runtime.name, run_dir=None,
+                prompt_chars=len(prompt),
+            )
             result = self.runtime.run(prompt, cwd=workdir, timeout_s=self.run_timeout_s, agent=self.agent)
+            self.events.emit(
+                "runtime_end", exit_code=result.exit_code,
+                duration_s=round(result.duration_s, 2), output_tail=result.output,
+            )
 
             if NEEDS_HUMAN in result.output:
                 question = result.output.split(NEEDS_HUMAN, 1)[1].strip().splitlines()[0:1]
@@ -388,6 +415,10 @@ class GoalLoop:
         state.max_green_tests = max(state.max_green_tests, tests_now)
         if task is not None:
             plan = self._set_pass(workdir, plan, task.id, True)
+            self.events.emit(
+                "task_passed", task_id=task.id,
+                tasks_passed=sum(t.passes for t in plan.tasks), tasks_total=len(plan.tasks),
+            )
         state.same_error, state.same_error_count = "", 0
         self._track_diff(workdir, state)
 
@@ -458,6 +489,9 @@ class GoalLoop:
         wall = self.clock() - start
         self._append_progress(
             workdir, f"\n### loop exit\nreason: {reason} after {iterations} iterations — {detail}"
+        )
+        self.events.emit(
+            "loop_exit", reason=reason, iterations=iterations, wall_time_s=round(wall, 2)
         )
         return LoopResult(
             reason=reason,

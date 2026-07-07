@@ -6,7 +6,9 @@ having passed through a pr:changes-requested review cycle on the way.
 
 from __future__ import annotations
 
+import argparse
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,6 +16,7 @@ from pathlib import Path
 
 from studio.agents.registry import AgentRegistry
 from studio.config import AgentConfig, LoopConfig, RuntimeConfig, StudioConfig, TrackerConfig
+from studio.events import EventLog
 from studio.orchestrator import Orchestrator
 from studio.runtime.fake import FakeRuntime
 from studio.state import Actor
@@ -39,6 +42,24 @@ def _scaffold(base: Path) -> tuple[StudioConfig, MarkdownTracker, FakeRuntime, F
     (root / "prompts").mkdir(parents=True)
     for role in ("prd", "architect", "coder", "reviewer"):
         (root / "prompts" / f"{role}.md").write_text(f"# {role} (demo)\n")
+    # A real config file so snapshot commands (status/show --json) work in the
+    # kept sandbox — part of the observability contract.
+    (root / "config").mkdir()
+    (root / "config" / "studio.yaml").write_text(
+        "tracker: {kind: markdown, root: .work}\n"
+        "runtimes:\n"
+        "  claude: {cmd: claude}\n"
+        "  codex: {cmd: codex}\n"
+        "agents:\n"
+        "  prd: {runtime: claude, prompt: prompts/prd.md, handles: prd:drafting}\n"
+        "  architect: {runtime: claude, prompt: prompts/architect.md, handles: design:drafting}\n"
+        "  coder: {runtime: claude, prompt: prompts/coder.md, handles: ready,\n"
+        "          loop: {max_iterations: 5, max_minutes: 5}}\n"
+        "  reviewer-a: {runtime: claude, prompt: prompts/reviewer.md, handles: pr:agent-review,\n"
+        "               memory: reviewer}\n"
+        "  reviewer-b: {runtime: codex, prompt: prompts/reviewer.md, handles: pr:agent-review,\n"
+        "               memory: reviewer}\n"
+    )
     cfg = StudioConfig(
         root=root,
         tracker=TrackerConfig(kind="markdown"),
@@ -64,7 +85,9 @@ def _scaffold(base: Path) -> tuple[StudioConfig, MarkdownTracker, FakeRuntime, F
         },
         target_repo=app,
     )
-    return cfg, MarkdownTracker(root / ".work"), FakeRuntime(name="claude"), FakeRuntime(name="codex")
+    events = EventLog(root / ".agent-logs" / "events.jsonl")
+    tracker = MarkdownTracker(root / ".work", events=events)
+    return cfg, tracker, FakeRuntime(name="claude"), FakeRuntime(name="codex"), events
 
 
 def _say(step: str, tracker: MarkdownTracker, item_id: str = "1") -> None:
@@ -77,9 +100,9 @@ def run_demo(base: Path | None = None) -> str:
     """Drive the lifecycle; returns the item's final state."""
     base = base or Path(tempfile.mkdtemp(prefix="studio-demo-"))
     base.mkdir(parents=True, exist_ok=True)
-    cfg, tracker, claude_rt, codex_rt = _scaffold(base)
+    cfg, tracker, claude_rt, codex_rt, events = _scaffold(base)
     orch = Orchestrator(cfg, tracker, AgentRegistry(cfg),
-                        {"claude": claude_rt, "codex": codex_rt})
+                        {"claude": claude_rt, "codex": codex_rt}, events=events)
     worktree = (cfg.root / cfg.target_repo).resolve().parent / ".studio-worktrees" / "1"
 
     print("Agent Studio demo — full lifecycle, offline, scripted agents")
@@ -155,12 +178,21 @@ def run_demo(base: Path | None = None) -> str:
 
 
 def main() -> int:
-    final = run_demo()
+    parser = argparse.ArgumentParser(prog="studio.demo")
+    parser.add_argument("--keep", action="store_true",
+                        help="keep the sandbox (events, runs, worktrees) for inspection")
+    args = parser.parse_args()
+    base = Path(tempfile.mkdtemp(prefix="studio-demo-"))
+    final = run_demo(base)
     if final != "done":
         print(f"DEMO FAILED: item ended in {final!r}", file=sys.stderr)
         return 1
     print("demo complete: the item went request -> PRD -> design -> code -> "
           "review loop -> done, with you approving at every human gate.")
+    if args.keep:
+        print(f"kept sandbox: {base} (events: {base}/studio/.agent-logs/events.jsonl)")
+    else:
+        shutil.rmtree(base, ignore_errors=True)
     return 0
 
 

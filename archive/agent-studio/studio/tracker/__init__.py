@@ -19,7 +19,9 @@ __all__ = [
 ]
 
 
-def make_tracker(cfg: StudioConfig, executor: CommandExecutor | None = None) -> Tracker:
+def make_tracker(
+    cfg: StudioConfig, executor: CommandExecutor | None = None, events=None
+) -> Tracker:
     if cfg.tracker.kind == "markdown":
-        return MarkdownTracker(cfg.root / cfg.tracker.root)
-    return GitHubIssuesTracker(cfg.tracker.repo, executor or CommandExecutor())
+        return MarkdownTracker(cfg.root / cfg.tracker.root, events=events)
+    return GitHubIssuesTracker(cfg.tracker.repo, executor or CommandExecutor(), events=events)

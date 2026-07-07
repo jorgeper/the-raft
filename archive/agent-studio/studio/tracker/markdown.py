@@ -12,6 +12,7 @@ from pathlib import Path
 
 import yaml
 
+from studio.events import NullEventLog
 from studio.state import KINDS, STATES, Actor, check_transition
 from studio.tracker.base import Comment, Tracker, TrackerError, WorkItem
 
@@ -41,10 +42,11 @@ def _now() -> str:
 
 
 class MarkdownTracker(Tracker):
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, events=None) -> None:
         self.root = Path(root)
         self.items_dir = self.root / "items"
         self.items_dir.mkdir(parents=True, exist_ok=True)
+        self.events = events or NullEventLog()
 
     # -- storage ---------------------------------------------------------
 
@@ -118,6 +120,7 @@ class MarkdownTracker(Tracker):
             updated=_now(),
         )
         self._write(item)
+        self.events.emit("item_created", item=item.id, title=title, kind=kind, state=state)
         return self._read(item.id)
 
     def get(self, item_id: str) -> WorkItem:
@@ -139,6 +142,9 @@ class MarkdownTracker(Tracker):
         item.comments.append(Comment(author=author, body=body))
         item.updated = _now()
         self._write(item)
+        self.events.emit(
+            "comment_added", item=item_id, author=author, chars=len(body), comment_tail=body
+        )
 
     def comments(self, item_id: str) -> list[Comment]:
         return self._read(item_id).comments
@@ -146,9 +152,14 @@ class MarkdownTracker(Tracker):
     def transition(self, item_id: str, to_state: str, actor: Actor) -> None:
         item = self._read(item_id)
         check_transition(item.state, to_state, actor, kind=item.kind)
+        from_state = item.state
         item.state = to_state
         item.updated = _now()
         self._write(item)
+        self.events.emit(
+            "transition", item=item_id,
+            **{"from": from_state, "to": to_state, "actor": actor.value},
+        )
 
     def claim(self, item_id: str, agent_name: str) -> bool:
         lock = self.items_dir / f"{item_id}.claim"
@@ -161,6 +172,7 @@ class MarkdownTracker(Tracker):
         item = self._read(item_id)
         item.claimed_by = agent_name
         self._write(item)
+        self.events.emit("claimed", item=item_id, agent=agent_name)
         return True
 
     def release(self, item_id: str, agent_name: str) -> None:
@@ -170,6 +182,7 @@ class MarkdownTracker(Tracker):
             item = self._read(item_id)
             item.claimed_by = ""
             self._write(item)
+            self.events.emit("released", item=item_id, agent=agent_name)
 
     # -- board -------------------------------------------------------------
 

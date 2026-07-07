@@ -13,10 +13,11 @@ from pathlib import Path
 
 from studio.agents.registry import AgentRegistry
 from studio.config import AgentConfig, StudioConfig
+from studio.events import NullEventLog
 from studio.execution import CommandExecutor
 from studio.loop import Goal, GoalLoop, LoopResult
 from studio.runs import RunStore
-from studio.runtime.base import ModelRuntime
+from studio.runtime.base import ModelRuntime, RuntimeResult
 from studio.state import Actor
 from studio.tracker.base import Tracker, WorkItem
 
@@ -50,6 +51,7 @@ class Orchestrator:
         executor: CommandExecutor | None = None,
         loop_factory=None,
         sleep=time.sleep,
+        events=None,
     ) -> None:
         self.cfg = cfg
         self.tracker = tracker
@@ -59,6 +61,8 @@ class Orchestrator:
         self.executor = executor or CommandExecutor()
         self.loop_factory = loop_factory or self._default_loop_factory
         self.sleep = sleep
+        self.events = events or NullEventLog()
+        self._tick_n = 0
         self.by_state: dict[str, list[AgentConfig]] = {}
         for agent in cfg.agents.values():
             self.by_state.setdefault(agent.handles, []).append(agent)
@@ -77,20 +81,43 @@ class Orchestrator:
         ]
         dispatches: list[Dispatch] = []
         budget = self.cfg.max_concurrent_agents
+        self._tick_n += 1
+        if not dry_run:
+            self.events.emit("tick_start", n=self._tick_n)
         for item, state, agents in snapshot:
             if budget <= 0:
                 break
             if not dry_run and self.tracker.get(item.id).state != state:
                 continue  # moved earlier in this tick
             if state == "pr:agent-review":
-                result = self._review_round(item, agents, dry_run)
+                shape = "review-round"
             elif agents[0].loop is not None:
+                shape = "coder"
+            else:
+                shape = "commenter"
+            if not dry_run:
+                self.events.emit("dispatch_start", item=item.id, agent=agents[0].name, shape=shape)
+            if shape == "review-round":
+                result = self._review_round(item, agents, dry_run)
+            elif shape == "coder":
                 result = self._dispatch_coder(item, agents[0], dry_run)
             else:
                 result = self._dispatch_commenter(item, agents[0], dry_run)
+            if not dry_run:
+                for d in result:
+                    self.events.emit(
+                        "dispatch_end", item=d.item_id, agent=d.agent,
+                        action=d.action, detail=d.detail,
+                    )
             dispatches.extend(result)
             if any(d.action != "skipped" for d in result):
                 budget -= 1
+        if not dry_run:
+            self.events.emit(
+                "tick_end", n=self._tick_n,
+                dispatched=sum(1 for d in dispatches if d.action != "skipped"),
+                skipped=sum(1 for d in dispatches if d.action == "skipped"),
+            )
         self._log(dispatches)
         return dispatches
 
@@ -109,6 +136,25 @@ class Orchestrator:
         run.save("prompt.md", prompt)
         run.save("output.md", output)
 
+    def _invoke(self, item: WorkItem, agent: AgentConfig, prompt: str) -> RuntimeResult:
+        """One runtime invocation with run persistence and runtime_* events."""
+        run = self.run_store.new_run(item.id, agent.name)
+        run.save("prompt.md", prompt)
+        self.events.emit(
+            "runtime_start", item=item.id, agent=agent.name,
+            runtime=agent.runtime, run_dir=str(run.path), prompt_chars=len(prompt),
+        )
+        result = self._runtime(agent).run(
+            prompt, cwd=self.cfg.root, agent=self.registry.invocation_agent(agent)
+        )
+        run.save("output.md", result.output)
+        self.events.emit(
+            "runtime_end", item=item.id, agent=agent.name,
+            exit_code=result.exit_code, duration_s=round(result.duration_s, 2),
+            output_tail=result.output,
+        )
+        return result
+
     def _dispatch_commenter(
         self, item: WorkItem, agent: AgentConfig, dry_run: bool
     ) -> list[Dispatch]:
@@ -119,10 +165,7 @@ class Orchestrator:
             return [Dispatch(item.id, agent.name, "skipped", "claimed by someone else")]
         try:
             prompt = self.registry.build_prompt(agent, self.tracker.get(item.id))
-            result = self._runtime(agent).run(
-                prompt, cwd=self.cfg.root, agent=self.registry.invocation_agent(agent)
-            )
-            self._persist(item, agent, prompt, result.output)
+            result = self._invoke(item, agent, prompt)
             if not result.ok or not result.output.strip():
                 return [Dispatch(item.id, agent.name, "failed", f"exit={result.exit_code}; will retry")]
             self.tracker.comment(item.id, result.output, author=agent.name)
@@ -162,6 +205,8 @@ class Orchestrator:
             workdir, branch = self._worktree(item)
             prompt = self.registry.build_prompt(agent, self.tracker.get(item.id), branch=branch)
             loop = self.loop_factory(agent)
+            # Bind loop events to this dispatch — the loop itself doesn't know items.
+            loop.events = self.events.bound(item=item.id, agent=agent.name)
             goal = Goal(
                 max_iterations=agent.loop.max_iterations, max_minutes=agent.loop.max_minutes
             )
@@ -210,10 +255,7 @@ class Orchestrator:
             dispatches = []
             for agent in available:
                 prompt = self.registry.build_prompt(agent, self.tracker.get(item.id))
-                result = self._runtime(agent).run(
-                    prompt, cwd=self.cfg.root, agent=self.registry.invocation_agent(agent)
-                )
-                self._persist(item, agent, prompt, result.output)
+                result = self._invoke(item, agent, prompt)
                 matches = _VERDICT_RE.findall(result.output)
                 verdict = matches[-1] if (result.ok and matches) else "CHANGES"
                 verdicts.append((agent.name, verdict))
