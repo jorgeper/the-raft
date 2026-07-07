@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+# Incremental output callback: (chunk, channel) where channel is "text" | "tool".
+OnOutput = Callable[[str, str], None]
 
 
 @dataclass(frozen=True)
@@ -30,9 +34,12 @@ class ModelRuntime(ABC):
         cwd: Path,
         timeout_s: int = 3600,
         agent: str | None = None,
+        on_output: OnOutput | None = None,
     ) -> RuntimeResult:
         """Execute one fresh-context invocation. `agent` selects a native
-        subagent definition where the runtime supports it (Claude Code)."""
+        subagent definition where the runtime supports it (Claude Code).
+        `on_output`, when given and the runtime supports streaming, receives
+        incremental (chunk, channel) output while the agent runs."""
 
     @abstractmethod
     def available(self) -> bool:

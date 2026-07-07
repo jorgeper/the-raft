@@ -106,11 +106,44 @@ grep -rEn 'TODO|TBD|FIXME' "$OBS" >>"$TMP/c9" 2>/dev/null && C9=1
 grep -rEn '(^|[^_[:alnum:]])(from|import) studio(\.|$| )' studio_console/ tests/ >>"$TMP/c9" 2>/dev/null && C9=1
 check "9. no TODOs; console never imports studio.* (decoupling enforced)" "$C9"
 
+# --- 10. streaming unit proof (spec-streaming §6.10) ---------------------------------
+C10=1
+if grep -q 'def test_' "$STUDIO/tests/test_streaming.py" 2>/dev/null &&
+  ls "$STUDIO"/tests/data/*stream* >/dev/null 2>&1; then
+  grep -q 'coalescer' "$STUDIO/tests/test_streaming.py" &&
+    (cd "$STUDIO" && ./.venv/bin/python -m pytest -q tests/test_streaming.py >"$TMP/stream.out" 2>&1) &&
+    (cd "$STUDIO" && ./.venv/bin/python -m pytest -q >"$TMP/allstudio.out" 2>&1) && C10=0
+fi
+check "10. streaming units: executor.stream, stream-json parse (recorded sample), coalescer" "$C10"
+
+# --- 11. contract proof, live: agent_output in a fresh demo stream -------------------
+C11=1
+SANDBOX2=$("$STUDIO/.venv/bin/python" -m studio.demo --keep 2>/dev/null | grep -Eo 'sandbox: [^ ]+' | head -1 | cut -d' ' -f2)
+EV2="$SANDBOX2/studio/.agent-logs/events.jsonl"
+if [ -f "$EV2" ]; then
+  "$PY" - "$EV2" fixtures/demo-events.jsonl <<'EOF' && grep -q 'agent_output' "$OBS" && C11=0
+import json, sys
+for path in sys.argv[1:3]:
+    events = [json.loads(line) for line in open(path) if '"agent_output"' in line]
+    events = [e for e in events if e["kind"] == "agent_output"]
+    non_empty = [e for e in events if e["data"].get("chunk")]
+    assert len(non_empty) >= 3, f"{path}: only {len(non_empty)} non-empty agent_output chunks"
+    assert any(e["data"].get("done") for e in events), f"{path}: no done flush"
+EOF
+fi
+check "11. live + fixture streams carry agent_output (>=3, non-empty, done-flush); doc 07 updated" "$C11"
+
+# --- 12. console proof: buffer folding, feed filter, live pane in pilot --------------
+grep -q 'def test_live_pane_shows_streamed_text' tests/test_app.py 2>/dev/null &&
+  grep -rq 'agent_output' tests/test_state.py &&
+  "$PY" -m pytest -q tests/test_app.py tests/test_state.py >"$TMP/c12.out" 2>&1
+check "12. console: agent_output folding + feed filter tested; live pane proven in pilot" $?
+
 echo
-echo "Studio Console verification — spec.md §8"
+echo "Studio Console verification — spec.md §8 + spec-streaming.md §6"
 echo "------------------------------------------"
 for line in "${RESULTS[@]}"; do echo "$line"; done
 echo "------------------------------------------"
-echo "score: $PASS/9"
+echo "score: $PASS/12"
 [ "$FAIL" -gt 0 ] && { echo "details:"; cat "$TMP"/c9 "$TMP/check.out" 2>/dev/null | head -20; }
 [ "$FAIL" -eq 0 ]

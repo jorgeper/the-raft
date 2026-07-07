@@ -9,6 +9,7 @@ watch processes may interleave, and sub-4KB line appends are atomic on POSIX).
 from __future__ import annotations
 
 import json
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,7 +17,7 @@ SCHEMA_VERSION = 1
 MAX_BYTES_DEFAULT = 10 * 1024 * 1024
 
 # Excerpt fields are capped centrally; full text lives in the pointed-at files.
-TAIL_CAPS = {"output_tail": 2000, "comment_tail": 2000, "gate_tail": 1000}
+TAIL_CAPS = {"output_tail": 2000, "comment_tail": 2000, "gate_tail": 1000, "chunk": 2000}
 
 
 class NullEventLog:
@@ -88,3 +89,47 @@ class BoundEventLog:
 
     def bound(self, *, item: str | None = None, agent: str | None = None) -> BoundEventLog:
         return BoundEventLog(self._log, item=item or self._item, agent=agent or self._agent)
+
+
+class OutputCoalescer:
+    """Batches an agent's incremental output into agent_output events.
+
+    Raw model deltas would flood the stream; this flushes when >= max_chars
+    accumulate or >= max_interval_s has passed since the last flush, on channel
+    change (a tool notice shouldn't ride inside prose), and finally on close()
+    with done=True. A 5-minute invocation yields tens of events, not thousands.
+    """
+
+    def __init__(self, events, *, max_chars: int = 400, max_interval_s: float = 1.0,
+                 clock=time.monotonic) -> None:
+        self.events = events
+        self.max_chars = max_chars
+        self.max_interval_s = max_interval_s
+        self.clock = clock
+        self._buffer = ""
+        self._channel = "text"
+        self._last_flush = clock()
+        self._closed = False
+
+    def _flush(self, done: bool = False) -> None:
+        if self._buffer or done:
+            self.events.emit("agent_output", chunk=self._buffer, channel=self._channel, done=done)
+        self._buffer = ""
+        self._last_flush = self.clock()
+
+    def feed(self, chunk: str, channel: str = "text") -> None:
+        if self._closed or not chunk:
+            return
+        if channel != self._channel and self._buffer:
+            self._flush()
+        self._channel = channel
+        self._buffer += chunk
+        if len(self._buffer) >= self.max_chars or (
+            self.clock() - self._last_flush >= self.max_interval_s
+        ):
+            self._flush()
+
+    def close(self) -> None:
+        if not self._closed:
+            self._flush(done=True)
+            self._closed = True
