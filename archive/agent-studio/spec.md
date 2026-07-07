@@ -50,10 +50,10 @@ human files feature request
 
 ## 2. Repo layout (the artifact this spec builds)
 
-Everything lives under this directory (`agentic-harness/`). Layout:
+Everything lives under this directory (`agent-studio/`). Layout:
 
 ```
-agentic-harness/
+agent-studio/
 ├── spec.md                          # this file
 ├── agentic-engineering-field-guide.md
 ├── research/                        # normative research: loop-engineering + skills reports

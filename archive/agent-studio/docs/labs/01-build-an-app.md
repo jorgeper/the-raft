@@ -20,7 +20,7 @@ Run `make demo` once first: it exercises the whole machine offline so you can te
 ```sh
 gh repo create todo-api --private --clone
 cd todo-api && git commit --allow-empty -m "root" && git push -u origin main
-cd ../agentic-harness
+cd ../agent-studio
 scripts/setup-github.sh you/todo-api
 ```
 

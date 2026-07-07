@@ -1,13 +1,13 @@
 # Goal prompt for /goal
 
-Copy everything below the line into `/goal` (or run `/goal "$(cat agentic-harness/goal.md)"`
+Copy everything below the line into `/goal` (or run `/goal "$(cat agent-studio/goal.md)"`
 minus this header). It is written for an overnight, unattended run.
 
 ---
 
 Build the Agent Studio harness specified in
-`/Users/jorgeper/src/sandbox/agentic-harness/spec.md`, working only inside
-`/Users/jorgeper/src/sandbox/agentic-harness/`.
+`/Users/jorgeper/src/sandbox/agent-studio/spec.md`, working only inside
+`/Users/jorgeper/src/sandbox/agent-studio/`.
 
 **GOAL (the only exit condition):** `./scripts/verify.sh` exits 0, implementing exactly
 the 13 acceptance criteria in spec.md §17. Do not stop, summarize, or declare success
@@ -29,7 +29,7 @@ cites.
    line is always runnable. End every work session by running it and recording the score
    (how many of the 13 checks pass) in PROGRESS.md. The pass-count must never decrease —
    if it does, fix the regression before anything new.
-5. Maintain `PROGRESS.md` at the repo root of agentic-harness/: current milestone,
+5. Maintain `PROGRESS.md` at the repo root of agent-studio/: current milestone,
    verify.sh score, what's done, what's next, and any gotchas discovered. Assume your
    context may be reset at any time: PROGRESS.md + git log must be enough for a fresh
    session to resume without re-reading everything. Update it before each commit.
@@ -50,9 +50,9 @@ changing anything.
   need an API key as a design error in your code, not a missing prerequisite).
 
 **Hard boundaries:**
-- Never touch files outside `/Users/jorgeper/src/sandbox/agentic-harness/` (the git repo
+- Never touch files outside `/Users/jorgeper/src/sandbox/agent-studio/` (the git repo
   root is the parent `sandbox/` — commits are fine, but stage only paths under
-  agentic-harness/).
+  agent-studio/).
 - Never `git push`. Never force-push. Local commits only.
 - Runtime deps: stdlib + PyYAML only. Dev deps: pytest, pytest-cov, ruff. Nothing else.
 - Do not modify spec.md except to fix an internal contradiction — and if you must, record

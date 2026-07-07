@@ -23,9 +23,9 @@ defensible **only** when the environment enforces what prompts can't:
 adduser --system --group --home /opt/studio studio
 sudo -u studio -H bash -lc '
   cd /opt/studio
-  git clone <your-studio-fork> agentic-harness
+  git clone <your-studio-fork> agent-studio
   git clone git@github.com:you/your-app app        # deploy key, read-write
-  cd agentic-harness
+  cd agent-studio
   curl -LsSf https://astral.sh/uv/install.sh | sh
   uv venv .venv && uv pip install --python .venv/bin/python pyyaml pytest pytest-cov ruff
   npm install -g @anthropic-ai/claude-code         # plus: gh, optionally codex
@@ -47,7 +47,7 @@ poll_interval_s: 120
 Validate before daemonizing — never automate what you haven't watched work:
 
 ```sh
-sudo -u studio -H bash -lc 'cd /opt/studio/agentic-harness &&
+sudo -u studio -H bash -lc 'cd /opt/studio/agent-studio &&
   .venv/bin/python -m studio init &&
   .venv/bin/python -m studio run --once --dry-run'
 ```

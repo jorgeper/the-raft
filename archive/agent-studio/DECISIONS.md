@@ -1,6 +1,6 @@
 # Decisions — judgment calls the spec left open
 
-- Dedicated `.venv` created with uv inside agentic-harness; Makefile/verify.sh use it via
+- Dedicated `.venv` created with uv inside agent-studio; Makefile/verify.sh use it via
   `PYTHON` env override — the system `python3` points at an unrelated venv.
 - Prompt files and SKILL.md files created as stubs in M1 so `config/studio.yaml`
   validates from the first commit; real content lands in M6 (spec's milestone for them).

@@ -38,7 +38,7 @@ VPS ([deploy/vps.md](deploy/vps.md)).
 ## Quickstart (5 minutes, no API keys)
 
 ```sh
-git clone <this-repo> && cd agentic-harness
+git clone <this-repo> && cd agent-studio
 uv venv .venv && uv pip install --python .venv/bin/python pyyaml pytest pytest-cov ruff
 make demo     # full lifecycle on a throwaway repo with scripted agents
 make verify   # the 13-point acceptance checklist (spec §17)
