@@ -21,7 +21,7 @@ network**: agents are scripted fakes; the harness around them is entirely real.
 
 ```sh
 git clone <this-repo> && cd agent-studio
-uv venv .venv && uv pip install --python .venv/bin/python pyyaml pytest pytest-cov ruff
+uv venv .venv && uv pip install --python .venv/bin/python -e . pytest pytest-cov ruff
 make verify    # the system proving itself: 13 checks, ~30s
 make demo      # the full lifecycle, narrated
 source .venv/bin/activate   # so `python -m studio ...` resolves here

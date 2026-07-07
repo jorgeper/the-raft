@@ -35,18 +35,60 @@ VPS ([deploy/vps.md](deploy/vps.md)).
         both APPROVE -> pr:human-review  <- YOU read the history and merge
 ```
 
-## Quickstart (5 minutes, no API keys)
+## Run the demo (5 minutes, no API keys, no network)
+
+The demo drives one work item through the entire pipeline — request → PRD → your
+(scripted) approval → design → approval → the coder's GoalLoop → a rejected review →
+the fix → dual approval → merge — with scripted agents standing in for the models.
+The harness around them (state machine, orchestrator, gates, events) is entirely real.
+
+**1. One-time setup**
 
 ```sh
 git clone <this-repo> && cd agent-studio
-uv venv .venv && uv pip install --python .venv/bin/python pyyaml pytest pytest-cov ruff
-make demo     # full lifecycle on a throwaway repo with scripted agents
-make verify   # the 13-point acceptance checklist (spec §17)
-source .venv/bin/activate   # so `python -m studio ...` below resolves here
+uv venv .venv && uv pip install --python .venv/bin/python -e . pytest pytest-cov ruff
+source .venv/bin/activate   # so `python -m studio ...` resolves here
 ```
 
-The demo shows the whole loop: request → PRD → design → code → a rejected review →
-the fix → approval → done, with every state printed.
+**2. Run it**
+
+```sh
+make demo     # every state transition printed, board rendered at the end
+make verify   # optional: the 13-point acceptance checklist (spec §17)
+```
+
+**3. Keep the artifacts and poke around**
+
+```sh
+python -m studio.demo --keep
+# prints:  kept sandbox: /tmp/studio-demo-XXXX (events: .../events.jsonl)
+```
+
+Inside that sandbox: `studio/.work/items/1.md` (the item as a readable thread),
+`studio/.work/board.md` (the kanban), `studio/runs/` (every prompt and output
+verbatim), and `studio/.agent-logs/events.jsonl` — the full observability stream,
+including the agents' live-streamed output:
+
+```sh
+jq -r '[.ts, .kind, .item // "-", .agent // "-"] | @tsv' <sandbox>/studio/.agent-logs/events.jsonl
+```
+
+**4. Watch it in the terminal dashboard** ([studio-console](../studio-console/README.md))
+
+```sh
+cd ../studio-console
+uv venv .venv && uv pip install --python .venv/bin/python \
+  textual rich pyyaml pytest pytest-cov pytest-asyncio ruff
+make demo     # replays a recorded full lifecycle in the TUI at 20x —
+              # active agents, live output pane, event feed, board (key 2)
+```
+
+**5. Live mode** — the console watching a real orchestrator (two terminals):
+
+```sh
+cd studio-console && make run     # terminal 1: the dashboard
+cd agent-studio   && make run     # terminal 2: studio run --watch
+```
 
 ## Going live
 
