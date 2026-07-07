@@ -30,6 +30,7 @@ class RuntimeConfig:
     name: str
     cmd: str
     extra_flags: tuple[str, ...] = ()
+    kind: str = ""  # "claude" | "codex"; defaults to the runtime's name
 
 
 @dataclass(frozen=True)
@@ -140,8 +141,14 @@ def load_config(path: Path | str) -> StudioConfig:
     runtimes = {}
     for name, rt in runtimes_raw.items():
         _require(isinstance(rt, dict) and rt.get("cmd"), f"runtimes.{name}.cmd: required")
+        kind = rt.get("kind", name)
+        _require(
+            kind in ("claude", "codex"),
+            f"runtimes.{name}.kind: {kind!r} is not 'claude' or 'codex' "
+            "(set kind explicitly when the runtime name is not one of those)",
+        )
         runtimes[name] = RuntimeConfig(
-            name=name, cmd=rt["cmd"], extra_flags=tuple(rt.get("extra_flags", []))
+            name=name, cmd=rt["cmd"], extra_flags=tuple(rt.get("extra_flags", [])), kind=kind
         )
 
     agents_raw = raw.get("agents")
