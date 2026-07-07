@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from studio.events import NullEventLog
+from studio.events import NullEventLog, OutputCoalescer
 from studio.execution import CommandExecutor
 from studio.runtime.base import ModelRuntime
 
@@ -150,12 +150,14 @@ class GoalLoop:
         clock=time.monotonic,
         run_timeout_s: int = 3600,
         events=None,
+        streaming: bool = False,
     ) -> None:
         self.runtime = runtime
         self.executor = executor or CommandExecutor()
         self.agent = agent
         self.clock = clock
         self.run_timeout_s = run_timeout_s
+        self.streaming = streaming
         # The orchestrator rebinds this per dispatch (events.bound(item=..., agent=...)).
         self.events = events or NullEventLog()
 
@@ -329,7 +331,13 @@ class GoalLoop:
                 "runtime_start", runtime=self.runtime.name, run_dir=None,
                 prompt_chars=len(prompt),
             )
-            result = self.runtime.run(prompt, cwd=workdir, timeout_s=self.run_timeout_s, agent=self.agent)
+            coalescer = OutputCoalescer(self.events) if self.streaming else None
+            result = self.runtime.run(
+                prompt, cwd=workdir, timeout_s=self.run_timeout_s, agent=self.agent,
+                on_output=coalescer.feed if coalescer else None,
+            )
+            if coalescer is not None:
+                coalescer.close()
             self.events.emit(
                 "runtime_end", exit_code=result.exit_code,
                 duration_s=round(result.duration_s, 2), output_tail=result.output,

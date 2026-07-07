@@ -64,7 +64,7 @@ def _scaffold(base: Path) -> tuple[StudioConfig, MarkdownTracker, FakeRuntime, F
         root=root,
         tracker=TrackerConfig(kind="markdown"),
         runtimes={
-            "claude": RuntimeConfig(name="claude", cmd="claude", kind="claude"),
+            "claude": RuntimeConfig(name="claude", cmd="claude", kind="claude", streaming=True),
             "codex": RuntimeConfig(name="codex", cmd="codex", kind="codex"),
         },
         agents={
@@ -112,7 +112,11 @@ def run_demo(base: Path | None = None) -> str:
     tracker.transition("1", "prd:drafting", Actor.HUMAN)
     _say("you file a feature request (studio new)", tracker)
 
-    claude_rt.script("# PRD\n\nR1: POST /todos creates a todo and returns its id.")
+    claude_rt.script((
+        "# PRD\n\nR1: POST /todos creates a todo and returns its id.",
+        ["Reading the request… ", "drafting requirements. ",
+         "R1 covers create; keeping v1 minimal."],
+    ))
     orch.tick()
     _say("tick: prd agent drafts the PRD", tracker)
 
@@ -120,7 +124,11 @@ def run_demo(base: Path | None = None) -> str:
     tracker.transition("1", "design:drafting", Actor.HUMAN)
     _say("you approve the PRD (studio approve)", tracker)
 
-    claude_rt.script("# Design\n\nAcceptance: `test -f feature.txt`")
+    claude_rt.script((
+        "# Design\n\nAcceptance: `test -f feature.txt`",
+        ["Grounding the design in the repo… ",
+         "one acceptance criterion, machine-runnable."],
+    ))
     orch.tick()
     _say("tick: architect writes the design spec", tracker)
 
@@ -147,7 +155,10 @@ def run_demo(base: Path | None = None) -> str:
     orch.tick()
     _say("tick: coder's GoalLoop plans, builds, and the HARNESS verifies the gates", tracker)
 
-    claude_rt.script("clean implementation\n\nVERDICT: APPROVE")
+    claude_rt.script((
+        "clean implementation\n\nVERDICT: APPROVE",
+        ["Checked out the branch, ran the gates myself… ", "all green."],
+    ))
     codex_rt.script("[BLOCKER] feature.txt: no trailing-newline policy\n\nVERDICT: CHANGES")
     orch.tick()
     _say("tick: review round — reviewer-b (codex) requests changes", tracker)

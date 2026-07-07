@@ -13,7 +13,7 @@ from pathlib import Path
 
 from studio.agents.registry import AgentRegistry
 from studio.config import AgentConfig, StudioConfig
-from studio.events import NullEventLog
+from studio.events import NullEventLog, OutputCoalescer
 from studio.execution import CommandExecutor
 from studio.loop import Goal, GoalLoop, LoopResult
 from studio.runs import RunStore
@@ -144,9 +144,17 @@ class Orchestrator:
             "runtime_start", item=item.id, agent=agent.name,
             runtime=agent.runtime, run_dir=str(run.path), prompt_chars=len(prompt),
         )
+        coalescer = None
+        on_output = None
+        if self.cfg.runtimes[agent.runtime].streaming:
+            coalescer = OutputCoalescer(self.events.bound(item=item.id, agent=agent.name))
+            on_output = coalescer.feed
         result = self._runtime(agent).run(
-            prompt, cwd=self.cfg.root, agent=self.registry.invocation_agent(agent)
+            prompt, cwd=self.cfg.root, agent=self.registry.invocation_agent(agent),
+            on_output=on_output,
         )
+        if coalescer is not None:
+            coalescer.close()
         run.save("output.md", result.output)
         self.events.emit(
             "runtime_end", item=item.id, agent=agent.name,
@@ -179,6 +187,7 @@ class Orchestrator:
             self._runtime(agent),
             executor=self.executor,
             agent=self.registry.invocation_agent(agent),
+            streaming=self.cfg.runtimes[agent.runtime].streaming,
         )
 
     def _worktree(self, item: WorkItem) -> tuple[Path, str]:

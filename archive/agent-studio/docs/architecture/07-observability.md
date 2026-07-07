@@ -65,10 +65,22 @@ errors are swallowed by design).
 | `task_passed` | GoalLoop | `{task_id, tasks_passed, tasks_total}` |
 | `guardrail_added` | GoalLoop | `{trigger}` |
 | `loop_exit` | GoalLoop | `{reason, iterations, wall_time_s}` |
+| `agent_output` | orchestrator / loop, *during* an invocation | `{chunk, channel, done}` — live streamed output |
 | `item_created` | tracker | `{title, kind, state}` |
 | `transition` | tracker | `{from, to, actor}` |
 | `comment_added` | tracker | `{author, chars, comment_tail}` |
 | `claimed` / `released` | tracker | `{agent}` (idempotent re-claims emit nothing) |
+
+`agent_output` is the live channel: while a runtime invocation runs (streaming
+runtimes only — `runtimes.<name>.streaming` in config, default true for claude via
+`--output-format stream-json --verbose`), the agent's incremental output arrives as
+coalesced chunks. `channel` is `"text"` (assistant prose) or `"tool"` (a one-line
+tool-use notice); `done: true` marks an invocation's final flush (its chunk may be
+empty). Chunks are capped at 2000 chars and batched by an OutputCoalescer (flush at
+≥400 chars or ≥1s) so a long invocation emits tens of events, not thousands.
+Consumers wanting a live view buffer chunks per item and drop the buffer on
+`dispatch_end`; the *complete* output is still in the `runtime_end` tail and the
+run's `output.md`.
 
 Loop events arrive with `item`/`agent` filled because the orchestrator binds the
 loop's log per dispatch (`events.bound(item=..., agent=...)`) — the GoalLoop itself

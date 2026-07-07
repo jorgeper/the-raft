@@ -31,6 +31,7 @@ class RuntimeConfig:
     cmd: str
     extra_flags: tuple[str, ...] = ()
     kind: str = ""  # "claude" | "codex"; defaults to the runtime's name
+    streaming: bool = False  # emit agent_output events during invocations
 
 
 @dataclass(frozen=True)
@@ -150,7 +151,8 @@ def load_config(path: Path | str) -> StudioConfig:
             "(set kind explicitly when the runtime name is not one of those)",
         )
         runtimes[name] = RuntimeConfig(
-            name=name, cmd=rt["cmd"], extra_flags=tuple(rt.get("extra_flags", [])), kind=kind
+            name=name, cmd=rt["cmd"], extra_flags=tuple(rt.get("extra_flags", [])), kind=kind,
+            streaming=bool(rt.get("streaming", kind == "claude")),
         )
 
     agents_raw = raw.get("agents")
