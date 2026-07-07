@@ -124,3 +124,53 @@ async def test_feed_cursor_not_yanked_while_browsing():
         app.screen.refresh_view()
         await pilot.pause()
         assert feed.cursor_row == feed.row_count - 1
+
+
+async def test_vim_navigation_keys():
+    """j/k/g/G and ctrl+d/ctrl+u drive the feed cursor; G re-enables follow."""
+    app = make_app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        feed = app.screen.query_one("#feed", DataTable)
+        feed.focus()
+        bottom = feed.row_count - 1
+        await pilot.press("k", "k")                 # up twice
+        assert feed.cursor_row == bottom - 2
+        await pilot.press("j")                      # down once
+        assert feed.cursor_row == bottom - 1
+        await pilot.press("g")                      # top
+        assert feed.cursor_row == 0
+        await pilot.press("ctrl+d")                 # a page down from the top
+        assert feed.cursor_row > 0
+        page_row = feed.cursor_row
+        await pilot.press("ctrl+u")                 # and back up
+        assert feed.cursor_row < page_row
+        await pilot.press("G")                      # bottom re-enables tail-follow
+        assert feed.cursor_row == bottom
+        app._apply(app.feed_log[-1])
+        app.screen.refresh_view()
+        await pilot.pause()
+        assert feed.cursor_row == feed.row_count - 1  # following again
+
+
+async def test_vim_keys_scroll_detail_screens():
+    app = make_app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("2")
+        await pilot.pause()
+        board = app.screen.query_one("#board", DataTable)
+        board.focus()
+        board.move_cursor(row=1)
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.screen.__class__.__name__ == "ItemDetailScreen"
+        from textual.containers import VerticalScroll
+
+        scroller = app.screen.query_one(VerticalScroll)
+        await pilot.press("G")                      # bottom of a long item thread
+        await pilot.pause()
+        assert scroller.scroll_y > 0
+        await pilot.press("g")                      # back to the top
+        await pilot.pause()
+        assert scroller.scroll_y == 0

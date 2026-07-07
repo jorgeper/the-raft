@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Header, Markdown, Static
@@ -37,8 +38,84 @@ class BaseScreen(Screen):
         pass
 
 
-class DashboardScreen(BaseScreen):
-    BINDINGS = [("o", "toggle_output_events", "output events in feed")]
+# Textual merges BINDINGS only from DOMNode subclasses, so plain mixins can't
+# carry them — each screen spreads these into its own BINDINGS instead.
+VIM_TABLE_BINDINGS = [
+    Binding("j", "vim_down", "down", show=False),
+    Binding("k", "vim_up", "up", show=False),
+    Binding("g", "vim_top", "top", show=False),
+    Binding("G", "vim_bottom", "bottom", show=False),
+    Binding("ctrl+d", "vim_page_down", "page down", show=False),
+    Binding("ctrl+u", "vim_page_up", "page up", show=False),
+]
+
+VIM_SCROLL_BINDINGS = [
+    Binding("j", "vim_scroll_down", "down", show=False),
+    Binding("k", "vim_scroll_up", "up", show=False),
+    Binding("g", "vim_scroll_top", "top", show=False),
+    Binding("G", "vim_scroll_bottom", "bottom", show=False),
+    Binding("ctrl+d", "vim_scroll_page_down", "page down", show=False),
+    Binding("ctrl+u", "vim_scroll_page_up", "page up", show=False),
+]
+
+
+class VimTableNav:
+    """Vim-flavored actions for screens whose main widget is a DataTable.
+    Kept out of the footer (show=False) — the help overlay documents them."""
+
+    def _nav_table(self) -> DataTable:
+        return self.query_one(DataTable)  # type: ignore[attr-defined]
+
+    def action_vim_down(self) -> None:
+        self._nav_table().action_cursor_down()
+
+    def action_vim_up(self) -> None:
+        self._nav_table().action_cursor_up()
+
+    def action_vim_top(self) -> None:
+        table = self._nav_table()
+        if table.row_count:
+            table.move_cursor(row=0)
+
+    def action_vim_bottom(self) -> None:
+        table = self._nav_table()
+        if table.row_count:
+            table.move_cursor(row=table.row_count - 1)
+
+    def action_vim_page_down(self) -> None:
+        self._nav_table().action_page_down()
+
+    def action_vim_page_up(self) -> None:
+        self._nav_table().action_page_up()
+
+
+class VimScrollNav:
+    """The same keys for scrollable detail views (Markdown in a VerticalScroll)."""
+
+    def _scroller(self) -> VerticalScroll:
+        return self.query_one(VerticalScroll)  # type: ignore[attr-defined]
+
+    def action_vim_scroll_down(self) -> None:
+        self._scroller().scroll_down()
+
+    def action_vim_scroll_up(self) -> None:
+        self._scroller().scroll_up()
+
+    def action_vim_scroll_top(self) -> None:
+        self._scroller().scroll_home(animate=False)
+
+    def action_vim_scroll_bottom(self) -> None:
+        self._scroller().scroll_end(animate=False)
+
+    def action_vim_scroll_page_down(self) -> None:
+        self._scroller().scroll_page_down()
+
+    def action_vim_scroll_page_up(self) -> None:
+        self._scroller().scroll_page_up()
+
+
+class DashboardScreen(VimTableNav, BaseScreen):
+    BINDINGS = [("o", "toggle_output_events", "output events in feed"), *VIM_TABLE_BINDINGS]
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -86,7 +163,9 @@ class DashboardScreen(BaseScreen):
             self.app.push_screen(EventDetailScreen(app.feed_log[index]))
 
 
-class BoardScreen(BaseScreen):
+class BoardScreen(VimTableNav, BaseScreen):
+    BINDINGS = VIM_TABLE_BINDINGS
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         table = DataTable(id="board", cursor_type="row")
@@ -115,8 +194,8 @@ class BoardScreen(BaseScreen):
             self.app.push_screen(ItemDetailScreen(items[message.cursor_row]))
 
 
-class ItemDetailScreen(Screen):
-    BINDINGS = [("escape", "app.pop_screen", "back")]
+class ItemDetailScreen(VimScrollNav, Screen):
+    BINDINGS = [("escape", "app.pop_screen", "back"), *VIM_SCROLL_BINDINGS]
 
     def __init__(self, item_id: str) -> None:
         super().__init__()
@@ -136,7 +215,9 @@ class ItemDetailScreen(Screen):
             self.query_one("#detail", Markdown).update(panels.item_markdown(view, snapshot))
 
 
-class RunsScreen(BaseScreen):
+class RunsScreen(VimTableNav, BaseScreen):
+    BINDINGS = VIM_TABLE_BINDINGS
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         table = DataTable(id="runs", cursor_type="row")
@@ -168,8 +249,8 @@ class RunsScreen(BaseScreen):
             self.app.push_screen(RunViewScreen(runs[message.cursor_row]))
 
 
-class RunViewScreen(Screen):
-    BINDINGS = [("escape", "app.pop_screen", "back")]
+class RunViewScreen(VimScrollNav, Screen):
+    BINDINGS = [("escape", "app.pop_screen", "back"), *VIM_SCROLL_BINDINGS]
 
     def __init__(self, run_dir: Path) -> None:
         super().__init__()
@@ -190,8 +271,8 @@ class RunViewScreen(Screen):
         self.query_one("#run", Markdown).update("\n".join(parts))
 
 
-class EventDetailScreen(ModalScreen):
-    BINDINGS = [("escape", "app.pop_screen", "back")]
+class EventDetailScreen(VimScrollNav, ModalScreen):
+    BINDINGS = [("escape", "app.pop_screen", "back"), *VIM_SCROLL_BINDINGS]
 
     def __init__(self, event: Event) -> None:
         super().__init__()
@@ -202,20 +283,33 @@ class EventDetailScreen(ModalScreen):
             yield Markdown(panels.event_detail(self.event))
 
 
-class HelpScreen(ModalScreen):
-    BINDINGS = [("escape", "app.pop_screen", "back")]
+class HelpScreen(VimScrollNav, ModalScreen):
+    BINDINGS = [("escape", "app.pop_screen", "back"), *VIM_SCROLL_BINDINGS]
 
     HELP = """# studio-console
+
+## Screens
 
 | key | action |
 |---|---|
 | 1 | dashboard (active agents, event feed, live output pane) |
-| o | toggle agent_output events in the feed (they stream to the live pane) |
 | 2 | board (backlog by state; enter opens an item) |
 | 3 | runs browser (enter opens a run) |
+| o | dashboard: toggle agent_output events in the feed |
 | enter | expand the selected row |
 | escape | back |
 | q | quit |
+
+## Moving around (vim-flavored; works in lists and detail views)
+
+| key | action |
+|---|---|
+| j / k | down / up (same as ↓ / ↑) |
+| g / G | jump to top / bottom |
+| ctrl+d / ctrl+u | page down / page up (PgDn / PgUp work too) |
+| home / end | top / bottom (native) |
+
+In the event feed, `G` (bottom) re-enables tail-follow; browsing up pauses it.
 
 Read-only by design: approving and merging happen in `studio approve` and your
 own hands. See the README for pointing this at a real studio.

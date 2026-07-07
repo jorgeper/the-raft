@@ -64,6 +64,10 @@ make run
 | `q` | — | quit |
 | `?` | — | help overlay with all bindings |
 
+Navigation is vim-flavored everywhere (lists and detail views): `j`/`k` move,
+`g`/`G` jump to top/bottom, `ctrl+d`/`ctrl+u` page (PgUp/PgDn/Home/End also work
+natively). In the event feed, `G` re-enables tail-follow after browsing.
+
 Colors follow the studio's label scheme: red means it needs you, blue/purple are
 agent lanes, green is done.
 
