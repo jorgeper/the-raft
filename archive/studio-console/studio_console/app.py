@@ -38,6 +38,8 @@ class BaseScreen(Screen):
 
 
 class DashboardScreen(BaseScreen):
+    BINDINGS = [("o", "toggle_output_events", "output events in feed")]
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Static(id="counts")
@@ -46,19 +48,31 @@ class DashboardScreen(BaseScreen):
             feed = DataTable(id="feed", cursor_type="row", classes="panel")
             feed.add_columns("time", "event", "where", "detail")
             yield feed
+        yield Static(id="live", classes="livepane")
         yield Footer()
 
     def refresh_view(self) -> None:
         self.query_one("#counts", Static).update(panels.counts_line(self.state))
         self.query_one("#active", Static).update(panels.active_table(self.state))
+        self.query_one("#live", Static).update(panels.live_output(self.state))
         feed = self.query_one("#feed", DataTable)
         app: ConsoleApp = self.app  # type: ignore[assignment]
         while app.feed_cursor < len(app.feed_log):
             event = app.feed_log[app.feed_cursor]
-            feed.add_row(*panels.feed_row(event), key=str(app.feed_cursor))
+            # agent_output goes to the live pane, not the feed (toggle with `o`)
+            if event.kind != "agent_output" or app.show_output_events:
+                feed.add_row(*panels.feed_row(event), key=str(app.feed_cursor))
             app.feed_cursor += 1
         if feed.row_count:
             feed.move_cursor(row=feed.row_count - 1)
+
+    def action_toggle_output_events(self) -> None:
+        app: ConsoleApp = self.app  # type: ignore[assignment]
+        app.show_output_events = not app.show_output_events
+        feed = self.query_one("#feed", DataTable)
+        feed.clear()
+        app.feed_cursor = 0
+        self.refresh_view()
 
     def on_data_table_row_selected(self, message: DataTable.RowSelected) -> None:
         app: ConsoleApp = self.app  # type: ignore[assignment]
@@ -187,7 +201,8 @@ class HelpScreen(ModalScreen):
 
 | key | action |
 |---|---|
-| 1 | dashboard (active agents + event feed) |
+| 1 | dashboard (active agents, event feed, live output pane) |
+| o | toggle agent_output events in the feed (they stream to the live pane) |
 | 2 | board (backlog by state; enter opens an item) |
 | 3 | runs browser (enter opens a run) |
 | enter | expand the selected row |
@@ -208,6 +223,7 @@ class ConsoleApp(App):
     CSS = """
     Horizontal > .panel { width: 1fr; border: round $primary; }
     #counts { height: 1; padding: 0 1; }
+    .livepane { height: 8; border: round $secondary; padding: 0 1; overflow-y: hidden; }
     #event-modal, #help-modal {
         width: 80%; height: 80%; margin: 2 4;
         background: $surface; border: thick $primary;
@@ -232,6 +248,7 @@ class ConsoleApp(App):
         self.state = ConsoleState()
         self.feed_log: list[Event] = []  # append-only; the dashboard consumes a cursor
         self.feed_cursor = 0
+        self.show_output_events = False  # agent_output stays out of the feed by default
         self.replay_path = replay_path
         self.speed = speed
         self.config: ConsoleConfig | None = None

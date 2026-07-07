@@ -19,6 +19,7 @@ KNOWN_KINDS = frozenset(
         "dispatch_end",
         "runtime_start",
         "runtime_end",
+        "agent_output",
         "loop_start",
         "iteration_start",
         "gate_result",
@@ -82,6 +83,9 @@ def _salient(kind: str, data: dict) -> str:
         return str(data.get("trigger", ""))[:60]
     if kind == "loop_start":
         return f"{data.get('tasks_passed', 0)}/{data.get('tasks_total', 0)} tasks at start"
+    if kind == "agent_output":
+        chunk = str(data.get("chunk", ""))[:60].replace("\n", " ")
+        return f"[{data.get('channel', 'text')}] {chunk}" + (" ⏹" if data.get("done") else "")
     return ""
 
 

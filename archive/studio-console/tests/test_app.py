@@ -67,3 +67,29 @@ async def test_runs_screen_handles_missing_dir():
         await pilot.pause()
         runs = app.screen.query_one("#runs", DataTable)
         assert runs.row_count == 1  # the "(no runs directory)" placeholder
+
+
+async def test_live_pane_shows_streamed_text():
+    app = make_app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        live = app.screen.query_one("#live", Static)
+        text = str(live.render())
+        # the fixture's last streamed chunk (reviewer-a) is on the pane
+        assert "(finished)" in text
+        assert "ran the gates myself" in text or "all green" in text
+
+
+async def test_feed_excludes_agent_output_by_default_toggle_o():
+    app = make_app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        feed = app.screen.query_one("#feed", DataTable)
+        without = feed.row_count
+        assert without == sum(1 for e in app.feed_log if e.kind != "agent_output")
+        await pilot.press("o")
+        await pilot.pause()
+        assert feed.row_count == len(app.feed_log)  # toggled in
+        await pilot.press("o")
+        await pilot.pause()
+        assert feed.row_count == without  # toggled back out

@@ -103,3 +103,38 @@ def test_version_warning_surfaces_in_summary():
     bad = parse_line(json.dumps({"v": 99, "kind": "transition", "item": "1", "data": {}}))
     state.apply(bad)
     assert "version mismatch" in state.summary()
+
+
+def test_agent_output_folds_into_active_buffer_and_last_stream():
+    state = ConsoleState()
+    state.apply(event("dispatch_start", item="1", agent="prd", shape="commenter"))
+    state.apply(event("agent_output", item="1", agent="prd",
+                      chunk="Reading the request… ", channel="text", done=False))
+    state.apply(event("agent_output", item="1", agent="prd",
+                      chunk="drafting.", channel="text", done=False))
+    assert state.active["1"].output == "Reading the request… drafting."
+    assert state.last_stream.text == "Reading the request… drafting."
+    assert state.last_stream.live is True
+    state.apply(event("agent_output", item="1", agent="prd", chunk="", channel="text", done=True))
+    state.apply(event("dispatch_end", item="1", agent="prd", action="dispatched"))
+    assert state.active == {}
+    assert state.last_stream.live is False  # text survives for the live pane
+    assert "drafting." in state.last_stream.text
+
+
+def test_agent_output_buffer_is_capped():
+    from studio_console.state import OUTPUT_BUFFER_CHARS
+
+    state = ConsoleState()
+    state.apply(event("dispatch_start", item="1", agent="coder", shape="coder"))
+    for _ in range(10):
+        state.apply(event("agent_output", item="1", agent="coder",
+                          chunk="x" * 1000, channel="text", done=False))
+    assert len(state.active["1"].output) == OUTPUT_BUFFER_CHARS
+    assert len(state.last_stream.text) == OUTPUT_BUFFER_CHARS
+
+
+def test_fixture_carries_streamed_output():
+    state = folded_fixture()
+    assert state.last_stream is not None
+    assert state.last_stream.live is False

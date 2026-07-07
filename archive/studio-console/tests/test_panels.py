@@ -94,3 +94,30 @@ def test_event_detail_renders_tails_as_code_blocks():
                                    exit_code=0, duration_s=1.2, output_tail="agent said things"))
     assert "```text" in md and "agent said things" in md
     assert "**exit_code:** 0" in md
+
+
+def test_live_output_pane_states():
+    state = ConsoleState()
+    text = render(panels.live_output(state))
+    assert "no live output yet" in text
+
+    state.apply(event("dispatch_start", item="4", agent="coder", shape="coder"))
+    state.apply(event("agent_output", item="4", agent="coder",
+                      chunk="running the gates now", channel="text", done=False))
+    text = render(panels.live_output(state))
+    assert "coder #4" in text and "running the gates now" in text
+    assert "(finished)" not in text
+
+    state.apply(event("dispatch_end", item="4", agent="coder", action="dispatched"))
+    text = render(panels.live_output(state))
+    assert "(finished)" in text and "running the gates now" in text
+
+
+def test_live_output_truncates_to_last_lines():
+    state = ConsoleState()
+    state.apply(event("dispatch_start", item="4", agent="coder", shape="coder"))
+    body = "\n".join(f"line {n}" for n in range(50))
+    state.apply(event("agent_output", item="4", agent="coder",
+                      chunk=body, channel="text", done=False))
+    text = render(panels.live_output(state, lines=5))
+    assert "line 49" in text and "line 10" not in text

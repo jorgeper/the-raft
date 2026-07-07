@@ -32,6 +32,7 @@ KIND_ICONS = {
     "dispatch_end": "■",
     "runtime_start": "⚙",
     "runtime_end": "⚙",
+    "agent_output": "…",
     "loop_start": "⟳",
     "iteration_start": "⟳",
     "gate_result": "✔",
@@ -167,3 +168,19 @@ def event_detail(event: Event) -> str:
         else:
             lines.append(f"- **{key}:** {value}")
     return "\n".join(lines)
+
+
+def live_output(state: ConsoleState, lines: int = 12) -> Text:
+    """The dashboard's live pane: the streaming (or most recent) agent output."""
+    stream = state.last_stream
+    if stream is None:
+        return Text("no live output yet — agent text streams here while they work",
+                    style="dim italic")
+    active = state.active.get(stream.item)
+    text = active.output if (active and active.output) else stream.text
+    caption = f"▶ {stream.agent} #{stream.item}" + ("" if stream.live else " (finished)")
+    body = "\n".join(text.splitlines()[-lines:]) if text else "(no text yet)"
+    result = Text()
+    result.append(caption + "\n", style="bold cyan" if stream.live else "bold dim")
+    result.append(body, style="white" if stream.live else "dim")
+    return result

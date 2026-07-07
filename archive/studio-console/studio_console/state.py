@@ -45,6 +45,21 @@ class ActiveDispatch:
     shape: str
     started_ts: str
     loop: LoopProgress | None = None
+    output: str = ""  # rolling live-output buffer (last OUTPUT_BUFFER_CHARS)
+
+
+OUTPUT_BUFFER_CHARS = 4000
+
+
+@dataclass
+class LastStream:
+    """The most recent streamed output — survives dispatch_end so the live pane
+    shows the last thing said between dispatches."""
+
+    item: str
+    agent: str
+    text: str
+    live: bool = True
 
 
 @dataclass
@@ -69,6 +84,7 @@ class ConsoleState:
         self.parse_errors: int = 0
         self.version_warning: bool = False
         self.events_applied: int = 0
+        self.last_stream: LastStream | None = None
 
     # ---------------------------------------------------------------- inputs
 
@@ -127,6 +143,24 @@ class ConsoleState:
     def _on_dispatch_end(self, e: Event, item: ItemView | None) -> None:
         if e.item:
             self.active.pop(e.item, None)
+        if self.last_stream and self.last_stream.item == e.item:
+            self.last_stream.live = False
+
+    def _on_agent_output(self, e: Event, item: ItemView | None) -> None:
+        chunk = e.data.get("chunk", "")
+        if not chunk:
+            return
+        active = self.active.get(e.item or "")
+        if active is not None:
+            active.output = (active.output + chunk)[-OUTPUT_BUFFER_CHARS:]
+        text = (
+            self.last_stream.text + chunk
+            if self.last_stream and self.last_stream.item == e.item and self.last_stream.live
+            else chunk
+        )
+        self.last_stream = LastStream(
+            item=e.item or "?", agent=e.agent or "?", text=text[-OUTPUT_BUFFER_CHARS:]
+        )
 
     def _on_loop_start(self, e: Event, item: ItemView | None) -> None:
         active = self.active.get(e.item or "")
