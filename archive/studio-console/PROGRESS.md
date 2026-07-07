@@ -23,21 +23,23 @@ demo event stream every verify run.
   2. `make demo` visually — colors, layout, and the feel of the replay at 20x.
   3. The contract doc (architecture/07) against any consumer you build next.
 
-## Done
+## Milestone log
 
-- Scaffolding: folders, .venv, pyproject (pytest asyncio_mode=auto), Makefile,
-  scripts/verify.sh (all 9 checks implemented up front).
+- O1: studio/events.py + emissions in orchestrator/GoalLoop/trackers + snapshot CLI
+  (status/show --json) + 10 emission tests; agent-studio made pip-installable.
+- O2: contract doc (architecture/07, in book index + verify-docs manifest), fixtures
+  regenerated from a real `studio demo --keep` run, console README.
+- C1: parser / tailer / state folding / snapshot seam / replay + --check; 26 tests.
+- C2–C4: Textual app — dashboard (active agents + live feed with expandable events),
+  board with pinned Needs-You, item detail (markdown comments + timeline), runs
+  browser, help overlay; 12 more tests incl. 4 pilot smoke tests.
+- C5: verify.sh 9/9, stable ×3.
 
-## Next
+## Gotchas for future work
 
-- O1: studio/events.py (EventLog/NullEventLog, seq, rotation, tails) + emission in
-  orchestrator/loop/trackers + tests/test_events.py in agent-studio.
-- O2: status --json, show <id> --json, demo --keep (+ config/studio.yaml written
-  into the demo sandbox so snapshot commands work there), contract doc 07, add to
-  verify-docs manifest, regenerate fixtures.
-
-## Gotchas
-
-- agent-studio demo sandbox path is printed as "sandbox: <path>"; verify.sh check 4
-  parses that line — keep it stable when touching demo output.
-- verify.sh check 5 needs the demo sandbox to contain studio/config/studio.yaml.
+- agent-studio demo sandbox path is printed as "kept sandbox: <path>"; verify.sh
+  check 4 parses the `sandbox:` token — keep that output stable.
+- The demo sandbox contains studio/config/studio.yaml precisely so the snapshot
+  contract can be exercised there (verify check 5).
+- pyproject addopts already has -q; don't pass another -q or the pass-count line
+  disappears (same trap as agent-studio).
