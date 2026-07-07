@@ -57,13 +57,18 @@ class DashboardScreen(BaseScreen):
         self.query_one("#live", Static).update(panels.live_output(self.state))
         feed = self.query_one("#feed", DataTable)
         app: ConsoleApp = self.app  # type: ignore[assignment]
+        # tail -f semantics: auto-follow ONLY while the cursor is at the bottom;
+        # a user browsing older rows must never be yanked back down.
+        following = feed.row_count == 0 or feed.cursor_row >= feed.row_count - 1
+        added = False
         while app.feed_cursor < len(app.feed_log):
             event = app.feed_log[app.feed_cursor]
             # agent_output goes to the live pane, not the feed (toggle with `o`)
             if event.kind != "agent_output" or app.show_output_events:
                 feed.add_row(*panels.feed_row(event), key=str(app.feed_cursor))
+                added = True
             app.feed_cursor += 1
-        if feed.row_count:
+        if added and following and feed.row_count:
             feed.move_cursor(row=feed.row_count - 1)
 
     def action_toggle_output_events(self) -> None:
@@ -143,6 +148,7 @@ class RunsScreen(BaseScreen):
         table = self.query_one("#runs", DataTable)
         app: ConsoleApp = self.app  # type: ignore[assignment]
         runs_dir = app.config.runs_dir if app.config else None
+        cursor = table.cursor_row
         table.clear()
         self._runs: list[Path] = []
         if runs_dir and runs_dir.is_dir():
@@ -153,6 +159,8 @@ class RunsScreen(BaseScreen):
                     self._runs.append(run)
         if not self._runs:
             table.add_row("(no runs directory — replay mode?)", "")
+        if table.row_count and cursor is not None:
+            table.move_cursor(row=min(cursor, table.row_count - 1))
 
     def on_data_table_row_selected(self, message: DataTable.RowSelected) -> None:
         runs = getattr(self, "_runs", [])

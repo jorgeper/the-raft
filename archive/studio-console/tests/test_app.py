@@ -93,3 +93,34 @@ async def test_feed_excludes_agent_output_by_default_toggle_o():
         await pilot.press("o")
         await pilot.pause()
         assert feed.row_count == without  # toggled back out
+
+
+async def test_feed_cursor_not_yanked_while_browsing():
+    """Regression: arrowing up through the feed must not snap back to the bottom
+    on the periodic refresh — tail-follow applies only at the bottom."""
+    app = make_app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        feed = app.screen.query_one("#feed", DataTable)
+        bottom = feed.row_count - 1
+        assert feed.cursor_row == bottom  # follows the tail initially
+        feed.focus()
+        await pilot.press("up", "up", "up")
+        browsing_row = feed.cursor_row
+        assert browsing_row == bottom - 3
+        # periodic refreshes (with nothing new) must not move the cursor
+        app.screen.refresh_view()
+        await pilot.pause()
+        assert feed.cursor_row == browsing_row
+        # NEW events arriving must not yank it back down either
+        app._apply(app.feed_log[-1])
+        app.screen.refresh_view()
+        await pilot.pause()
+        assert feed.cursor_row == browsing_row
+        # returning to the bottom re-enables tail-follow
+        for _ in range(feed.row_count):
+            await pilot.press("down")
+        app._apply(app.feed_log[-1])
+        app.screen.refresh_view()
+        await pilot.pause()
+        assert feed.cursor_row == feed.row_count - 1
