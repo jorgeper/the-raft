@@ -17,3 +17,14 @@
   `python -m studio` works from any cwd — required by the snapshot contract.
 - Loop runtime_start events carry run_dir=null (the loop doesn't own a RunStore);
   the orchestrator-level runtime events carry the real run_dir.
+- stream-json format VERIFIED against a real `claude -p --output-format stream-json`
+  run (v2.x): --verbose is REQUIRED with -p; line types seen: system(init/hook_*),
+  assistant{message.content[text|thinking|tool_use]}, rate_limit_event, result
+  {subtype, result}. Sanitized capture: agent-studio/tests/data/claude-stream-sample.jsonl.
+- Parser skips thinking blocks (out of scope) and all unknown line types.
+- executor.stream kills the whole process GROUP on deadline (start_new_session +
+  killpg) — killing just `sh` left grandchildren holding the pipe open.
+- The live pane keeps the last stream after dispatch_end, marked "(finished)" —
+  a blank pane between dispatches read as broken.
+- Coalescer's final done-flush may carry an empty chunk; verify check 11 counts
+  non-empty chunks separately (matches spec-streaming §6 wording exactly).

@@ -3,7 +3,25 @@
 Resume protocol: read this + `git log --oneline -10` + spec.md §6/§8. The verify
 score (scripts/verify.sh, 9 checks) must never decrease.
 
-## FINAL: 9/9 ✅ — 2026-07-07
+## Streaming build (goal-streaming.md): 12/12 ✅ — 2026-07-07
+
+All 9 original checks plus streaming checks 10–12, stable across three runs.
+Commits: S1 (executor.stream + stream-json runtime + coalescer, 14 tests),
+S2 (config flag + orchestrator/loop wiring + demo streaming + doc 07 + fixtures
+regenerated from a real run), S3 (console live pane + buffers + feed filter,
+45 console tests total), S4 (verify 12/12).
+
+Residual risks / human checks:
+1. The stream-json parser was validated against a REAL captured `claude` run
+   (tests/data/claude-stream-sample.jsonl; --verbose confirmed required) — but
+   watch one real `studio run --watch` session end to end with `make run` to see
+   live streaming under load before trusting it operationally.
+2. `make demo` visually: the live pane at the bottom of the dashboard should fill
+   as prd/architect/reviewer stream, then show "(finished)".
+3. Chunk cadence on a real long invocation (coalescer: 400 chars / 1s) — tune in
+   studio/events.py:OutputCoalescer if the pane feels laggy or chatty.
+
+## Console+observability build (goal.md → spec.md §8): 9/9 ✅ — 2026-07-07
 
 `scripts/verify.sh` exits 0, stable across three consecutive runs. Agent-studio
 verify.sh stays 13/13 and verify-docs.sh green (now with architecture/07 in the
