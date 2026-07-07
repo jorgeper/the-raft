@@ -95,4 +95,4 @@ stress.
 ---
 
 [← GoalLoop internals](05-goal-loop-internals.md) · [Index](../README.md) ·
-[Part 3: Install and first run →](../guide/01-install-and-first-run.md)
+[Observability →](07-observability.md)

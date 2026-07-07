@@ -15,7 +15,7 @@ check() {
 }
 
 CONCEPTS="docs/concepts/01-from-prompts-to-loops.md docs/concepts/02-anatomy-of-a-harness.md docs/concepts/03-the-ralph-loop.md docs/concepts/04-verification-is-the-bottleneck.md docs/concepts/05-autonomy-and-safety.md"
-ARCH="docs/architecture/01-system-overview.md docs/architecture/02-state-machine.md docs/architecture/03-trackers-and-work-items.md docs/architecture/04-agents-skills-runtimes.md docs/architecture/05-goal-loop-internals.md docs/architecture/06-orchestrator-and-safety.md"
+ARCH="docs/architecture/01-system-overview.md docs/architecture/02-state-machine.md docs/architecture/03-trackers-and-work-items.md docs/architecture/04-agents-skills-runtimes.md docs/architecture/05-goal-loop-internals.md docs/architecture/06-orchestrator-and-safety.md docs/architecture/07-observability.md"
 GUIDE="docs/guide/01-install-and-first-run.md docs/guide/02-daily-workflow.md docs/guide/03-configuration.md docs/guide/04-going-live-on-github.md docs/guide/05-troubleshooting.md"
 LABS="docs/labs/01-build-an-app.md docs/labs/02-add-a-feature.md docs/labs/03-fix-a-bug.md docs/labs/04-watch-the-loop-save-itself.md docs/labs/05-teach-the-team.md docs/labs/06-extend-the-studio.md"
 

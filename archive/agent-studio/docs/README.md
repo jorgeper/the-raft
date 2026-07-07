@@ -51,6 +51,8 @@ their output, and iterate — instead of prompting them yourself.
    one iteration, mechanism by mechanism.
 6. [Orchestrator and safety](architecture/06-orchestrator-and-safety.md) — ticks,
    claims, review rounds, and the enforcement stack.
+7. [Observability](architecture/07-observability.md) — the event stream and
+   snapshot contract external tools build on.
 
 ## Part 3 — Guide: operating it
 
