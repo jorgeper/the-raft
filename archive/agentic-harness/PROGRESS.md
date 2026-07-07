@@ -5,22 +5,35 @@ score must never decrease.
 
 ## Current
 
-- **Milestone:** M1 done → starting M2 (trackers)
-- **verify.sh score:** 3/13 (1 ruff, 7 config-sanity, 8 actor-enforcement)
-- **Tests:** 21 passing, lint clean
+- **Milestone:** M5 done → starting M6 (agents: prompts, skills, registry tests)
+- **verify.sh score:** 3/13 at last full run (M1); expect ~7 now — rerun after M6
+- **Tests:** 79 passing, lint clean
 
 ## Done
 
-- M1 skeleton: pyproject, Makefile, .venv (uv, py3.12), .gitignore, state machine
-  (`studio/state.py` + 12 tests), config loader/validation (`studio/config.py` + 9
-  tests), CLI skeleton (init works; new/approve/run/status/demo stubbed), default
-  markdown-tracker `config/studio.yaml`, stub prompts/skills/memory, full 13-check
-  `scripts/verify.sh`.
+- M1 skeleton: pyproject, Makefile, .venv (uv, py3.12), state machine, config
+  loader/validation, CLI skeleton, default markdown config, 13-check verify.sh.
+- M2 trackers: MarkdownTracker (frontmatter items + board.md, O_EXCL claim locks),
+  GitHubIssuesTracker (labels = states, via injected CommandExecutor), 18 tests.
+- M3 runtimes: ClaudeCodeRuntime (`claude -p --agent studio-<name>`), CodexRuntime
+  (`codex exec`), FakeRuntime (scripted), factory by `kind`.
+- M4 GoalLoop: plan.json priority queue w/ canonical copy (passes is HARNESS-owned —
+  reconcile ignores agent flips entirely), planning iteration, per-iteration gate
+  re-verification, feedback injection, guardrails auto-append (3 same errors),
+  test-count ratchet, no-diff/same-error circuit breaker, wall/iteration budgets,
+  distinct exit reasons/codes, 16 tests incl. test_lying_agent_does_not_complete.
+- M5 orchestrator: snapshot-per-tick dispatch (an item moves at most once per tick),
+  claim/release, commenter dispatch (prd/architect), coder dispatch (worktree +
+  GoalLoop, verified→pr:agent-review, else needs-human), review round (verdict
+  parsing, missing verdict = CHANGES, degraded-review path), .agent-logs; CLI fully
+  wired (init/new/approve/run/status), 17 tests.
 
 ## Next
 
-- M2: MarkdownTracker + GitHubIssuesTracker + tests (needs a WorkItem model and the
-  injected CommandExecutor seam for `gh`).
+- M6: real prompts (Role/Output contract/NEVER/Stop rule/Memory sections), five real
+  SKILL.md files, registry tests (subagent generation + codex inlining + unknown-skill
+  error), tests/test_skills.py (frontmatter validation, needed by verify check 9).
+- M7: demo.sh + test_e2e_lifecycle.py.
 
 ## Gotchas
 

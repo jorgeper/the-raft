@@ -37,8 +37,10 @@ agents:
     prompt: prompts/reviewer.md
     skills: [code-review-rubric]
     handles: pr:agent-review
+    memory: reviewer
   reviewer-b:
     runtime: codex
     prompt: prompts/reviewer.md
     skills: [code-review-rubric]
     handles: pr:agent-review
+    memory: reviewer

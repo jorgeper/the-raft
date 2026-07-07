@@ -47,6 +47,7 @@ class AgentConfig:
     handles: str
     skills: tuple[str, ...] = ()
     loop: LoopConfig | None = None
+    memory: str = ""  # journal directory under memory/; defaults to the agent name
     mcp_servers: dict = field(default_factory=dict)
     hooks: dict = field(default_factory=dict)
 
@@ -119,6 +120,7 @@ def _load_agent(name: str, raw: dict, root: Path, runtimes: dict[str, RuntimeCon
         handles=handles,
         skills=skills,
         loop=loop,
+        memory=raw.get("memory", name),
         mcp_servers=raw.get("mcp_servers", {}),
         hooks=raw.get("hooks", {}),
     )
