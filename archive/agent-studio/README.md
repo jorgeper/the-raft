@@ -72,15 +72,27 @@ python -m studio approve 1        # your gate: PRD, then design, then merge
 - Approval is meaningful only if you read the thing. The agents write, review, and
   test; deciding that the built thing is the *right* thing never delegates.
 
+## Documentation: the Agent Studio Book
+
+**[docs/README.md](docs/README.md)** is the front door — a four-part book:
+concepts (loop engineering, the discipline), architecture (six deep dives with
+diagrams), the operating guide (install, daily workflow, configuration, going
+live, troubleshooting), and six hands-on labs. Twenty minutes to oriented:
+[concepts/01](docs/concepts/01-from-prompts-to-loops.md) →
+[architecture/01](docs/architecture/01-system-overview.md) → `make demo`.
+
 ## Hands-on labs
 
 1. [Build an app from zero](docs/labs/01-build-an-app.md)
 2. [Add a feature](docs/labs/02-add-a-feature.md)
 3. [Fix a bug](docs/labs/03-fix-a-bug.md)
+4. [Watch the loop save itself](docs/labs/04-watch-the-loop-save-itself.md)
+5. [Teach the team](docs/labs/05-teach-the-team.md)
+6. [Extend the studio](docs/labs/06-extend-the-studio.md)
 
 ## Learn more
 
-- [docs/architecture.md](docs/architecture.md) — abstractions, the GoalLoop internals,
-  how to add a tracker/runtime/agent/skill, the safety model.
+- [docs/architecture.md](docs/architecture.md) — the architecture summary, with
+  signposts into the book's deep dives.
 - [AGENTS.md](AGENTS.md) — the house rules every agent reads.
 - [deploy/vps.md](deploy/vps.md) — running 24/7 on a VPS with systemd.

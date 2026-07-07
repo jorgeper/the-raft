@@ -33,8 +33,9 @@ block() {
   exit 2
 }
 
+# Matches both `push origin main` and refspec forms like `push origin HEAD:main`.
 if printf '%s' "$cmd" | grep -qE \
-  'git[[:space:]]+push[^|;&]*[[:space:]](main|master)([[:space:]]|$)'; then
+  'git[[:space:]]+push[^|;&]*[[:space:]:](main|master)([[:space:]]|$)'; then
   block "push-to-main"
 fi
 

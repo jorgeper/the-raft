@@ -33,7 +33,24 @@ about your environment is off *before* you've invested anything — see
 
 ## Reading the demo output
 
-`make demo` prints the whole story. The important beats, in order:
+`make demo` prints the whole story — one item traversing every state, with you (the
+scripted "you") at the three gates:
+
+```mermaid
+graph LR
+    A[prd:drafting] --> B[prd:review]
+    B -- gate 1 --> C[design:drafting]
+    C --> D[design:review]
+    D -- gate 2 --> E[ready]
+    E --> F[coding]
+    F --> G[pr:agent-review]
+    G -- CHANGES --> H[pr:changes-requested]
+    H --> F
+    G -- both APPROVE --> I[pr:human-review]
+    I -- gate 3: merge --> J[done]
+```
+
+The important beats, in order:
 
 ```text
 == you file a feature request (studio new)

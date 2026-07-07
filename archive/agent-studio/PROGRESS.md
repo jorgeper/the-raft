@@ -1,6 +1,22 @@
 # Build progress — Agent Studio
 
-## FINAL: 13/13 ✅
+## Docs build (goal-docs.md): 9/9 ✅ — 2026-07-07
+
+`./scripts/verify-docs.sh` exits 0 (stable across repeated runs) and `make verify`
+stays 13/13. The Agent Studio Book: 24 markdown files under docs/, 15 Mermaid
+diagrams, four parts — 5 concepts docs (each citing ≥2 sources), 6 architecture
+deep dives, 5 operating guides, 6 labs (3 new: sabotage the loop / teach the team /
+extend the studio). Plus `studio/tracker/linear.py` (Lab 6's tracker stub) with a
+5-test contract suite, and old docs/architecture.md converted to a signpost.
+
+- Commits: verify-docs harness + part 1, part 2, part 3, part 4 + glue + final.
+- Bonus from the stranger-pass: guard.sh now also blocks refspec pushes
+  (`git push origin HEAD:main`) — the docs claimed it, so the hook was made true.
+- The three docs a human should proofread first: docs/concepts/03 (the lineage
+  claims), docs/labs/04 (run its script once yourself), docs/guide/04 (the live
+  GitHub commands against a real repo).
+
+## System build (goal.md): 13/13 ✅
 
 `./scripts/verify.sh` exits 0, verified stable across three consecutive runs
 (2026-07-07). All spec.md §17 acceptance criteria pass: 96 tests, coverage >80%,

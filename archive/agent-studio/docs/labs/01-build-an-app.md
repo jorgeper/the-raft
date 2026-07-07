@@ -104,8 +104,18 @@ gh pr ready 1 && gh pr merge 1 --squash
 python -m studio approve 1      # records done in the tracker
 ```
 
-## 7. What you just did
+## What you learned
 
-Two approvals and one merge. The team wrote the PRD, the design, the code, the tests,
-ran the app, reviewed it twice, and iterated on its own rejections. Next:
-[Lab 2 — add a feature](02-add-a-feature.md).
+- The whole pipeline costs you exactly two approvals and one merge — everything
+  else ran on states, not prompts.
+- Spec review is your highest-leverage moment: the acceptance criteria you approve
+  become, verbatim, the gates the coder's loop must satisfy.
+- The GoalLoop's progress log (`.loop/progress.md`) is watchable in real time and
+  readable after the fact — evidence, not vibes.
+- Reviewer rejections route back to the coder automatically; you only see the PR
+  after the models approved it.
+- Reading the final diff yourself is a permanent part of the job, not a phase.
+
+---
+
+[Index](../README.md) · [Lab 2: Add a feature →](02-add-a-feature.md)

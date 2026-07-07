@@ -68,3 +68,21 @@ show up. When the same finding appears twice, promote it: comment a proposed hou
 rule on any open issue, and if you agree with yourself tomorrow, add it to AGENTS.md.
 The system should be measurably harder to break each week you use it — that's the
 whole game.
+
+## What you learned
+
+- Bugs take the short path (`backlog → design:drafting`) — one gate instead of two,
+  enforced by a kind-guard in the state machine, not by convention.
+- A good repro in the report becomes the regression test almost verbatim; report
+  quality is fix speed.
+- Red-then-green order is non-negotiable: a fix without a test that failed first is
+  a fix you can't trust.
+- Your merge-time read for a fix is two questions: does the test encode the repro,
+  and is the diff a fix rather than a stealth refactor?
+- Recurring bug classes belong in house rules — the pipeline should get harder to
+  break every week you run it.
+
+---
+
+[← Lab 2: Add a feature](02-add-a-feature.md) · [Index](../README.md) ·
+[Lab 4: Watch the loop save itself →](04-watch-the-loop-save-itself.md)

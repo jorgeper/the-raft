@@ -40,3 +40,5 @@
   documented as a v1 single-orchestrator assumption.
 - verify.sh check 9's >40-line rule is satisfied by making the hooks genuinely richer
   (blocked.log, rm -rf guard, log rotation, input-schema docs), not by padding.
+- Docs build: verify-docs.sh check 7 required 'What you learned' in ALL labs while §2 said old labs get only link updates — resolved in favor of §6.7 (sections added to labs 1-3).
+- guard.sh push-to-main pattern extended to refspec form (HEAD:main) during the docs stranger-pass — concepts/02 claimed semantic matching, so the hook was strengthened to match the claim.

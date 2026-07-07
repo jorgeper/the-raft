@@ -67,4 +67,18 @@ cat memory/reviewer/journal.md   # any recurring findings? consider promoting on
                                  # to AGENTS.md via an issue comment
 ```
 
-Then: [Lab 3 — fix a bug](03-fix-a-bug.md), where the pipeline gets shorter.
+## What you learned
+
+- Brownfield changes ride the same pipeline; the difference is the architect
+  grounding the design in real files — reject designs that don't name them.
+- Pushing back on a PRD is a feature of the system, not friction: revision rounds
+  must address your points one by one, and the journals learn your taste.
+- The test-count ratchet and the standing full-suite gate protect existing work
+  from the new feature on every single iteration.
+- Agent journals are your window into what the team believes about the codebase —
+  the weekly read is where compounding starts.
+
+---
+
+[← Lab 1: Build an app](01-build-an-app.md) · [Index](../README.md) ·
+[Lab 3: Fix a bug →](03-fix-a-bug.md)
