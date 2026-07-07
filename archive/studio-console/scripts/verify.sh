@@ -45,7 +45,7 @@ SANDBOX=$(printf '%s' "$DEMO_OUT" | grep -Eo 'sandbox: [^ ]+' | head -1 | cut -d
 EVENTS="$SANDBOX/studio/.agent-logs/events.jsonl"
 if [ -n "$SANDBOX" ] && [ -f "$EVENTS" ]; then
   "$PY" -m studio_console --check --events "$EVENTS" >"$TMP/live.out" 2>&1 &&
-    grep -q 'verified=1' "$TMP/live.out" &&
+    grep -Eq 'verified=[1-9]' "$TMP/live.out" &&
     grep -Eq 'done=[1-9]' "$TMP/live.out" && C4=0
 fi
 check "4. live integration: fresh demo events -> check sees verified loop + done" "$C4"
