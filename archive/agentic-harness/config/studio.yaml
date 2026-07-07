@@ -1,0 +1,44 @@
+# Agent Studio configuration.
+# Ships with the markdown tracker so `make demo` works with zero setup.
+# For GitHub Issues, replace `tracker` with:
+#   tracker: {kind: github, repo: owner/name}
+
+tracker: {kind: markdown, root: .work}
+
+runtimes:
+  claude: {cmd: claude, extra_flags: ["--permission-mode", "acceptEdits"]}
+  codex: {cmd: codex, extra_flags: []}
+
+approvals_required: 2
+allow_degraded_review: true
+poll_interval_s: 60
+max_concurrent_agents: 2
+target_repo: .
+
+agents:
+  prd:
+    runtime: claude
+    prompt: prompts/prd.md
+    skills: [spec-writing]
+    handles: prd:drafting
+  architect:
+    runtime: claude
+    prompt: prompts/architect.md
+    skills: [spec-writing, acceptance-criteria]
+    handles: design:drafting
+  coder:
+    runtime: claude
+    prompt: prompts/coder.md
+    skills: [tdd-workflow, run-and-verify]
+    handles: ready
+    loop: {max_iterations: 10, max_minutes: 90}
+  reviewer-a:
+    runtime: claude
+    prompt: prompts/reviewer.md
+    skills: [code-review-rubric]
+    handles: pr:agent-review
+  reviewer-b:
+    runtime: codex
+    prompt: prompts/reviewer.md
+    skills: [code-review-rubric]
+    handles: pr:agent-review

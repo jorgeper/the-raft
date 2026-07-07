@@ -1,0 +1,26 @@
+[project]
+name = "agent-studio"
+version = "0.1.0"
+description = "A harness for building apps with a team of AI agents"
+requires-python = ">=3.11"
+dependencies = ["pyyaml>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.coverage.run]
+source = ["studio"]
+
+[tool.coverage.report]
+show_missing = true
