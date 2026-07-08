@@ -5,11 +5,11 @@
 Building the self-improving agent set per self-improve-spec.md. Finish line:
 `./scripts/verify-improve.sh` 12/12 AND `./scripts/verify.sh` stays 13/13.
 
-- **Current milestone:** M6 done (apply_improvement in improve.py; `studio approve`
-  applies improve:review items via git with apply-time allowlist re-check;
-  `studio reject`, `studio improvements`). Next: M7 (regression guard + reverts).
-- **verify-improve.sh score:** 9/12 after M6 — note check 9 greps for the M7
-  revert-equality test, so it stays red until M7 lands (checks 9, 10, 11 pending).
+- **Current milestone:** M7 done (judge_outcome + revert_diff in improve.py;
+  orchestrator check_regressions: kept / revert-proposal / resolve-pending;
+  revert tree == `git revert` tree, tested). Next: M8 (demo --improve, evolving
+  prompts, prompt-audit skill, shipped config sets, docs).
+- **verify-improve.sh score:** 11/12 after M7 (only check 11, the demo, pending).
 - **Gotchas so far:** evolving-set test fixtures must not use `improve:*` states
   before M2 lands (config validates `handles` against studio.state.STATES).
 

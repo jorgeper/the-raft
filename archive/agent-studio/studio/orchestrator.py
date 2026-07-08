@@ -16,7 +16,16 @@ from studio.agents.registry import AgentRegistry
 from studio.config import AgentConfig, StudioConfig
 from studio.events import NullEventLog, OutputCoalescer
 from studio.execution import CommandExecutor
-from studio.improve import ImproveError, ImprovementsLog, diff_paths, parse_proposal, validate_paths
+from studio.improve import (
+    ImproveError,
+    ImprovementsLog,
+    diff_paths,
+    judge_outcome,
+    metric_value,
+    parse_proposal,
+    revert_diff,
+    validate_paths,
+)
 from studio.loop import Goal, GoalLoop, LoopResult
 from studio.metrics import ScorecardLog, compute_scorecard, read_events
 from studio.reflection import harvest_lessons
@@ -124,6 +133,7 @@ class Orchestrator:
                 budget -= 1
         if not dry_run:
             self._snapshot_done()
+            self.check_regressions()
             self.maybe_file_improvement()
             self.events.emit(
                 "tick_end", n=self._tick_n,
@@ -262,6 +272,97 @@ class Orchestrator:
         )
         self.events.emit("improvement_filed", item=item.id, covers=len(fresh), forced=force)
         return item
+
+    def check_regressions(self) -> None:
+        """R23: judge every watching improvement with enough post-apply data;
+        kept / still-watching / file a git-generated revert through the gate."""
+        log = self.improvements_log
+        entries = log.entries()
+        applied = [e for e in entries if e.get("event") == "applied"]
+        if not applied:
+            return
+        reverts_for = {
+            e.get("for"): e["item"] for e in entries if e.get("event") == "revert_filed"
+        }
+        done_count = len(
+            [
+                s for s in self.scorecard_log.entries()
+                if s.get("kind") != "improvement" and s.get("set") == self.cfg.active_set
+            ]
+        )
+        card = None
+        for record in applied:
+            item_id = record["item"]
+            if log.current_status(item_id) != "watching":
+                continue
+            if item_id in reverts_for:
+                self._resolve_pending_revert(log, item_id, reverts_for[item_id])
+                continue
+            if done_count - record.get("snapshots_at_apply", 0) < self.cfg.improve_every:
+                continue
+            agent, rest = record["expect"].split(".", 1)
+            metric, direction = rest.split()
+            if card is None:
+                card = compute_scorecard(read_events(self._events_path()))
+            current = metric_value(card, agent, metric)
+            outcome = judge_outcome(direction, record.get("baseline"), current)
+            if outcome == "kept":
+                log.append({"event": "status", "item": item_id, "status": "kept",
+                            "current": current})
+                self.events.emit("improvement_kept", item=item_id, current=current)
+            elif outcome == "revert":
+                self._file_revert(record, current)
+
+    def _resolve_pending_revert(self, log: ImprovementsLog, original_id: str, revert_id: str) -> None:
+        """An open revert proposal decides the original's fate: applied ->
+        reverted; human-rejected -> kept (the regression was accepted)."""
+        revert_status = log.current_status(revert_id)
+        if revert_status in ("watching", "kept", "reverted"):  # its apply record exists
+            log.append({"event": "status", "item": original_id, "status": "reverted"})
+            self.events.emit("improvement_reverted", item=original_id)
+        elif revert_status == "rejected":
+            log.append({"event": "status", "item": original_id, "status": "kept",
+                        "note": "revert rejected by human"})
+            self.events.emit("improvement_kept", item=original_id)
+        # else: the revert item is still open in the pipeline — wait.
+
+    def _file_revert(self, record: dict, current: float | None) -> None:
+        """File the inverse diff as a normal human-gated improvement item (R23/R25)."""
+        open_items = [
+            i for i in self.tracker.list(kind="improvement") if i.state.startswith("improve:")
+        ]
+        if open_items:  # R8 single-flight; retry on a later tick
+            return
+        try:
+            diff = revert_diff(self.executor, self.cfg.root, record["sha"])
+        except ImproveError as exc:
+            self.events.emit("revert_failed", item=record["item"], error=str(exc))
+            return
+        baseline = record.get("baseline")
+        item = self.tracker.create(
+            f"REVERT improvement #{record['item']} (regression on {record['expect']})",
+            f"The regression guard measured `{record['expect'].split()[0]}` at {current} "
+            f"against a baseline of {baseline} — moved the wrong way by more than 20%.\n\n"
+            f"Approving this item restores commit `{record['sha'][:7]}`'s files exactly "
+            "(the diff below is git-generated, not model-generated).",
+            "improve:drafting",
+            kind="improvement",
+        )
+        rationale = (
+            f"Revert improvement #{record['item']}: {record['expect'].split()[0]} was "
+            f"{baseline} at apply time and is now {current}."
+        )
+        self.tracker.comment(
+            item.id,
+            f"{rationale}\n\n```diff\n{diff.rstrip()}\n```\n\nEXPECT: {record['expect']}",
+            author="orchestrator",
+        )
+        self.tracker.transition(item.id, "improve:review", Actor.ORCHESTRATOR)
+        self.improvements_log.append(
+            {"event": "revert_filed", "item": item.id, "for": record["item"],
+             "current": current}
+        )
+        self.events.emit("revert_filed", item=item.id, target=record["item"], current=current)
 
     def _improvement_body(self, covers: list[str], card: dict) -> str:
         previous = [

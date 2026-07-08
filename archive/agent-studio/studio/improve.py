@@ -18,6 +18,10 @@ from pathlib import Path
 # AGENTS.md, studio source, settings, and hooks are never in reach.
 ALLOWLIST: tuple[str, ...] = ("prompts/evolving/", ".claude/skills/prompt-audit/")
 
+# R23: a watched metric moving the wrong way by more than this (relative to its
+# baseline) triggers a revert proposal. A heuristic, per spec §9.
+REGRESSION_THRESHOLD = 0.20
+
 _DIFF_FENCE_RE = re.compile(r"```diff\n(.*?)```", re.DOTALL)
 _EXPECT_RE = re.compile(
     r"^EXPECT:\s*([\w-]+)\.([\w-]+)\s+(decrease|increase)\s*$", re.MULTILINE
@@ -87,6 +91,34 @@ def validate_paths(paths: set[str]) -> None:
             )
 
 
+def judge_outcome(
+    direction: str,
+    baseline: float | None,
+    current: float | None,
+    threshold: float = REGRESSION_THRESHOLD,
+) -> str:
+    """R23: improved-or-flat -> kept; worsened beyond the threshold -> revert;
+    anything undecidable or within tolerance stays watching."""
+    if baseline is None or current is None:
+        return "watching"
+    delta = current - baseline
+    good = delta <= 0 if direction == "decrease" else delta >= 0
+    if good:
+        return "kept"
+    relative = abs(delta) / abs(baseline) if baseline else float("inf")
+    return "revert" if relative > threshold else "watching"
+
+
+def revert_diff(executor, root, sha: str) -> str:
+    """The exact inverse of an applied improvement commit, git-generated (R25)."""
+    result = executor.run(["git", "-C", str(root), "diff", sha, f"{sha}^"])
+    if not result.ok or not result.stdout.strip():
+        raise ImproveError(
+            f"could not generate revert diff for {sha}: {(result.stderr or 'empty diff').strip()}"
+        )
+    return result.stdout
+
+
 def latest_proposal(item) -> Proposal:
     """The most recent comment carrying a ```diff block, parsed as a proposal."""
     for comment in reversed(item.comments):
@@ -128,6 +160,13 @@ def apply_improvement(cfg, tracker, item, *, executor, registry) -> dict:
 
     registry.generate_subagent_files()
     card = compute_scorecard(read_events(cfg.root / ".agent-logs" / "events.jsonl"))
+    from studio.metrics import ScorecardLog
+
+    done_snapshots = [
+        s
+        for s in ScorecardLog(cfg.root / "memory" / "scorecard.jsonl").entries()
+        if s.get("kind") != "improvement" and s.get("set") == cfg.active_set
+    ]
     record = {
         "event": "applied",
         "item": item.id,
@@ -137,6 +176,7 @@ def apply_improvement(cfg, tracker, item, *, executor, registry) -> dict:
         "baseline": metric_value(card, proposal.expect_agent, proposal.expect_metric),
         "sha": sha,
         "status": "watching",
+        "snapshots_at_apply": len(done_snapshots),
     }
     ImprovementsLog(cfg.root / "memory" / "improvements.jsonl").append(record)
     return record

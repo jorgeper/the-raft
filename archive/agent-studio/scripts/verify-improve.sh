@@ -78,12 +78,15 @@ check "8. human gate rejects agent actors; kind guard both directions (tested)" 
 # --- 9. apply/reject/revert-diff (R21/R22/R25) -----------------------------------
 grep -q 'def test_approve_applies_commits_and_records' tests/test_improve_apply.py &&
   grep -q 'def test_reject_applies_nothing_and_records' tests/test_improve_apply.py &&
-  grep -q 'def test_revert_diff_matches_git_revert' tests/test_improve_apply.py &&
+  grep -q 'def test_revert_diff_matches_git_revert' tests/test_regression_guard.py &&
   "$PY" -m pytest tests/test_improve_apply.py -q >"$TMP/apply.out" 2>&1
 check "9. apply commits only allowlisted paths; reject applies nothing; revert diff = git revert" $?
 
-# --- 10. regression guard (R23) ---------------------------------------------------
-todo "10. tests/test_regression_guard.py"
+# --- 10. regression guard (R23/R25) ------------------------------------------------
+grep -q 'def test_regression_files_revert_proposal' tests/test_regression_guard.py &&
+  grep -q 'def test_improvement_kept_when_metric_improves' tests/test_regression_guard.py &&
+  "$PY" -m pytest tests/test_regression_guard.py -q >"$TMP/guard.out" 2>&1
+check "10. regression guard: worsened metric files revert; improved flips to kept" $?
 
 # --- 11. demo --improve end-to-end -------------------------------------------------
 todo "11. python -m studio.demo --improve reaches improve:review"
