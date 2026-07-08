@@ -64,7 +64,10 @@ grep -q 'def test_single_flight_r8' tests/test_improver.py &&
 check "6. improver: trigger cadence, output contract, malformed -> needs-human, single-flight" $?
 
 # --- 7. allowlist enforced at validation and apply (R19/R21) ---------------------
-todo "7. tests/test_improve_allowlist.py"
+grep -q 'def test_dispatch_stage_rejects' tests/test_improve_allowlist.py &&
+  grep -q 'def test_apply_stage_rejects' tests/test_improve_allowlist.py &&
+  "$PY" -m pytest tests/test_improve_allowlist.py -q >"$TMP/allowlist.out" 2>&1
+check "7. allowlist rejects studio/ + classic prompts/ at validation AND apply" $?
 
 # --- 8. human gate + kind guard (R6/R7) ------------------------------------------
 grep -q 'def test_improve_approval_is_human_only' tests/test_improve_gate.py &&
@@ -73,7 +76,11 @@ grep -q 'def test_improve_approval_is_human_only' tests/test_improve_gate.py &&
 check "8. human gate rejects agent actors; kind guard both directions (tested)" $?
 
 # --- 9. apply/reject/revert-diff (R21/R22/R25) -----------------------------------
-todo "9. tests/test_improve_apply.py"
+grep -q 'def test_approve_applies_commits_and_records' tests/test_improve_apply.py &&
+  grep -q 'def test_reject_applies_nothing_and_records' tests/test_improve_apply.py &&
+  grep -q 'def test_revert_diff_matches_git_revert' tests/test_improve_apply.py &&
+  "$PY" -m pytest tests/test_improve_apply.py -q >"$TMP/apply.out" 2>&1
+check "9. apply commits only allowlisted paths; reject applies nothing; revert diff = git revert" $?
 
 # --- 10. regression guard (R23) ---------------------------------------------------
 todo "10. tests/test_regression_guard.py"

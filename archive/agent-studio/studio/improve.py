@@ -87,6 +87,61 @@ def validate_paths(paths: set[str]) -> None:
             )
 
 
+def latest_proposal(item) -> Proposal:
+    """The most recent comment carrying a ```diff block, parsed as a proposal."""
+    for comment in reversed(item.comments):
+        if "```diff" in comment.body:
+            return parse_proposal(comment.body)
+    raise ImproveError("no proposal comment with a ```diff block found on the item")
+
+
+def metric_value(card: dict, agent: str, metric: str) -> float | None:
+    return (card.get("agents", {}).get(agent) or {}).get(metric)
+
+
+def apply_improvement(cfg, tracker, item, *, executor, registry) -> dict:
+    """R21: validate -> git apply --check -> apply -> commit ONLY the proposal's
+    files -> regenerate subagents -> record a watching entry. Raises ImproveError
+    (nothing written) on any refusal; the caller routes the item to needs-human."""
+    from studio.metrics import compute_scorecard, read_events
+
+    proposal = latest_proposal(item)
+    paths = diff_paths(proposal.diff)
+    validate_paths(paths)  # apply-time re-check; drafting-time validation is not trusted
+    root = str(cfg.root)
+    ordered = sorted(paths)
+
+    check = executor.run(["git", "-C", root, "apply", "--check"], input_text=proposal.diff)
+    if not check.ok:
+        raise ImproveError(f"git apply --check failed: {(check.stderr or check.stdout).strip()}")
+    applied = executor.run(["git", "-C", root, "apply"], input_text=proposal.diff)
+    if not applied.ok:
+        raise ImproveError(f"git apply failed: {(applied.stderr or applied.stdout).strip()}")
+
+    first_line = proposal.rationale.splitlines()[0][:72]
+    message = f"improve({cfg.active_set}): item {item.id} — {first_line}"
+    executor.run(["git", "-C", root, "add", "--", *ordered])
+    commit = executor.run(["git", "-C", root, "commit", "-m", message, "--", *ordered])
+    if not commit.ok:
+        raise ImproveError(f"git commit failed: {(commit.stderr or commit.stdout).strip()}")
+    sha = executor.run(["git", "-C", root, "rev-parse", "HEAD"]).stdout.strip()
+
+    registry.generate_subagent_files()
+    card = compute_scorecard(read_events(cfg.root / ".agent-logs" / "events.jsonl"))
+    record = {
+        "event": "applied",
+        "item": item.id,
+        "set": cfg.active_set,
+        "files": ordered,
+        "expect": proposal.expect,
+        "baseline": metric_value(card, proposal.expect_agent, proposal.expect_metric),
+        "sha": sha,
+        "status": "watching",
+    }
+    ImprovementsLog(cfg.root / "memory" / "improvements.jsonl").append(record)
+    return record
+
+
 class ImprovementsLog:
     """Append-only JSONL log at memory/improvements.jsonl.
 

@@ -24,7 +24,8 @@ from studio.tracker.markdown import BOARD_ORDER
 DEFAULT_CONFIG = Path("config/studio.yaml")
 
 # Where the human comes in: states only `studio approve` (or a review comment) can move.
-HUMAN_GATES = {"prd:review", "design:review", "pr:human-review", "needs-human"}
+HUMAN_GATES = {"prd:review", "design:review", "pr:human-review", "improve:review", "needs-human"}
+REJECTABLE = {"prd:review", "design:review", "pr:human-review", "improve:review"}
 
 
 def _load(args: argparse.Namespace) -> StudioConfig:
@@ -72,8 +73,27 @@ def cmd_new(args: argparse.Namespace) -> int:
 
 def cmd_approve(args: argparse.Namespace) -> int:
     cfg = _load(args)
-    _, tracker, _, _, _ = _world(cfg)
+    executor, tracker, registry, _, _ = _world(cfg)
     item = tracker.get(args.item_id)
+    if item.state == "improve:review":
+        from studio.improve import ImproveError, apply_improvement
+
+        try:
+            record = apply_improvement(cfg, tracker, item, executor=executor, registry=registry)
+        except ImproveError as exc:
+            tracker.comment(
+                item.id, f"apply failed — {exc}. Nothing was written.", author="orchestrator"
+            )
+            tracker.transition(item.id, "needs-human", Actor.HUMAN)
+            print(f"refused: {exc}", file=sys.stderr)
+            return 1
+        tracker.transition(item.id, "improve:approved", Actor.HUMAN)
+        tracker.transition(item.id, "done", Actor.HUMAN)
+        print(
+            f"#{item.id}: improvement applied as {record['sha'][:7]} "
+            f"({', '.join(record['files'])}); status: watching"
+        )
+        return 0
     if item.state == "prd:review":
         tracker.transition(item.id, "prd:approved", Actor.HUMAN)
         tracker.transition(item.id, "design:drafting", Actor.HUMAN)
@@ -149,6 +169,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             "prd:review": "read the PRD comment, then `studio approve`",
             "design:review": "read the design comment, then `studio approve`",
             "pr:human-review": "read the PR + review history, merge, then `studio approve`",
+            "improve:review": "read the proposal diff, then `studio approve` or `studio reject`",
             "needs-human": "read the escalation comment and re-route",
         }
         for i in needs_you:
@@ -176,6 +197,56 @@ def cmd_show(args: argparse.Namespace) -> int:
     print(f"\n{item.body}\n")
     for c in item.comments:
         print(f"--- {c.author} ---\n{c.body}\n")
+    return 0
+
+
+def cmd_reject(args: argparse.Namespace) -> int:
+    from studio.improve import ImprovementsLog
+
+    cfg = _load(args)
+    _, tracker, _, _, _ = _world(cfg)
+    item = tracker.get(args.item_id)
+    if item.state not in REJECTABLE:
+        print(
+            f"#{item.id} is in {item.state!r}; only human-gated states "
+            f"({', '.join(sorted(REJECTABLE))}) can be rejected",
+            file=sys.stderr,
+        )
+        return 1
+    reason = args.reason or "(no reason given)"
+    tracker.comment(item.id, f"REJECTED by human: {reason}", author="human")
+    tracker.transition(item.id, "needs-human", Actor.HUMAN)
+    if item.kind == "improvement":
+        ImprovementsLog(cfg.root / "memory" / "improvements.jsonl").append(
+            {"event": "status", "item": item.id, "status": "rejected"}
+        )
+    print(f"#{item.id}: rejected -> needs-human")
+    return 0
+
+
+def cmd_improvements(args: argparse.Namespace) -> int:
+    from studio.improve import ImprovementsLog, metric_value
+    from studio.metrics import compute_scorecard, read_events
+
+    cfg = _load(args)
+    log = ImprovementsLog(cfg.root / "memory" / "improvements.jsonl")
+    applied = [e for e in log.entries() if e.get("event") == "applied"]
+    if not applied:
+        print("(no improvements applied yet)")
+        return 0
+    card = compute_scorecard(read_events(cfg.root / ".agent-logs" / "events.jsonl"))
+    print("Improvements")
+    print("============")
+    for entry in applied:
+        agent, rest = entry["expect"].split(".", 1)
+        metric = rest.split()[0]
+        now = metric_value(card, agent, metric)
+        status = log.current_status(entry["item"]) or "watching"
+        print(
+            f"  #{entry['item']} {entry.get('ts', '')[:10]} [{status}] "
+            f"{', '.join(entry['files'])} | expect {entry['expect']} | "
+            f"baseline {entry.get('baseline')} -> now {now}"
+        )
     return 0
 
 
@@ -257,6 +328,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("improve", help="file an improvement item now (subject to single-flight)")
 
+    p_reject = sub.add_parser("reject", help="human gate: reject and park a gated item")
+    p_reject.add_argument("item_id")
+    p_reject.add_argument("--reason", default="", help="why (recorded as a comment)")
+
+    sub.add_parser("improvements", help="list applied improvements and their status")
+
     p_score = sub.add_parser("scorecard", help="per-agent metrics computed from events.jsonl")
     p_score.add_argument("--json", action="store_true", help="machine-readable scorecard")
     p_score.add_argument("--set", default="", help="restrict to items done under this agent set")
@@ -275,6 +352,8 @@ HANDLERS = {
     "show": cmd_show,
     "scorecard": cmd_scorecard,
     "improve": cmd_improve,
+    "reject": cmd_reject,
+    "improvements": cmd_improvements,
     "demo": cmd_demo,
 }
 
