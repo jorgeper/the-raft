@@ -102,11 +102,30 @@ def test_agent_sets_without_active_set_fails(tmp_path):
         load_config(_scaffold(tmp_path, raw))
 
 
-def test_agents_and_agent_sets_together_fails(tmp_path):
-    """Ambiguity is refused: a config cannot define both agents: and agent_sets:."""
-    raw = _sets_raw("classic")
-    raw["agents"] = dict(CLASSIC_AGENTS)
-    with pytest.raises(ConfigError, match="one or the other"):
+def test_bare_agents_block_is_the_classic_set(tmp_path):
+    """R4: a top-level agents: block coexists with agent_sets: as the implicit
+    'classic' set, and active_set defaults to it — so the shipped config can
+    define both sets without changing what the v1 format means."""
+    raw = _base_raw(
+        agents=dict(CLASSIC_AGENTS),
+        agent_sets={"evolving": {"improve_every": 3, "agents": dict(EVOLVING_AGENTS)}},
+    )
+    cfg = load_config(_scaffold(tmp_path, raw))
+    assert cfg.active_set == "classic"
+    assert set(cfg.agents) == {"prd", "coder"}
+    raw["active_set"] = "evolving"
+    cfg = load_config(_scaffold(tmp_path / "b", raw))
+    assert cfg.active_set == "evolving"
+    assert set(cfg.agents) == {"prd", "improver"}
+    assert cfg.improve_every == 3
+
+
+def test_classic_cannot_be_defined_twice(tmp_path):
+    raw = _base_raw(
+        agents=dict(CLASSIC_AGENTS),
+        agent_sets={"classic": {"agents": dict(CLASSIC_AGENTS)}},
+    )
+    with pytest.raises(ConfigError, match="already defines the 'classic' set"):
         load_config(_scaffold(tmp_path, raw))
 
 
@@ -117,10 +136,15 @@ def test_active_set_without_agent_sets_fails(tmp_path):
         load_config(_scaffold(tmp_path, raw))
 
 
-def test_inactive_set_is_still_validated(tmp_path):
-    """A broken inactive set fails at load time, not on the day you switch to it."""
+def test_broken_inactive_set_fails_on_switch(tmp_path):
+    """Validation is per active set: a broken inactive set loads today and
+    fails loudly at load time on the day you switch to it."""
     raw = _sets_raw("classic")
     cfg = _scaffold(tmp_path, raw)
+    (cfg.parent.parent / "prompts" / "evolving" / "improver.md").unlink()
+    load_config(cfg)  # classic active: fine
+    raw["active_set"] = "evolving"
+    cfg = _scaffold(tmp_path / "b", raw)
     (cfg.parent.parent / "prompts" / "evolving" / "improver.md").unlink()
     with pytest.raises(ConfigError, match="prompt: file not found"):
         load_config(cfg)
@@ -132,3 +156,14 @@ def test_improve_every_must_be_positive(tmp_path):
     raw["agent_sets"]["evolving"]["improve_every"] = 0
     with pytest.raises(ConfigError, match="improve_every"):
         load_config(_scaffold(tmp_path, raw))
+
+
+def test_init_generates_subagents_for_active_set_only(tmp_path):
+    """R5: `studio init` materializes native subagent files for the active set."""
+    from studio.agents.registry import AgentRegistry
+
+    cfg = load_config(_scaffold(tmp_path, _sets_raw("evolving")))
+    written = AgentRegistry(cfg).generate_subagent_files()
+    names = sorted(p.name for p in written)
+    assert names == ["studio-improver.md", "studio-prd.md"]
+    assert "coder" not in "".join(names)  # classic's coder is not generated

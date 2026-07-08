@@ -114,6 +114,30 @@ python -m studio approve 1        # your gate: PRD, then design, then merge
 - Approval is meaningful only if you read the thing. The agents write, review, and
   test; deciding that the built thing is the *right* thing never delegates.
 
+## The self-improving agent set
+
+The config ships a second team, `evolving` — same five roles on copies of the
+prompts under `prompts/evolving/`, plus an **improver** agent — behind
+`active_set:` in `config/studio.yaml` (default stays `classic`; switching sets
+and rerunning `studio init` is the whole migration). The loop, per
+[self-improve-spec.md](self-improve-spec.md):
+
+- The harness scores every run (`studio scorecard`) and parses `LESSON:` lines
+  out of agent output into the role journals itself.
+- Every `improve_every` done items, the orchestrator files an improvement work
+  item; the improver reads scorecard + journals + run transcripts and proposes
+  ONE prompt diff with the metric it should move (`EXPECT:` line).
+- You approve (`studio approve`) or reject (`studio reject`) the diff — a third
+  human gate, enforced in the state machine like the other two. Applies are
+  single git commits touching only `prompts/evolving/` and the `prompt-audit`
+  skill (a code-enforced allowlist), listed by `studio improvements`.
+- A regression guard watches the named metric and files a git-generated revert
+  proposal if it worsens >20% — through the same gate.
+
+Try it offline: `python -m studio.demo --improve`. The classic prompts are
+never touched by any of this. Verification: `scripts/verify-improve.sh` (12
+checks) alongside the original `scripts/verify.sh`.
+
 ## Documentation: the Agent Studio Book
 
 **[docs/README.md](docs/README.md)** is the front door — a four-part book:

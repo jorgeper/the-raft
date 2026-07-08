@@ -188,12 +188,115 @@ def run_demo(base: Path | None = None) -> str:
     return final
 
 
+def run_improve_demo(base: Path | None = None) -> bool:
+    """The improvement cycle, offline: done work -> scorecard snapshot ->
+    improvement item -> scripted improver proposal -> human-scripted approval ->
+    diff applied as a git commit. Returns True when the applied record exists
+    and the evolving prompt actually changed."""
+    from studio.agents.registry import AgentRegistry
+    from studio.execution import CommandExecutor
+    from studio.improve import ImprovementsLog, apply_improvement
+    from studio.runtime.fake import FakeRuntime
+
+    base = base or Path(tempfile.mkdtemp(prefix="studio-demo-improve-"))
+    base.mkdir(parents=True, exist_ok=True)
+    root = base / "studio"
+    (root / "prompts" / "evolving").mkdir(parents=True)
+    for role in ("prd", "coder", "improver"):
+        (root / "prompts" / "evolving" / f"{role}.md").write_text(f"# {role.capitalize()} agent\n")
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "demo@studio")
+    _git(root, "config", "user.name", "studio-demo")
+    (root / ".gitignore").write_text(".work/\n.agent-logs/\nmemory/\nruns/\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "seed")
+
+    cfg = StudioConfig(
+        root=root,
+        tracker=TrackerConfig(kind="markdown"),
+        runtimes={"claude": RuntimeConfig(name="claude", cmd="claude", kind="claude")},
+        agents={
+            "prd": AgentConfig(name="prd", runtime="claude",
+                               prompt=root / "prompts/evolving/prd.md", handles="prd:drafting"),
+            "improver": AgentConfig(name="improver", runtime="claude",
+                                    prompt=root / "prompts/evolving/improver.md",
+                                    handles="improve:drafting"),
+        },
+        active_set="evolving",
+        improve_every=1,
+    )
+    events = EventLog(root / ".agent-logs" / "events.jsonl")
+    tracker = MarkdownTracker(root / ".work", events=events)
+    claude_rt = FakeRuntime(name="claude")
+    orch = Orchestrator(cfg, tracker, AgentRegistry(cfg), {"claude": claude_rt},
+                        executor=CommandExecutor(), events=events)
+
+    print("Agent Studio demo — the self-improvement cycle, offline, scripted agents")
+    print(f"   sandbox: {base}")
+
+    # Prior shipped work: one done item plus coder history for the scorecard.
+    tracker.create("Prior shipped feature", "already merged", "done")
+    events.emit("loop_exit", item="1", agent="coder",
+                reason="verified", iterations=6)
+    orch.tick()
+    _say("tick: snapshot on done -> improvement item auto-filed (improve_every=1)",
+         tracker, "2")
+
+    claude_rt.script(
+        "The coder averages 6 iterations per verified item; it starts editing "
+        "before running the gates.\n\n"
+        "```diff\n"
+        "--- a/prompts/evolving/coder.md\n"
+        "+++ b/prompts/evolving/coder.md\n"
+        "@@ -1 +1,2 @@\n"
+        " # Coder agent\n"
+        "+Run the standing gates BEFORE touching any file.\n"
+        "```\n\n"
+        "EXPECT: coder.iterations_per_verified decrease\n"
+        "LESSON: high iteration counts usually mean a missing orientation step\n"
+    )
+    orch.tick()
+    _say("tick: improver reads the scorecard, proposes a prompt diff", tracker, "2")
+
+    item = tracker.get("2")
+    record = apply_improvement(cfg, tracker, item, executor=CommandExecutor(),
+                               registry=AgentRegistry(cfg))
+    tracker.transition("2", "improve:approved", Actor.HUMAN)
+    tracker.transition("2", "done", Actor.HUMAN)
+    _say("you review the diff and approve (studio approve) — harness applies + commits",
+         tracker, "2")
+    print(f"   commit: {record['sha'][:7]} files: {', '.join(record['files'])}")
+    print(f"   watching: {record['expect']} (baseline {record['baseline']})")
+
+    changed = "Run the standing gates" in (root / "prompts" / "evolving" / "coder.md").read_text()
+    applied = [e for e in ImprovementsLog(root / "memory" / "improvements.jsonl").entries()
+               if e["event"] == "applied"]
+    journal = root / "memory" / "improver" / "journal.md"
+    if journal.is_file():
+        print(f"   improver journal: {journal.read_text().strip().splitlines()[-1]}")
+    return changed and bool(applied) and tracker.get("2").state == "done"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="studio.demo")
     parser.add_argument("--keep", action="store_true",
                         help="keep the sandbox (events, runs, worktrees) for inspection")
+    parser.add_argument("--improve", action="store_true",
+                        help="demo the self-improvement cycle instead of the delivery lifecycle")
     args = parser.parse_args()
     base = Path(tempfile.mkdtemp(prefix="studio-demo-"))
+    if args.improve:
+        ok = run_improve_demo(base)
+        if not ok:
+            print("DEMO FAILED: improvement cycle did not complete", file=sys.stderr)
+            return 1
+        print("demo complete: done work -> scorecard -> improvement item -> improver "
+              "proposal -> your approval -> prompt diff applied as one revertable commit.")
+        if args.keep:
+            print(f"kept sandbox: {base}")
+        else:
+            shutil.rmtree(base, ignore_errors=True)
+        return 0
     final = run_demo(base)
     if final != "done":
         print(f"DEMO FAILED: item ended in {final!r}", file=sys.stderr)

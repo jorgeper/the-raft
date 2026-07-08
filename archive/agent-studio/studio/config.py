@@ -132,17 +132,20 @@ def _load_agent(name: str, raw: dict, root: Path, runtimes: dict[str, RuntimeCon
 def _load_agent_sets(
     raw: dict, root: Path, runtimes: dict[str, RuntimeConfig]
 ) -> tuple[dict[str, AgentConfig], str, int]:
-    """Resolve `agents:` (bare, backward-compatible) or `agent_sets:` + `active_set:`.
+    """Resolve the agent sets and return (active agents, active set name, improve_every).
 
-    Every set is validated at load time — a broken inactive set fails now, not on
-    the day you switch to it. Only the active set's agents are returned.
+    Three accepted shapes:
+    - bare `agents:` only — today's config, loads as the sole set named "default";
+    - `agent_sets:` only — `active_set:` is then required;
+    - both — the top-level `agents:` block IS the set named "classic" (so the
+      pre-sets config format keeps meaning exactly what it always meant), and
+      `active_set:` defaults to "classic".
+
+    Only the ACTIVE set is fully validated (prompt files, skills); a broken or
+    absent inactive set fails on the day you switch to it, at load time.
     """
     agents_raw = raw.get("agents")
     sets_raw = raw.get("agent_sets")
-    _require(
-        not (agents_raw and sets_raw),
-        "agents / agent_sets: define one or the other, not both",
-    )
     if sets_raw is None:
         _require(
             raw.get("active_set") is None,
@@ -153,28 +156,31 @@ def _load_agent_sets(
         return agents, "default", 5
 
     _require(isinstance(sets_raw, dict) and bool(sets_raw), "agent_sets: must be a non-empty mapping")
-    active = raw.get("active_set")
-    _require(
-        active in sets_raw,
-        f"active_set: {active!r} is not a defined agent set "
-        f"(have: {', '.join(sorted(sets_raw))})",
-    )
-    loaded: dict[str, dict[str, AgentConfig]] = {}
-    improve_every_by_set: dict[str, int] = {}
-    for set_name, set_raw in sets_raw.items():
-        _require(isinstance(set_raw, dict), f"agent_sets.{set_name}: must be a mapping")
-        set_agents = set_raw.get("agents")
+    sets = dict(sets_raw)
+    if agents_raw:
         _require(
-            isinstance(set_agents, dict) and bool(set_agents),
-            f"agent_sets.{set_name}.agents: at least one agent required",
+            "classic" not in sets,
+            "agent_sets.classic: the top-level agents: block already defines the "
+            "'classic' set — remove one of the two",
         )
-        loaded[set_name] = {
-            name: _load_agent(name, a, root, runtimes) for name, a in set_agents.items()
-        }
-        every = int(set_raw.get("improve_every", 5))
-        _require(every >= 1, f"agent_sets.{set_name}.improve_every: must be >= 1")
-        improve_every_by_set[set_name] = every
-    return loaded[active], active, improve_every_by_set[active]
+        sets["classic"] = {"agents": agents_raw}
+    active = raw.get("active_set", "classic" if agents_raw else None)
+    _require(
+        active in sets,
+        f"active_set: {active!r} is not a defined agent set "
+        f"(have: {', '.join(sorted(sets))})",
+    )
+    set_raw = sets[active]
+    _require(isinstance(set_raw, dict), f"agent_sets.{active}: must be a mapping")
+    set_agents = set_raw.get("agents")
+    _require(
+        isinstance(set_agents, dict) and bool(set_agents),
+        f"agent_sets.{active}.agents: at least one agent required",
+    )
+    agents = {name: _load_agent(name, a, root, runtimes) for name, a in set_agents.items()}
+    every = int(set_raw.get("improve_every", 5))
+    _require(every >= 1, f"agent_sets.{active}.improve_every: must be >= 1")
+    return agents, active, every
 
 
 def load_config(path: Path | str) -> StudioConfig:

@@ -2,6 +2,13 @@
 # Ships with the markdown tracker so `make demo` works with zero setup.
 # For GitHub Issues, replace `tracker` with:
 #   tracker: {kind: github, repo: owner/name}
+#
+# Two agent sets ship (self-improve-spec.md):
+#   classic  — the frozen v1 team below (the top-level `agents:` block IS the
+#              classic set; the improvement pipeline can never write to it)
+#   evolving — the same five roles on prompts/evolving/* plus an improver agent
+#              that proposes human-gated prompt changes from the scorecard
+# Switch by setting `active_set: evolving` and rerunning `studio init`.
 
 tracker: {kind: markdown, root: .work}
 
@@ -14,6 +21,8 @@ allow_degraded_review: true
 poll_interval_s: 60
 max_concurrent_agents: 2
 target_repo: .
+
+active_set: classic
 
 agents:
   prd:
@@ -44,3 +53,41 @@ agents:
     skills: [code-review-rubric]
     handles: pr:agent-review
     memory: reviewer
+
+agent_sets:
+  evolving:
+    improve_every: 5
+    agents:
+      prd:
+        runtime: claude
+        prompt: prompts/evolving/prd.md
+        skills: [spec-writing]
+        handles: prd:drafting
+      architect:
+        runtime: claude
+        prompt: prompts/evolving/architect.md
+        skills: [spec-writing, acceptance-criteria]
+        handles: design:drafting
+      coder:
+        runtime: claude
+        prompt: prompts/evolving/coder.md
+        skills: [tdd-workflow, run-and-verify]
+        handles: ready
+        loop: {max_iterations: 10, max_minutes: 90}
+      reviewer-a:
+        runtime: claude
+        prompt: prompts/evolving/reviewer.md
+        skills: [code-review-rubric]
+        handles: pr:agent-review
+        memory: reviewer
+      reviewer-b:
+        runtime: codex
+        prompt: prompts/evolving/reviewer.md
+        skills: [code-review-rubric]
+        handles: pr:agent-review
+        memory: reviewer
+      improver:
+        runtime: claude
+        prompt: prompts/evolving/improver.md
+        skills: [prompt-audit]
+        handles: improve:drafting

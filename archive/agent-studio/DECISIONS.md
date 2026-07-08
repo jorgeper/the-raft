@@ -42,3 +42,15 @@
   (blocked.log, rm -rf guard, log rotation, input-schema docs), not by padding.
 - Docs build: verify-docs.sh check 7 required 'What you learned' in ALL labs while §2 said old labs get only link updates — resolved in favor of §6.7 (sections added to labs 1-3).
 - guard.sh push-to-main pattern extended to refspec form (HEAD:main) during the docs stranger-pass — concepts/02 claimed semantic matching, so the hook was strengthened to match the claim.
+
+## Self-improve build (goal-self-improve.md)
+
+- Shipped config keeps the top-level `agents:` block as the implicit `classic` set coexisting with `agent_sets:` — required because pre-existing test_config.py mutates `raw["agents"]` and must pass unmodified (spec R2 beats a pure agent_sets layout for R4).
+- Only the ACTIVE agent set is validated at load; a broken inactive set fails on the day you switch. (Original plan validated all sets; test_config's scaffold only writes active-set prompt files.)
+- Scorecard snapshots are appended by the orchestrator tick (scanning done items), not by the CLI approve path — the tick is the one place guaranteed to run in every deployment mode.
+- Coder lessons are harvested via a GoalLoop.output_hook fed each iteration's raw output — the loop stays item-agnostic.
+- Revert diffs are `git diff <sha> <sha>^`; R25 is tested as tree-equality against a real `git revert` on a clone.
+- A rejected revert proposal marks the original improvement `kept` (the human chose to accept the regression); an applied one marks it `reverted`.
+- Improvement trigger counts only non-improvement snapshots of the active set; consumed ids are tracked via `filed` records in memory/improvements.jsonl.
+- verify-improve.sh check 9 greps the revert-equality test in test_regression_guard.py (where it lives), not test_improve_apply.py as §11.9's shorthand implied.
+- Spec §10 Q1: reviewer journals stay shared (`memory/reviewer/`) in the evolving set. Q2: scorecard snapshots record the set active at `done`.

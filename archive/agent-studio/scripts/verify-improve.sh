@@ -89,7 +89,12 @@ grep -q 'def test_regression_files_revert_proposal' tests/test_regression_guard.
 check "10. regression guard: worsened metric files revert; improved flips to kept" $?
 
 # --- 11. demo --improve end-to-end -------------------------------------------------
-todo "11. python -m studio.demo --improve reaches improve:review"
+"$PY" -m studio.demo --improve >"$TMP/improve-demo.out" 2>&1
+IMPROVE_DEMO_RC=$?
+grep -q 'improve:review' "$TMP/improve-demo.out" &&
+  grep -q 'demo complete' "$TMP/improve-demo.out" &&
+  [ "$IMPROVE_DEMO_RC" -eq 0 ]
+check "11. studio.demo --improve: filed -> proposed -> approved -> applied, exit 0" $?
 
 # --- 12. the original v1 finish line still passes ---------------------------------
 ./scripts/verify.sh >"$TMP/verify-v1.out" 2>&1

@@ -18,6 +18,7 @@ item's complete journey.
 | agent bundles, SKILL.md, native subagents vs inlining, memory | [architecture/04 — Agents, skills, runtimes](architecture/04-agents-skills-runtimes.md) |
 | the GoalLoop deep dive: plan.json, gates, guardrails, breakers | [architecture/05 — GoalLoop internals](architecture/05-goal-loop-internals.md) |
 | ticks, review rounds, degraded mode, the enforcement stack | [architecture/06 — Orchestrator and safety](architecture/06-orchestrator-and-safety.md) |
+| the self-improving agent set: scorecard, improver, human-gated prompt diffs, regression guard | [self-improve-spec.md](../self-improve-spec.md) (spec; README has the tour) |
 
 ## The one-paragraph version
 

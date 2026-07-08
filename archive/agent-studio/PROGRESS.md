@@ -1,17 +1,31 @@
 # Build progress — Agent Studio
 
-## Self-improve build (goal-self-improve.md): in progress — 2026-07-07
+## Self-improve build (goal-self-improve.md): 12/12 ✅ — 2026-07-07
 
-Building the self-improving agent set per self-improve-spec.md. Finish line:
-`./scripts/verify-improve.sh` 12/12 AND `./scripts/verify.sh` stays 13/13.
+`./scripts/verify-improve.sh` exits 0 (stable across three consecutive runs) and
+`./scripts/verify.sh` stays 13/13 — the classic agents and prompts are untouched.
+All 12 acceptance criteria of self-improve-spec.md §11 pass: 216 tests, coverage
+>80%, lint clean, `python -m studio.demo --improve` green, evolving-set dry-run
+verified against the shipped config.
 
-- **Current milestone:** M7 done (judge_outcome + revert_diff in improve.py;
-  orchestrator check_regressions: kept / revert-proposal / resolve-pending;
-  revert tree == `git revert` tree, tested). Next: M8 (demo --improve, evolving
-  prompts, prompt-audit skill, shipped config sets, docs).
-- **verify-improve.sh score:** 11/12 after M7 (only check 11, the demo, pending).
-- **Gotchas so far:** evolving-set test fixtures must not use `improve:*` states
-  before M2 lands (config validates `handles` against studio.state.STATES).
+- **Commits:** 8 (M1–M8), messages `feat(improve): M<N> ...`
+- **What shipped:** agent sets in config (`active_set: classic` default; the
+  top-level `agents:` block IS the classic set); `improve:*` states + the
+  `improvement` kind with actor/kind guards; `studio/metrics.py` + `studio
+  scorecard`; harness-owned `LESSON:` harvesting (incl. per-iteration via
+  GoalLoop.output_hook); the improver agent + cadence trigger + R18 output
+  contract; the code-enforced allowlist (validation AND apply); `studio
+  approve|reject|improve|improvements`; the regression guard with
+  git-generated revert proposals (revert tree == `git revert` tree, tested);
+  `prompts/evolving/*` + the `prompt-audit` skill; `studio.demo --improve`.
+- **Known limitations:** metrics treat loop iterations as ints; regression
+  threshold (20%) is a heuristic with no significance testing (spec §9); no A/B
+  set comparison (out of scope §9); switching sets leaves the previous set's
+  generated `.claude/agents/studio-*.md` files in place (regenerate via init).
+- **Three things a human should check by hand:** the evolving prompts'
+  Reflection sections read right for each role; prompts/evolving/improver.md
+  (the one prompt with real blast radius); .claude/skills/prompt-audit/SKILL.md
+  diagnostic advice matches how you actually read run transcripts.
 
 ## Docs build (goal-docs.md): 9/9 ✅ — 2026-07-07
 
