@@ -513,11 +513,15 @@ export default function App() {
     }
     if (!showComments) return;
     for (const c of comments) {
-      if (c.resolved) continue;
+      if (c.resolved && !settings.showResolved) continue;
       const m = pos[c.id];
-      if (m) highlightRange(doc, m.start, m.end, c.id);
+      if (m) {
+        const marks = highlightRange(doc, m.start, m.end, c.id);
+        // Ghosted resolved highlights (SPEC6 §3): faint tint, still clickable.
+        if (c.resolved) marks.forEach((mk) => mk.classList.add('ghost'));
+      }
     }
-  }, [html, comments, showComments, mode]);
+  }, [html, comments, showComments, mode, settings.showResolved]);
 
   // --- active highlight styling -----------------------------------------------------
   useEffect(() => {
@@ -528,28 +532,60 @@ export default function App() {
     });
   }, [activeId, positions, showComments]);
 
-  // --- margin card alignment (runs every render; cheap) ------------------------------
+  // --- margin card layout (SPEC6 §2): absolutely-positioned, animated tops.
+  // Idle: cards sit level with their highlights, pushing later ones down.
+  // Active: the active card anchors level with its highlight (Word behavior);
+  // earlier cards stack upward above it, later ones downward.
   useLayoutEffect(() => {
     const doc = docRef.current;
     const panel = panelRef.current;
     if (!doc || !panel) return;
-    const docTop = doc.getBoundingClientRect().top;
-    const cards = Array.from(panel.querySelectorAll<HTMLElement>('[data-flowcard]'));
-    let cursor = 0;
-    for (const el of cards) {
+    const panelTop = panel.getBoundingClientRect().top;
+    const els = Array.from(panel.querySelectorAll<HTMLElement>('[data-flowcard]'));
+    const entries = els.map((el) => {
       const key = el.dataset.flowcard!;
       let desired: number | null = null;
       if (key === '__composer' && pending) {
         const rect = rectForOffsets(doc, pending.start, pending.end);
-        if (rect) desired = rect.top - docTop;
-      } else {
+        if (rect) desired = rect.top - panelTop;
+      } else if (key !== '__resolved') {
         const mark = doc.querySelector<HTMLElement>(`mark.hl[data-cid="${CSS.escape(key)}"]`);
-        if (mark) desired = mark.getBoundingClientRect().top - docTop;
+        if (mark) desired = mark.getBoundingClientRect().top - panelTop;
       }
-      const marginTop = desired === null ? 0 : Math.max(0, desired - cursor);
-      el.style.marginTop = `${marginTop}px`;
-      cursor += marginTop + el.offsetHeight + CARD_GAP;
+      return { el, key, desired, h: el.offsetHeight };
+    });
+
+    const tops = new Array<number>(entries.length);
+    const layoutDown = (from: number, startCursor: number) => {
+      let cursor = startCursor;
+      for (let i = from; i < entries.length; i++) {
+        const t = Math.max(entries[i].desired ?? cursor, cursor);
+        tops[i] = t;
+        cursor = t + entries[i].h + CARD_GAP;
+      }
+      return cursor;
+    };
+
+    const activeIdx = activeId ? entries.findIndex((e) => e.key === activeId) : -1;
+    let bottom: number;
+    if (activeIdx >= 0 && entries[activeIdx].desired !== null) {
+      const at = Math.max(entries[activeIdx].desired!, 0);
+      tops[activeIdx] = at;
+      let limit = at - CARD_GAP;
+      for (let i = activeIdx - 1; i >= 0; i--) {
+        const t = Math.min(entries[i].desired ?? limit - entries[i].h, limit - entries[i].h);
+        tops[i] = t;
+        limit = t - CARD_GAP;
+      }
+      bottom = layoutDown(activeIdx + 1, at + entries[activeIdx].h + CARD_GAP);
+    } else {
+      bottom = layoutDown(0, 0);
     }
+
+    entries.forEach((e, i) => {
+      e.el.style.top = `${tops[i]}px`;
+    });
+    panel.style.minHeight = `${Math.max(bottom, 0)}px`;
   });
 
   // --- debounced comment autosave (sidecar or embedded per settings) -------------------
@@ -646,13 +682,16 @@ export default function App() {
   };
 
   // --- panel ordering ------------------------------------------------------------------
-  const open = comments
-    .filter((c) => !c.resolved)
-    .sort((a, b) => (positions[a.id]?.start ?? a.anchor.start) - (positions[b.id]?.start ?? b.anchor.start));
+  const byPosition = (a: CommentData, b: CommentData) =>
+    (positions[a.id]?.start ?? a.anchor.start) - (positions[b.id]?.start ?? b.anchor.start);
+  const open = comments.filter((c) => !c.resolved).sort(byPosition);
   const resolved = comments.filter((c) => c.resolved);
 
-  type Item = { kind: 'comment'; c: CommentData } | { kind: 'composer' };
-  const items: Item[] = open.map((c) => ({ kind: 'comment', c }) as Item);
+  type Item = { kind: 'comment'; c: CommentData; ghost?: boolean } | { kind: 'composer' };
+  // With "Show resolved" on, resolved comments join the flow as ghosts (SPEC6 §3).
+  const items: Item[] = settings.showResolved
+    ? [...comments].sort(byPosition).map((c) => ({ kind: 'comment' as const, c, ghost: c.resolved }))
+    : open.map((c) => ({ kind: 'comment' as const, c }));
   if (pending) {
     let at = items.findIndex(
       (it) => it.kind === 'comment' && (positions[it.c.id]?.start ?? it.c.anchor.start) > pending.start
@@ -726,6 +765,19 @@ export default function App() {
           </div>
           {panelVisible && (
             <aside className="panel" data-testid="panel" ref={panelRef}>
+              {resolved.length > 0 && (
+                <div className="panel-header">
+                  <label>
+                    <input
+                      type="checkbox"
+                      data-testid="show-resolved"
+                      checked={settings.showResolved}
+                      onChange={(e) => updateSettings({ ...settings, showResolved: e.target.checked })}
+                    />{' '}
+                    Show resolved
+                  </label>
+                </div>
+              )}
               {items.map((it) =>
                 it.kind === 'composer' ? (
                   <div className="card composer" data-flowcard="__composer" data-testid="composer" key="__composer">
@@ -766,14 +818,15 @@ export default function App() {
                     author={settings.author}
                     orphaned={positions[it.c.id] === null}
                     active={activeId === it.c.id}
+                    ghost={it.ghost}
                     onActivate={handleCardActivate}
                     onUpdate={updateComment}
                     onDelete={deleteComment}
                   />
                 )
               )}
-              {resolved.length > 0 && (
-                <details className="resolved-section" data-testid="resolved-section">
+              {!settings.showResolved && resolved.length > 0 && (
+                <details className="resolved-section" data-testid="resolved-section" data-flowcard="__resolved">
                   <summary>Resolved ({resolved.length})</summary>
                   {resolved.map((c) => (
                     <CommentCard

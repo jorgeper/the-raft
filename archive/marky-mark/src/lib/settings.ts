@@ -26,6 +26,7 @@ export interface Settings {
   lineNumbers: boolean;
   vimNav: boolean;
   autoHideToolbar: boolean;
+  showResolved: boolean;
   author: string;
   autosaveOnToggle: boolean;
   commentStorage: CommentStorage;
@@ -42,6 +43,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lineNumbers: true,
   vimNav: false,
   autoHideToolbar: false,
+  showResolved: false,
   author: 'Reviewer',
   autosaveOnToggle: false,
   commentStorage: 'sidecar',
@@ -93,6 +95,7 @@ export function parseSettings(json: string): Settings {
     lineNumbers: typeof o.lineNumbers === 'boolean' ? o.lineNumbers : DEFAULT_SETTINGS.lineNumbers,
     vimNav: o.vimNav === true,
     autoHideToolbar: o.autoHideToolbar === true,
+    showResolved: o.showResolved === true,
     author: typeof o.author === 'string' && o.author ? o.author : DEFAULT_SETTINGS.author,
     autosaveOnToggle: o.autosaveOnToggle === true,
     commentStorage: o.commentStorage === 'embedded' ? 'embedded' : 'sidecar',

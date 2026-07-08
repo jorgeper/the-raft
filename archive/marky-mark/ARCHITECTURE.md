@@ -157,6 +157,35 @@ migrates to `themeLight`):
 - **Show line numbers** — a CodeMirror `Compartment` reconfigures the gutter
   live without recreating the editor.
 
+## v6 (SPEC6)
+
+- **Editor column alignment**: the CodeMirror scroller centers its content
+  (`justify-content: center`) with the content element capped at
+  `--mm-content-width` (border-box, 32px side padding) — the same geometry as
+  preview's `.doc`, so toggling modes never shifts the text column. With the
+  line-number gutter on, the gutter+content pair is centered, shifting text
+  by at most half the gutter width.
+- **Word-style comment flow**: margin cards are absolutely positioned with
+  animated `top`s (180 ms). Flow margins were replaced because they can only
+  push cards DOWN — the Word behavior needs the active card anchored level
+  with its highlight while earlier cards stack upward above it. Idle layout
+  is unchanged visually. Cards wear a faint shadow (`--mm-card-shadow`),
+  deeper when active; the panel's min-height is set from the computed layout
+  so scrolling still reaches everything.
+- **Resolved ghosts**: "Show resolved" (panel header, persisted as
+  `showResolved`, default off) renders resolved comments ghosted in place
+  (55% opacity cards, faint `mark.hl.ghost` highlights) with Reopen/Delete
+  live; off keeps the collapsed Resolved (N) section. Resolving never touches
+  the stored comment beyond its `resolved` flag — the sidecar/trailer formats
+  are unchanged.
+- **Theme catalog ×27**: 20 new built-ins generated from canonical palettes —
+  typographic lights (Crisp Mono, Typewriter, Manuscript, Newsprint, Sepia),
+  programming classics (Solarized Dark, Gruvbox ×2, Tokyo Night, Catppuccin
+  ×2, GitHub Dark, Rosé Pine, Everforest, Night Owl, Zenburn, Ayu Light), and
+  terminal/quirky (Phosphor and Amber Terminal with CRT glow, Vaporwave with
+  a gradient h1). U14 machine-checks the catalog: unique ids, valid metadata,
+  distinct backgrounds, no rejected files.
+
 ## v5 polish (SPEC5)
 
 - **Rename**: the product is **"Marky Mark"** everywhere users see it (window

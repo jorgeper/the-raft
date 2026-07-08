@@ -752,3 +752,137 @@ test('E30: the empty-state hint sits in the true center of the window', async ({
   expect(Math.abs(box.x + box.width / 2 - vp.width / 2)).toBeLessThanOrEqual(40);
   expect(Math.abs(box.y + box.height / 2 - vp.height / 2)).toBeLessThanOrEqual(40);
 });
+
+test('E31: the edit-mode text column aligns with the preview column', async ({ page }) => {
+  const previewTextLeft = () =>
+    page
+      .getByTestId('doc')
+      .evaluate((el) => el.getBoundingClientRect().left + parseFloat(getComputedStyle(el).paddingLeft));
+  const editorTextLeft = () => page.locator('.cm-line').first().evaluate((el) => el.getBoundingClientRect().left);
+
+  // Exact alignment with the gutter off.
+  await openSettings(page, 'general');
+  await page.getByTestId('settings-line-numbers').uncheck();
+  await page.getByTestId('settings-close').click();
+
+  const p1 = await previewTextLeft();
+  await page.keyboard.press('Control+e');
+  expect(Math.abs((await editorTextLeft()) - p1)).toBeLessThanOrEqual(2);
+  await page.keyboard.press('Control+e');
+
+  // Margins move both columns together.
+  await openSettings(page);
+  await page.getByTestId('settings-margins').selectOption('wide');
+  await page.getByTestId('settings-close').click();
+  const p2 = await previewTextLeft();
+  expect(p2).toBeGreaterThan(p1); // narrower column starts further right
+  await page.keyboard.press('Control+e');
+  expect(Math.abs((await editorTextLeft()) - p2)).toBeLessThanOrEqual(2);
+  await page.keyboard.press('Control+e');
+
+  // With the gutter on, the text may shift by at most the gutter width.
+  await openSettings(page, 'general');
+  await page.getByTestId('settings-line-numbers').check();
+  await page.getByTestId('settings-close').click();
+  await page.keyboard.press('Control+e');
+  const gutterW = await page.locator('.cm-gutters').evaluate((el) => el.getBoundingClientRect().width);
+  expect(Math.abs((await editorTextLeft()) - p2)).toBeLessThanOrEqual(gutterW + 2);
+});
+
+test('E32: activating a buried comment glides it level with its highlight; cards wear a faint shadow', async ({
+  page,
+}) => {
+  // Three comments anchored inside one paragraph → a stack near one line.
+  await addComment(page, 'saved to a sidecar file', 'first note');
+  await addComment(page, 'markdown itself stays untouched', 'second note');
+  await addComment(page, 'cards instead of being lost', 'third note');
+  await expect(page.getByTestId('comment-card')).toHaveCount(3);
+
+  // Cards have the faint balloon shadow.
+  const shadow = await page.getByTestId('comment-card').first().evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(shadow).not.toBe('none');
+
+  // Activate the LAST card (bottom of the stack).
+  const third = page.locator('[data-testid="comment-card"]', { hasText: 'third note' });
+  await third.click();
+  await expect(third).toHaveClass(/active/);
+
+  // Word behavior: its top animates level with its highlight (±10 px).
+  await expect
+    .poll(async () => {
+      const cardTop = (await third.boundingBox())!.y;
+      const markTop = (await page
+        .locator('mark.hl')
+        .filter({ hasText: 'instead of being lost' })
+        .first()
+        .boundingBox())!.y;
+      return Math.abs(cardTop - markTop);
+    })
+    .toBeLessThanOrEqual(10);
+
+  // The earlier cards moved out of the way (fully above the active card) —
+  // polled, since their 180ms glide finishes after the active card's does.
+  const first = page.locator('[data-testid="comment-card"]', { hasText: 'first note' });
+  await expect
+    .poll(async () => {
+      const f = (await first.boundingBox())!;
+      const t = (await third.boundingBox())!;
+      return f.y + f.height - t.y;
+    })
+    .toBeLessThanOrEqual(0);
+});
+
+test('E33: resolved comments can be shown ghosted in place, reopened from the ghost, and re-collapsed', async ({
+  page,
+}) => {
+  await addComment(page, PHRASE, 'ghost me');
+  await page.getByTestId('resolve-btn').click();
+
+  // Default: collapsed Resolved section, no highlight (E9 behavior).
+  await expect(page.getByTestId('resolved-section')).toContainText('Resolved (1)');
+  await expect(page.locator('mark.hl')).toHaveCount(0);
+
+  // Show resolved → ghost card in the flow + ghost highlight in the text.
+  await page.getByTestId('show-resolved').check();
+  const ghost = page.locator('.card.resolved-ghost');
+  await expect(ghost).toHaveCount(1);
+  await expect(ghost).toContainText('ghost me');
+  expect(await ghost.evaluate((el) => parseFloat(getComputedStyle(el).opacity))).toBeLessThan(1);
+  await expect(page.locator('mark.hl.ghost').first()).toBeVisible();
+  await expect(page.getByTestId('resolved-section')).toHaveCount(0);
+
+  // Reopen from the ghost: normal card + normal highlight return.
+  await ghost.getByTestId('reopen-btn').click();
+  await expect(page.locator('.card.resolved-ghost')).toHaveCount(0);
+  await expect(page.locator('mark.hl:not(.ghost)').first()).toBeVisible();
+  await expect(page.getByTestId('card-body')).toHaveText('ghost me');
+
+  // Resolve again and turn the toggle off → collapsed section is back.
+  await page.getByTestId('resolve-btn').click();
+  await page.getByTestId('show-resolved').uncheck();
+  await expect(page.getByTestId('resolved-section')).toContainText('Resolved (1)');
+  await expect(page.locator('mark.hl')).toHaveCount(0);
+});
+
+test('E34: the theme catalog lists 27+ themes; new classics apply their canonical backgrounds', async ({
+  page,
+}) => {
+  await openSettings(page);
+  const select = page.getByTestId('settings-theme-light');
+  expect(await select.locator('option').count()).toBeGreaterThanOrEqual(27);
+
+  const bg = () => page.locator('.theme-root').evaluate((el) => getComputedStyle(el).backgroundColor);
+
+  await select.selectOption('gruvbox-dark');
+  await expect.poll(bg).toBe('rgb(40, 40, 40)'); // #282828
+
+  await select.selectOption('github-dark');
+  await expect.poll(bg).toBe('rgb(13, 17, 23)'); // #0d1117
+
+  await select.selectOption('phosphor');
+  await expect.poll(bg).toBe('rgb(10, 15, 10)'); // near-black CRT
+  // Phosphor is a mono theme — the document body uses a monospace stack.
+  expect(
+    await page.getByTestId('doc').evaluate((el) => getComputedStyle(el).fontFamily.toLowerCase())
+  ).toContain('mono');
+});

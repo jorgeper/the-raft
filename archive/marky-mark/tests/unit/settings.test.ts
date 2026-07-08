@@ -61,6 +61,9 @@ describe('v3 settings', () => {
     expect(parseSettings('{}').autoHideToolbar).toBe(false);
     expect(parseSettings('{"autoHideToolbar":true}').autoHideToolbar).toBe(true);
     expect(parseSettings('{"autoHideToolbar":"yes"}').autoHideToolbar).toBe(false);
+    // SPEC6 §3: ghosted resolved comments are opt-in.
+    expect(parseSettings('{}').showResolved).toBe(false);
+    expect(parseSettings('{"showResolved":true}').showResolved).toBe(true);
     expect(parseSettings('{"lineNumbers":"yes"}').lineNumbers).toBe(true);
   });
 });

@@ -9,6 +9,8 @@ interface Props {
   author: string;
   orphaned: boolean;
   active: boolean;
+  /** Resolved card rendered ghosted in the margin flow (SPEC6 §3). */
+  ghost?: boolean;
   onActivate: (id: string) => void;
   onUpdate: (next: CommentData) => void;
   onDelete: (id: string) => void;
@@ -18,7 +20,7 @@ function newId(): string {
   return crypto.randomUUID();
 }
 
-export function CommentCard({ comment: c, author, orphaned, active, onActivate, onUpdate, onDelete }: Props) {
+export function CommentCard({ comment: c, author, orphaned, active, ghost, onActivate, onUpdate, onDelete }: Props) {
   const [replying, setReplying] = useState(false);
   const [replyDraft, setReplyDraft] = useState('');
   const [editing, setEditing] = useState<string | null>(null); // 'root' or reply id
@@ -60,10 +62,10 @@ export function CommentCard({ comment: c, author, orphaned, active, onActivate, 
 
   return (
     <div
-      className={`card${active ? ' active' : ''}${orphaned ? ' orphaned' : ''}${c.resolved ? ' resolved-card' : ''}`}
+      className={`card${active ? ' active' : ''}${orphaned ? ' orphaned' : ''}${c.resolved ? ' resolved-card' : ''}${ghost ? ' resolved-ghost' : ''}`}
       data-testid="comment-card"
       data-cid={c.id}
-      data-flowcard={c.resolved ? undefined : c.id}
+      data-flowcard={c.resolved && !ghost ? undefined : c.id}
       onClick={() => onActivate(c.id)}
     >
       {orphaned && (

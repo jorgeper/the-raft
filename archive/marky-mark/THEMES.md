@@ -11,6 +11,14 @@ version, use *Import theme…* in Settings instead — the file is stored in the
 
 Marky Mark creates this folder (and a copy of this guide) on first run.
 
+## The built-in catalog
+
+**Light**: Crisp (default), Crisp Mono, Claude, Manuscript, Typewriter, Newsprint,
+Sepia, Solarized Light, Gruvbox Light, Catppuccin Latte, Ayu Light.
+**Dark**: One Dark, Monokai, Dracula, Nord, Solarized Dark, Gruvbox Dark,
+Tokyo Night, Catppuccin Mocha, GitHub Dark, Rosé Pine, Everforest Dark,
+Night Owl, Zenburn, Phosphor (green CRT), Amber Terminal, Vaporwave.
+
 ## Anatomy of a theme
 
 ```css

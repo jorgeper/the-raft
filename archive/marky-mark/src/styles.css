@@ -405,6 +405,24 @@ mark.hl.flash {
   width: 300px;
   flex-shrink: 0;
   padding: 40px 16px 96px 8px;
+  /* Cards are absolutely positioned with animated tops (SPEC6 §2). */
+  position: relative;
+}
+
+.panel > [data-flowcard] {
+  position: absolute;
+  left: 8px;
+  right: 16px;
+  transition: top 180ms ease;
+}
+
+.panel-header {
+  position: relative;
+  z-index: 2;
+  font-size: 12px;
+  color: var(--mm-fg-muted, #59636e);
+  padding: 8px 0 4px;
+  user-select: none;
 }
 
 .card {
@@ -415,12 +433,33 @@ mark.hl.flash {
   margin-bottom: 8px;
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 120ms ease;
+  transition: border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+  /* Faint balloon shadow (SPEC6 §2.4), theme-overridable. */
+  box-shadow: var(--mm-card-shadow, 0 1px 6px rgba(0, 0, 0, 0.09));
 }
 
 .card.active {
   border-color: var(--mm-accent, #0969da);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+/* Ghosted resolved comments (SPEC6 §3). */
+.card.resolved-ghost {
+  opacity: 0.55;
+}
+
+.card.resolved-ghost:hover,
+.card.resolved-ghost.active {
+  opacity: 0.85;
+}
+
+mark.hl.ghost {
+  background: color-mix(in srgb, var(--mm-comment-tint, rgba(255, 214, 102, 0.42)) 40%, transparent);
+}
+
+/* Cards inside the collapsed Resolved section stack normally. */
+.resolved-section .card {
+  position: static;
 }
 
 .card .entry-meta {
@@ -547,17 +586,28 @@ mark.hl.flash {
   font-size: calc(var(--mm-font-size, 16px) * 0.875 * var(--mm-zoom, 1));
 }
 
+/* The edit-mode text column matches preview's exactly (SPEC6 §1): same
+   centered --mm-content-width (border-box, like .doc), same 32px side
+   padding. With line numbers on, the gutter+content pair is centered, so the
+   text shifts by at most half the gutter width. */
+.editor-wrap .cm-editor .cm-scroller {
+  justify-content: center;
+}
+
 .editor-wrap .cm-editor .cm-content {
   font-family: var(--mm-font-mono, monospace);
   caret-color: var(--mm-accent, #0969da);
+  max-width: var(--mm-content-width, 46rem);
+  width: 100%;
+  flex-shrink: 1;
   /* Top padding clears the 42px auto-hiding toolbar overlay, so a revealed
      bar never covers the first line. */
-  padding: 56px 0 32px;
+  padding: 56px 32px 96px;
 }
 
 .editor-wrap .cm-editor .cm-line {
-  padding-left: max(32px, calc((100% - var(--mm-content-width, 46rem)) / 2));
-  padding-right: 32px;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .editor-wrap .cm-editor.cm-focused {
