@@ -40,8 +40,16 @@ check "2. ruff check . clean" $?
 "$PY" -m pytest tests/test_agent_sets.py -q >"$TMP/sets.out" 2>&1
 check "3. agent sets: active-set selection, error cases, backward compat" $?
 
-# --- 4. scorecard --json parseable (R10) ----------------------------------------
-todo "4. studio scorecard --json | jq -e .agents"
+# --- 4. scorecard --json parseable (R10), against the checked-in fixture ---------
+"$PY" -m studio scorecard --json --events tests/fixtures/scorecard-events.jsonl \
+  >"$TMP/scorecard.json" 2>&1 &&
+  if command -v jq >/dev/null 2>&1; then
+    jq -e '.agents' "$TMP/scorecard.json" >/dev/null
+  else
+    "$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["agents"]' "$TMP/scorecard.json"
+  fi &&
+  "$PY" -m pytest tests/test_metrics.py -q >"$TMP/metrics.out" 2>&1
+check "4. studio scorecard --json parseable (.agents); metrics unit-tested" $?
 
 # --- 5. reflection: LESSON parsing (R13-R15) ------------------------------------
 todo "5. tests/test_reflection.py"

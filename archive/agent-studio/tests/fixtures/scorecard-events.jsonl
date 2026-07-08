@@ -1,0 +1,22 @@
+{"v": 1, "kind": "dispatch_end", "item": "1", "agent": "prd", "data": {"action": "dispatched", "detail": "-> prd:review"}, "seq": 1, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "transition", "item": "1", "agent": null, "data": {"from": "prd:review", "to": "prd:approved", "actor": "human"}, "seq": 2, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "1", "agent": "architect", "data": {"action": "dispatched", "detail": "-> design:review"}, "seq": 3, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "transition", "item": "1", "agent": null, "data": {"from": "design:review", "to": "design:approved", "actor": "human"}, "seq": 4, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "loop_exit", "item": "1", "agent": "coder", "data": {"reason": "verified", "iterations": 4}, "seq": 5, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "1", "agent": "coder", "data": {"action": "dispatched", "detail": "verified -> pr:agent-review"}, "seq": 6, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "1", "agent": "reviewer-a", "data": {"action": "dispatched", "detail": "verdict=APPROVE"}, "seq": 7, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "1", "agent": "reviewer-b", "data": {"action": "dispatched", "detail": "verdict=CHANGES"}, "seq": 8, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "1", "agent": "review-round", "data": {"action": "dispatched", "detail": "-> pr:changes-requested"}, "seq": 9, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "transition", "item": "1", "agent": null, "data": {"from": "pr:agent-review", "to": "pr:changes-requested", "actor": "orchestrator"}, "seq": 10, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "loop_exit", "item": "1", "agent": "coder", "data": {"reason": "verified", "iterations": 2}, "seq": 11, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "1", "agent": "coder", "data": {"action": "dispatched", "detail": "verified -> pr:agent-review"}, "seq": 12, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "1", "agent": "reviewer-a", "data": {"action": "dispatched", "detail": "verdict=APPROVE"}, "seq": 13, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "1", "agent": "reviewer-b", "data": {"action": "dispatched", "detail": "verdict=APPROVE"}, "seq": 14, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "1", "agent": "review-round", "data": {"action": "dispatched", "detail": "-> pr:human-review"}, "seq": 15, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "transition", "item": "1", "agent": null, "data": {"from": "pr:agent-review", "to": "pr:human-review", "actor": "orchestrator"}, "seq": 16, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "transition", "item": "1", "agent": null, "data": {"from": "pr:human-review", "to": "done", "actor": "human"}, "seq": 17, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "loop_exit", "item": "2", "agent": "coder", "data": {"reason": "budget-exhausted", "iterations": 10}, "seq": 18, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "2", "agent": "coder", "data": {"action": "escalated", "detail": "budget-exhausted"}, "seq": 19, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "3", "agent": "prd", "data": {"action": "dispatched", "detail": "-> prd:review"}, "seq": 20, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "transition", "item": "3", "agent": null, "data": {"from": "prd:review", "to": "prd:drafting", "actor": "human"}, "seq": 21, "ts": "2026-07-07T00:00:00+00:00"}
+{"v": 1, "kind": "dispatch_end", "item": "3", "agent": "prd", "data": {"action": "dispatched", "detail": "-> prd:review"}, "seq": 22, "ts": "2026-07-07T00:00:00+00:00"}

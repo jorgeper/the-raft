@@ -179,6 +179,33 @@ def cmd_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_scorecard(args: argparse.Namespace) -> int:
+    from studio.metrics import ScorecardLog, compute_scorecard, read_events
+
+    cfg = _load(args)
+    events_path = args.events or (cfg.root / ".agent-logs" / "events.jsonl")
+    items = None
+    if args.set:
+        log = ScorecardLog(cfg.root / "memory" / "scorecard.jsonl")
+        items = {e["item"] for e in log.entries() if e.get("set") == args.set}
+    card = compute_scorecard(read_events(events_path), items=items)
+    if args.json:
+        print(_json.dumps(card, indent=2))
+        return 0
+    print("Scorecard" + (f" — set: {args.set}" if args.set else ""))
+    print("=========")
+    if not card["agents"]:
+        print("(no events yet — metrics appear once agents have run)")
+        return 0
+    for agent, metrics in sorted(card["agents"].items()):
+        rendered = ", ".join(
+            f"{name}={'-' if value is None else round(value, 3)}"
+            for name, value in sorted(metrics.items())
+        )
+        print(f"  {agent}: {rendered}")
+    return 0
+
+
 def cmd_demo(args: argparse.Namespace) -> int:
     script = Path(__file__).resolve().parent.parent / "scripts" / "demo.sh"
     return subprocess.run([str(script)]).returncode
@@ -212,6 +239,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("item_id")
     p_show.add_argument("--json", action="store_true", help="machine-readable item")
 
+    p_score = sub.add_parser("scorecard", help="per-agent metrics computed from events.jsonl")
+    p_score.add_argument("--json", action="store_true", help="machine-readable scorecard")
+    p_score.add_argument("--set", default="", help="restrict to items done under this agent set")
+    p_score.add_argument("--events", type=Path, default=None, help="events.jsonl to read (default: .agent-logs/)")
+
     sub.add_parser("demo", help="run the end-to-end demo")
     return parser
 
@@ -223,6 +255,7 @@ HANDLERS = {
     "run": cmd_run,
     "status": cmd_status,
     "show": cmd_show,
+    "scorecard": cmd_scorecard,
     "demo": cmd_demo,
 }
 

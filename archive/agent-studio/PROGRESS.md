@@ -5,9 +5,9 @@
 Building the self-improving agent set per self-improve-spec.md. Finish line:
 `./scripts/verify-improve.sh` 12/12 AND `./scripts/verify.sh` stays 13/13.
 
-- **Current milestone:** M2 done (improve:* states, improvement kind, human gate,
-  kind guard both ways incl. at creation). Next: M3 (metrics + scorecard).
-- **verify-improve.sh score:** 5/12 after M2 (check 8 lands; 4–7 and 9–11 are ⬜
+- **Current milestone:** M3 done (studio/metrics.py, `studio scorecard [--json|--set|
+  --events]`, snapshot-on-done in the tick, fixture events.jsonl). Next: M4 (LESSON).
+- **verify-improve.sh score:** 6/12 after M3 (checks 5–7 and 9–11 remain ⬜
   placeholders that fail until their milestone lands; the todo() helper marks them).
 - **Gotchas so far:** evolving-set test fixtures must not use `improve:*` states
   before M2 lands (config validates `handles` against studio.state.STATES).

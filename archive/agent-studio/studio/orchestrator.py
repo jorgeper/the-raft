@@ -16,6 +16,7 @@ from studio.config import AgentConfig, StudioConfig
 from studio.events import NullEventLog, OutputCoalescer
 from studio.execution import CommandExecutor
 from studio.loop import Goal, GoalLoop, LoopResult
+from studio.metrics import ScorecardLog, compute_scorecard, read_events
 from studio.runs import RunStore
 from studio.runtime.base import ModelRuntime, RuntimeResult
 from studio.state import Actor
@@ -62,6 +63,7 @@ class Orchestrator:
         self.loop_factory = loop_factory or self._default_loop_factory
         self.sleep = sleep
         self.events = events or NullEventLog()
+        self.scorecard_log = ScorecardLog(cfg.root / "memory" / "scorecard.jsonl")
         self._tick_n = 0
         self.by_state: dict[str, list[AgentConfig]] = {}
         for agent in cfg.agents.values():
@@ -113,6 +115,7 @@ class Orchestrator:
             if any(d.action != "skipped" for d in result):
                 budget -= 1
         if not dry_run:
+            self._snapshot_done()
             self.events.emit(
                 "tick_end", n=self._tick_n,
                 dispatched=sum(1 for d in dispatches if d.action != "skipped"),
@@ -120,6 +123,25 @@ class Orchestrator:
             )
         self._log(dispatches)
         return dispatches
+
+    def _events_path(self) -> Path:
+        return getattr(self.events, "path", self.cfg.root / ".agent-logs" / "events.jsonl")
+
+    def _snapshot_done(self) -> None:
+        """R11: one scorecard snapshot line per done item, appended once."""
+        done = self.tracker.list(state="done")
+        if not done:
+            return
+        recorded = self.scorecard_log.recorded_ids()
+        pending = [item for item in done if item.id not in recorded]
+        if not pending:
+            return
+        card = compute_scorecard(read_events(self._events_path()))
+        for item in pending:
+            self.scorecard_log.append(
+                item.id, set_name=self.cfg.active_set, kind=item.kind, agents=card["agents"]
+            )
+            self.events.emit("scorecard_snapshot", item=item.id)
 
     def watch(self) -> None:
         while True:
