@@ -52,7 +52,10 @@ check "3. agent sets: active-set selection, error cases, backward compat" $?
 check "4. studio scorecard --json parseable (.agents); metrics unit-tested" $?
 
 # --- 5. reflection: LESSON parsing (R13-R15) ------------------------------------
-todo "5. tests/test_reflection.py"
+grep -q 'def test_harvest_caps_at_three_and_truncates' tests/test_reflection.py &&
+  grep -q 'def test_goal_loop_calls_output_hook_each_iteration' tests/test_reflection.py &&
+  "$PY" -m pytest tests/test_reflection.py -q >"$TMP/reflection.out" 2>&1
+check "5. LESSON parsing: journal append, 3-line cap, lesson events (tested)" $?
 
 # --- 6. improver: trigger, contract, single-flight (R8/R17/R18/R20) --------------
 todo "6. tests/test_improver.py"

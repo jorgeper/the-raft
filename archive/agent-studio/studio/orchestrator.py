@@ -17,6 +17,7 @@ from studio.events import NullEventLog, OutputCoalescer
 from studio.execution import CommandExecutor
 from studio.loop import Goal, GoalLoop, LoopResult
 from studio.metrics import ScorecardLog, compute_scorecard, read_events
+from studio.reflection import harvest_lessons
 from studio.runs import RunStore
 from studio.runtime.base import ModelRuntime, RuntimeResult
 from studio.state import Actor
@@ -183,7 +184,14 @@ class Orchestrator:
             exit_code=result.exit_code, duration_s=round(result.duration_s, 2),
             output_tail=result.output,
         )
+        self._harvest(item, agent, result.output)
         return result
+
+    def _harvest(self, item: WorkItem, agent: AgentConfig, output: str) -> None:
+        harvest_lessons(
+            output, self.registry.journal_path(agent),
+            item_id=item.id, agent=agent.name, events=self.events,
+        )
 
     def _dispatch_commenter(
         self, item: WorkItem, agent: AgentConfig, dry_run: bool
@@ -238,6 +246,7 @@ class Orchestrator:
             loop = self.loop_factory(agent)
             # Bind loop events to this dispatch — the loop itself doesn't know items.
             loop.events = self.events.bound(item=item.id, agent=agent.name)
+            loop.output_hook = lambda output: self._harvest(item, agent, output)
             goal = Goal(
                 max_iterations=agent.loop.max_iterations, max_minutes=agent.loop.max_minutes
             )

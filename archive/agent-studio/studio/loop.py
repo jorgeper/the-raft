@@ -160,6 +160,8 @@ class GoalLoop:
         self.streaming = streaming
         # The orchestrator rebinds this per dispatch (events.bound(item=..., agent=...)).
         self.events = events or NullEventLog()
+        # Optional harness hook fed each iteration's raw output (reflection harvest).
+        self.output_hook = None
 
     # ---------------------------------------------------------------- files
 
@@ -342,6 +344,8 @@ class GoalLoop:
                 "runtime_end", exit_code=result.exit_code,
                 duration_s=round(result.duration_s, 2), output_tail=result.output,
             )
+            if self.output_hook is not None:
+                self.output_hook(result.output)
 
             if NEEDS_HUMAN in result.output:
                 question = result.output.split(NEEDS_HUMAN, 1)[1].strip().splitlines()[0:1]

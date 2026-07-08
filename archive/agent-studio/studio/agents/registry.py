@@ -32,8 +32,11 @@ class AgentRegistry:
         """Native subagent name for runtimes that support one."""
         return f"studio-{agent.name}" if self.runtime_kind(agent) == "claude" else None
 
+    def journal_path(self, agent: AgentConfig) -> Path:
+        return self.cfg.root / "memory" / (agent.memory or agent.name) / "journal.md"
+
     def _memory_tail(self, agent: AgentConfig) -> str:
-        journal = self.cfg.root / "memory" / (agent.memory or agent.name) / "journal.md"
+        journal = self.journal_path(agent)
         if not journal.is_file():
             return "(no journal yet)"
         return "\n".join(journal.read_text().splitlines()[-MEMORY_TAIL_LINES:])
