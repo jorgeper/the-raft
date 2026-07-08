@@ -6,6 +6,9 @@ export type Margins = 'default' | 'super-narrow' | 'narrow' | 'medium' | 'wide';
 export const ZOOM_LEVELS = [50, 75, 90, 100, 110, 125, 150, 175, 200] as const;
 export const FONT_SIZE_MIN = 10;
 export const FONT_SIZE_MAX = 32;
+/** Split-edit divider bounds (SPEC7 §5): the editor pane's fraction. */
+export const SPLIT_RATIO_MIN = 0.2;
+export const SPLIT_RATIO_MAX = 0.8;
 
 /** Margin presets → content-column max-width overrides (SPEC3 §2, SPEC4 §7). */
 export const MARGIN_WIDTHS: Record<Exclude<Margins, 'default'>, string> = {
@@ -27,6 +30,11 @@ export interface Settings {
   vimNav: boolean;
   autoHideToolbar: boolean;
   showResolved: boolean;
+  commentsEnabled: boolean;
+  typeToComment: boolean;
+  splitEdit: boolean;
+  /** Editor pane fraction in split-edit mode, clamped to [0.2, 0.8]. */
+  splitRatio: number;
   author: string;
   autosaveOnToggle: boolean;
   commentStorage: CommentStorage;
@@ -43,7 +51,11 @@ export const DEFAULT_SETTINGS: Settings = {
   lineNumbers: true,
   vimNav: false,
   autoHideToolbar: false,
-  showResolved: false,
+  showResolved: true,
+  commentsEnabled: true,
+  typeToComment: true,
+  splitEdit: false,
+  splitRatio: 0.5,
   author: 'Reviewer',
   autosaveOnToggle: false,
   commentStorage: 'sidecar',
@@ -95,7 +107,14 @@ export function parseSettings(json: string): Settings {
     lineNumbers: typeof o.lineNumbers === 'boolean' ? o.lineNumbers : DEFAULT_SETTINGS.lineNumbers,
     vimNav: o.vimNav === true,
     autoHideToolbar: o.autoHideToolbar === true,
-    showResolved: o.showResolved === true,
+    showResolved: typeof o.showResolved === 'boolean' ? o.showResolved : DEFAULT_SETTINGS.showResolved,
+    commentsEnabled: typeof o.commentsEnabled === 'boolean' ? o.commentsEnabled : DEFAULT_SETTINGS.commentsEnabled,
+    typeToComment: typeof o.typeToComment === 'boolean' ? o.typeToComment : DEFAULT_SETTINGS.typeToComment,
+    splitEdit: o.splitEdit === true,
+    splitRatio:
+      typeof o.splitRatio === 'number' && Number.isFinite(o.splitRatio)
+        ? Math.min(SPLIT_RATIO_MAX, Math.max(SPLIT_RATIO_MIN, o.splitRatio))
+        : DEFAULT_SETTINGS.splitRatio,
     author: typeof o.author === 'string' && o.author ? o.author : DEFAULT_SETTINGS.author,
     autosaveOnToggle: o.autosaveOnToggle === true,
     commentStorage: o.commentStorage === 'embedded' ? 'embedded' : 'sidecar',

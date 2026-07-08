@@ -252,7 +252,61 @@ export function SettingsPanel({
         </label>
       </div>
 
+      <div className="checkbox-row">
+        <input
+          id="set-split-edit"
+          type="checkbox"
+          data-testid="set-split-edit"
+          checked={settings.splitEdit}
+          onChange={(e) => onChange({ ...settings, splitEdit: e.target.checked })}
+        />
+        <label htmlFor="set-split-edit" style={{ margin: 0, fontWeight: 400 }}>
+          Edit side by side with a live preview (instead of a full-screen swap)
+        </label>
+      </div>
+
       <h3 className="tab-section">Comments</h3>
+      <div className="checkbox-row">
+        <input
+          id="set-comments-enabled"
+          type="checkbox"
+          data-testid="set-comments-enabled"
+          checked={settings.commentsEnabled}
+          onChange={(e) => onChange({ ...settings, commentsEnabled: e.target.checked })}
+        />
+        <label htmlFor="set-comments-enabled" style={{ margin: 0, fontWeight: 400 }}>
+          Enable comments (highlights, panel, and the selection button)
+        </label>
+      </div>
+
+      <div className="checkbox-row">
+        <input
+          id="set-type-to-comment"
+          type="checkbox"
+          data-testid="set-type-to-comment"
+          disabled={!settings.commentsEnabled}
+          checked={settings.typeToComment}
+          onChange={(e) => onChange({ ...settings, typeToComment: e.target.checked })}
+        />
+        <label htmlFor="set-type-to-comment" style={{ margin: 0, fontWeight: 400 }}>
+          Start a comment by typing over a selection (no button click needed)
+        </label>
+      </div>
+
+      <div className="checkbox-row">
+        <input
+          id="show-resolved"
+          type="checkbox"
+          data-testid="show-resolved"
+          disabled={!settings.commentsEnabled}
+          checked={settings.showResolved}
+          onChange={(e) => onChange({ ...settings, showResolved: e.target.checked })}
+        />
+        <label htmlFor="show-resolved" style={{ margin: 0, fontWeight: 400 }}>
+          Show resolved comments, ghosted in place
+        </label>
+      </div>
+
       <div className="field">
         <label htmlFor="author-input">Comment author name</label>
         <input

@@ -8,6 +8,8 @@ interface Props {
   dirty: boolean;
   mode: 'preview' | 'edit';
   showComments: boolean;
+  /** Comments master switch (SPEC7 §2): off hides the toggle entirely. */
+  commentsEnabled: boolean;
   commentCount: number;
   hotkeys: HotkeyMap;
   isMac: boolean;
@@ -121,15 +123,17 @@ export function Toolbar(p: Props) {
         <kbd>{displayCombo(p.hotkeys.toggleEdit, p.isMac)}</kbd>
       </button>
 
-      <button
-        className={`tbtn${p.showComments ? ' on' : ''}`}
-        data-testid="comments-toggle"
-        title={`Show / hide comments (${displayCombo(p.hotkeys.toggleComments, p.isMac)})`}
-        onClick={p.onToggleComments}
-      >
-        <CommentsIcon />
-        {p.commentCount > 0 ? ` ${p.commentCount}` : ''}
-      </button>
+      {p.commentsEnabled && (
+        <button
+          className={`tbtn${p.showComments ? ' on' : ''}`}
+          data-testid="comments-toggle"
+          title={`Show / hide comments (${displayCombo(p.hotkeys.toggleComments, p.isMac)})`}
+          onClick={p.onToggleComments}
+        >
+          <CommentsIcon />
+          {p.commentCount > 0 ? ` ${p.commentCount}` : ''}
+        </button>
+      )}
 
       <div className="theme-picker" ref={menuRef}>
         <button className="tbtn" data-testid="menu-btn" title="Menu" onClick={() => setMenuOpen((o) => !o)}>

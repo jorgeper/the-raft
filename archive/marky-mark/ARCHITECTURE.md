@@ -157,6 +157,47 @@ migrates to `themeLight`):
 - **Show line numbers** — a CodeMirror `Compartment` reconfigures the gutter
   live without recreating the editor.
 
+## v7 (SPEC7)
+
+- **Fixed-size settings dialog**: `.settings-modal` is a fixed box —
+  `min(560px, 94vw)` × `min(480px, 85vh)` — so switching tabs never resizes
+  or shifts the dialog; a tab taller than the box scrolls inside
+  `.tab-content` while the rail and chrome stay put.
+- **Comments master switch**: `commentsEnabled` (default on) gates every
+  comment affordance — highlight injection, the margin panel, the floating
+  selection button, type-to-comment, the toolbar toggle, and its hotkey.
+  It is strictly non-destructive: stored comments (sidecar or trailer) are
+  never rewritten by the switch; disabling only stops *rendering* them, and
+  saves keep attaching the untouched comment set as before.
+- **Type-to-comment**: `typeToComment` (default on). While the floating
+  button is showing (non-collapsed preview selection), a printable keydown
+  with no Cmd/Ctrl/Alt opens the composer seeded with that character (caret
+  after it, via a focus-time `setSelectionRange`). App hotkeys and inputs
+  are excluded by the same guards as elsewhere; vim-nav now ignores keys
+  whenever a selection is live, so the two features can't fight.
+- **Resolved ghosts, settings-owned**: the "Show resolved" switch moved from
+  the panel header into Settings → General → Comments, and its default
+  flipped to **on** — resolving now ghosts the card in place immediately.
+  Ghosts faded from 0.55 to **0.40** opacity (highlight tint 40% → 25%), and
+  resolving clears the card's active state so the brighter `.active` styling
+  never masks the fade.
+- **Split edit** (`splitEdit`, default off): edit mode becomes editor |
+  divider | live preview instead of the full-screen swap. The right pane is
+  a plain reading pane (same sanitized pipeline + asset-src resolution, no
+  comment UI — reading preview stays the comments surface) re-rendered on a
+  200 ms debounce. The 5 px divider drags with pointer capture, writing the
+  `--mm-split` CSS variable directly during the drag (no React re-render per
+  mousemove) and persisting `splitRatio` (clamped 0.2–0.8) on release;
+  double-click resets to 0.5.
+- **Undo history survives mode toggles**: CodeMirror's `history()` +
+  `historyKeymap` already provide ⌘Z/⇧⌘Z, but the editor unmounts on every
+  toggle. On unmount the editor now serializes its state
+  (`EditorState.toJSON({ history: historyField })`) into an App-held ref and
+  revives it on the next mount (`fromJSON` with fresh extensions), so
+  undo/redo — and the caret — survive preview↔edit round-trips. Opening a
+  different document resets the parked state; a buffer that moved on while
+  in preview (file watcher) is converged as one undoable change.
+
 ## v6 (SPEC6)
 
 - **Editor column alignment**: the CodeMirror scroller centers its content

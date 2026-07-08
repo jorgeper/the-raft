@@ -175,6 +175,13 @@ test('E8: comments, highlights, and thread state persist across reload via the s
 test('E9: reply, edit reply, resolve (highlight gone, card in Resolved), reopen (highlight returns)', async ({
   page,
 }) => {
+  // SPEC7 §4 flipped the showResolved default to true; this test exercises
+  // the collapsed-section behavior, so turn it off explicitly (assertions
+  // below are unchanged from SPEC2).
+  await openSettings(page, 'general');
+  await page.getByTestId('show-resolved').uncheck();
+  await page.getByTestId('settings-close').click();
+
   await addComment(page, PHRASE, 'Root comment');
 
   await page.getByTestId('reply-btn').click();
@@ -838,12 +845,8 @@ test('E33: resolved comments can be shown ghosted in place, reopened from the gh
   await addComment(page, PHRASE, 'ghost me');
   await page.getByTestId('resolve-btn').click();
 
-  // Default: collapsed Resolved section, no highlight (E9 behavior).
-  await expect(page.getByTestId('resolved-section')).toContainText('Resolved (1)');
-  await expect(page.locator('mark.hl')).toHaveCount(0);
-
-  // Show resolved → ghost card in the flow + ghost highlight in the text.
-  await page.getByTestId('show-resolved').check();
+  // Show-resolved defaults ON (SPEC7 §4): ghost card in the flow + ghost
+  // highlight in the text, with the toggle now living in Settings.
   const ghost = page.locator('.card.resolved-ghost');
   await expect(ghost).toHaveCount(1);
   await expect(ghost).toContainText('ghost me');
@@ -857,9 +860,11 @@ test('E33: resolved comments can be shown ghosted in place, reopened from the gh
   await expect(page.locator('mark.hl:not(.ghost)').first()).toBeVisible();
   await expect(page.getByTestId('card-body')).toHaveText('ghost me');
 
-  // Resolve again and turn the toggle off → collapsed section is back.
+  // Resolve again and turn the toggle off (in Settings) → collapsed section.
   await page.getByTestId('resolve-btn').click();
+  await openSettings(page, 'general');
   await page.getByTestId('show-resolved').uncheck();
+  await page.getByTestId('settings-close').click();
   await expect(page.getByTestId('resolved-section')).toContainText('Resolved (1)');
   await expect(page.locator('mark.hl')).toHaveCount(0);
 });
@@ -885,4 +890,205 @@ test('E34: the theme catalog lists 27+ themes; new classics apply their canonica
   expect(
     await page.getByTestId('doc').evaluate((el) => getComputedStyle(el).fontFamily.toLowerCase())
   ).toContain('mono');
+});
+
+test('E35: the settings dialog keeps one fixed size across all three tabs', async ({ page }) => {
+  await openSettings(page);
+  const boxes: Array<{ x: number; y: number; width: number; height: number }> = [];
+  for (const tab of ['appearance', 'general', 'hotkeys'] as const) {
+    await page.getByTestId(`settings-tab-${tab}`).click();
+    await expect(page.getByTestId(`settings-tab-${tab}`)).toHaveClass(/active/);
+    boxes.push((await page.getByTestId('settings-panel').boundingBox())!);
+  }
+  for (const b of boxes.slice(1)) {
+    expect(Math.abs(b.width - boxes[0].width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(b.height - boxes[0].height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(b.x - boxes[0].x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(b.y - boxes[0].y)).toBeLessThanOrEqual(1);
+  }
+});
+
+test('E36: disabling comments hides every comment affordance non-destructively; re-enabling restores', async ({
+  page,
+}) => {
+  await addComment(page, PHRASE, 'still here');
+  await waitForSidecar(page, (s) => !!s && s.includes('still here'));
+  await expect(page.locator('mark.hl').first()).toBeVisible();
+  await expect(page.getByTestId('comments-toggle')).toBeVisible();
+
+  await openSettings(page, 'general');
+  await page.getByTestId('set-comments-enabled').uncheck();
+  await page.getByTestId('settings-close').click();
+
+  // Highlights, panel, and the toolbar toggle are gone — the doc reads clean.
+  await expect(page.locator('mark.hl')).toHaveCount(0);
+  await expect(page.getByTestId('panel')).toHaveCount(0);
+  await expect(page.getByTestId('comments-toggle')).toHaveCount(0);
+
+  // Selecting text produces no floating button, and typing starts no composer.
+  await selectPhrase(page, PHRASE);
+  await page.waitForTimeout(200);
+  await expect(page.getByTestId('add-comment-btn')).toHaveCount(0);
+  await page.keyboard.press('x');
+  await page.waitForTimeout(150);
+  await expect(page.getByTestId('composer')).toHaveCount(0);
+
+  // The stored comment was never touched.
+  expect(await fsRead(page, WELCOME_SIDECAR)).toContain('still here');
+
+  await openSettings(page, 'general');
+  await page.getByTestId('set-comments-enabled').check();
+  await page.getByTestId('settings-close').click();
+  await expect(page.getByTestId('comment-card')).toHaveCount(1);
+  await expect(page.locator('mark.hl').first()).toBeVisible();
+  await expect(page.getByTestId('comments-toggle')).toBeVisible();
+});
+
+test('E37: typing over a selection opens the composer seeded with the keystroke; off → button only', async ({
+  page,
+}) => {
+  await selectPhrase(page, PHRASE);
+  await expect(page.getByTestId('add-comment-btn')).toBeVisible();
+  await page.keyboard.press('x');
+  await expect(page.getByTestId('composer')).toBeVisible();
+  await expect(page.getByTestId('composer-input')).toHaveValue('x');
+  await expect(page.getByTestId('composer-input')).toBeFocused();
+  // The caret sits after the seed: continuing to type appends.
+  await page.keyboard.type('yz');
+  await expect(page.getByTestId('composer-input')).toHaveValue('xyz');
+  await page.getByTestId('composer-submit').click();
+  await expect(page.getByTestId('card-body')).toHaveText('xyz');
+
+  // Setting off → typing over a selection does nothing; the button still works.
+  await openSettings(page, 'general');
+  await page.getByTestId('set-type-to-comment').uncheck();
+  await page.getByTestId('settings-close').click();
+  await selectPhrase(page, 'GitHub-flavored markdown');
+  await expect(page.getByTestId('add-comment-btn')).toBeVisible();
+  await page.keyboard.press('q');
+  await page.waitForTimeout(150);
+  await expect(page.getByTestId('composer')).toHaveCount(0);
+});
+
+test('E38: resolving defaults to a faint ghost in place; the toggle lives in Settings, not the panel', async ({
+  page,
+}) => {
+  await addComment(page, PHRASE, 'fade me');
+  await page.getByTestId('resolve-btn').click();
+
+  // The panel grew no header toggle — the switch moved to Settings (SPEC7 §4).
+  await expect(page.getByTestId('panel').getByTestId('show-resolved')).toHaveCount(0);
+
+  // Default ON: the ghost card renders in the flow at 0.40 opacity (±0.02).
+  const ghost = page.locator('.card.resolved-ghost');
+  await expect(ghost).toHaveCount(1);
+  await page.mouse.move(30, 300); // hover brightens ghosts; measure unhovered
+  await expect
+    .poll(() => ghost.evaluate((el) => parseFloat(getComputedStyle(el).opacity)))
+    .toBeGreaterThanOrEqual(0.38);
+  await expect
+    .poll(() => ghost.evaluate((el) => parseFloat(getComputedStyle(el).opacity)))
+    .toBeLessThanOrEqual(0.42);
+  await expect(page.locator('mark.hl.ghost').first()).toBeVisible();
+
+  // Turning the setting off collapses resolved comments as before.
+  await openSettings(page, 'general');
+  await page.getByTestId('show-resolved').uncheck();
+  await page.getByTestId('settings-close').click();
+  await expect(page.getByTestId('resolved-section')).toContainText('Resolved (1)');
+  await expect(page.locator('mark.hl')).toHaveCount(0);
+});
+
+test('E39: side-by-side edit shows editor plus live preview; typing updates the right pane', async ({ page }) => {
+  await openSettings(page, 'general');
+  await page.getByTestId('set-split-edit').check();
+  await page.getByTestId('settings-close').click();
+
+  await page.keyboard.press('Control+e');
+  await expect(page.getByTestId('editor')).toBeVisible();
+  await expect(page.getByTestId('split-preview')).toBeVisible();
+  await expect(page.getByTestId('split-divider')).toBeVisible();
+  await expect(page.getByTestId('split-preview').locator('h1')).toContainText('Welcome to Marky Mark');
+
+  await page.getByTestId('editor').locator('.cm-line').first().click();
+  await page.keyboard.type('LIVEMARK ');
+  await expect(page.getByTestId('split-preview')).toContainText('LIVEMARK', { timeout: 1000 });
+
+  // The toggle returns to the reading preview (comments surface).
+  await page.keyboard.press('Control+e');
+  await expect(page.getByTestId('doc')).toBeVisible();
+  await expect(page.getByTestId('editor')).toHaveCount(0);
+  await expect(page.getByTestId('split-preview')).toHaveCount(0);
+});
+
+test('E40: the split divider drags within bounds, persists its ratio, and double-click resets', async ({
+  page,
+}) => {
+  await openSettings(page, 'general');
+  await page.getByTestId('set-split-edit').check();
+  await page.getByTestId('settings-close').click();
+  await page.keyboard.press('Control+e');
+
+  const wsBox = (await page.locator('.workspace.split').boundingBox())!;
+  const editorFraction = async () => {
+    const e = (await page.locator('.split-editor').boundingBox())!;
+    return e.width / wsBox.width;
+  };
+  expect(Math.abs((await editorFraction()) - 0.5)).toBeLessThanOrEqual(0.05);
+
+  // Drag the divider to ~30% of the window.
+  const divider = page.getByTestId('split-divider');
+  const d1 = (await divider.boundingBox())!;
+  await page.mouse.move(d1.x + d1.width / 2, d1.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(wsBox.x + wsBox.width * 0.3, d1.y + 200, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(editorFraction).toBeGreaterThanOrEqual(0.25);
+  await expect.poll(editorFraction).toBeLessThanOrEqual(0.35);
+
+  // The ratio survives leaving and re-entering edit mode, and reaches disk.
+  await page.keyboard.press('Control+e');
+  await page.keyboard.press('Control+e');
+  await expect.poll(editorFraction).toBeLessThanOrEqual(0.35);
+  await expect
+    .poll(async () => {
+      const raw = await fsRead(page, '/config/settings.json');
+      return raw ? (JSON.parse(raw) as { splitRatio?: number }).splitRatio : null;
+    })
+    .toBeLessThanOrEqual(0.35);
+
+  // Dragging far left clamps at the 0.2 floor.
+  const d2 = (await divider.boundingBox())!;
+  await page.mouse.move(d2.x + d2.width / 2, d2.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(wsBox.x + 5, d2.y + 200, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(editorFraction).toBeGreaterThanOrEqual(0.19);
+  await expect.poll(editorFraction).toBeLessThanOrEqual(0.22);
+
+  // Double-click resets to an even split.
+  await divider.dblclick();
+  await expect.poll(editorFraction).toBeGreaterThanOrEqual(0.45);
+  await expect.poll(editorFraction).toBeLessThanOrEqual(0.55);
+});
+
+test('E41: undo/redo hotkeys work for edits, and history survives a preview↔edit toggle', async ({ page }) => {
+  await page.keyboard.press('Control+e');
+  const content = page.getByTestId('editor').locator('.cm-content');
+  await page.getByTestId('editor').locator('.cm-line').first().click();
+  await page.keyboard.type('UNDOMARK');
+  await expect(content).toContainText('UNDOMARK');
+
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(content).not.toContainText('UNDOMARK');
+  await page.keyboard.press('ControlOrMeta+Shift+z');
+  await expect(content).toContainText('UNDOMARK');
+
+  // Toggle to preview and back: the pre-toggle edit is still undoable.
+  await page.keyboard.press('Control+e');
+  await expect(page.getByTestId('doc')).toContainText('UNDOMARK');
+  await page.keyboard.press('Control+e');
+  await expect(content).toContainText('UNDOMARK');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(content).not.toContainText('UNDOMARK');
 });

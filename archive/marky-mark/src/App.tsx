@@ -5,7 +5,15 @@ import { type Anchor, type CommentData, createAnchor, reanchor, type ReanchorMat
 import { getDocText, highlightRange, rangeToOffsets, rectForOffsets } from './lib/domtext';
 import { parseSidecar, serializeSidecar, sidecarPathFor } from './lib/sidecar';
 import { attachEmbedded, mergeComments, splitEmbedded } from './lib/embedded';
-import { DEFAULT_SETTINGS, MARGIN_WIDTHS, parseSettings, serializeSettings, type Settings } from './lib/settings';
+import {
+  DEFAULT_SETTINGS,
+  MARGIN_WIDTHS,
+  parseSettings,
+  serializeSettings,
+  SPLIT_RATIO_MAX,
+  SPLIT_RATIO_MIN,
+  type Settings,
+} from './lib/settings';
 import { displayCombo, eventMatches } from './lib/hotkeys';
 import { VimNavResolver } from './lib/vimnav';
 import type { Theme } from './lib/themes';
@@ -57,6 +65,10 @@ export default function App() {
   const [prefersDark, setPrefersDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   const docRef = useRef<HTMLDivElement>(null);
+  const splitDocRef = useRef<HTMLDivElement>(null);
+  // Parked CodeMirror state (doc + undo history), so toggling preview↔edit
+  // never loses undo (SPEC7 §6). Reset when another document opens.
+  const editorHistoryRef = useRef<unknown>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -96,6 +108,7 @@ export default function App() {
       return; // unreadable path (e.g. deleted file in a stale open event)
     }
     skipSaveRef.current = true;
+    editorHistoryRef.current = null; // a fresh document starts a fresh undo history
     setDocPath(path);
     setBuffer(content);
     setSavedText(content);
@@ -335,6 +348,35 @@ export default function App() {
     setPending(null);
   }, [saveDoc]);
 
+  /**
+   * Split divider drag (SPEC7 §5.4): pointer-captured; the live resize writes
+   * a CSS variable directly (no React re-render per mousemove) and the final
+   * ratio persists on release.
+   */
+  const dragDivider = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const ws = workspaceRef.current;
+      if (!ws) return;
+      e.preventDefault();
+      const divider = e.currentTarget;
+      divider.setPointerCapture(e.pointerId);
+      const rect = ws.getBoundingClientRect();
+      let ratio = stateRef.current.settings.splitRatio;
+      const onMove = (ev: PointerEvent) => {
+        ratio = Math.min(SPLIT_RATIO_MAX, Math.max(SPLIT_RATIO_MIN, (ev.clientX - rect.left) / rect.width));
+        ws.style.setProperty('--mm-split', `${ratio * 100}%`);
+      };
+      const onUp = () => {
+        divider.removeEventListener('pointermove', onMove);
+        divider.removeEventListener('pointerup', onUp);
+        updateSettings({ ...stateRef.current.settings, splitRatio: ratio });
+      };
+      divider.addEventListener('pointermove', onMove);
+      divider.addEventListener('pointerup', onUp);
+    },
+    [updateSettings]
+  );
+
   const openViaDialog = useCallback(async () => {
     const p = stateRef.current.platform;
     if (!p) return;
@@ -391,7 +433,8 @@ export default function App() {
         void openViaDialog();
       } else if (eventMatches(e, hk.toggleComments)) {
         e.preventDefault();
-        setShowComments((v) => !v);
+        // Master switch off (SPEC7 §2): the comments UI is gone, hotkey included.
+        if (stateRef.current.settings.commentsEnabled) setShowComments((v) => !v);
       }
     };
     window.addEventListener('keydown', onKey, true);
@@ -405,6 +448,12 @@ export default function App() {
       if (!s.settings.vimNav || s.mode !== 'preview') return;
       const target = e.target as HTMLElement | null;
       if (target?.closest?.('input, textarea, select, [contenteditable], .modal') || document.querySelector('.overlay')) {
+        vimRef.current.reset();
+        return;
+      }
+      // A live selection belongs to type-to-comment (SPEC7 §3), never to nav.
+      const sel = document.getSelection();
+      if (sel && !sel.isCollapsed) {
         vimRef.current.reset();
         return;
       }
@@ -448,17 +497,26 @@ export default function App() {
     document.title = `${name}${dirty ? ' •' : ''} — Marky Mark`;
   }, [platform, docPath, dirty]);
 
-  // --- markdown rendering (preview mode only) -------------------------------------
+  // --- markdown rendering (preview mode; debounced live in split edit, SPEC7 §5) ----
   useEffect(() => {
-    if (mode !== 'preview') return;
+    if (mode !== 'preview' && !settings.splitEdit) return;
     let cancelled = false;
-    void renderMarkdown(buffer).then((rendered) => {
-      if (!cancelled) setHtml(rendered);
-    });
+    const render = () =>
+      void renderMarkdown(buffer).then((rendered) => {
+        if (!cancelled) setHtml(rendered);
+      });
+    if (mode === 'edit') {
+      const t = setTimeout(render, 200); // keystrokes coalesce; well under the 300ms budget
+      return () => {
+        cancelled = true;
+        clearTimeout(t);
+      };
+    }
+    render();
     return () => {
       cancelled = true;
     };
-  }, [buffer, mode]);
+  }, [buffer, mode, settings.splitEdit]);
 
   // --- restore scroll position when swapping modes --------------------------------
   useLayoutEffect(() => {
@@ -511,7 +569,7 @@ export default function App() {
       setComments(updated);
       return;
     }
-    if (!showComments) return;
+    if (!showComments || !settings.commentsEnabled) return;
     for (const c of comments) {
       if (c.resolved && !settings.showResolved) continue;
       const m = pos[c.id];
@@ -521,7 +579,24 @@ export default function App() {
         if (c.resolved) marks.forEach((mk) => mk.classList.add('ghost'));
       }
     }
-  }, [html, comments, showComments, mode, settings.showResolved]);
+  }, [html, comments, showComments, mode, settings.showResolved, settings.commentsEnabled]);
+
+  // --- split-edit live preview pane (SPEC7 §5): plain reading pane, no comments ----
+  useLayoutEffect(() => {
+    if (mode !== 'edit' || !settings.splitEdit) return;
+    const el = splitDocRef.current;
+    if (!el) return;
+    el.innerHTML = html;
+    const p = stateRef.current.platform;
+    const path = stateRef.current.docPath;
+    if (p && path) {
+      const dir = p.dirname(path);
+      el.querySelectorAll('img').forEach((img) => {
+        const src = img.getAttribute('src');
+        if (src) img.src = p.resolveAssetSrc(src, dir);
+      });
+    }
+  }, [html, mode, settings.splitEdit]);
 
   // --- active highlight styling -----------------------------------------------------
   useEffect(() => {
@@ -627,14 +702,39 @@ export default function App() {
   }, [mode]);
 
   // --- comment operations -----------------------------------------------------------
-  const startComposer = () => {
+  const startComposer = (seed = '') => {
     if (!selInfo) return;
     setPending({ start: selInfo.start, end: selInfo.end });
-    setDraft('');
+    setDraft(seed);
     setActiveId(null);
     window.getSelection()?.removeAllRanges();
     setSelInfo(null);
   };
+
+  // --- type-to-comment (SPEC7 §3): a printable key over a selection opens the composer
+  useEffect(() => {
+    if (mode !== 'preview' || !selInfo || pending || !showComments) return;
+    if (!settings.commentsEnabled || !settings.typeToComment) return;
+    const { start, end } = selInfo;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return; // printable only
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest?.('input, textarea, select, [contenteditable], .modal') ||
+        document.querySelector('.overlay')
+      ) {
+        return;
+      }
+      e.preventDefault();
+      setPending({ start, end });
+      setDraft(e.key);
+      setActiveId(null);
+      window.getSelection()?.removeAllRanges();
+      setSelInfo(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selInfo, pending, mode, showComments, settings.commentsEnabled, settings.typeToComment]);
 
   const submitComment = () => {
     const body = draft.trim();
@@ -656,6 +756,9 @@ export default function App() {
 
   const updateComment = (next: CommentData) => {
     setComments((prev) => prev.map((c) => (c.id === next.id ? next : c)));
+    // Resolving retires the card from focus — otherwise its ghost keeps the
+    // brighter `.active` styling and never reads as resolved (SPEC7 §4).
+    if (next.resolved) setActiveId((a) => (a === next.id ? null : a));
   };
 
   const deleteComment = (id: string) => {
@@ -700,7 +803,8 @@ export default function App() {
     items.splice(at, 0, { kind: 'composer' });
   }
 
-  const panelVisible = mode === 'preview' && showComments && (comments.length > 0 || pending !== null);
+  const panelVisible =
+    mode === 'preview' && showComments && settings.commentsEnabled && (comments.length > 0 || pending !== null);
 
   if (!platform) return <div className="theme-root" />;
 
@@ -726,6 +830,7 @@ export default function App() {
         dirty={dirty}
         mode={mode}
         showComments={showComments}
+        commentsEnabled={settings.commentsEnabled}
         commentCount={comments.length}
         hotkeys={settings.hotkeys}
         isMac={platform.isMac}
@@ -765,19 +870,6 @@ export default function App() {
           </div>
           {panelVisible && (
             <aside className="panel" data-testid="panel" ref={panelRef}>
-              {resolved.length > 0 && (
-                <div className="panel-header">
-                  <label>
-                    <input
-                      type="checkbox"
-                      data-testid="show-resolved"
-                      checked={settings.showResolved}
-                      onChange={(e) => updateSettings({ ...settings, showResolved: e.target.checked })}
-                    />{' '}
-                    Show resolved
-                  </label>
-                </div>
-              )}
               {items.map((it) =>
                 it.kind === 'composer' ? (
                   <div className="card composer" data-flowcard="__composer" data-testid="composer" key="__composer">
@@ -786,6 +878,11 @@ export default function App() {
                       placeholder="Add a comment…"
                       autoFocus
                       value={draft}
+                      // Type-to-comment seeds the draft; the caret belongs after it.
+                      onFocus={(e) => {
+                        const n = e.currentTarget.value.length;
+                        e.currentTarget.setSelectionRange(n, n);
+                      }}
                       onChange={(e) => setDraft(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
@@ -845,21 +942,52 @@ export default function App() {
             </aside>
           )}
         </div>
+      ) : settings.splitEdit ? (
+        <div
+          className="workspace split"
+          ref={workspaceRef}
+          style={{ '--mm-split': `${settings.splitRatio * 100}%` } as React.CSSProperties}
+        >
+          <div className="split-editor">
+            <Suspense fallback={<div className="editor-wrap" data-testid="editor-loading" />}>
+              <Editor
+                value={buffer}
+                lineNumbers={settings.lineNumbers}
+                onChange={setBuffer}
+                historyRef={editorHistoryRef}
+              />
+            </Suspense>
+          </div>
+          <div
+            className="split-divider"
+            data-testid="split-divider"
+            onPointerDown={dragDivider}
+            onDoubleClick={() => updateSettings({ ...stateRef.current.settings, splitRatio: 0.5 })}
+          />
+          <div className="split-preview" data-testid="split-preview">
+            <div className="doc" ref={splitDocRef} />
+          </div>
+        </div>
       ) : (
         <div className="workspace" ref={workspaceRef} style={{ overflow: 'hidden' }}>
           <Suspense fallback={<div className="editor-wrap" data-testid="editor-loading" />}>
-            <Editor value={buffer} lineNumbers={settings.lineNumbers} onChange={setBuffer} />
+            <Editor
+              value={buffer}
+              lineNumbers={settings.lineNumbers}
+              onChange={setBuffer}
+              historyRef={editorHistoryRef}
+            />
           </Suspense>
         </div>
       )}
 
-      {selInfo && showComments && !pending && mode === 'preview' && (
+      {selInfo && showComments && settings.commentsEnabled && !pending && mode === 'preview' && (
         <button
           className="add-comment-btn"
           data-testid="add-comment-btn"
           style={{ left: selInfo.x, top: Math.max(8, selInfo.y - 42) }}
           onMouseDown={(e) => e.preventDefault()}
-          onClick={startComposer}
+          onClick={() => startComposer()}
         >
           💬 Add comment
         </button>

@@ -61,9 +61,49 @@ describe('v3 settings', () => {
     expect(parseSettings('{}').autoHideToolbar).toBe(false);
     expect(parseSettings('{"autoHideToolbar":true}').autoHideToolbar).toBe(true);
     expect(parseSettings('{"autoHideToolbar":"yes"}').autoHideToolbar).toBe(false);
-    // SPEC6 §3: ghosted resolved comments are opt-in.
-    expect(parseSettings('{}').showResolved).toBe(false);
+    // SPEC7 §4: ghosted resolved comments are shown by default (opt-out).
+    expect(parseSettings('{}').showResolved).toBe(true);
     expect(parseSettings('{"showResolved":true}').showResolved).toBe(true);
     expect(parseSettings('{"lineNumbers":"yes"}').lineNumbers).toBe(true);
+  });
+});
+
+describe('v7 settings', () => {
+  test('U15: comment controls and split-edit fields parse with defaults; malformed values fall back', () => {
+    // Defaults (SPEC7): comments on, type-to-comment on, split off, ratio 0.5.
+    const d = parseSettings('{}');
+    expect(d.commentsEnabled).toBe(true);
+    expect(d.typeToComment).toBe(true);
+    expect(d.splitEdit).toBe(false);
+    expect(d.splitRatio).toBe(0.5);
+
+    // Explicit values round-trip through serialize → parse.
+    const custom = parseSettings(
+      serializeSettings({
+        ...DEFAULT_SETTINGS,
+        commentsEnabled: false,
+        typeToComment: false,
+        showResolved: false,
+        splitEdit: true,
+        splitRatio: 0.35,
+      })
+    );
+    expect(custom.commentsEnabled).toBe(false);
+    expect(custom.typeToComment).toBe(false);
+    expect(custom.showResolved).toBe(false);
+    expect(custom.splitEdit).toBe(true);
+    expect(custom.splitRatio).toBe(0.35);
+
+    // Malformed booleans fall back to their defaults.
+    expect(parseSettings('{"commentsEnabled":"no"}').commentsEnabled).toBe(true);
+    expect(parseSettings('{"typeToComment":0}').typeToComment).toBe(true);
+    expect(parseSettings('{"splitEdit":"yes"}').splitEdit).toBe(false);
+
+    // splitRatio clamps to [0.2, 0.8]; non-finite/non-number falls back to 0.5.
+    expect(parseSettings('{"splitRatio":0.05}').splitRatio).toBe(0.2);
+    expect(parseSettings('{"splitRatio":0.95}').splitRatio).toBe(0.8);
+    expect(parseSettings('{"splitRatio":"half"}').splitRatio).toBe(0.5);
+    expect(parseSettings('{"splitRatio":null}').splitRatio).toBe(0.5);
+    expect(parseSettings('{"splitRatio":1e999}').splitRatio).toBe(0.5); // parses to Infinity
   });
 });

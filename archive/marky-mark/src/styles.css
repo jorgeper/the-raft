@@ -416,15 +416,6 @@ mark.hl.flash {
   transition: top 180ms ease;
 }
 
-.panel-header {
-  position: relative;
-  z-index: 2;
-  font-size: 12px;
-  color: var(--mm-fg-muted, #59636e);
-  padding: 8px 0 4px;
-  user-select: none;
-}
-
 .card {
   background: var(--mm-bg-elevated, #f6f8fa);
   border: 1px solid var(--mm-border, #d1d9e0);
@@ -443,9 +434,9 @@ mark.hl.flash {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
 }
 
-/* Ghosted resolved comments (SPEC6 §3). */
+/* Ghosted resolved comments (SPEC6 §3; faded further per SPEC7 §4). */
 .card.resolved-ghost {
-  opacity: 0.55;
+  opacity: 0.4;
 }
 
 .card.resolved-ghost:hover,
@@ -454,7 +445,7 @@ mark.hl.flash {
 }
 
 mark.hl.ghost {
-  background: color-mix(in srgb, var(--mm-comment-tint, rgba(255, 214, 102, 0.42)) 40%, transparent);
+  background: color-mix(in srgb, var(--mm-comment-tint, rgba(255, 214, 102, 0.42)) 25%, transparent);
 }
 
 /* Cards inside the collapsed Resolved section stack normally. */
@@ -622,6 +613,44 @@ mark.hl.ghost {
   border-left-color: var(--mm-accent, #0969da);
 }
 
+/* ---------- split edit (SPEC7 §5): editor | divider | live preview ---------- */
+
+.workspace.split {
+  overflow: hidden;
+  justify-content: stretch;
+}
+
+.split-editor {
+  width: var(--mm-split, 50%);
+  flex-shrink: 0;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.split-divider {
+  width: 5px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: var(--mm-border, #d1d9e0);
+  transition: background 120ms ease;
+  touch-action: none;
+}
+
+.split-divider:hover {
+  background: var(--mm-accent, #0969da);
+}
+
+.split-preview {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.split-preview .doc {
+  margin: 0 auto;
+}
+
 /* ---------- modals (settings, close guard) ---------- */
 
 .overlay {
@@ -679,12 +708,13 @@ mark.hl.ghost {
   border-color: var(--mm-accent, #0969da);
 }
 
-/* Tabbed settings (SPEC4 §3): left rail + content, compact height. */
+/* Tabbed settings (SPEC4 §3). Fixed box (SPEC7 §1): switching tabs never
+   resizes the dialog — long tabs scroll inside .tab-content instead. */
 .settings-modal {
   display: flex;
   padding: 0;
   width: min(560px, 94vw);
-  max-height: 70vh;
+  height: min(480px, 85vh);
   overflow: hidden;
 }
 
