@@ -44,10 +44,29 @@ STATES: frozenset[str] = frozenset(
         "pr:human-review",
         "done",
         "needs-human",
+        "improve:drafting",
+        "improve:review",
+        "improve:approved",
     }
 )
 
-KINDS: frozenset[str] = frozenset({"feature", "bug", "chore"})
+KINDS: frozenset[str] = frozenset({"feature", "bug", "chore", "improvement"})
+
+# The improvement pipeline is a separate world: improvement items live only in
+# these states (plus needs-human and done), and no other kind may enter them.
+IMPROVE_STATES: frozenset[str] = frozenset(
+    {"improve:drafting", "improve:review", "improve:approved"}
+)
+_IMPROVEMENT_ALLOWED: frozenset[str] = IMPROVE_STATES | {"needs-human", "done"}
+
+
+def kind_state_conflict(state: str, kind: str) -> str | None:
+    """Return an error message if this kind may never occupy this state (R7)."""
+    if state in IMPROVE_STATES and kind != "improvement":
+        return f"kind {kind!r} may not enter improvement state {state!r}"
+    if kind == "improvement" and state not in _IMPROVEMENT_ALLOWED:
+        return f"improvement items may not enter {state!r} (improve:* states only)"
+    return None
 
 _H = frozenset({Actor.HUMAN})
 _A = frozenset({Actor.AGENT})
@@ -73,6 +92,9 @@ TRANSITIONS: dict[tuple[str, str], frozenset[Actor]] = {
     ("pr:changes-requested", "coding"): _AO,
     ("pr:agent-review", "pr:human-review"): _O,  # fired only when all verdicts APPROVE
     ("pr:human-review", "done"): _H,  # HUMAN GATE: merge authority
+    ("improve:drafting", "improve:review"): _AO,  # valid proposal posted
+    ("improve:review", "improve:approved"): _H,  # HUMAN GATE: prompt-change approval
+    ("improve:approved", "done"): _HO,  # harness applied the diff
 }
 
 
@@ -88,6 +110,10 @@ def check_transition(
         raise IllegalTransition(f"unknown state {from_state!r}")
     if to_state not in STATES:
         raise IllegalTransition(f"unknown state {to_state!r}")
+
+    conflict = kind_state_conflict(to_state, kind)
+    if conflict is not None:
+        raise IllegalTransition(conflict)
 
     if to_state == "needs-human":
         return

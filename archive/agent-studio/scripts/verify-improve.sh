@@ -53,7 +53,10 @@ todo "6. tests/test_improver.py"
 todo "7. tests/test_improve_allowlist.py"
 
 # --- 8. human gate + kind guard (R6/R7) ------------------------------------------
-todo "8. tests/test_improve_gate.py"
+grep -q 'def test_improve_approval_is_human_only' tests/test_improve_gate.py &&
+  grep -q 'def test_non_improvement_kind_cannot_enter_improve_states' tests/test_improve_gate.py &&
+  "$PY" -m pytest tests/test_improve_gate.py -q >"$TMP/gate.out" 2>&1
+check "8. human gate rejects agent actors; kind guard both directions (tested)" $?
 
 # --- 9. apply/reject/revert-diff (R21/R22/R25) -----------------------------------
 todo "9. tests/test_improve_apply.py"

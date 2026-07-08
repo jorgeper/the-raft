@@ -8,7 +8,7 @@ import json
 
 from studio.events import NullEventLog
 from studio.execution import CommandExecutor
-from studio.state import STATES, Actor, check_transition
+from studio.state import STATES, Actor, check_transition, kind_state_conflict
 from studio.tracker.base import Comment, Tracker, TrackerError, WorkItem
 
 _ITEM_FIELDS = "number,title,body,labels,url,createdAt,updatedAt"
@@ -61,6 +61,9 @@ class GitHubIssuesTracker(Tracker):
     def create(self, title: str, body: str, state: str, kind: str = "feature") -> WorkItem:
         if state not in STATES:
             raise TrackerError(f"unknown state: {state}")
+        conflict = kind_state_conflict(state, kind)
+        if conflict is not None:
+            raise TrackerError(conflict)
         out = self._gh(
             "issue", "create",
             "--title", title,

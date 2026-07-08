@@ -13,7 +13,7 @@ from pathlib import Path
 import yaml
 
 from studio.events import NullEventLog
-from studio.state import KINDS, STATES, Actor, check_transition
+from studio.state import KINDS, STATES, Actor, check_transition, kind_state_conflict
 from studio.tracker.base import Comment, Tracker, TrackerError, WorkItem
 
 _COMMENT_MARK = '<!-- comment author="{author}" -->'
@@ -32,6 +32,9 @@ BOARD_ORDER = [
     "pr:agent-review",
     "pr:changes-requested",
     "pr:human-review",
+    "improve:drafting",
+    "improve:review",
+    "improve:approved",
     "done",
     "needs-human",
 ]
@@ -110,6 +113,9 @@ class MarkdownTracker(Tracker):
             raise TrackerError(f"unknown state: {state}")
         if kind not in KINDS:
             raise TrackerError(f"unknown kind: {kind}")
+        conflict = kind_state_conflict(state, kind)
+        if conflict is not None:
+            raise TrackerError(conflict)
         item = WorkItem(
             id=self._next_id(),
             title=title,

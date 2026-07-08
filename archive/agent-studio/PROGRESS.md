@@ -5,10 +5,10 @@
 Building the self-improving agent set per self-improve-spec.md. Finish line:
 `./scripts/verify-improve.sh` 12/12 AND `./scripts/verify.sh` stays 13/13.
 
-- **Current milestone:** M1 done (agent sets in config + backward compat).
-  Next: M2 (improve states, improvement kind, actor guards).
-- **verify-improve.sh score:** 4/12 (checks 4–11 are ⬜ placeholders that fail
-  until their milestone lands; the todo() helper marks them).
+- **Current milestone:** M2 done (improve:* states, improvement kind, human gate,
+  kind guard both ways incl. at creation). Next: M3 (metrics + scorecard).
+- **verify-improve.sh score:** 5/12 after M2 (check 8 lands; 4–7 and 9–11 are ⬜
+  placeholders that fail until their milestone lands; the todo() helper marks them).
 - **Gotchas so far:** evolving-set test fixtures must not use `improve:*` states
   before M2 lands (config validates `handles` against studio.state.STATES).
 
