@@ -1,0 +1,121 @@
+# Lab 1 — Build an app from zero
+
+Goal: go from an empty repo to a working Flask todo API, entirely through the blacksun
+pipeline, touching the work only at your two gates. Time: ~45 minutes, mostly waiting
+on loops while you drink coffee.
+
+## 0. Prerequisites
+
+```sh
+claude --version        # Claude Code CLI, authenticated
+gh auth status          # GitHub CLI, authenticated
+codex --version         # optional — reviewer-b degrades gracefully without it
+```
+
+Run `make demo` once first: it exercises the whole machine offline so you can tell
+"blacksun problem" from "my setup problem" later.
+
+## 1. Create the app repo and wire the blacksun to it
+
+```sh
+gh repo create todo-api --private --clone
+cd todo-api && git commit --allow-empty -m "root" && git push -u origin main
+cd ../black-sun
+scripts/setup-github.sh you/todo-api
+```
+
+Edit `config/blacksun.yaml`:
+
+```yaml
+tracker: {kind: github, repo: you/todo-api}
+target_repo: ../todo-api
+```
+
+Then validate and generate the native subagents:
+
+```sh
+python -m blacksun init
+```
+
+## 2. File the founding feature request (you, 2 minutes)
+
+```sh
+python -m blacksun new "Todo API v1" --body "A small HTTP API to create, list,
+complete and delete todos. Python. No auth in v1. Must be runnable locally
+with one command."
+```
+
+## 3. Let the pipeline run
+
+```sh
+python -m blacksun run --watch
+```
+
+Watch the first tick dispatch the **prd** agent. When `blacksun status` shows the item in
+`prd:review`:
+
+## 4. Gate one: review the PRD (you)
+
+```sh
+gh issue view 1 --comments      # read the PRD like you mean it
+```
+
+Disagree with something? Comment on the issue (`gh issue comment 1 --body "R3 is
+overkill for v1 — drop pagination"`), then move it back:
+the PRD agent will revise, addressing your points one by one. Satisfied?
+
+```sh
+python -m blacksun approve 1      # prd:review -> design:drafting
+```
+
+The **architect** now produces a design spec whose acceptance criteria are literal
+shell commands — that section is what the coder's GoalLoop will enforce, so read it
+hardest. Iterate the same way, then:
+
+```sh
+python -m blacksun approve 1      # design:review -> ready
+```
+
+## 5. The coder loop (nobody, that's the point)
+
+The orchestrator claims the item, cuts a worktree on `agent/1-todo-api-v1`, and the
+GoalLoop starts: a planning iteration writes `.loop/plan.json`, then one task per
+iteration — test first, implement, the harness re-runs the gates after every pass.
+Follow along if you like:
+
+```sh
+tail -f ../.blacksun-worktrees/1/.loop/progress.md
+```
+
+If the loop exhausts its budget or thrashes, the item lands in `needs-human` with a
+progress report as a comment — read it, fix the blocker (usually a vague criterion),
+and re-route.
+
+## 6. Agent review, then gate two: your merge
+
+When the draft PR opens, both reviewers run the gates themselves and post evidence
+with a `VERDICT:` line. CHANGES send it back to the coder automatically; you do
+nothing. When `blacksun status` says `pr:human-review`:
+
+```sh
+gh pr view 1 --comments   # read the full agent conversation — this is the anti-
+gh pr diff 1              # cognitive-surrender rep; don't skip it
+gh pr ready 1 && gh pr merge 1 --squash
+python -m blacksun approve 1      # records done in the tracker
+```
+
+## What you learned
+
+- The whole pipeline costs you exactly two approvals and one merge — everything
+  else ran on states, not prompts.
+- Spec review is your highest-leverage moment: the acceptance criteria you approve
+  become, verbatim, the gates the coder's loop must satisfy.
+- The GoalLoop's progress log (`.loop/progress.md`) is watchable in real time and
+  readable after the fact — evidence, not vibes.
+- Reviewer rejections route back to the coder automatically; you only see the PR
+  after the models approved it.
+- Reading the final diff yourself is a permanent part of the job, not a phase.
+
+---
+
+[Index](../README.md) · [Lab 2: Add a feature →](02-add-a-feature.md)

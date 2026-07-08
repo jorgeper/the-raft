@@ -1,0 +1,544 @@
+"""Orchestrator: plain code, no LLM. Polls the tracker, matches state -> agent,
+dispatches, applies transitions, persists runs. Humans are never automated —
+items in human-gated states are skipped and surfaced by `blacksun status`.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+from blacksun.agents.registry import AgentRegistry
+from blacksun.config import AgentConfig, BlackSunConfig
+from blacksun.events import NullEventLog, OutputCoalescer
+from blacksun.execution import CommandExecutor
+from blacksun.improve import (
+    ImproveError,
+    ImprovementsLog,
+    diff_paths,
+    judge_outcome,
+    metric_value,
+    parse_proposal,
+    revert_diff,
+    validate_paths,
+)
+from blacksun.loop import Goal, GoalLoop, LoopResult
+from blacksun.metrics import ScorecardLog, compute_scorecard, read_events
+from blacksun.reflection import harvest_lessons
+from blacksun.runs import RunStore
+from blacksun.runtime.base import ModelRuntime, RuntimeResult
+from blacksun.state import Actor
+from blacksun.tracker.base import Tracker, WorkItem
+
+# After an agent finishes drafting, its item moves here (agent-actor edges).
+_COMMENTER_NEXT = {"prd:drafting": "prd:review", "design:drafting": "design:review"}
+
+_VERDICT_RE = re.compile(r"VERDICT:\s*(APPROVE|CHANGES)")
+
+
+@dataclass
+class Dispatch:
+    item_id: str
+    agent: str
+    action: str  # dispatched | would-dispatch | skipped | failed | escalated
+    detail: str = ""
+
+
+def slugify(text: str, limit: int = 30) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug[:limit].rstrip("-") or "item"
+
+
+class Orchestrator:
+    def __init__(
+        self,
+        cfg: BlackSunConfig,
+        tracker: Tracker,
+        registry: AgentRegistry,
+        runtimes: dict[str, ModelRuntime],
+        run_store: RunStore | None = None,
+        executor: CommandExecutor | None = None,
+        loop_factory=None,
+        sleep=time.sleep,
+        events=None,
+    ) -> None:
+        self.cfg = cfg
+        self.tracker = tracker
+        self.registry = registry
+        self.runtimes = runtimes
+        self.run_store = run_store or RunStore(cfg.root / "runs")
+        self.executor = executor or CommandExecutor()
+        self.loop_factory = loop_factory or self._default_loop_factory
+        self.sleep = sleep
+        self.events = events or NullEventLog()
+        self.scorecard_log = ScorecardLog(cfg.root / "memory" / "scorecard.jsonl")
+        self.improvements_log = ImprovementsLog(cfg.root / "memory" / "improvements.jsonl")
+        self._tick_n = 0
+        self.by_state: dict[str, list[AgentConfig]] = {}
+        for agent in cfg.agents.values():
+            self.by_state.setdefault(agent.handles, []).append(agent)
+            if agent.loop is not None:  # loop agents also pick up review feedback
+                self.by_state.setdefault("pr:changes-requested", []).append(agent)
+
+    # ------------------------------------------------------------------ ticks
+
+    def tick(self, dry_run: bool = False) -> list[Dispatch]:
+        # Snapshot first: an item that transitions mid-tick (coder -> review) must not
+        # be dispatched again until the next tick.
+        snapshot = [
+            (item, state, agents)
+            for state, agents in self.by_state.items()
+            for item in self.tracker.list(state=state)
+        ]
+        dispatches: list[Dispatch] = []
+        budget = self.cfg.max_concurrent_agents
+        self._tick_n += 1
+        if not dry_run:
+            self.events.emit("tick_start", n=self._tick_n)
+        for item, state, agents in snapshot:
+            if budget <= 0:
+                break
+            if not dry_run and self.tracker.get(item.id).state != state:
+                continue  # moved earlier in this tick
+            if state == "pr:agent-review":
+                shape = "review-round"
+            elif state == "improve:drafting":
+                shape = "improver"
+            elif agents[0].loop is not None:
+                shape = "coder"
+            else:
+                shape = "commenter"
+            if not dry_run:
+                self.events.emit("dispatch_start", item=item.id, agent=agents[0].name, shape=shape)
+            if shape == "review-round":
+                result = self._review_round(item, agents, dry_run)
+            elif shape == "improver":
+                result = self._dispatch_improver(item, agents[0], dry_run)
+            elif shape == "coder":
+                result = self._dispatch_coder(item, agents[0], dry_run)
+            else:
+                result = self._dispatch_commenter(item, agents[0], dry_run)
+            if not dry_run:
+                for d in result:
+                    self.events.emit(
+                        "dispatch_end", item=d.item_id, agent=d.agent,
+                        action=d.action, detail=d.detail,
+                    )
+            dispatches.extend(result)
+            if any(d.action != "skipped" for d in result):
+                budget -= 1
+        if not dry_run:
+            self._snapshot_done()
+            self.check_regressions()
+            self.maybe_file_improvement()
+            self.events.emit(
+                "tick_end", n=self._tick_n,
+                dispatched=sum(1 for d in dispatches if d.action != "skipped"),
+                skipped=sum(1 for d in dispatches if d.action == "skipped"),
+            )
+        self._log(dispatches)
+        return dispatches
+
+    def _events_path(self) -> Path:
+        return getattr(self.events, "path", self.cfg.root / ".agent-logs" / "events.jsonl")
+
+    def _snapshot_done(self) -> None:
+        """R11: one scorecard snapshot line per done item, appended once."""
+        done = self.tracker.list(state="done")
+        if not done:
+            return
+        recorded = self.scorecard_log.recorded_ids()
+        pending = [item for item in done if item.id not in recorded]
+        if not pending:
+            return
+        card = compute_scorecard(read_events(self._events_path()))
+        for item in pending:
+            self.scorecard_log.append(
+                item.id, set_name=self.cfg.active_set, kind=item.kind, agents=card["agents"]
+            )
+            self.events.emit("scorecard_snapshot", item=item.id)
+
+    def watch(self) -> None:
+        while True:
+            self.tick()
+            self.sleep(self.cfg.poll_interval_s)
+
+    # ------------------------------------------------------------ dispatchers
+
+    def _runtime(self, agent: AgentConfig) -> ModelRuntime:
+        return self.runtimes[agent.runtime]
+
+    def _persist(self, item: WorkItem, agent: AgentConfig, prompt: str, output: str) -> None:
+        run = self.run_store.new_run(item.id, agent.name)
+        run.save("prompt.md", prompt)
+        run.save("output.md", output)
+
+    def _invoke(self, item: WorkItem, agent: AgentConfig, prompt: str) -> RuntimeResult:
+        """One runtime invocation with run persistence and runtime_* events."""
+        run = self.run_store.new_run(item.id, agent.name)
+        run.save("prompt.md", prompt)
+        self.events.emit(
+            "runtime_start", item=item.id, agent=agent.name,
+            runtime=agent.runtime, run_dir=str(run.path), prompt_chars=len(prompt),
+        )
+        coalescer = None
+        on_output = None
+        if self.cfg.runtimes[agent.runtime].streaming:
+            coalescer = OutputCoalescer(self.events.bound(item=item.id, agent=agent.name))
+            on_output = coalescer.feed
+        result = self._runtime(agent).run(
+            prompt, cwd=self.cfg.root, agent=self.registry.invocation_agent(agent),
+            on_output=on_output,
+        )
+        if coalescer is not None:
+            coalescer.close()
+        run.save("output.md", result.output)
+        self.events.emit(
+            "runtime_end", item=item.id, agent=agent.name,
+            exit_code=result.exit_code, duration_s=round(result.duration_s, 2),
+            output_tail=result.output,
+        )
+        self._harvest(item, agent, result.output)
+        return result
+
+    def _harvest(self, item: WorkItem, agent: AgentConfig, output: str) -> None:
+        harvest_lessons(
+            output, self.registry.journal_path(agent),
+            item_id=item.id, agent=agent.name, events=self.events,
+        )
+
+    def _dispatch_commenter(
+        self, item: WorkItem, agent: AgentConfig, dry_run: bool
+    ) -> list[Dispatch]:
+        """prd / architect: one fresh invocation -> ONE comment -> state advances."""
+        if dry_run:
+            return [Dispatch(item.id, agent.name, "would-dispatch", f"state={item.state}")]
+        if not self.tracker.claim(item.id, agent.name):
+            return [Dispatch(item.id, agent.name, "skipped", "claimed by someone else")]
+        try:
+            prompt = self.registry.build_prompt(agent, self.tracker.get(item.id))
+            result = self._invoke(item, agent, prompt)
+            if not result.ok or not result.output.strip():
+                return [Dispatch(item.id, agent.name, "failed", f"exit={result.exit_code}; will retry")]
+            self.tracker.comment(item.id, result.output, author=agent.name)
+            self.tracker.transition(item.id, _COMMENTER_NEXT[item.state], Actor.AGENT)
+            return [Dispatch(item.id, agent.name, "dispatched", f"-> {_COMMENTER_NEXT[item.state]}")]
+        finally:
+            self.tracker.release(item.id, agent.name)
+
+    # ---------------------------------------------------- improvement pipeline
+
+    def maybe_file_improvement(self, force: bool = False) -> WorkItem | None:
+        """R17: file ONE improvement item when improve_every done items have
+        accumulated since the last one (or on demand with force). R8: never
+        while another improvement item is open."""
+        improver_exists = any(
+            a.handles == "improve:drafting" for a in self.cfg.agents.values()
+        )
+        if not improver_exists:
+            return None
+        open_items = [
+            i for i in self.tracker.list(kind="improvement") if i.state.startswith("improve:")
+        ]
+        if open_items:
+            self.events.emit(
+                "improve_trigger_skipped", item=open_items[0].id,
+                reason="an improvement item is already open (single-flight, R8)",
+            )
+            return None
+        snapshots = [
+            e for e in self.scorecard_log.entries()
+            if e.get("kind") != "improvement" and e.get("set") == self.cfg.active_set
+        ]
+        consumed = self.improvements_log.consumed_done_ids()
+        fresh = [e["item"] for e in snapshots if e["item"] not in consumed]
+        if not force and len(fresh) < self.cfg.improve_every:
+            return None
+        card = compute_scorecard(read_events(self._events_path()))
+        item = self.tracker.create(
+            f"Improve the {self.cfg.active_set} set "
+            f"(after {len(fresh)} done item{'s' if len(fresh) != 1 else ''})",
+            self._improvement_body(fresh, card),
+            "improve:drafting",
+            kind="improvement",
+        )
+        self.improvements_log.append(
+            {"event": "filed", "item": item.id, "covers": fresh, "agents": card["agents"],
+             "forced": force}
+        )
+        self.events.emit("improvement_filed", item=item.id, covers=len(fresh), forced=force)
+        return item
+
+    def check_regressions(self) -> None:
+        """R23: judge every watching improvement with enough post-apply data;
+        kept / still-watching / file a git-generated revert through the gate."""
+        log = self.improvements_log
+        entries = log.entries()
+        applied = [e for e in entries if e.get("event") == "applied"]
+        if not applied:
+            return
+        reverts_for = {
+            e.get("for"): e["item"] for e in entries if e.get("event") == "revert_filed"
+        }
+        done_count = len(
+            [
+                s for s in self.scorecard_log.entries()
+                if s.get("kind") != "improvement" and s.get("set") == self.cfg.active_set
+            ]
+        )
+        card = None
+        for record in applied:
+            item_id = record["item"]
+            if log.current_status(item_id) != "watching":
+                continue
+            if item_id in reverts_for:
+                self._resolve_pending_revert(log, item_id, reverts_for[item_id])
+                continue
+            if done_count - record.get("snapshots_at_apply", 0) < self.cfg.improve_every:
+                continue
+            agent, rest = record["expect"].split(".", 1)
+            metric, direction = rest.split()
+            if card is None:
+                card = compute_scorecard(read_events(self._events_path()))
+            current = metric_value(card, agent, metric)
+            outcome = judge_outcome(direction, record.get("baseline"), current)
+            if outcome == "kept":
+                log.append({"event": "status", "item": item_id, "status": "kept",
+                            "current": current})
+                self.events.emit("improvement_kept", item=item_id, current=current)
+            elif outcome == "revert":
+                self._file_revert(record, current)
+
+    def _resolve_pending_revert(self, log: ImprovementsLog, original_id: str, revert_id: str) -> None:
+        """An open revert proposal decides the original's fate: applied ->
+        reverted; human-rejected -> kept (the regression was accepted)."""
+        revert_status = log.current_status(revert_id)
+        if revert_status in ("watching", "kept", "reverted"):  # its apply record exists
+            log.append({"event": "status", "item": original_id, "status": "reverted"})
+            self.events.emit("improvement_reverted", item=original_id)
+        elif revert_status == "rejected":
+            log.append({"event": "status", "item": original_id, "status": "kept",
+                        "note": "revert rejected by human"})
+            self.events.emit("improvement_kept", item=original_id)
+        # else: the revert item is still open in the pipeline — wait.
+
+    def _file_revert(self, record: dict, current: float | None) -> None:
+        """File the inverse diff as a normal human-gated improvement item (R23/R25)."""
+        open_items = [
+            i for i in self.tracker.list(kind="improvement") if i.state.startswith("improve:")
+        ]
+        if open_items:  # R8 single-flight; retry on a later tick
+            return
+        try:
+            diff = revert_diff(self.executor, self.cfg.root, record["sha"])
+        except ImproveError as exc:
+            self.events.emit("revert_failed", item=record["item"], error=str(exc))
+            return
+        baseline = record.get("baseline")
+        item = self.tracker.create(
+            f"REVERT improvement #{record['item']} (regression on {record['expect']})",
+            f"The regression guard measured `{record['expect'].split()[0]}` at {current} "
+            f"against a baseline of {baseline} — moved the wrong way by more than 20%.\n\n"
+            f"Approving this item restores commit `{record['sha'][:7]}`'s files exactly "
+            "(the diff below is git-generated, not model-generated).",
+            "improve:drafting",
+            kind="improvement",
+        )
+        rationale = (
+            f"Revert improvement #{record['item']}: {record['expect'].split()[0]} was "
+            f"{baseline} at apply time and is now {current}."
+        )
+        self.tracker.comment(
+            item.id,
+            f"{rationale}\n\n```diff\n{diff.rstrip()}\n```\n\nEXPECT: {record['expect']}",
+            author="orchestrator",
+        )
+        self.tracker.transition(item.id, "improve:review", Actor.ORCHESTRATOR)
+        self.improvements_log.append(
+            {"event": "revert_filed", "item": item.id, "for": record["item"],
+             "current": current}
+        )
+        self.events.emit("revert_filed", item=item.id, target=record["item"], current=current)
+
+    def _improvement_body(self, covers: list[str], card: dict) -> str:
+        previous = [
+            e for e in self.improvements_log.entries() if e.get("event") == "filed"
+        ]
+        delta_lines = []
+        if previous:
+            before = previous[-1].get("agents", {})
+            for agent, metrics in sorted(card["agents"].items()):
+                for metric, now in sorted(metrics.items()):
+                    then = before.get(agent, {}).get(metric)
+                    if now is not None and then is not None and now != then:
+                        delta_lines.append(f"- {agent}.{metric}: {round(then, 3)} -> {round(now, 3)}")
+        run_dirs = [
+            e["data"]["run_dir"]
+            for e in read_events(self._events_path())
+            if e.get("kind") == "runtime_start"
+            and e.get("item") in set(covers)
+            and (e.get("data") or {}).get("run_dir")
+        ]
+        return (
+            f"Covered done items: {', '.join('#' + c for c in covers) or '(none — forced)'}\n\n"
+            "## Scorecard (current)\n"
+            f"```json\n{json.dumps(card['agents'], indent=2)}\n```\n\n"
+            "## Delta since the last improvement\n"
+            + ("\n".join(delta_lines) or "(no prior improvement or no change)")
+            + "\n\n## Recent runs of covered items\n"
+            + ("\n".join(f"- {d}" for d in run_dirs[-5:]) or "(no run dirs recorded)")
+        )
+
+    def _dispatch_improver(self, item: WorkItem, agent: AgentConfig, dry_run: bool) -> list[Dispatch]:
+        """R18/R19/R20: one invocation -> parse the contract -> validate the
+        allowlist -> improve:review; any failure -> needs-human, nothing applied."""
+        if dry_run:
+            return [Dispatch(item.id, agent.name, "would-dispatch", f"state={item.state}")]
+        if not self.tracker.claim(item.id, agent.name):
+            return [Dispatch(item.id, agent.name, "skipped", "claimed by someone else")]
+        try:
+            prompt = self.registry.build_prompt(agent, self.tracker.get(item.id))
+            result = self._invoke(item, agent, prompt)
+            if not result.ok or not result.output.strip():
+                return [Dispatch(item.id, agent.name, "failed", f"exit={result.exit_code}; will retry")]
+            self.tracker.comment(item.id, result.output, author=agent.name)
+            try:
+                proposal = parse_proposal(result.output)
+                validate_paths(diff_paths(proposal.diff))
+            except ImproveError as exc:
+                self.tracker.comment(
+                    item.id,
+                    f"Proposal rejected by the harness — {exc}. Nothing was applied.",
+                    author="orchestrator",
+                )
+                self.tracker.transition(item.id, "needs-human", Actor.ORCHESTRATOR)
+                return [Dispatch(item.id, agent.name, "escalated", str(exc))]
+            self.tracker.transition(item.id, "improve:review", Actor.AGENT)
+            return [Dispatch(item.id, agent.name, "dispatched", "-> improve:review")]
+        finally:
+            self.tracker.release(item.id, agent.name)
+
+    def _default_loop_factory(self, agent: AgentConfig) -> GoalLoop:
+        return GoalLoop(
+            self._runtime(agent),
+            executor=self.executor,
+            agent=self.registry.invocation_agent(agent),
+            streaming=self.cfg.runtimes[agent.runtime].streaming,
+        )
+
+    def _worktree(self, item: WorkItem) -> tuple[Path, str]:
+        target = (self.cfg.root / self.cfg.target_repo).resolve()
+        branch = f"agent/{item.id}-{slugify(item.title)}"
+        path = target.parent / ".blacksun-worktrees" / item.id
+        if not path.exists():
+            result = self.executor.run(
+                ["git", "-C", str(target), "worktree", "add", str(path), "-b", branch]
+            )
+            if not result.ok:  # branch may exist from a previous attempt — reuse it
+                self.executor.run(
+                    ["git", "-C", str(target), "worktree", "add", str(path), branch]
+                )
+        return path, branch
+
+    def _dispatch_coder(self, item: WorkItem, agent: AgentConfig, dry_run: bool) -> list[Dispatch]:
+        if dry_run:
+            return [Dispatch(item.id, agent.name, "would-dispatch", "GoalLoop in worktree")]
+        if not self.tracker.claim(item.id, agent.name):
+            return [Dispatch(item.id, agent.name, "skipped", "claimed by someone else")]
+        try:
+            self.tracker.transition(item.id, "coding", Actor.ORCHESTRATOR)
+            workdir, branch = self._worktree(item)
+            prompt = self.registry.build_prompt(agent, self.tracker.get(item.id), branch=branch)
+            loop = self.loop_factory(agent)
+            # Bind loop events to this dispatch — the loop itself doesn't know items.
+            loop.events = self.events.bound(item=item.id, agent=agent.name)
+            loop.output_hook = lambda output: self._harvest(item, agent, output)
+            goal = Goal(
+                max_iterations=agent.loop.max_iterations, max_minutes=agent.loop.max_minutes
+            )
+            result: LoopResult = loop.run(prompt, workdir, goal)
+            self._persist(item, agent, prompt, f"loop exit: {result.reason}\n{result.gate_report}")
+            if result.reason == "verified":
+                self.tracker.comment(
+                    item.id,
+                    f"GoalLoop verified in {result.iterations} iterations on `{branch}`.\n\n"
+                    f"Gate report:\n```\n{result.gate_report or 'all green'}\n```",
+                    author=agent.name,
+                )
+                self.tracker.transition(item.id, "pr:agent-review", Actor.AGENT)
+                return [Dispatch(item.id, agent.name, "dispatched", "verified -> pr:agent-review")]
+            self.tracker.comment(
+                item.id,
+                f"GoalLoop stopped: **{result.reason}** after {result.iterations} iterations.\n\n"
+                f"{result.gate_report}\n\nLast feedback:\n```\n{result.last_feedback}\n```",
+                author=agent.name,
+            )
+            self.tracker.transition(item.id, "needs-human", Actor.ORCHESTRATOR)
+            return [Dispatch(item.id, agent.name, "escalated", result.reason)]
+        finally:
+            self.tracker.release(item.id, agent.name)
+
+    def _review_round(
+        self, item: WorkItem, reviewers: list[AgentConfig], dry_run: bool
+    ) -> list[Dispatch]:
+        if dry_run:
+            names = ", ".join(a.name for a in reviewers)
+            return [Dispatch(item.id, names, "would-dispatch", "review round")]
+        if not self.tracker.claim(item.id, "review-round"):
+            return [Dispatch(item.id, "review-round", "skipped", "claimed by someone else")]
+        try:
+            available = [a for a in reviewers if self._runtime(a).available()]
+            degraded = len(available) < min(len(reviewers), self.cfg.approvals_required)
+            if not available or (degraded and not self.cfg.allow_degraded_review):
+                return [
+                    Dispatch(
+                        item.id, "review-round", "skipped",
+                        "not enough reviewer runtimes available "
+                        f"({len(available)}/{self.cfg.approvals_required})",
+                    )
+                ]
+            verdicts: list[tuple[str, str]] = []
+            dispatches = []
+            for agent in available:
+                prompt = self.registry.build_prompt(agent, self.tracker.get(item.id))
+                result = self._invoke(item, agent, prompt)
+                matches = _VERDICT_RE.findall(result.output)
+                verdict = matches[-1] if (result.ok and matches) else "CHANGES"
+                verdicts.append((agent.name, verdict))
+                self.tracker.comment(item.id, result.output or "(no output)", author=agent.name)
+                dispatches.append(Dispatch(item.id, agent.name, "dispatched", f"verdict={verdict}"))
+            if degraded:
+                self.tracker.comment(
+                    item.id,
+                    f"note: degraded review — only {len(available)} of "
+                    f"{self.cfg.approvals_required} required reviewers available.",
+                    author="orchestrator",
+                )
+            if all(v == "APPROVE" for _, v in verdicts):
+                self.tracker.transition(item.id, "pr:human-review", Actor.ORCHESTRATOR)
+                dispatches.append(Dispatch(item.id, "review-round", "dispatched", "-> pr:human-review"))
+            else:
+                self.tracker.transition(item.id, "pr:changes-requested", Actor.ORCHESTRATOR)
+                dispatches.append(
+                    Dispatch(item.id, "review-round", "dispatched", "-> pr:changes-requested")
+                )
+            return dispatches
+        finally:
+            self.tracker.release(item.id, "review-round")
+
+    # ---------------------------------------------------------------- logging
+
+    def _log(self, dispatches: list[Dispatch]) -> None:
+        log_dir = self.cfg.root / ".agent-logs"
+        log_dir.mkdir(exist_ok=True)
+        stamp = datetime.now(UTC).isoformat(timespec="seconds")
+        summary = (
+            "; ".join(f"#{d.item_id} {d.agent}: {d.action} {d.detail}".strip() for d in dispatches)
+            or "idle"
+        )
+        with (log_dir / "orchestrator.log").open("a") as fh:
+            fh.write(f"{stamp} {summary}\n")
