@@ -64,6 +64,8 @@ class StudioConfig:
     poll_interval_s: int = 60
     max_concurrent_agents: int = 2
     target_repo: Path = Path(".")
+    active_set: str = "default"  # which agent set `agents` came from
+    improve_every: int = 5  # file an improvement item every N done items (evolving sets)
 
     def skill_dir(self, skill: str) -> Path:
         return self.root / ".claude" / "skills" / skill
@@ -127,6 +129,54 @@ def _load_agent(name: str, raw: dict, root: Path, runtimes: dict[str, RuntimeCon
     )
 
 
+def _load_agent_sets(
+    raw: dict, root: Path, runtimes: dict[str, RuntimeConfig]
+) -> tuple[dict[str, AgentConfig], str, int]:
+    """Resolve `agents:` (bare, backward-compatible) or `agent_sets:` + `active_set:`.
+
+    Every set is validated at load time — a broken inactive set fails now, not on
+    the day you switch to it. Only the active set's agents are returned.
+    """
+    agents_raw = raw.get("agents")
+    sets_raw = raw.get("agent_sets")
+    _require(
+        not (agents_raw and sets_raw),
+        "agents / agent_sets: define one or the other, not both",
+    )
+    if sets_raw is None:
+        _require(
+            raw.get("active_set") is None,
+            "active_set: only valid together with agent_sets",
+        )
+        _require(isinstance(agents_raw, dict) and bool(agents_raw), "agents: at least one agent required")
+        agents = {name: _load_agent(name, a, root, runtimes) for name, a in agents_raw.items()}
+        return agents, "default", 5
+
+    _require(isinstance(sets_raw, dict) and bool(sets_raw), "agent_sets: must be a non-empty mapping")
+    active = raw.get("active_set")
+    _require(
+        active in sets_raw,
+        f"active_set: {active!r} is not a defined agent set "
+        f"(have: {', '.join(sorted(sets_raw))})",
+    )
+    loaded: dict[str, dict[str, AgentConfig]] = {}
+    improve_every_by_set: dict[str, int] = {}
+    for set_name, set_raw in sets_raw.items():
+        _require(isinstance(set_raw, dict), f"agent_sets.{set_name}: must be a mapping")
+        set_agents = set_raw.get("agents")
+        _require(
+            isinstance(set_agents, dict) and bool(set_agents),
+            f"agent_sets.{set_name}.agents: at least one agent required",
+        )
+        loaded[set_name] = {
+            name: _load_agent(name, a, root, runtimes) for name, a in set_agents.items()
+        }
+        every = int(set_raw.get("improve_every", 5))
+        _require(every >= 1, f"agent_sets.{set_name}.improve_every: must be >= 1")
+        improve_every_by_set[set_name] = every
+    return loaded[active], active, improve_every_by_set[active]
+
+
 def load_config(path: Path | str) -> StudioConfig:
     path = Path(path)
     if not path.is_file():
@@ -155,9 +205,7 @@ def load_config(path: Path | str) -> StudioConfig:
             streaming=bool(rt.get("streaming", kind == "claude")),
         )
 
-    agents_raw = raw.get("agents")
-    _require(isinstance(agents_raw, dict) and agents_raw, "agents: at least one agent required")
-    agents = {name: _load_agent(name, a, root, runtimes) for name, a in agents_raw.items()}
+    agents, active_set, improve_every = _load_agent_sets(raw, root, runtimes)
 
     approvals = int(raw.get("approvals_required", 2))
     _require(approvals >= 1, "approvals_required: must be >= 1")
@@ -176,4 +224,6 @@ def load_config(path: Path | str) -> StudioConfig:
         poll_interval_s=poll,
         max_concurrent_agents=concurrent,
         target_repo=Path(raw.get("target_repo", ".")),
+        active_set=active_set,
+        improve_every=improve_every,
     )

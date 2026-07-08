@@ -1,5 +1,17 @@
 # Build progress — Agent Studio
 
+## Self-improve build (goal-self-improve.md): in progress — 2026-07-07
+
+Building the self-improving agent set per self-improve-spec.md. Finish line:
+`./scripts/verify-improve.sh` 12/12 AND `./scripts/verify.sh` stays 13/13.
+
+- **Current milestone:** M1 done (agent sets in config + backward compat).
+  Next: M2 (improve states, improvement kind, actor guards).
+- **verify-improve.sh score:** 4/12 (checks 4–11 are ⬜ placeholders that fail
+  until their milestone lands; the todo() helper marks them).
+- **Gotchas so far:** evolving-set test fixtures must not use `improve:*` states
+  before M2 lands (config validates `handles` against studio.state.STATES).
+
 ## Docs build (goal-docs.md): 9/9 ✅ — 2026-07-07
 
 `./scripts/verify-docs.sh` exits 0 (stable across repeated runs) and `make verify`
