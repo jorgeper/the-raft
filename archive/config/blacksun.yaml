@@ -15,6 +15,9 @@ tracker: {kind: markdown, root: .work}
 runtimes:
   claude: {cmd: claude, extra_flags: ["--permission-mode", "acceptEdits"]}
   codex: {cmd: codex, extra_flags: []}
+  # GitHub Copilot CLI (README "Runtimes"): uncomment and point any agent's
+  # runtime: at it. Skills are inlined into the prompt (no native subagents).
+  # copilot: {cmd: copilot, kind: copilot, extra_flags: ["--allow-all-tools"]}
 
 approvals_required: 2
 allow_degraded_review: true
@@ -41,6 +44,11 @@ agents:
     skills: [tdd-workflow, run-and-verify]
     handles: ready
     loop: {max_iterations: 10, max_minutes: 90}
+    # loop.engine picks the coder's goal loop (README "Choosing the coder's
+    # loop engine"): "python" (default, works on any runtime) or "goal" —
+    # Claude Code's NATIVE /goal command, claude runtimes only, and gates are
+    # then required because the harness verifies them itself:
+    # loop: {engine: goal, max_minutes: 90, gates: ["make test", "make lint"]}
   reviewer-a:
     runtime: claude
     prompt: prompts/reviewer.md

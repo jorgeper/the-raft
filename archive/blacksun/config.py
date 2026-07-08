@@ -38,6 +38,10 @@ class RuntimeConfig:
 class LoopConfig:
     max_iterations: int = 10
     max_minutes: int = 90
+    # "python" = the built-in GoalLoop; "goal" = one invocation of Claude Code's
+    # native /goal command (claude runtimes only), harness-verified via `gates`.
+    engine: str = "python"
+    gates: tuple[str, ...] = ()  # standing harness gates (required for engine "goal")
 
 
 @dataclass(frozen=True)
@@ -113,9 +117,33 @@ def _load_agent(name: str, raw: dict, root: Path, runtimes: dict[str, RuntimeCon
         loop = LoopConfig(
             max_iterations=int(loop_raw.get("max_iterations", 10)),
             max_minutes=int(loop_raw.get("max_minutes", 90)),
+            engine=str(loop_raw.get("engine", "python")),
+            gates=tuple(str(g) for g in loop_raw.get("gates", [])),
         )
         _require(loop.max_iterations > 0, f"agents.{name}.loop.max_iterations: must be > 0")
         _require(loop.max_minutes > 0, f"agents.{name}.loop.max_minutes: must be > 0")
+        _require(
+            loop.engine in ("python", "goal"),
+            f"agents.{name}.loop.engine: {loop.engine!r} is not 'python' or 'goal'",
+        )
+        if loop.engine == "goal":
+            _require(
+                runtimes[runtime].kind == "claude",
+                f"agents.{name}.loop.engine: 'goal' uses Claude Code's native /goal "
+                f"command, but runtime {runtime!r} is kind "
+                f"{runtimes[runtime].kind!r} — use engine: python",
+            )
+            _require(
+                bool(loop.gates),
+                f"agents.{name}.loop.gates: required with engine 'goal' — the harness "
+                "verifies completion by running these itself",
+            )
+            statement = root / "prompts" / "goal-coder.md"
+            _require(
+                statement.is_file(),
+                f"agents.{name}.loop.engine: 'goal' needs the statement file "
+                f"{statement} (the /goal prompt the coder is driven with)",
+            )
     return AgentConfig(
         name=name,
         runtime=runtime,
@@ -202,8 +230,8 @@ def load_config(path: Path | str) -> BlackSunConfig:
         _require(isinstance(rt, dict) and rt.get("cmd"), f"runtimes.{name}.cmd: required")
         kind = rt.get("kind", name)
         _require(
-            kind in ("claude", "codex"),
-            f"runtimes.{name}.kind: {kind!r} is not 'claude' or 'codex' "
+            kind in ("claude", "codex", "copilot"),
+            f"runtimes.{name}.kind: {kind!r} is not 'claude', 'codex', or 'copilot' "
             "(set kind explicitly when the runtime name is not one of those)",
         )
         runtimes[name] = RuntimeConfig(

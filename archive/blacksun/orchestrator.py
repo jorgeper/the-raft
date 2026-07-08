@@ -26,7 +26,7 @@ from blacksun.improve import (
     revert_diff,
     validate_paths,
 )
-from blacksun.loop import Goal, GoalLoop, LoopResult
+from blacksun.loop import NEEDS_HUMAN, Goal, GoalLoop, LoopResult
 from blacksun.metrics import ScorecardLog, compute_scorecard, read_events
 from blacksun.reflection import harvest_lessons
 from blacksun.runs import RunStore
@@ -445,20 +445,25 @@ class Orchestrator:
         return path, branch
 
     def _dispatch_coder(self, item: WorkItem, agent: AgentConfig, dry_run: bool) -> list[Dispatch]:
+        engine = agent.loop.engine if agent.loop else "python"
         if dry_run:
-            return [Dispatch(item.id, agent.name, "would-dispatch", "GoalLoop in worktree")]
+            how = "native /goal in worktree" if engine == "goal" else "GoalLoop in worktree"
+            return [Dispatch(item.id, agent.name, "would-dispatch", how)]
         if not self.tracker.claim(item.id, agent.name):
             return [Dispatch(item.id, agent.name, "skipped", "claimed by someone else")]
         try:
             self.tracker.transition(item.id, "coding", Actor.ORCHESTRATOR)
             workdir, branch = self._worktree(item)
+            if engine == "goal":
+                return self._native_goal_run(item, agent, workdir, branch)
             prompt = self.registry.build_prompt(agent, self.tracker.get(item.id), branch=branch)
             loop = self.loop_factory(agent)
             # Bind loop events to this dispatch — the loop itself doesn't know items.
             loop.events = self.events.bound(item=item.id, agent=agent.name)
             loop.output_hook = lambda output: self._harvest(item, agent, output)
             goal = Goal(
-                max_iterations=agent.loop.max_iterations, max_minutes=agent.loop.max_minutes
+                gates=agent.loop.gates,
+                max_iterations=agent.loop.max_iterations, max_minutes=agent.loop.max_minutes,
             )
             result: LoopResult = loop.run(prompt, workdir, goal)
             self._persist(item, agent, prompt, f"loop exit: {result.reason}\n{result.gate_report}")
@@ -481,6 +486,63 @@ class Orchestrator:
             return [Dispatch(item.id, agent.name, "escalated", result.reason)]
         finally:
             self.tracker.release(item.id, agent.name)
+
+    def _native_goal_run(
+        self, item: WorkItem, agent: AgentConfig, workdir: Path, branch: str
+    ) -> list[Dispatch]:
+        """loop.engine "goal": ONE invocation of Claude Code's native /goal
+        command, then the harness runs loop.gates itself in the worktree.
+        Harness-owned completion holds: the model's word moves nothing."""
+        prompt = self.registry.build_goal_prompt(agent, self.tracker.get(item.id), branch)
+        result = self._invoke(item, agent, prompt)
+        if NEEDS_HUMAN in result.output:
+            question = result.output.split(NEEDS_HUMAN, 1)[1].strip().splitlines()
+            self.tracker.comment(
+                item.id,
+                f"native /goal run escalated: {question[0] if question else '(no question)'}",
+                author=agent.name,
+            )
+            self.tracker.transition(item.id, "needs-human", Actor.ORCHESTRATOR)
+            return [Dispatch(item.id, agent.name, "escalated", "NEEDS_HUMAN")]
+        if not result.ok:
+            self.tracker.comment(
+                item.id,
+                f"native /goal invocation failed (exit {result.exit_code}); escalating.",
+                author=agent.name,
+            )
+            self.tracker.transition(item.id, "needs-human", Actor.ORCHESTRATOR)
+            return [Dispatch(item.id, agent.name, "escalated", f"exit={result.exit_code}")]
+
+        report_lines, failure = [], ""
+        for cmd in agent.loop.gates:
+            gate = self.executor.run(["sh", "-c", cmd], cwd=workdir)
+            combined = (gate.stdout + "\n" + gate.stderr).strip()
+            report_lines.append(f"$ {cmd}\n{'PASS' if gate.ok else f'FAIL (exit {gate.returncode})'}")
+            self.events.emit(
+                "gate_result", item=item.id, agent=agent.name,
+                command=cmd, ok=gate.ok, gate_tail=combined,
+            )
+            if not gate.ok and not failure:
+                tail = "\n".join(combined.splitlines()[-50:])
+                failure = f"$ {cmd}\nexit {gate.returncode}\n{tail}"
+        report = "\n".join(report_lines)
+        if not failure:
+            self.tracker.comment(
+                item.id,
+                f"native /goal run verified on `{branch}` — every gate green under the "
+                f"harness's own runs.\n\nGate report:\n```\n{report}\n```",
+                author=agent.name,
+            )
+            self.tracker.transition(item.id, "pr:agent-review", Actor.AGENT)
+            return [Dispatch(item.id, agent.name, "dispatched", "native goal verified -> pr:agent-review")]
+        self.tracker.comment(
+            item.id,
+            "native /goal run finished but the harness's own gate runs are red:\n\n"
+            f"```\n{report}\n\n{failure}\n```",
+            author=agent.name,
+        )
+        self.tracker.transition(item.id, "needs-human", Actor.ORCHESTRATOR)
+        return [Dispatch(item.id, agent.name, "escalated", "gates red after native /goal run")]
 
     def _review_round(
         self, item: WorkItem, reviewers: list[AgentConfig], dry_run: bool

@@ -54,3 +54,11 @@
 - Improvement trigger counts only non-improvement snapshots of the active set; consumed ids are tracked via `filed` records in memory/improvements.jsonl.
 - verify-improve.sh check 9 greps the revert-equality test in test_regression_guard.py (where it lives), not test_improve_apply.py as §11.9's shorthand implied.
 - Spec §10 Q1: reviewer journals stay shared (`memory/reviewer/`) in the evolving set. Q2: scorecard snapshots record the set active at `done`.
+
+## Runtimes + engine build (goal-runtimes.md)
+
+- Copilot runtime mirrors Codex (headless `copilot -p`, generic line streaming); tool policy is delegated to CLI flags in extra_flags (`--allow-all-tools` in examples), not interpreted by the harness.
+- `loop.engine: goal` keeps harness-owned completion: one native /goal invocation, then the orchestrator runs `loop.gates` itself in the worktree — green -> pr:agent-review, red or NEEDS_HUMAN -> needs-human. No plan.json/progress ratchets in this mode; that's the python engine's edge.
+- engine "goal" fails at config load on non-claude runtimes, empty gates, or a missing prompts/goal-coder.md — never at dispatch time.
+- `loop.gates` also feed the python engine (merged into Goal.gates as standing harness gates), so the two engines share one config surface.
+- A failed native /goal invocation (nonzero exit) escalates to needs-human rather than silently retrying — visible beats stuck-in-coding.

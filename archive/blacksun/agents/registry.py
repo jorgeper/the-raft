@@ -71,6 +71,18 @@ class AgentRegistry:
         skills_block = f"\n\n## Skills\n{skills}" if skills else ""
         return f"{role}{skills_block}\n\n{context}"
 
+    def build_goal_prompt(self, agent: AgentConfig, item: WorkItem, branch: str) -> str:
+        """loop.engine "goal": prefix the shipped statement with the native /goal
+        command, list the gates the harness will rerun, then the task context."""
+        statement = (self.cfg.root / "prompts" / "goal-coder.md").read_text()
+        gates = "\n".join(f"- `{g}` must exit 0" for g in (agent.loop.gates if agent.loop else ()))
+        context = self.task_context(agent, item, branch)
+        return (
+            f"/goal {statement}\n"
+            "## Gates — the harness reruns every one of these itself after you stop; "
+            f"all must exit 0\n{gates}\n\n{context}"
+        )
+
     # ------------------------------------------- native subagent generation
 
     def subagent_file_content(self, agent: AgentConfig) -> str:

@@ -107,6 +107,83 @@ python -m blacksun status           # the board + what needs YOU
 python -m blacksun approve 1        # your gate: PRD, then design, then merge
 ```
 
+## Runtimes: Claude Code, Codex, GitHub Copilot
+
+Every agent names a runtime; runtimes are declared once and are freely mixable
+per agent (that's how the two reviewers run on different models):
+
+```yaml
+runtimes:
+  claude: {cmd: claude, extra_flags: ["--permission-mode", "acceptEdits"]}
+  codex: {cmd: codex, extra_flags: []}
+  copilot: {cmd: copilot, kind: copilot, extra_flags: ["--allow-all-tools"]}
+
+agents:
+  reviewer-b:
+    runtime: copilot        # cross-model review without Codex
+    prompt: prompts/reviewer.md
+    skills: [code-review-rubric]
+    handles: pr:agent-review
+```
+
+**GitHub Copilot setup:**
+
+1. Install the Copilot CLI: `npm install -g @github/copilot` (needs an active
+   GitHub Copilot subscription).
+2. Authenticate once: run `copilot` interactively and use `/login` (it can also
+   pick up a `GH_TOKEN`/`GITHUB_TOKEN` with the right scopes — see
+   `copilot help` and the GitHub docs for current options).
+3. Smoke-test headless mode, which is what the harness drives:
+   `copilot -p "say ok" --allow-all-tools`.
+4. Add the runtime block above and point any agent's `runtime:` at it, then
+   rerun `python -m blacksun init` — it reports each runtime as `ok` or
+   `MISSING CLI`.
+
+What changes on a non-Claude runtime: skills can't be natively preloaded, so
+the registry inlines the role prompt and every SKILL.md body into the prompt
+(same knowledge, portable delivery — spec §3.3), and there are no native
+subagent files. `--allow-all-tools` hands Copilot broad tool access inside the
+worktree; tighten with `--deny-tool`/`--allow-tool` flags in `extra_flags` if
+you want a narrower policy. The safety floor doesn't move: whatever the
+runtime, agents can't merge, can't push to main, and every human gate stays
+actor-enforced in the state machine.
+
+## Choosing the coder's loop engine
+
+The coder can be driven by either of two goal loops (`loop.engine`):
+
+```yaml
+coder:
+  runtime: claude
+  prompt: prompts/coder.md
+  skills: [tdd-workflow, run-and-verify]
+  handles: ready
+  loop:
+    engine: python            # default — the built-in GoalLoop
+    max_iterations: 10
+    max_minutes: 90
+    gates: ["make test", "make lint"]   # optional for python, REQUIRED for goal
+```
+
+- **`engine: python`** (default) — the built-in Ralph-style GoalLoop: fresh
+  context per iteration, plan.json, guardrails, thrash breakers, budgets, and
+  the harness re-running every gate after every iteration. Works with ANY
+  runtime — this is the only engine for Copilot or Codex coders. `loop.gates`
+  (optional here) become standing harness gates merged into the plan's own.
+- **`engine: goal`** — one invocation of Claude Code's **native /goal
+  command**: the harness prefixes the statement in `prompts/goal-coder.md`
+  with `/goal `, sends it through the claude runtime, and lets Claude Code's
+  own goal loop iterate internally. Requires a claude runtime and a non-empty
+  `loop.gates`, because harness-owned completion still holds: after the run
+  returns, the orchestrator executes every gate itself in the worktree —
+  all green → `pr:agent-review`; any red gate or `NEEDS_HUMAN:` →
+  `needs-human`. The model's word moves nothing, whichever engine you pick.
+
+Config fails loudly at load if `engine: goal` is combined with a Copilot/Codex
+runtime, has no gates, or `prompts/goal-coder.md` is missing. Edit that file to
+tune what the native loop is told; the harness appends the gate list and the
+work-item context on every dispatch.
+
 ## Your two touchpoints
 
 - `blacksun status` shows a "Needs you" list: PRDs and designs to approve, agent-approved
