@@ -1,16 +1,16 @@
-# Welcome to Markimark
+# Welcome to Marky Mark
 
 A lightweight, fast markdown viewer. Double-click any `.md` file to read it here — or press the **Edit** button (⌘E) to change it, and press it again to go back to reading.
 
 ## Reading
 
-Markimark renders GitHub-flavored markdown: **bold**, *italics*, ~~strikethrough~~, `inline code`, [links](https://example.com), and everything below.
+Marky Mark renders GitHub-flavored markdown: **bold**, *italics*, ~~strikethrough~~, `inline code`, [links](https://example.com), and everything below.
 
 ### A table
 
 | Action | Where |
 | --- | --- |
-| Switch theme | ⋯ menu → Settings |
+| Switch theme | ☰ menu → Settings |
 | Comment | Select text in the document |
 | Reply | Use the card in the margin |
 
@@ -26,7 +26,7 @@ function greet(name) {
 
 ### A task list
 
-- [x] Install Markimark
+- [x] Install Marky Mark
 - [x] Open this welcome file
 - [ ] Drop a custom theme into the themes folder
 
@@ -34,7 +34,7 @@ function greet(name) {
 
 ## Themes
 
-Open the ⋯ menu → **Settings** to switch between the seven built-in themes. Want your own? A theme is a single CSS file — see the `README.md` in your themes folder for the full guide. Drop your file next to it and hit *Reload themes*.
+Open the ☰ menu → **Settings** to switch between the seven built-in themes. Want your own? A theme is a single CSS file — see the `README.md` in your themes folder for the full guide. Drop your file next to it and hit *Reload themes*.
 
 ## Comments
 

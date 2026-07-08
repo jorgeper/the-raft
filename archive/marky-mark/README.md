@@ -1,4 +1,4 @@
-# Markimark
+# Marky Mark
 
 A lightweight, fast, themeable markdown viewer for **macOS, Windows, and the
 web**. Double-click a `.md` file to read it. Press ⌘E (Ctrl+E) to edit it.
@@ -9,7 +9,7 @@ Select text to comment on it.
   host on any static site: open files with the picker or drag-and-drop.
 - **Seven built-in themes** (Crisp, Claude, Monokai, Dracula, Nord, Solarized
   Light, One Dark) and drop-in custom themes: one CSS file in
-  `~/Library/Application Support/com.markimark.app/themes/` (⋯ → Settings →
+  `~/Library/Application Support/com.markimark.app/themes/` (☰ → Settings →
   Reload themes; *Import theme…* on web). See [THEMES.md](THEMES.md).
 - **Edit mode** is a full-screen swap (⌘E, remappable in Settings), not a split view.
 - **Comments** (experimental): select text → 💬. Threads, resolve, orphaning.

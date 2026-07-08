@@ -1,14 +1,15 @@
 import { DEFAULT_HOTKEYS, type HotkeyMap } from './hotkeys';
 
 export type CommentStorage = 'sidecar' | 'embedded';
-export type Margins = 'default' | 'narrow' | 'medium' | 'wide';
+export type Margins = 'default' | 'super-narrow' | 'narrow' | 'medium' | 'wide';
 
 export const ZOOM_LEVELS = [50, 75, 90, 100, 110, 125, 150, 175, 200] as const;
 export const FONT_SIZE_MIN = 10;
 export const FONT_SIZE_MAX = 32;
 
-/** Margin presets → content-column max-width overrides (SPEC3 §2). */
+/** Margin presets → content-column max-width overrides (SPEC3 §2, SPEC4 §7). */
 export const MARGIN_WIDTHS: Record<Exclude<Margins, 'default'>, string> = {
+  'super-narrow': '76rem',
   narrow: '60rem',
   medium: '48rem',
   wide: '38rem',
@@ -24,6 +25,7 @@ export interface Settings {
   margins: Margins;
   lineNumbers: boolean;
   vimNav: boolean;
+  autoHideToolbar: boolean;
   author: string;
   autosaveOnToggle: boolean;
   commentStorage: CommentStorage;
@@ -39,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   margins: 'default',
   lineNumbers: true,
   vimNav: false,
+  autoHideToolbar: false,
   author: 'Reviewer',
   autosaveOnToggle: false,
   commentStorage: 'sidecar',
@@ -73,7 +76,9 @@ export function parseSettings(json: string): Settings {
       : DEFAULT_SETTINGS.zoom;
 
   const margins: Margins =
-    o.margins === 'narrow' || o.margins === 'medium' || o.margins === 'wide' ? o.margins : 'default';
+    o.margins === 'super-narrow' || o.margins === 'narrow' || o.margins === 'medium' || o.margins === 'wide'
+      ? o.margins
+      : 'default';
 
   return {
     themeLight:
@@ -87,6 +92,7 @@ export function parseSettings(json: string): Settings {
     margins,
     lineNumbers: typeof o.lineNumbers === 'boolean' ? o.lineNumbers : DEFAULT_SETTINGS.lineNumbers,
     vimNav: o.vimNav === true,
+    autoHideToolbar: o.autoHideToolbar === true,
     author: typeof o.author === 'string' && o.author ? o.author : DEFAULT_SETTINGS.author,
     autosaveOnToggle: o.autosaveOnToggle === true,
     commentStorage: o.commentStorage === 'embedded' ? 'embedded' : 'sidecar',

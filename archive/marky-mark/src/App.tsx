@@ -6,7 +6,7 @@ import { getDocText, highlightRange, rangeToOffsets, rectForOffsets } from './li
 import { parseSidecar, serializeSidecar, sidecarPathFor } from './lib/sidecar';
 import { attachEmbedded, mergeComments, splitEmbedded } from './lib/embedded';
 import { DEFAULT_SETTINGS, MARGIN_WIDTHS, parseSettings, serializeSettings, type Settings } from './lib/settings';
-import { eventMatches } from './lib/hotkeys';
+import { displayCombo, eventMatches } from './lib/hotkeys';
 import { VimNavResolver } from './lib/vimnav';
 import type { Theme } from './lib/themes';
 import { applyThemeCss, loadAllThemes } from './themeRuntime';
@@ -18,6 +18,9 @@ import { SettingsPanel } from './components/SettingsPanel';
 const Editor = lazy(() => import('./components/Editor'));
 
 const CARD_GAP = 8;
+/** Auto-hiding toolbar timings (SPEC4 §2). */
+export const TOOLBAR_GRACE_MS = 2500;
+export const TOOLBAR_HIDE_DELAY_MS = 400;
 
 type Positions = Record<string, ReanchorMatch | null>;
 type Mode = 'preview' | 'edit';
@@ -44,6 +47,13 @@ export default function App() {
   const [selInfo, setSelInfo] = useState<{ start: number; end: number; x: number; y: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [closePrompt, setClosePrompt] = useState(false);
+  const [openPrompt, setOpenPrompt] = useState<string | null>(null); // pending path awaiting the unsaved-changes decision
+  // Auto-hiding toolbar (SPEC4 §2): launch grace → hover/pin driven.
+  const [graceOver, setGraceOver] = useState(false);
+  const [toolbarHover, setToolbarHover] = useState(false);
+  const [toolbarFocus, setToolbarFocus] = useState(false);
+  const [menuPin, setMenuPin] = useState(false);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [prefersDark, setPrefersDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   const docRef = useRef<HTMLDivElement>(null);
@@ -117,6 +127,22 @@ export default function App() {
   }, [loadDocParts]);
 
   /**
+   * Unsaved-changes guard (SPEC4 §6): every user-initiated open routes here.
+   * Dirty buffer → three-way prompt; clean buffer or same path → open directly.
+   */
+  const openDocGuarded = useCallback(
+    (p: Platform, path: string) => {
+      const s = stateRef.current;
+      if (s.dirty && s.docPath !== path) {
+        setOpenPrompt(path);
+        return;
+      }
+      void openDoc(p, path);
+    },
+    [openDoc]
+  );
+
+  /**
    * Persist comments per the active storage mode (SPEC2 FR-C.5). Embedded
    * writes rewrite the file as LAST-SAVED text + trailer — never flushing
    * unsaved text edits — and clean up a stale sidecar (migration). Sidecar
@@ -163,21 +189,9 @@ export default function App() {
       setSettings(loaded);
       setThemes(themeList);
 
-      let openedViaEvent = false;
-      await p.onOpenFile((path) => {
-        openedViaEvent = true;
-        void openDoc(p, path);
-      });
-
-      await p.onFileDrop((path) => void openDoc(p, path));
-
-      if (!openedViaEvent) {
-        const welcome = await p.welcomeDocPath();
-        if (!(await p.exists(welcome)) && FIXTURES['welcome.md']) {
-          await p.writeTextFile(welcome, FIXTURES['welcome.md']);
-        }
-        if (await p.exists(welcome)) void openDoc(p, welcome);
-      }
+      // Clean start (SPEC4 §5): no auto-opened welcome — only explicit opens.
+      await p.onOpenFile((path) => openDocGuarded(p, path));
+      await p.onFileDrop((path) => openDocGuarded(p, path));
 
       await p.registerCloseGuard(
         () => stateRef.current.dirty,
@@ -187,7 +201,65 @@ export default function App() {
     return () => {
       disposed = true;
     };
-  }, [openDoc]);
+  }, [openDocGuarded]);
+
+  // --- auto-hiding toolbar -----------------------------------------------------
+  useEffect(() => {
+    const t = setTimeout(() => setGraceOver(true), TOOLBAR_GRACE_MS);
+    return () => clearTimeout(t);
+  }, []);
+
+  const toolbarEnter = useCallback(() => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = null;
+    setToolbarHover(true);
+  }, []);
+
+  const toolbarLeave = useCallback(() => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => setToolbarHover(false), TOOLBAR_HIDE_DELAY_MS);
+  }, []);
+
+  // Window-level arbiter: enter/leave alone can wedge "hovered" when the
+  // element under the pointer (e.g. a closing menu item) is unmounted —
+  // Chromium then never delivers mouseleave to the shell. Any real movement
+  // re-derives the truth.
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!stateRef.current.settings.autoHideToolbar) return;
+      const shell = document.querySelector('.toolbar-shell');
+      if (e.clientY <= 20 || (shell?.contains(e.target as Node) ?? false)) toolbarEnter();
+      else toolbarLeave();
+    };
+    window.addEventListener('mousemove', onMove);
+    return () => window.removeEventListener('mousemove', onMove);
+  }, [toolbarEnter, toolbarLeave]);
+
+  // Same story for the focus pin: blur never reaches the shell when the
+  // focused menu item unmounts, so derive it from document-level events.
+  useEffect(() => {
+    const deriveFocus = (e: Event) => {
+      const shell = document.querySelector('.toolbar-shell');
+      setToolbarFocus(!!shell && shell.contains(e.target as Node));
+    };
+    document.addEventListener('focusin', deriveFocus);
+    document.addEventListener('mousedown', deriveFocus);
+    return () => {
+      document.removeEventListener('focusin', deriveFocus);
+      document.removeEventListener('mousedown', deriveFocus);
+    };
+  }, []);
+
+  // Auto-hide is opt-in (SPEC5 §1.2): off → the bar is simply always there.
+  const toolbarShown =
+    !settings.autoHideToolbar ||
+    !graceOver ||
+    toolbarHover ||
+    toolbarFocus ||
+    menuPin ||
+    settingsOpen ||
+    closePrompt ||
+    openPrompt !== null;
 
   // --- OS light/dark tracking (live, SPEC3 §2) -----------------------------------
   useEffect(() => {
@@ -213,8 +285,10 @@ export default function App() {
     else el.style.setProperty('--mm-font-size', `${settings.fontSize}px`);
     if (settings.margins === 'default') el.style.removeProperty('--mm-content-width');
     else el.style.setProperty('--mm-content-width', MARGIN_WIDTHS[settings.margins]);
-    (el.style as CSSStyleDeclaration & { zoom: string }).zoom =
-      settings.zoom === 100 ? '' : String(settings.zoom / 100);
+    // Text-only zoom (SPEC4 §4): a font multiplier consumed by the document
+    // and editor styles — never CSS `zoom`, which would scale the whole UI.
+    if (settings.zoom === 100) el.style.removeProperty('--mm-zoom');
+    else el.style.setProperty('--mm-zoom', String(settings.zoom / 100));
   }, [settings.fontSize, settings.margins, settings.zoom]);
 
   // --- settings persistence ---------------------------------------------------
@@ -265,8 +339,19 @@ export default function App() {
     const p = stateRef.current.platform;
     if (!p) return;
     const path = await p.openFileDialog();
-    if (path) void openDoc(p, path);
-  }, [openDoc]);
+    if (path) openDocGuarded(p, path);
+  }, [openDocGuarded]);
+
+  /** Help (SPEC4 §5): open the welcome doc like any file — guard included. */
+  const openHelp = useCallback(async () => {
+    const p = stateRef.current.platform;
+    if (!p) return;
+    const welcome = await p.welcomeDocPath();
+    if (!(await p.exists(welcome)) && FIXTURES['welcome.md']) {
+      await p.writeTextFile(welcome, FIXTURES['welcome.md']);
+    }
+    if (await p.exists(welcome)) openDocGuarded(p, welcome);
+  }, [openDocGuarded]);
 
   /** Save As… (SPEC3 §3): comments travel with the document to the new path. */
   const saveDocAs = useCallback(async () => {
@@ -358,9 +443,9 @@ export default function App() {
   useEffect(() => {
     const p = platform;
     if (!p) return;
-    const name = docPath ? p.basename(docPath) : 'Markimark';
-    void p.setTitle(`${name}${dirty ? ' •' : ''} — Markimark`);
-    document.title = `${name}${dirty ? ' •' : ''} — Markimark`;
+    const name = docPath ? p.basename(docPath) : 'Marky Mark';
+    void p.setTitle(`${name}${dirty ? ' •' : ''} — Marky Mark`);
+    document.title = `${name}${dirty ? ' •' : ''} — Marky Mark`;
   }, [platform, docPath, dirty]);
 
   // --- markdown rendering (preview mode only) -------------------------------------
@@ -461,9 +546,7 @@ export default function App() {
         const mark = doc.querySelector<HTMLElement>(`mark.hl[data-cid="${CSS.escape(key)}"]`);
         if (mark) desired = mark.getBoundingClientRect().top - docTop;
       }
-      // Rects are in zoomed viewport px; margins apply pre-zoom — convert.
-      const zf = stateRef.current.settings.zoom / 100;
-      const marginTop = desired === null ? 0 : Math.max(0, desired / zf - cursor);
+      const marginTop = desired === null ? 0 : Math.max(0, desired - cursor);
       el.style.marginTop = `${marginTop}px`;
       cursor += marginTop + el.offsetHeight + CARD_GAP;
     }
@@ -580,12 +663,24 @@ export default function App() {
 
   const panelVisible = mode === 'preview' && showComments && (comments.length > 0 || pending !== null);
 
-  const zoomFactor = settings.zoom / 100;
-
   if (!platform) return <div className="theme-root" />;
 
   return (
-    <div className="theme-root" ref={rootRef}>
+    <div className={`theme-root${settings.autoHideToolbar ? '' : ' toolbar-static'}`} ref={rootRef}>
+      <div
+        className="toolbar-hotzone"
+        data-testid="toolbar-hotzone"
+        onMouseEnter={toolbarEnter}
+        onMouseMove={toolbarEnter}
+        onMouseLeave={toolbarLeave}
+      />
+      <div
+        className={`toolbar-shell${toolbarShown ? ' shown' : ''}`}
+        data-testid="toolbar-shell"
+        data-visible={toolbarShown ? 'true' : 'false'}
+        onMouseEnter={toolbarEnter}
+        onMouseLeave={toolbarLeave}
+      >
       <Toolbar
         docName={docPath ? platform.basename(docPath) : null}
         docPath={docPath}
@@ -600,13 +695,25 @@ export default function App() {
         onOpenFile={() => void openViaDialog()}
         onSave={() => void saveDoc()}
         onSaveAs={() => void saveDocAs()}
+        onHelp={() => void openHelp()}
         onOpenSettings={() => setSettingsOpen(true)}
+        onMenuOpenChange={setMenuPin}
       />
+      </div>
 
       {mode === 'preview' ? (
         <div className="workspace" ref={workspaceRef}>
           <div className="docwrap">
-            {!docPath && <p className="placeholder">Open a markdown file to get started.</p>}
+            {!docPath && (
+              <div className="empty-center">
+                <div className="empty-hint" data-testid="empty-hint">
+                  <p>Drag a markdown file here</p>
+                  <p className="empty-sub">
+                    — or press <kbd>{displayCombo(settings.hotkeys.openFile, platform.isMac)}</kbd> to open one
+                  </p>
+                </div>
+              </div>
+            )}
             <div
               className="doc"
               data-testid="doc"
@@ -697,7 +804,7 @@ export default function App() {
         <button
           className="add-comment-btn"
           data-testid="add-comment-btn"
-          style={{ left: selInfo.x / zoomFactor, top: Math.max(8, selInfo.y / zoomFactor - 42) }}
+          style={{ left: selInfo.x, top: Math.max(8, selInfo.y - 42) }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={startComposer}
         >
@@ -723,6 +830,45 @@ export default function App() {
           onRevealThemesDir={platform.revealThemesDir ? () => void platform.revealThemesDir!() : undefined}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {openPrompt && (
+        <div className="overlay">
+          <div className="modal" data-testid="open-prompt">
+            <h2>Unsaved changes</h2>
+            <p style={{ fontSize: 13.5 }}>
+              “{docPath ? platform.basename(docPath) : 'This file'}” has unsaved changes. Save before opening “
+              {platform.basename(openPrompt)}”?
+            </p>
+            <div className="actions">
+              <button data-testid="open-cancel" onClick={() => setOpenPrompt(null)}>
+                Cancel
+              </button>
+              <button
+                data-testid="open-discard"
+                onClick={() => {
+                  const path = openPrompt;
+                  setOpenPrompt(null);
+                  void openDoc(platform, path);
+                }}
+              >
+                Don’t save
+              </button>
+              <button
+                className="primary"
+                data-testid="open-save"
+                onClick={async () => {
+                  const path = openPrompt;
+                  setOpenPrompt(null);
+                  await saveDoc();
+                  void openDoc(platform, path);
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {closePrompt && (

@@ -4,19 +4,36 @@ import { expect } from './fixtures';
 export const WELCOME = '/docs/welcome.md';
 export const WELCOME_SIDECAR = '/docs/welcome.md.comments.json';
 
-/** Fresh app: wipe the shim fs (localStorage) and load the welcome doc. */
+/** Bring the auto-hiding toolbar on-screen (mouse into the top hot zone). */
+export async function revealToolbar(page: Page): Promise<void> {
+  await page.mouse.move(500, 8);
+  await expect(page.getByTestId('menu-btn')).toBeVisible();
+}
+
+/** Open the welcome/help document through the menu (SPEC4 clean start). */
+export async function openWelcomeViaHelp(page: Page): Promise<void> {
+  await revealToolbar(page);
+  await page.getByTestId('menu-btn').click();
+  await page.getByTestId('menu-help').click();
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Welcome to Marky Mark');
+}
+
+/** Fresh app: wipe the shim fs, land on the empty state, open welcome via Help. */
 export async function freshApp(page: Page): Promise<void> {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.getByTestId('doc').locator('h1')).toContainText('Welcome to Markimark');
+  await expect(page.getByTestId('empty-hint')).toBeVisible();
+  await openWelcomeViaHelp(page);
 }
 
-/** Open the Settings panel through the v2 overflow menu. */
-export async function openSettings(page: Page): Promise<void> {
+/** Open the Settings panel through the overflow menu, on the given tab. */
+export async function openSettings(page: Page, tab: 'appearance' | 'general' | 'hotkeys' = 'appearance'): Promise<void> {
+  await revealToolbar(page);
   await page.getByTestId('menu-btn').click();
   await page.getByTestId('menu-settings').click();
   await page.getByTestId('settings-panel').waitFor();
+  await page.getByTestId(`settings-tab-${tab}`).click();
 }
 
 export function fsRead(page: Page, path: string): Promise<string | null> {

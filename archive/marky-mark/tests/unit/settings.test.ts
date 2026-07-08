@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_SETTINGS, parseSettings, serializeSettings } from '../../src/lib/settings';
+import { DEFAULT_SETTINGS, MARGIN_WIDTHS, parseSettings, serializeSettings } from '../../src/lib/settings';
 
 describe('v3 settings', () => {
   test('U13: new fields parse with defaults, invalid values fall back, legacy `theme` migrates to themeLight', () => {
@@ -53,6 +53,14 @@ describe('v3 settings', () => {
     expect(parseSettings('{"fontSize":"big"}').fontSize).toBe('auto');
     expect(parseSettings('{"zoom":137}').zoom).toBe(100); // not a preset level
     expect(parseSettings('{"margins":"gigantic"}').margins).toBe('default');
+    // SPEC4 §7: super-narrow is a valid preset with a wider column than narrow.
+    expect(parseSettings('{"margins":"super-narrow"}').margins).toBe('super-narrow');
+    expect(MARGIN_WIDTHS['super-narrow']).toBe('76rem');
+    expect(parseFloat(MARGIN_WIDTHS['super-narrow'])).toBeGreaterThan(parseFloat(MARGIN_WIDTHS.narrow));
+    // SPEC5 §2: the toolbar does NOT auto-hide unless explicitly enabled.
+    expect(parseSettings('{}').autoHideToolbar).toBe(false);
+    expect(parseSettings('{"autoHideToolbar":true}').autoHideToolbar).toBe(true);
+    expect(parseSettings('{"autoHideToolbar":"yes"}').autoHideToolbar).toBe(false);
     expect(parseSettings('{"lineNumbers":"yes"}').lineNumbers).toBe(true);
   });
 });

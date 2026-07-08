@@ -157,6 +157,56 @@ migrates to `themeLight`):
 - **Show line numbers** — a CodeMirror `Compartment` reconfigures the gutter
   live without recreating the editor.
 
+## v5 polish (SPEC5)
+
+- **Rename**: the product is **"Marky Mark"** everywhere users see it (window
+  titles, bundle `productName` → `Marky Mark.app`, welcome doc, docs, web
+  `<title>`). The bundle **identifier stays `com.markimark.app`** on purpose:
+  changing it would relocate the config dir and orphan existing settings,
+  themes, and the welcome doc. Internal names (npm package, crate, test ids,
+  the `markimark-comments` trailer marker — a file format!) are unchanged.
+- **App badge**: with no document open, the toolbar title slot shows an
+  inline-SVG replica of the app icon (white M on the terracotta rounded
+  square) instead of the app name.
+- **Auto-hide is opt-in now** (`autoHideToolbar`, default false). Off = the
+  bar is permanent and the workspace gets matching top padding
+  (`.toolbar-static`); on = the SPEC4 hide/reveal behavior. Hover and focus
+  pins are derived from window/document-level events (mousemove, focusin,
+  mousedown) rather than enter/leave/blur pairs alone — Chromium drops those
+  boundary events when the hovered/focused node (a closing menu item) is
+  unmounted, which otherwise wedges the bar visible.
+- The empty-state hint is absolutely centered in the window.
+
+## v4 chrome (SPEC4)
+
+- **Auto-hiding toolbar**: the bar is an absolutely-positioned overlay
+  (`.toolbar-shell`, translateY transition, faint bottom shadow via
+  `--mm-toolbar-shadow`). Visible for `TOOLBAR_GRACE_MS` (2.5 s) after launch,
+  then hidden; a 20 px top hot zone reveals it on hover, and it re-hides
+  `TOOLBAR_HIDE_DELAY_MS` (400 ms) after the pointer leaves. It stays pinned
+  while the menu popover or any modal is open, or focus is inside the bar.
+  The workspace owns the full window height, so hiding never reflows content;
+  the editor's top padding clears the bar so a revealed overlay never covers
+  the first line.
+- **Tabbed settings**: the modal is a left tab rail (Appearance / General /
+  Hotkeys) + content pane, max 70vh. Appearance = font size, zoom, theme
+  pair, theme folder actions, margins; General = editor, comments,
+  navigation; Hotkeys = recorders. Inactive tabs are unmounted.
+- **Text-only zoom**: zoom is a `--mm-zoom` font multiplier consumed by the
+  document and editor font-size calcs — CSS `zoom` (v3) scaled the whole UI
+  including dialogs, so it was dropped, along with its coordinate
+  compensation in comment positioning.
+- **Clean start + Help**: no auto-opened welcome; an empty state shows a
+  drag-a-file hint (with the user's actual open hotkey). The menu's Help item
+  opens the welcome doc through the normal open path.
+- **Open guard**: every user-initiated open (dialog, Help, drag-drop,
+  association events) routes through one guard that shows a
+  Save / Don't save / Cancel prompt when the buffer is dirty (same-path
+  reopens and watcher reloads are exempt).
+- **Margins**: presets super-narrow 76rem / narrow 60rem / medium 48rem /
+  wide 38rem; all seven built-in themes now ship a 60rem column (Claude's
+  752px Typora column was superseded by this).
+
 ## Vim-style navigation (SPEC3 §5)
 
 Opt-in setting. `src/lib/vimnav.ts` is a pure key-sequence resolver

@@ -27,9 +27,18 @@ const HOTKEY_LABELS: Record<keyof HotkeyMap, string> = {
 
 const MARGIN_LABELS: Array<{ value: Margins; label: string }> = [
   { value: 'default', label: 'Theme default' },
+  { value: 'super-narrow', label: 'Super narrow margins (max text)' },
   { value: 'narrow', label: 'Narrow margins (wide text)' },
   { value: 'medium', label: 'Medium' },
   { value: 'wide', label: 'Wide margins (narrow text)' },
+];
+
+type SettingsTab = 'appearance' | 'general' | 'hotkeys';
+
+const TABS: Array<{ id: SettingsTab; label: string }> = [
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'general', label: 'General' },
+  { id: 'hotkeys', label: 'Hotkeys' },
 ];
 
 export function SettingsPanel({
@@ -43,6 +52,7 @@ export function SettingsPanel({
   onRevealThemesDir,
   onClose,
 }: Props) {
+  const [tab, setTab] = useState<SettingsTab>('appearance');
   const [hint, setHint] = useState('');
   // Remember the last custom size so toggling Auto → Customized restores it.
   const [customSize, setCustomSize] = useState(typeof settings.fontSize === 'number' ? settings.fontSize : 16);
@@ -81,243 +91,278 @@ export function SettingsPanel({
     onChange({ ...settings, fontSize: clamped });
   };
 
-  return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" data-testid="settings-panel">
-        <h2>Appearance</h2>
-
-        <div className="field">
-          <label>Font size</label>
-          <div className="inline-row">
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="fontsize-mode"
-                data-testid="fontsize-auto"
-                checked={settings.fontSize === 'auto'}
-                onChange={() => onChange({ ...settings, fontSize: 'auto' })}
-              />
-              Auto (recommended)
-            </label>
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="fontsize-mode"
-                data-testid="fontsize-custom"
-                checked={settings.fontSize !== 'auto'}
-                onChange={() => onChange({ ...settings, fontSize: customSize })}
-              />
-              Customized
-            </label>
+  const appearanceTab = (
+    <>
+      <div className="field">
+        <label>Font size</label>
+        <div className="inline-row">
+          <label className="radio-label">
             <input
-              type="number"
-              data-testid="fontsize-input"
-              min={FONT_SIZE_MIN}
-              max={FONT_SIZE_MAX}
-              value={settings.fontSize === 'auto' ? customSize : settings.fontSize}
-              disabled={settings.fontSize === 'auto'}
-              onChange={(e) => setCustomFontSize(Number(e.target.value))}
-              style={{ width: 64 }}
+              type="radio"
+              name="fontsize-mode"
+              data-testid="fontsize-auto"
+              checked={settings.fontSize === 'auto'}
+              onChange={() => onChange({ ...settings, fontSize: 'auto' })}
             />
-            <span className="unit">px</span>
-          </div>
-        </div>
-
-        <div className="field">
-          <label htmlFor="zoom-select">Zoom</label>
-          <div className="inline-row">
-            <select
-              id="zoom-select"
-              data-testid="zoom-select"
-              value={settings.zoom}
-              onChange={(e) => onChange({ ...settings, zoom: Number(e.target.value) })}
-              style={{ width: 120 }}
-            >
-              {ZOOM_LEVELS.map((z) => (
-                <option value={z} key={z}>
-                  {z}%
-                </option>
-              ))}
-            </select>
-            <button className="linklike" data-testid="zoom-reset" onClick={() => onChange({ ...settings, zoom: 100 })}>
-              Reset to Default
-            </button>
-          </div>
-        </div>
-
-        <div className="field">
-          <label htmlFor="settings-theme-light">Light theme</label>
-          <select
-            id="settings-theme-light"
-            data-testid="settings-theme-light"
-            value={settings.themeLight}
-            onChange={(e) => onChange({ ...settings, themeLight: e.target.value })}
-          >
-            {themeOptions}
-          </select>
-        </div>
-
-        <div className="field">
-          <label htmlFor="settings-theme-dark">Dark theme</label>
-          <select
-            id="settings-theme-dark"
-            data-testid="settings-theme-dark"
-            value={settings.themeDark}
-            onChange={(e) => onChange({ ...settings, themeDark: e.target.value })}
-          >
-            {themeOptions}
-          </select>
-        </div>
-
-        <div className="checkbox-row">
-          <input
-            id="use-dark-theme"
-            type="checkbox"
-            data-testid="use-dark-theme"
-            checked={settings.useDarkTheme}
-            onChange={(e) => onChange({ ...settings, useDarkTheme: e.target.checked })}
-          />
-          <label htmlFor="use-dark-theme" style={{ margin: 0, fontWeight: 400 }}>
-            Use separate theme in dark mode
+            Auto (recommended)
           </label>
+          <label className="radio-label">
+            <input
+              type="radio"
+              name="fontsize-mode"
+              data-testid="fontsize-custom"
+              checked={settings.fontSize !== 'auto'}
+              onChange={() => onChange({ ...settings, fontSize: customSize })}
+            />
+            Customized
+          </label>
+          <input
+            type="number"
+            data-testid="fontsize-input"
+            min={FONT_SIZE_MIN}
+            max={FONT_SIZE_MAX}
+            value={settings.fontSize === 'auto' ? customSize : settings.fontSize}
+            disabled={settings.fontSize === 'auto'}
+            onChange={(e) => setCustomFontSize(Number(e.target.value))}
+            style={{ width: 64 }}
+          />
+          <span className="unit">px</span>
         </div>
+      </div>
 
-        <div className="row" style={{ marginBottom: 12 }}>
-          <button className="linklike" data-testid="reload-themes" onClick={onReloadThemes}>
-            ↻ Reload themes
-          </button>
-          {onRevealThemesDir && (
-            <button className="linklike" data-testid="open-theme-folder" onClick={() => void onRevealThemesDir()}>
-              Open Theme Folder
-            </button>
-          )}
-          {onImportTheme && (
-            <button className="linklike" data-testid="import-theme" onClick={() => void onImportTheme()}>
-              + Import theme…
-            </button>
-          )}
-        </div>
-
-        <div className="field">
-          <label htmlFor="settings-margins">Text margins</label>
+      <div className="field">
+        <label htmlFor="zoom-select">Zoom (document text only)</label>
+        <div className="inline-row">
           <select
-            id="settings-margins"
-            data-testid="settings-margins"
-            value={settings.margins}
-            onChange={(e) => onChange({ ...settings, margins: e.target.value as Margins })}
+            id="zoom-select"
+            data-testid="zoom-select"
+            value={settings.zoom}
+            onChange={(e) => onChange({ ...settings, zoom: Number(e.target.value) })}
+            style={{ width: 120 }}
           >
-            {MARGIN_LABELS.map((m) => (
-              <option value={m.value} key={m.value}>
-                {m.label}
+            {ZOOM_LEVELS.map((z) => (
+              <option value={z} key={z}>
+                {z}%
               </option>
             ))}
           </select>
+          <button className="linklike" data-testid="zoom-reset" onClick={() => onChange({ ...settings, zoom: 100 })}>
+            Reset to Default
+          </button>
         </div>
+      </div>
 
-        <h2>Editor</h2>
+      <div className="field">
+        <label htmlFor="settings-theme-light">Light theme</label>
+        <select
+          id="settings-theme-light"
+          data-testid="settings-theme-light"
+          value={settings.themeLight}
+          onChange={(e) => onChange({ ...settings, themeLight: e.target.value })}
+        >
+          {themeOptions}
+        </select>
+      </div>
 
-        <div className="checkbox-row">
+      <div className="field">
+        <label htmlFor="settings-theme-dark">Dark theme</label>
+        <select
+          id="settings-theme-dark"
+          data-testid="settings-theme-dark"
+          value={settings.themeDark}
+          onChange={(e) => onChange({ ...settings, themeDark: e.target.value })}
+        >
+          {themeOptions}
+        </select>
+      </div>
+
+      <div className="checkbox-row">
+        <input
+          id="use-dark-theme"
+          type="checkbox"
+          data-testid="use-dark-theme"
+          checked={settings.useDarkTheme}
+          onChange={(e) => onChange({ ...settings, useDarkTheme: e.target.checked })}
+        />
+        <label htmlFor="use-dark-theme" style={{ margin: 0, fontWeight: 400 }}>
+          Use separate theme in dark mode
+        </label>
+      </div>
+
+      <div className="row" style={{ marginBottom: 12 }}>
+        <button className="linklike" data-testid="reload-themes" onClick={onReloadThemes}>
+          ↻ Reload themes
+        </button>
+        {onRevealThemesDir && (
+          <button className="linklike" data-testid="open-theme-folder" onClick={() => void onRevealThemesDir()}>
+            Open Theme Folder
+          </button>
+        )}
+        {onImportTheme && (
+          <button className="linklike" data-testid="import-theme" onClick={() => void onImportTheme()}>
+            + Import theme…
+          </button>
+        )}
+      </div>
+
+      <div className="field">
+        <label htmlFor="settings-margins">Text margins</label>
+        <select
+          id="settings-margins"
+          data-testid="settings-margins"
+          value={settings.margins}
+          onChange={(e) => onChange({ ...settings, margins: e.target.value as Margins })}
+        >
+          {MARGIN_LABELS.map((m) => (
+            <option value={m.value} key={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </>
+  );
+
+  const generalTab = (
+    <>
+      <h3 className="tab-section">Editor</h3>
+      <div className="checkbox-row">
+        <input
+          id="settings-line-numbers"
+          type="checkbox"
+          data-testid="settings-line-numbers"
+          checked={settings.lineNumbers}
+          onChange={(e) => onChange({ ...settings, lineNumbers: e.target.checked })}
+        />
+        <label htmlFor="settings-line-numbers" style={{ margin: 0, fontWeight: 400 }}>
+          Show line numbers
+        </label>
+      </div>
+
+      <div className="checkbox-row">
+        <input
+          id="autosave-toggle"
+          type="checkbox"
+          data-testid="autosave-toggle"
+          checked={settings.autosaveOnToggle}
+          onChange={(e) => onChange({ ...settings, autosaveOnToggle: e.target.checked })}
+        />
+        <label htmlFor="autosave-toggle" style={{ margin: 0, fontWeight: 400 }}>
+          Save automatically when switching to preview
+        </label>
+      </div>
+
+      <h3 className="tab-section">Comments</h3>
+      <div className="field">
+        <label htmlFor="author-input">Comment author name</label>
+        <input
+          id="author-input"
+          type="text"
+          data-testid="author-input"
+          value={settings.author}
+          onChange={(e) => onChange({ ...settings, author: e.target.value })}
+        />
+      </div>
+
+      <div className="field">
+        <label htmlFor="comment-storage">Comment storage</label>
+        <select
+          id="comment-storage"
+          data-testid="comment-storage"
+          value={settings.commentStorage}
+          disabled={storageLocked}
+          onChange={(e) =>
+            onChange({ ...settings, commentStorage: e.target.value === 'embedded' ? 'embedded' : 'sidecar' })
+          }
+        >
+          <option value="sidecar">Sidecar file (name.md.comments.json)</option>
+          <option value="embedded">Embedded in the markdown file (invisible)</option>
+        </select>
+        {storageLocked && <p className="hotkey-hint">The web version always embeds comments in the file.</p>}
+      </div>
+
+      <div className="checkbox-row">
+        <input
+          id="settings-autohide"
+          type="checkbox"
+          data-testid="settings-autohide"
+          checked={settings.autoHideToolbar}
+          onChange={(e) => onChange({ ...settings, autoHideToolbar: e.target.checked })}
+        />
+        <label htmlFor="settings-autohide" style={{ margin: 0, fontWeight: 400 }}>
+          Auto-hide the toolbar (reveal by moving the mouse to the top)
+        </label>
+      </div>
+
+      <h3 className="tab-section">Navigation</h3>
+      <div className="checkbox-row">
+        <input
+          id="settings-vimnav"
+          type="checkbox"
+          data-testid="settings-vimnav"
+          checked={settings.vimNav}
+          onChange={(e) => onChange({ ...settings, vimNav: e.target.checked })}
+        />
+        <label htmlFor="settings-vimnav" style={{ margin: 0, fontWeight: 400 }}>
+          Vim-style navigation in preview (j/k scroll, Ctrl+d/u half page, gg top, G bottom)
+        </label>
+      </div>
+    </>
+  );
+
+  const hotkeysTab = (
+    <>
+      {(Object.keys(HOTKEY_LABELS) as Array<keyof HotkeyMap>).map((action) => (
+        <div className="hotkey-row" key={action}>
+          <label htmlFor={`hotkey-${action}`}>{HOTKEY_LABELS[action]}</label>
           <input
-            id="settings-line-numbers"
-            type="checkbox"
-            data-testid="settings-line-numbers"
-            checked={settings.lineNumbers}
-            onChange={(e) => onChange({ ...settings, lineNumbers: e.target.checked })}
-          />
-          <label htmlFor="settings-line-numbers" style={{ margin: 0, fontWeight: 400 }}>
-            Show line numbers
-          </label>
-        </div>
-
-        <div className="checkbox-row">
-          <input
-            id="autosave-toggle"
-            type="checkbox"
-            data-testid="autosave-toggle"
-            checked={settings.autosaveOnToggle}
-            onChange={(e) => onChange({ ...settings, autosaveOnToggle: e.target.checked })}
-          />
-          <label htmlFor="autosave-toggle" style={{ margin: 0, fontWeight: 400 }}>
-            Save automatically when switching to preview
-          </label>
-        </div>
-
-        <h2>Comments</h2>
-
-        <div className="field">
-          <label htmlFor="author-input">Comment author name</label>
-          <input
-            id="author-input"
+            id={`hotkey-${action}`}
             type="text"
-            data-testid="author-input"
-            value={settings.author}
-            onChange={(e) => onChange({ ...settings, author: e.target.value })}
+            readOnly
+            data-testid={`hotkey-${action}`}
+            data-hotkey-recorder="true"
+            value={displayCombo(settings.hotkeys[action], isMac)}
+            placeholder="Press keys…"
+            onKeyDown={recordHotkey(action)}
+            onFocus={(e) => e.target.select()}
           />
         </div>
+      ))}
+      <p className="hotkey-hint" data-testid="hotkey-hint">
+        {hint || 'Click a field, then press the new key combination.'}
+      </p>
+      <div className="row">
+        <button className="linklike" data-testid="reset-hotkeys" onClick={() => onChange({ ...settings, hotkeys: { ...DEFAULT_HOTKEYS } })}>
+          Reset hotkeys
+        </button>
+      </div>
+    </>
+  );
 
-        <div className="field">
-          <label htmlFor="comment-storage">Comment storage</label>
-          <select
-            id="comment-storage"
-            data-testid="comment-storage"
-            value={settings.commentStorage}
-            disabled={storageLocked}
-            onChange={(e) =>
-              onChange({ ...settings, commentStorage: e.target.value === 'embedded' ? 'embedded' : 'sidecar' })
-            }
-          >
-            <option value="sidecar">Sidecar file (name.md.comments.json)</option>
-            <option value="embedded">Embedded in the markdown file (invisible)</option>
-          </select>
-          {storageLocked && <p className="hotkey-hint">The web version always embeds comments in the file.</p>}
-        </div>
-
-        <h2>Navigation</h2>
-
-        <div className="checkbox-row">
-          <input
-            id="settings-vimnav"
-            type="checkbox"
-            data-testid="settings-vimnav"
-            checked={settings.vimNav}
-            onChange={(e) => onChange({ ...settings, vimNav: e.target.checked })}
-          />
-          <label htmlFor="settings-vimnav" style={{ margin: 0, fontWeight: 400 }}>
-            Vim-style navigation in preview (j/k scroll, Ctrl+d/u half page, gg top, G bottom)
-          </label>
-        </div>
-
-        <h2>Hotkeys</h2>
-        {(Object.keys(HOTKEY_LABELS) as Array<keyof HotkeyMap>).map((action) => (
-          <div className="hotkey-row" key={action}>
-            <label htmlFor={`hotkey-${action}`}>{HOTKEY_LABELS[action]}</label>
-            <input
-              id={`hotkey-${action}`}
-              type="text"
-              readOnly
-              data-testid={`hotkey-${action}`}
-              data-hotkey-recorder="true"
-              value={displayCombo(settings.hotkeys[action], isMac)}
-              placeholder="Press keys…"
-              onKeyDown={recordHotkey(action)}
-              onFocus={(e) => e.target.select()}
-            />
+  return (
+    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal settings-modal" data-testid="settings-panel">
+        <nav className="tab-rail" data-testid="settings-tabs">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              className={`tab-btn${tab === t.id ? ' active' : ''}`}
+              data-testid={`settings-tab-${t.id}`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        <div className="tab-content">
+          {tab === 'appearance' && appearanceTab}
+          {tab === 'general' && generalTab}
+          {tab === 'hotkeys' && hotkeysTab}
+          <div className="actions">
+            <button className="primary" data-testid="settings-close" onClick={onClose}>
+              Done
+            </button>
           </div>
-        ))}
-        <p className="hotkey-hint" data-testid="hotkey-hint">
-          {hint || 'Click a field, then press the new key combination.'}
-        </p>
-
-        <div className="actions">
-          <button
-            data-testid="reset-hotkeys"
-            onClick={() => onChange({ ...settings, hotkeys: { ...DEFAULT_HOTKEYS } })}
-          >
-            Reset hotkeys
-          </button>
-          <button className="primary" data-testid="settings-close" onClick={onClose}>
-            Done
-          </button>
         </div>
       </div>
     </div>

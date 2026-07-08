@@ -19,13 +19,31 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.getByTestId('doc').locator('h1')).toContainText('Welcome to Markimark');
+  await expect(page.getByTestId('empty-hint')).toBeVisible();
+  await openWelcomeViaHelp(page);
 });
 
-async function openSettings(page: import('@playwright/test').Page) {
+async function revealToolbar(page: import('@playwright/test').Page) {
+  await page.mouse.move(500, 8);
+  await expect(page.getByTestId('menu-btn')).toBeVisible();
+}
+
+async function openWelcomeViaHelp(page: import('@playwright/test').Page) {
+  await revealToolbar(page);
+  await page.getByTestId('menu-btn').click();
+  await page.getByTestId('menu-help').click();
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Welcome to Marky Mark');
+}
+
+async function openSettings(
+  page: import('@playwright/test').Page,
+  tab: 'appearance' | 'general' | 'hotkeys' = 'appearance'
+) {
+  await revealToolbar(page);
   await page.getByTestId('menu-btn').click();
   await page.getByTestId('menu-settings').click();
   await page.getByTestId('settings-panel').waitFor();
+  await page.getByTestId(`settings-tab-${tab}`).click();
 }
 
 /** Drop an in-page-constructed .md File onto the window. */
@@ -42,10 +60,11 @@ async function dropFile(page: import('@playwright/test').Page, name: string, con
 
 test('W1: single-file page loads with the welcome doc; theme change persists across reload', async ({ page }) => {
   // Welcome state already asserted in beforeEach; storage control is locked to embedded.
-  await openSettings(page);
+  await openSettings(page, 'general');
   await expect(page.getByTestId('comment-storage')).toHaveValue('embedded');
   await expect(page.getByTestId('comment-storage')).toBeDisabled();
 
+  await page.getByTestId('settings-tab-appearance').click();
   await page.getByTestId('settings-theme-light').selectOption('monokai');
   await expect
     .poll(() => page.locator('.theme-root').evaluate((el) => getComputedStyle(el).backgroundColor))
@@ -53,7 +72,11 @@ test('W1: single-file page loads with the welcome doc; theme change persists acr
   await page.getByTestId('settings-close').click();
 
   await page.reload();
-  await expect(page.getByTestId('doc').locator('h1')).toContainText('Welcome to Markimark');
+  await expect(page.getByTestId('empty-hint')).toBeVisible();
+  await expect
+    .poll(() => page.locator('.theme-root').evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe('rgb(39, 40, 34)');
+  await openWelcomeViaHelp(page); // the document view keeps the theme too
   await expect
     .poll(() => page.locator('.theme-root').evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe('rgb(39, 40, 34)');
@@ -71,6 +94,7 @@ test('W3: open via file-input fallback, comment, Save downloads the file with th
 }) => {
   // Open through the hidden <input type=file> (FSAA was deleted).
   const chooserPromise = page.waitForEvent('filechooser');
+  await revealToolbar(page);
   await page.getByTestId('menu-btn').click();
   await page.getByTestId('menu-open').click();
   const chooser = await chooserPromise;
@@ -103,6 +127,7 @@ test('W3: open via file-input fallback, comment, Save downloads the file with th
 
   // Save → download (no handle without FSAA).
   const downloadPromise = page.waitForEvent('download');
+  await revealToolbar(page);
   await page.getByTestId('menu-btn').click();
   await page.getByTestId('menu-save').click();
   const download = await downloadPromise;
@@ -134,7 +159,7 @@ test('W4: zero network requests after initial load (self-contained page)', async
   await page.getByTestId('settings-theme-light').selectOption('dracula');
   await page.getByTestId('settings-close').click();
   await page.keyboard.press('Control+e');
-  await expect(page.getByTestId('editor').locator('.cm-content')).toContainText('Welcome to Markimark');
+  await expect(page.getByTestId('editor').locator('.cm-content')).toContainText('Welcome to Marky Mark');
   await page.keyboard.press('Control+e');
   await expect(page.getByTestId('doc')).toBeVisible();
   await dropFile(page, 'w4.md', SAMPLE_MD);

@@ -1,4 +1,4 @@
-# Creating Markimark themes
+# Creating Marky Mark themes
 
 A theme is **one `.css` file**. Drop it in the themes folder, hit *Reload themes* in
 Settings (⋯ menu → Settings), and it shows up. That's the whole workflow. In the web
@@ -9,7 +9,7 @@ version, use *Import theme…* in Settings instead — the file is stored in the
 - macOS: `~/Library/Application Support/com.markimark.app/themes/`
 - Windows: `%APPDATA%\com.markimark.app\themes\`
 
-Markimark creates this folder (and a copy of this guide) on first run.
+Marky Mark creates this folder (and a copy of this guide) on first run.
 
 ## Anatomy of a theme
 
@@ -32,7 +32,7 @@ Markimark creates this folder (and a copy of this guide) on first run.
 - You may add **any extra CSS** below the variables, scoped under `.theme-root`, for
   effects the variables can't express (e.g. `.theme-root h1 { letter-spacing: -0.02em }`).
 - **No remote resources.** A theme referencing `url(http…)` is rejected at load time —
-  Markimark never touches the network. Use system fonts or font stacks.
+  Marky Mark never touches the network. Use system fonts or font stacks.
 
 The easiest starting point: copy a built-in (e.g. `crisp.css` from the app repo's
 `themes/` folder or this document's template below), rename it, and start tweaking.

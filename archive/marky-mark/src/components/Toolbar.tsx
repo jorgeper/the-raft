@@ -16,7 +16,10 @@ interface Props {
   onOpenFile(): void;
   onSave(): void;
   onSaveAs(): void;
+  onHelp(): void;
   onOpenSettings(): void;
+  /** Reports the menu popover state so the auto-hiding shell can stay pinned. */
+  onMenuOpenChange(open: boolean): void;
 }
 
 /** Hamburger: three horizontal bars (SPEC3 §4). */
@@ -27,6 +30,18 @@ function MenuIcon() {
         <line x1="2.5" y1="4" x2="13.5" y2="4" />
         <line x1="2.5" y1="8" x2="13.5" y2="8" />
         <line x1="2.5" y1="12" x2="13.5" y2="12" />
+      </g>
+    </svg>
+  );
+}
+
+/** The app icon in miniature: white "M" on the terracotta rounded square. */
+function AppBadge() {
+  return (
+    <svg data-testid="app-badge" width="20" height="20" viewBox="0 0 32 32" aria-label="Marky Mark">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill="#d97757" />
+      <g stroke="#faf9f5" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" fill="none">
+        <path d="M 9.5 22.5 V 10 L 16 18 L 22.5 10 V 22.5" />
       </g>
     </svg>
   );
@@ -54,6 +69,13 @@ function CommentsIcon() {
 export function Toolbar(p: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const onMenuOpenChange = p.onMenuOpenChange;
+
+  // Report popover state to the auto-hiding shell AFTER commit — calling the
+  // parent's setState from inside an updater would be a render-phase update.
+  useEffect(() => {
+    onMenuOpenChange(menuOpen);
+  }, [menuOpen, onMenuOpenChange]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -81,7 +103,7 @@ export function Toolbar(p: Props) {
   return (
     <header className="toolbar">
       <span className="docname" data-testid="docname" title={p.docPath ?? undefined}>
-        {p.docName ?? 'Markimark'}
+        {p.docName ?? <AppBadge />}
         {p.dirty && (
           <span className="dirty-dot" data-testid="dirty-dot" title="Unsaved changes">
             ●
@@ -118,6 +140,7 @@ export function Toolbar(p: Props) {
             {item('menu-open', 'Open…', displayCombo(p.hotkeys.openFile, p.isMac), p.onOpenFile)}
             {item('menu-save', 'Save', displayCombo(p.hotkeys.save, p.isMac), p.onSave)}
             {item('menu-save-as', 'Save As…', null, p.onSaveAs)}
+            {item('menu-help', 'Help', null, p.onHelp)}
             <div className="menu-footer">{item('menu-settings', 'Settings…', null, p.onOpenSettings)}</div>
           </div>
         )}

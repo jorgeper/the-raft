@@ -16,7 +16,7 @@
   --mm-accent: #d97757;
   --mm-border: rgba(31, 30, 29, 0.15);
 
-  --mm-content-width: 47rem; /* 752px */
+  --mm-content-width: 60rem; /* narrow-margin default (SPEC4 §7) */
   --mm-font-body: "Anthropic Serif Web Text", Georgia, "Times New Roman", serif;
   --mm-font-heading: "Anthropic Sans Web Text", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mm-font-mono: "Anthropic Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
