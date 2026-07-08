@@ -58,7 +58,10 @@ grep -q 'def test_harvest_caps_at_three_and_truncates' tests/test_reflection.py 
 check "5. LESSON parsing: journal append, 3-line cap, lesson events (tested)" $?
 
 # --- 6. improver: trigger, contract, single-flight (R8/R17/R18/R20) --------------
-todo "6. tests/test_improver.py"
+grep -q 'def test_single_flight_r8' tests/test_improver.py &&
+  grep -q 'def test_improver_malformed_output_goes_needs_human' tests/test_improver.py &&
+  "$PY" -m pytest tests/test_improver.py -q >"$TMP/improver.out" 2>&1
+check "6. improver: trigger cadence, output contract, malformed -> needs-human, single-flight" $?
 
 # --- 7. allowlist enforced at validation and apply (R19/R21) ---------------------
 todo "7. tests/test_improve_allowlist.py"

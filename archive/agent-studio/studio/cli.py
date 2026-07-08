@@ -179,6 +179,22 @@ def cmd_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_improve(args: argparse.Namespace) -> int:
+    cfg = _load(args)
+    executor, tracker, registry, runtimes, events = _world(cfg)
+    orch = Orchestrator(cfg, tracker, registry, runtimes, executor=executor, events=events)
+    item = orch.maybe_file_improvement(force=True)
+    if item is None:
+        print(
+            "no improvement item filed — either one is already open (single-flight) "
+            "or the active set has no improver agent",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"filed improvement item #{item.id} (improve:drafting) — next tick dispatches the improver")
+    return 0
+
+
 def cmd_scorecard(args: argparse.Namespace) -> int:
     from studio.metrics import ScorecardLog, compute_scorecard, read_events
 
@@ -239,6 +255,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("item_id")
     p_show.add_argument("--json", action="store_true", help="machine-readable item")
 
+    sub.add_parser("improve", help="file an improvement item now (subject to single-flight)")
+
     p_score = sub.add_parser("scorecard", help="per-agent metrics computed from events.jsonl")
     p_score.add_argument("--json", action="store_true", help="machine-readable scorecard")
     p_score.add_argument("--set", default="", help="restrict to items done under this agent set")
@@ -256,6 +274,7 @@ HANDLERS = {
     "status": cmd_status,
     "show": cmd_show,
     "scorecard": cmd_scorecard,
+    "improve": cmd_improve,
     "demo": cmd_demo,
 }
 

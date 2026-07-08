@@ -5,10 +5,10 @@
 Building the self-improving agent set per self-improve-spec.md. Finish line:
 `./scripts/verify-improve.sh` 12/12 AND `./scripts/verify.sh` stays 13/13.
 
-- **Current milestone:** M4 done (studio/reflection.py; orchestrator harvests
-  commenter/reviewer output, GoalLoop.output_hook feeds coder iterations).
-  Next: M5 (improver agent + trigger + output contract).
-- **verify-improve.sh score:** 7/12 after M4 (checks 6, 7, 9, 10, 11 remain ⬜
+- **Current milestone:** M5 done (studio/improve.py: parse_proposal/diff_paths/
+  validate_paths/ImprovementsLog; orchestrator trigger + improver dispatch;
+  `studio improve` CLI). Next: M6 (apply, reject, improvements listing).
+- **verify-improve.sh score:** 8/12 after M5 (checks 7, 9, 10, 11 remain ⬜
   placeholders that fail until their milestone lands; the todo() helper marks them).
 - **Gotchas so far:** evolving-set test fixtures must not use `improve:*` states
   before M2 lands (config validates `handles` against studio.state.STATES).
