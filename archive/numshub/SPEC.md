@@ -84,6 +84,13 @@ or restartable). Models live in the app data dir. Exactly one model is "active";
 active model is loaded once and kept warm while the app runs. First-run onboarding
 offers Parakeet v3 (recommended) or Whisper tiny (quick start, small download).
 
+**Extensible catalog:** the catalog is data-driven — one registry entry (id, display
+name, engine family, download URL(s), SHA-256, size, language note, "recommended"
+flag) fully defines a model, and the Settings UI renders whatever the registry
+contains. Adding a future model must require only a new registry entry, no UI or
+engine-glue changes (within the two §3 engine families). Ship the registry as a
+single obvious file (e.g. `src-tauri/models.json` or one Rust const table).
+
 **No fine-tuning.** Research verdict: nobody fine-tunes the STT model for cleanliness —
 Whisper/Parakeet-v3 are already non-verbatim, and products that want cleaner output
 (Wispr Flow, VoiceInk) do it with a text post-pass (§4). Do not build training
@@ -131,8 +138,12 @@ The deterministic filter must be a pure, heavily unit-tested function
 4. Safety cap: recording auto-stops at 5 minutes.
 5. While recording, the menu-bar icon switches to a recording state; while
    transcribing, a processing state.
-6. If no model is downloaded/active, the hotkey opens Settings → Models instead of
-   recording, with an explanatory toast.
+6. **No-model flow:** if the hotkey is pressed with no model downloaded/active, do
+   not record. Show a friendly non-activating prompt in the overlay's pill style —
+   "Pick a model to start dictating" with a **Choose Model** button — which opens
+   Settings → Models (the recommended model pre-highlighted, one click from
+   downloading). The prompt auto-dismisses after ~6 s or on Esc. The same guard
+   applies to "Retry Last Transcription".
 
 ### FR-2: Overlay
 1. A small pill/capsule overlay (~320×64) centered near the bottom of the active
@@ -185,8 +196,13 @@ A normal window (opens from the menu), four sections:
 2. **Hotkey:** a recorder control that captures the next key/combo pressed — must
    accept bare modifiers (Right Cmd, Right Option, …) and ordinary combos (e.g.
    `Ctrl+Space`); shows a human-readable label; conflict-free revert on Esc.
-3. **Models:** the §3 catalog — active-model radio, download/delete with progress and
-   verified checksum, per-model size and language note, disk usage line.
+3. **Models:** renders the §3 registry — active-model radio, per-model size and
+   language note, "Recommended" badge on Parakeet v3, disk usage line. Each model
+   moves through explicit visual states: not downloaded → downloading (progress bar
+   with % and cancel) → verifying checksum → downloaded → active. A failed or
+   cancelled download shows an inline error with a Retry button; a corrupt checksum
+   deletes the file and returns to not-downloaded with an explanation. Downloading
+   continues if the window closes; the tray icon shows a subtle progress state.
 4. **Cleanup:** filler-word list editor (add/remove chips, reset-to-default),
    repeated-word collapse toggle, enhancement section (enable toggle, endpoint URL —
    localhost enforced, model name, editable prompt with reset, "Test" button that
@@ -245,21 +261,25 @@ text field in the wizard itself. Re-runnable from Settings → General.
    - **R5** settings round-trip: serialize → deserialize → equal; corrupt JSON →
      defaults.
    - **R6** history: ring buffer caps at 20, newest first, clear empties store.
-   - **R7** model registry: every catalog entry has URL + SHA-256 + size; data-dir
-     path resolution.
+   - **R7** model registry: registry parses from its data file; every entry has id,
+     engine family, URL, SHA-256, and size; exactly one entry is flagged recommended;
+     data-dir path resolution; adding a synthetic test entry surfaces it through the
+     same listing API the UI consumes (proves extensibility).
    - **R8** enhancement guard: non-localhost endpoint URLs rejected.
 2. **Frontend unit tests** (Vitest): **U1** settings store defaults/updates,
    **U2** hotkey label formatting (bare modifiers and combos), **U3** waveform
    component maps level samples → bar heights, **U4** filler-list editor add/remove/
    reset logic.
 3. **E2E** (Playwright, headless, mocked Tauri IPC shim): **E1** settings window
-   renders all four sections; **E2** model catalog shows states (not downloaded /
-   downloading with progress / active) and download-button flow against the mock;
+   renders all four sections; **E2** model catalog renders from the mocked registry
+   and walks the download states (not downloaded → downloading with progress % and
+   cancel → verifying → active), plus the failure path (inline error + Retry);
    **E3** hotkey recorder captures a combo and persists via mock IPC; **E4** filler
    chips add/remove/reset; **E5** history list renders 5 entries, click fires
    copy IPC (in Settings → General); **E6** overlay page animates waveform from synthetic level events and
    switches to transcribing state; **E7** enhancement toggle reveals endpoint/model/
-   prompt fields and Test button wiring.
+   prompt fields and Test button wiring; **E8** the no-model prompt (FR-1.6) renders
+   in the overlay page and its Choose Model button fires the open-settings IPC.
 4. **Integration transcription tests** (`scripts/validate-stt`): **I1**: downloads
    Whisper tiny once into a cache (skipped download if cached — the ONLY network the
    harness may touch), transcribes `fixtures/jfk.wav` (the classic 11-second JFK clip
