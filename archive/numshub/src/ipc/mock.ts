@@ -82,18 +82,30 @@ interface MockModelState {
 }
 
 const params = new URLSearchParams(window.location.search);
+const onboardingMode = params.get("onboarding") === "1";
+// ?grant=microphone,accessibility,capture,menubar pre-grants permissions
+// (E9e resume tests).
+const preGranted = new Set((params.get("grant") ?? "").split(",").filter(Boolean));
 
 const state = {
   settings: {
     ...defaultSettings(),
-    onboarding_complete: params.get("onboarding") !== "1",
-    active_model: params.get("noModel") === "1" ? null : "whisper-tiny",
+    onboarding_complete: !onboardingMode,
+    // Onboarding mode starts with no model at all (the model step is a gate).
+    active_model: onboardingMode || params.get("noModel") === "1" ? null : "whisper-tiny",
   } as Settings,
+  permissions: {
+    microphone: preGranted.has("microphone"),
+    accessibility: preGranted.has("accessibility"),
+    captureReady: preGranted.has("capture"),
+    menubar: preGranted.has("menubar"),
+  },
   models: new Map<string, MockModelState>(
     CATALOG.map((m) => [
       m.id,
       {
-        downloaded: m.id === "whisper-tiny" && params.get("noModel") !== "1",
+        downloaded:
+          m.id === "whisper-tiny" && !onboardingMode && params.get("noModel") !== "1",
         downloading: false,
         partial_bytes: 0,
         timer: null,
@@ -266,10 +278,19 @@ async function invoke(command: string, args?: Record<string, unknown>): Promise<
       if (state.captureTimer) clearTimeout(state.captureTimer);
       return;
     case "initialize_capture":
-      return true;
+      return state.permissions.captureReady;
     case "get_app_info":
-      return { version: "0.1.0-mock", can_paste: true, capture_ready: true, platform: "macos" };
+      return {
+        version: "0.1.0-mock",
+        can_paste: state.permissions.accessibility,
+        capture_ready: state.permissions.captureReady,
+        platform: "macos",
+      };
     case "open_settings":
+      return;
+    case "tray_item_visible":
+      return state.permissions.menubar;
+    case "open_menu_bar_settings":
       return;
     default:
       throw new Error(`mock: unhandled command '${command}'`);
@@ -286,7 +307,23 @@ export const mockIpc: Ipc = {
   },
 };
 
-// Playwright drives failure paths and overlay events through this handle.
+// The permission facade used in browser mode (SPEC2 §4).
+export const mockPerms = {
+  checkMicrophone: async () => state.permissions.microphone,
+  requestMicrophone: async () => {},
+  checkAccessibility: async () => state.permissions.accessibility,
+  requestAccessibility: async () => {},
+  checkTrayVisible: async () => state.permissions.menubar,
+  openMenuBarSettings: async () => {
+    state.calls.push({ command: "open_menu_bar_settings", args: undefined });
+  },
+  checkCaptureReady: async () => state.permissions.captureReady,
+};
+
+export type Grantable = "microphone" | "accessibility" | "capture" | "menubar";
+
+// Playwright drives failure paths, permission grants, and overlay events
+// through this handle.
 declare global {
   interface Window {
     __mock?: {
@@ -294,6 +331,7 @@ declare global {
       failNextDownload: (modelId: string) => void;
       calls: () => { command: string; args: Record<string, unknown> | undefined }[];
       captureKeys: (hotkeyString: string) => void;
+      grant: (what: Grantable) => void;
     };
   }
 }
@@ -309,5 +347,14 @@ window.__mock = {
     setTimeout(() => {
       emit("hotkey-capture-event", { hotkey_string: hotkeyString, is_key_down: false });
     }, 50);
+  },
+  grant: (what: Grantable) => {
+    if (what === "microphone") state.permissions.microphone = true;
+    if (what === "accessibility") state.permissions.accessibility = true;
+    if (what === "menubar") state.permissions.menubar = true;
+    if (what === "capture") {
+      state.permissions.captureReady = true;
+      emit("capture-ready", true);
+    }
   },
 };

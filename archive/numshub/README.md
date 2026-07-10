@@ -57,12 +57,22 @@ text instead — dictation never waits on a slow model.
 
 ## Permissions (macOS)
 
-- **Microphone** — to hear you. Prompted on first recording.
-- **Accessibility** — for two things only: listening for the global hotkey
-  (including bare modifiers, which the sanctioned hotkey APIs can't do) and
-  pressing ⌘V to paste. Without it, Numshub degrades gracefully to
-  copy-to-clipboard. Grant it in System Settings → Privacy & Security →
-  Accessibility.
+First-run setup walks these one screen at a time, and each screen verifies
+the *actual* system state before it lets you continue — clicking a button
+never advances the flow; the permission really appearing does. You can re-run
+it anytime from Settings → General → "Re-run setup".
+
+1. **Microphone** — to hear you. The wizard triggers the native prompt and
+   waits until the permission is genuinely granted. Not skippable.
+2. **Accessibility** — for two things only: listening for the global hotkey
+   (including bare modifiers, which the sanctioned hotkey APIs can't do) and
+   pressing ⌘V to paste. The wizard waits for the grant *and* for the hotkey
+   listener to actually arm before continuing (grants made mid-session are
+   picked up within ~3 s). Skippable — Numshub degrades to copy-to-clipboard.
+3. **Menu Bar** (macOS 26+) — Tahoe decides which apps may show a menu-bar
+   icon. The wizard checks whether Numshub's icon is *really* rendering (not
+   just created) and walks you to System Settings → Menu Bar → "Allow in the
+   Menu Bar" if it isn't. Skippable — the hotkey works without the icon.
 
 Numshub is distributed outside the Mac App Store because sandboxed apps cannot
 synthesize paste keystrokes.

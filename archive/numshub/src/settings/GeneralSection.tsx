@@ -117,6 +117,23 @@ export default function GeneralSection({
           />
         </div>
         <div className="row">
+          <div>
+            <div className="row-label">Re-run setup</div>
+            <div className="row-sub">
+              Walk the permission and model checks again from the start.
+            </div>
+          </div>
+          <button
+            className="btn"
+            data-testid="rerun-setup"
+            onClick={() =>
+              save({ ...settings, onboarding_complete: false, onboarding_skips: [] })
+            }
+          >
+            Re-run
+          </button>
+        </div>
+        <div className="row">
           <div className="row-label">Clear history</div>
           <button
             className="btn danger"

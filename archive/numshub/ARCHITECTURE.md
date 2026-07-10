@@ -76,6 +76,25 @@ Model load (Whisper tiny): 4.8 s cold file cache, 154 ms warm — which is why
 the active engine is loaded once and kept resident (`state.rs`), not per
 dictation.
 
+## Onboarding gates (SPEC2)
+
+The wizard never stores a step index. A snapshot of verified facts —
+`{ microphone, accessibility, captureReady, trayVisible, modelReady,
+platform }` — is polled live, and the pure function
+`firstUnmetStep(snapshot, skips)` (src/lib/onboarding.ts, U5-tested) decides
+what to show; the wizard resumes and auto-advances from that alone. Who
+verifies each fact:
+
+| Fact | Verifier |
+| --- | --- |
+| `microphone` / `accessibility` | tauri-plugin-macos-permissions checks, polled 1 s |
+| `captureReady` | the hotkey service is actually armed (`get_app_info` + `capture-ready` event from the lib.rs capture watcher) — accessibility is a two-fact gate |
+| `trayVisible` | `tray_item_visible` (src-tauri/src/tray_probe.rs): a CGWindowList probe for a layer-25 window owned by this pid with width > 0 at the top of the screen — ground truth for macOS 26's "Allow in the Menu Bar" gating |
+| `modelReady` | registry: active model set AND its files on disk |
+
+Explicit skips (accessibility, menubar) persist in
+`settings.onboarding_skips` and count as met on resume.
+
 ## Design notes
 
 - **One pipeline thread** serializes Idle→Recording→Processing, so double

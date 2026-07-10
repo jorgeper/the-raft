@@ -23,6 +23,7 @@ export interface Settings {
   enhancement: EnhancementSettings;
   active_model: string | null;
   onboarding_complete: boolean;
+  onboarding_skips: string[];
 }
 
 export interface ModelStatus {
@@ -100,5 +101,6 @@ export function defaultSettings(): Settings {
     enhancement: { ...DEFAULT_ENHANCEMENT },
     active_model: null,
     onboarding_complete: false,
+    onboarding_skips: [],
   };
 }

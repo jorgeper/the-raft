@@ -67,6 +67,9 @@ pub struct Settings {
     /// Registry id of the active model; None until the user picks one.
     pub active_model: Option<String>,
     pub onboarding_complete: bool,
+    /// Skippable onboarding gates the user explicitly skipped (SPEC2 §3);
+    /// they count as met when resuming the wizard.
+    pub onboarding_skips: Vec<String>,
 }
 
 impl Default for Settings {
@@ -83,6 +86,7 @@ impl Default for Settings {
             enhancement: EnhancementSettings::default(),
             active_model: None,
             onboarding_complete: false,
+            onboarding_skips: Vec::new(),
         }
     }
 }

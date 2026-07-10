@@ -15,6 +15,7 @@ pub mod settings;
 pub mod state;
 pub mod stt;
 pub mod tray;
+pub mod tray_probe;
 
 use state::AppState;
 use std::sync::Arc;

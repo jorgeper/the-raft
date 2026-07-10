@@ -262,6 +262,17 @@ pub fn open_settings(app: AppHandle, section: Option<String>) {
     crate::show_settings_window(&app, section.as_deref());
 }
 
+/// SPEC2 FR-O2c: ground truth for "the menu-bar icon is actually visible".
+#[tauri::command]
+pub fn tray_item_visible() -> bool {
+    crate::tray_probe::tray_item_visible()
+}
+
+#[tauri::command]
+pub fn open_menu_bar_settings() {
+    crate::tray_probe::open_menu_bar_settings();
+}
+
 #[tauri::command]
 pub fn cancel_dictation(state: State<AppState>) {
     state.pipeline.cancel();
@@ -289,5 +300,7 @@ pub fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
         initialize_capture,
         get_app_info,
         open_settings,
+        tray_item_visible,
+        open_menu_bar_settings,
     ]
 }
