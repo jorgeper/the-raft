@@ -46,10 +46,16 @@ fn create_settings_window(app: &AppHandle, visible: bool) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Initialize global hotkeys + paste. On macOS this fails (returning Ok with
-/// hotkeys unset) until Accessibility is granted; the frontend retries via the
-/// initialize_capture command after onboarding. Idempotent.
+/// Initialize global hotkeys + paste. On macOS this is a silent no-op until
+/// Accessibility is granted (checked WITHOUT prompting — system dialogs are
+/// only ever opened by the onboarding wizard on an explicit user click); the
+/// capture watcher and the initialize_capture command retry it. Idempotent.
 pub fn init_capture(app: &AppHandle) -> anyhow::Result<()> {
+    #[cfg(target_os = "macos")]
+    if !handy_keys::check_accessibility() {
+        log::debug!("accessibility not granted; capture init deferred");
+        return Ok(());
+    }
     let state = app.state::<AppState>();
     {
         let mut paster = state.paster.lock().unwrap();

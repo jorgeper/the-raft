@@ -16,12 +16,23 @@ pub struct Paster {
     enigo: Option<Enigo>,
 }
 
+/// Enigo settings that NEVER auto-open the macOS accessibility prompt.
+/// (`enigo::Settings::default()` prompts — with a retry loop that means
+/// dialog spam. Prompting is the onboarding wizard's job, on a user click.)
+fn quiet_settings() -> enigo::Settings {
+    enigo::Settings {
+        open_prompt_to_get_permissions: false,
+        ..Default::default()
+    }
+}
+
 impl Paster {
     /// On macOS, Enigo construction fails without Accessibility permission —
     /// callers treat `enigo: None` as "degrade to clipboard-only" (FR-3.3).
+    /// Construction is silent: no system dialogs, ever.
     pub fn new() -> Self {
-        let enigo = Enigo::new(&enigo::Settings::default())
-            .map_err(|e| log::warn!("enigo init failed (accessibility not granted?): {e}"))
+        let enigo = Enigo::new(&quiet_settings())
+            .map_err(|e| log::debug!("enigo init failed (accessibility not granted?): {e}"))
             .ok();
         Self { enigo }
     }
@@ -33,7 +44,7 @@ impl Paster {
     /// Retry Enigo init (after the user grants Accessibility mid-session).
     pub fn reinit(&mut self) -> bool {
         if self.enigo.is_none() {
-            self.enigo = Enigo::new(&enigo::Settings::default()).ok();
+            self.enigo = Enigo::new(&quiet_settings()).ok();
         }
         self.can_paste()
     }
