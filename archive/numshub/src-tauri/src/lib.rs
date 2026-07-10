@@ -7,6 +7,7 @@ pub mod downloader;
 pub mod enhance;
 pub mod history;
 pub mod hotkey;
+pub mod live;
 pub mod overlay;
 pub mod paste;
 pub mod pipeline;

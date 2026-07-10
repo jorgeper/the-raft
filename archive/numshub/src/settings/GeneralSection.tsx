@@ -65,6 +65,20 @@ export default function GeneralSection({
         </div>
         <div className="row">
           <div>
+            <div className="row-label">Live transcription</div>
+            <div className="row-sub">
+              Show your words in the overlay as you speak. The pasted text is always the final,
+              cleaned transcription.
+            </div>
+          </div>
+          <Toggle
+            checked={settings.live_transcription}
+            testId="live-transcription"
+            onChange={(v) => save({ ...settings, live_transcription: v })}
+          />
+        </div>
+        <div className="row">
+          <div>
             <div className="row-label">Output</div>
             <div className="row-sub">Where the finished transcription goes.</div>
           </div>

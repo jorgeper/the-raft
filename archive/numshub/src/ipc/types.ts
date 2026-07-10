@@ -19,6 +19,7 @@ export interface Settings {
   launch_at_login: boolean;
   keep_history: boolean;
   collapse_repeats: boolean;
+  live_transcription: boolean;
   filler_words: string[];
   enhancement: EnhancementSettings;
   active_model: string | null;
@@ -97,6 +98,7 @@ export function defaultSettings(): Settings {
     launch_at_login: false,
     keep_history: true,
     collapse_repeats: true,
+    live_transcription: true,
     filler_words: [...DEFAULT_FILLERS],
     enhancement: { ...DEFAULT_ENHANCEMENT },
     active_model: null,

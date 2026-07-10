@@ -29,6 +29,11 @@ enum Cmd {
     Stop {
         reply: mpsc::Sender<Result<Vec<f32>>>,
     },
+    /// Non-destructive copy of everything captured so far, at the device rate
+    /// (SPEC3 live passes). Capture continues untouched.
+    Snapshot {
+        reply: mpsc::Sender<(Vec<f32>, u32)>,
+    },
     Cancel,
     Shutdown,
 }
@@ -67,6 +72,21 @@ impl AudioRecorder {
         rx.recv().context("audio worker gone")?
     }
 
+    /// Copy of the audio captured so far, resampled to 16 kHz mono. Recording
+    /// continues; returns None when not recording.
+    pub fn snapshot_16k(&self) -> Option<Vec<f32>> {
+        if !self.is_recording() {
+            return None;
+        }
+        let (reply, rx) = mpsc::channel();
+        self.tx.send(Cmd::Snapshot { reply }).ok()?;
+        let (samples, rate) = rx.recv().ok()?;
+        if samples.is_empty() {
+            return Some(samples);
+        }
+        resample_to_16k(&samples, rate).ok()
+    }
+
     pub fn cancel(&self) {
         let _ = self.tx.send(Cmd::Cancel);
     }
@@ -87,13 +107,13 @@ struct ActiveStream {
 
 fn worker(rx: mpsc::Receiver<Cmd>, recording: Arc<AtomicBool>, level_cb: LevelCallback) {
     let mut active: Option<ActiveStream> = None;
-    let mut captured: Vec<f32> = Vec::new();
+    let mut captured = crate::live::CaptureBuffer::default();
 
     loop {
         // Drain any captured audio while recording; poll commands at 10 ms.
         if let Some(stream) = &active {
             while let Ok(chunk) = stream.samples_rx.try_recv() {
-                captured.extend_from_slice(&chunk);
+                captured.push_chunk(&chunk);
             }
             // Safety cap (SPEC FR-1.4).
             if stream.started.elapsed().as_secs() >= MAX_RECORD_SECS {
@@ -140,13 +160,22 @@ fn worker(rx: mpsc::Receiver<Cmd>, recording: Arc<AtomicBool>, level_cb: LevelCa
                     // Give the callback a moment to flush, then drain.
                     std::thread::sleep(std::time::Duration::from_millis(60));
                     while let Ok(chunk) = stream.samples_rx.try_recv() {
-                        captured.extend_from_slice(&chunk);
+                        captured.push_chunk(&chunk);
                     }
                 }
                 active = None;
                 recording.store(false, Ordering::SeqCst);
-                let samples = std::mem::take(&mut captured);
+                let samples = captured.take();
                 let _ = reply.send(finish_samples(samples, device_rate));
+            }
+            Cmd::Snapshot { reply } => {
+                let device_rate = active.as_ref().map(|s| s.device_rate).unwrap_or(TARGET_RATE);
+                if let Some(stream) = &active {
+                    while let Ok(chunk) = stream.samples_rx.try_recv() {
+                        captured.push_chunk(&chunk);
+                    }
+                }
+                let _ = reply.send((captured.snapshot(), device_rate));
             }
             Cmd::Cancel => {
                 active = None;

@@ -11,6 +11,9 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl};
 pub const OVERLAY_LABEL: &str = "overlay";
 pub const OVERLAY_WIDTH: f64 = 320.0;
 pub const OVERLAY_HEIGHT: f64 = 64.0;
+/// Taller pill for live transcription (SPEC3 FR-L3): text above the waveform.
+pub const OVERLAY_LIVE_WIDTH: f64 = 420.0;
+pub const OVERLAY_LIVE_HEIGHT: f64 = 110.0;
 const BOTTOM_OFFSET: f64 = 24.0;
 
 /// Overlay states rendered by the frontend pill (SPEC FR-1.6, FR-2, FR-3.4).
@@ -28,6 +31,7 @@ static LAST_LEVEL_EMIT: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone, Serialize)]
 struct ShowPayload {
     state: String,
+    live: bool,
 }
 
 #[cfg(target_os = "macos")]
@@ -111,8 +115,7 @@ pub fn create(app: &AppHandle) -> anyhow::Result<()> {
 /// Position the pill bottom-center of the monitor containing the cursor
 /// (logical coordinates — physical positions convert with the wrong monitor's
 /// scale factor when moving across screens).
-fn position(app: &AppHandle) -> Option<tauri::LogicalPosition<f64>> {
-    let window = app.get_webview_window(OVERLAY_LABEL)?;
+fn position(app: &AppHandle, width: f64, height: f64) -> Option<tauri::LogicalPosition<f64>> {
     let monitor = app
         .cursor_position()
         .ok()
@@ -121,16 +124,28 @@ fn position(app: &AppHandle) -> Option<tauri::LogicalPosition<f64>> {
     let scale = monitor.scale_factor();
     let mpos = monitor.position().to_logical::<f64>(scale);
     let msize = monitor.size().to_logical::<f64>(scale);
-    let x = mpos.x + (msize.width - OVERLAY_WIDTH) / 2.0;
-    let y = mpos.y + msize.height - OVERLAY_HEIGHT - BOTTOM_OFFSET;
-    let _ = window;
+    let x = mpos.x + (msize.width - width) / 2.0;
+    let y = mpos.y + msize.height - height - BOTTOM_OFFSET;
     Some(tauri::LogicalPosition { x, y })
 }
 
 pub fn show_state(app: &AppHandle, state: &str) {
+    show_state_with_mode(app, state, false);
+}
+
+/// Show the overlay; `live` selects the taller live-transcription pill for
+/// the recording state (SPEC3 FR-L3).
+pub fn show_state_with_mode(app: &AppHandle, state: &str, live: bool) {
     let generation = SHOW_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let live = live && state == state::RECORDING;
+    let (width, height) = if live {
+        (OVERLAY_LIVE_WIDTH, OVERLAY_LIVE_HEIGHT)
+    } else {
+        (OVERLAY_WIDTH, OVERLAY_HEIGHT)
+    };
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
-        if let Some(pos) = position(app) {
+        let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
+        if let Some(pos) = position(app, width, height) {
             let _ = window.set_position(tauri::Position::Logical(pos));
         }
         let _ = window.show();
@@ -140,6 +155,7 @@ pub fn show_state(app: &AppHandle, state: &str) {
             "show-overlay",
             ShowPayload {
                 state: state.to_string(),
+                live,
             },
         );
     }
@@ -191,4 +207,16 @@ pub fn emit_level(app: &AppHandle, level: f32) {
     }
     LAST_LEVEL_EMIT.store(now, Ordering::Relaxed);
     let _ = app.emit_to(OVERLAY_LABEL, "mic-level", level);
+}
+
+/// Push a live-transcription pass result to the overlay (SPEC3 FR-L2).
+pub fn emit_stream_text(app: &AppHandle, text: &str) {
+    if !OVERLAY_VISIBLE.load(Ordering::SeqCst) {
+        return;
+    }
+    let _ = app.emit_to(
+        OVERLAY_LABEL,
+        "stream-text",
+        serde_json::json!({ "text": text }),
+    );
 }

@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, listen } from "../ipc/api";
+import { EMPTY_LIVE, stabilize, type LiveText } from "../lib/liveText";
 import { BAR_COUNT, levelsToBars, pushLevel } from "../lib/waveform";
 
 type OverlayState =
@@ -15,29 +16,40 @@ type OverlayState =
 
 export default function OverlayApp() {
   const [state, setState] = useState<OverlayState>("hidden");
+  const [live, setLive] = useState(false);
+  const [liveText, setLiveText] = useState<LiveText>(EMPTY_LIVE);
   const [bars, setBars] = useState<number[]>(() => levelsToBars([]));
   const [elapsed, setElapsed] = useState(0);
   const historyRef = useRef<number[]>([]);
   const startedRef = useRef<number>(0);
+  const liveTextRef = useRef<LiveText>(EMPTY_LIVE);
 
   useEffect(() => {
     document.body.classList.add("overlay-body");
     const unlisteners: Array<() => void> = [];
     (async () => {
       unlisteners.push(
-        await listen<{ state: string }>("show-overlay", ({ state }) => {
+        await listen<{ state: string; live?: boolean }>("show-overlay", ({ state, live }) => {
           historyRef.current = [];
           setBars(levelsToBars([]));
           if (state === "recording") {
             startedRef.current = Date.now();
             setElapsed(0);
+            // New recording: reset the stabilizer (SPEC3 FR-L4).
+            liveTextRef.current = EMPTY_LIVE;
+            setLiveText(EMPTY_LIVE);
           }
+          setLive(state === "recording" && live === true);
           setState(state as OverlayState);
         }),
         await listen("hide-overlay", () => setState("hidden")),
         await listen<number>("mic-level", (level) => {
           pushLevel(historyRef.current, level);
           setBars(levelsToBars(historyRef.current));
+        }),
+        await listen<{ text: string }>("stream-text", ({ text }) => {
+          liveTextRef.current = stabilize(liveTextRef.current, text);
+          setLiveText(liveTextRef.current);
         }),
       );
     })();
@@ -56,31 +68,53 @@ export default function OverlayApp() {
   const mm = String(Math.floor(elapsed / 60)).padStart(1, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
 
+  const hasLiveText = liveText.stable !== "" || liveText.tentative !== "";
+
   return (
     <div
-      className={`pill ${state !== "hidden" ? "visible" : ""}`}
+      className={`pill ${state !== "hidden" ? "visible" : ""} ${live ? "live" : ""}`}
       data-testid="overlay-pill"
       data-state={state}
+      data-live={live ? "true" : "false"}
     >
       {state === "recording" && (
         <>
-          <span className="rec-dot" data-testid="rec-dot" />
-          <div className="wave" data-testid="waveform">
-            {bars.map((h, i) => (
-              <i key={i} style={{ height: `${h}px` }} />
-            ))}
+          {live && (
+            <div className="live-text" data-testid="live-text">
+              {hasLiveText ? (
+                <p>
+                  <span data-testid="live-stable">{liveText.stable}</span>
+                  {liveText.stable && liveText.tentative ? " " : ""}
+                  <span className="live-tentative" data-testid="live-tentative">
+                    {liveText.tentative}
+                  </span>
+                </p>
+              ) : (
+                <p className="live-placeholder" data-testid="live-placeholder">
+                  Listening…
+                </p>
+              )}
+            </div>
+          )}
+          <div className="pill-row">
+            <span className="rec-dot" data-testid="rec-dot" />
+            <div className="wave" data-testid="waveform">
+              {bars.map((h, i) => (
+                <i key={i} style={{ height: `${h}px` }} />
+              ))}
+            </div>
+            <span className="pill-timer" data-testid="timer">
+              {mm}:{ss}
+            </span>
+            <button
+              className="pill-cancel"
+              data-testid="cancel-btn"
+              title="Cancel (Esc)"
+              onClick={() => api.cancelDictation()}
+            >
+              ✕
+            </button>
           </div>
-          <span className="pill-timer" data-testid="timer">
-            {mm}:{ss}
-          </span>
-          <button
-            className="pill-cancel"
-            data-testid="cancel-btn"
-            title="Cancel (Esc)"
-            onClick={() => api.cancelDictation()}
-          >
-            ✕
-          </button>
         </>
       )}
       {state === "transcribing" && (

@@ -62,6 +62,8 @@ pub struct Settings {
     pub launch_at_login: bool,
     pub keep_history: bool,
     pub collapse_repeats: bool,
+    /// Show words in the overlay while recording (SPEC3, default on).
+    pub live_transcription: bool,
     pub filler_words: Vec<String>,
     pub enhancement: EnhancementSettings,
     /// Registry id of the active model; None until the user picks one.
@@ -82,6 +84,7 @@ impl Default for Settings {
             launch_at_login: false,
             keep_history: true,
             collapse_repeats: true,
+            live_transcription: true,
             filler_words: DEFAULT_FILLERS.iter().map(|s| s.to_string()).collect(),
             enhancement: EnhancementSettings::default(),
             active_model: None,

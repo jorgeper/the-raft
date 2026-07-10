@@ -161,9 +161,13 @@ fn start_recording(app: &AppHandle, generation: &mut u64, tx: &mpsc::Sender<Msg>
         return false;
     }
 
-    let (device, enhancement) = {
+    let (device, enhancement, live_mode) = {
         let settings = state.settings.read().unwrap();
-        (settings.input_device.clone(), settings.enhancement.clone())
+        (
+            settings.input_device.clone(),
+            settings.enhancement.clone(),
+            settings.live_transcription,
+        )
     };
 
     if let Err(e) = state.recorder.start(device) {
@@ -172,9 +176,20 @@ fn start_recording(app: &AppHandle, generation: &mut u64, tx: &mpsc::Sender<Msg>
         return false;
     }
 
-    overlay::show_state(app, overlay::state::RECORDING);
+    overlay::show_state_with_mode(app, overlay::state::RECORDING, live_mode);
     tray::set_state(app, tray::TrayState::Recording);
     state.hotkeys_set_cancel(true);
+
+    // Live transcription loop (SPEC3 FR-L2): periodic passes over the audio
+    // so far, emitted to the overlay. Ends by itself when recording stops;
+    // never touches the authoritative stop path.
+    if live_mode {
+        let app_live = app.clone();
+        std::thread::Builder::new()
+            .name("live-transcribe".into())
+            .spawn(move || live_loop(app_live))
+            .expect("spawn live loop");
+    }
 
     // Pre-warm the enhancement model so a cold Ollama never delays the paste.
     if enhancement.enabled {
@@ -194,6 +209,42 @@ fn start_recording(app: &AppHandle, generation: &mut u64, tx: &mpsc::Sender<Msg>
 
     log::info!("hotkey -> recording overlay in {:?}", t0.elapsed());
     true
+}
+
+/// Periodic live passes while recording (SPEC3 FR-L2). Degrades gracefully:
+/// engine failure ends the loop (waveform-only recording continues), slow
+/// passes stretch the interval via the perf guard.
+fn live_loop(app: AppHandle) {
+    let mut interval = crate::live::LiveInterval::default();
+    loop {
+        std::thread::sleep(interval.current());
+        let state = app.state::<AppState>();
+        if !state.recorder.is_recording() {
+            return;
+        }
+        let Some(samples) = state.recorder.snapshot_16k() else {
+            return; // stopped between the check and the snapshot
+        };
+        // Sub-second audio produces engine noise; wait for the next tick.
+        if samples.len() < crate::audio::TARGET_RATE as usize {
+            continue;
+        }
+        let t0 = Instant::now();
+        match state.transcribe(&app, &samples) {
+            Ok(text) => {
+                // The user may have stopped while the pass ran; a late emit
+                // would flash stale text over the transcribing state.
+                if state.recorder.is_recording() {
+                    overlay::emit_stream_text(&app, &text);
+                }
+            }
+            Err(e) => {
+                log::warn!("live pass failed; continuing waveform-only: {e}");
+                return;
+            }
+        }
+        interval.on_pass(t0.elapsed());
+    }
 }
 
 fn finish_recording(app: &AppHandle) {

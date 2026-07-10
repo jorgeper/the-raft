@@ -95,6 +95,30 @@ verifies each fact:
 Explicit skips (accessibility, menubar) persist in
 `settings.onboarding_skips` and count as met on resume.
 
+## Live transcription loop (SPEC3)
+
+While recording with `live_transcription` on, a dedicated thread re-runs the
+warm engine over a non-destructive snapshot of the audio so far and emits the
+raw text to the overlay (`stream-text`). Cadence starts at 1 s and is governed
+by `live::LiveInterval` (R10-tested): a pass costing > 60% of the interval
+stretches it ×1.5 (capped at 4 s, logged once); fast passes recover it toward
+1 s. Slow hardware therefore degrades to fewer updates — never to a broken
+recording. **The stop path is authoritative and unchanged**: it takes the full
+buffer, waits for the engine lock like any other caller, and runs the same
+transcribe → cleanup → enhancement → paste pipeline; live passes can only ever
+have been read-only spectators.
+
+Measured live-pass duration on this machine (release, Metal): Whisper tiny
+over the 11 s jfk.wav fixture = **97–211 ms** warm (the same numbers as I1) —
+comfortably inside the 1 s base cadence; the 60% guard would not engage until
+a pass exceeded ~600 ms, i.e. roughly a minute of accumulated audio at tiny's
+throughput.
+
+Flicker control lives in the frontend: `src/lib/liveText.ts` (U6-tested)
+promotes words that two consecutive passes agree on (case/punctuation-
+insensitive) to `stable` — stable text never shrinks and never rewrites; the
+disagreeing tail renders dimmed as `tentative`.
+
 ## Design notes
 
 - **One pipeline thread** serializes Idle→Recording→Processing, so double

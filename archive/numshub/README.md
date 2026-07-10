@@ -25,6 +25,16 @@ whatever app has focus.
 The menu-bar icon gives you: start/stop dictation, copy or retry the last
 transcription, your five most recent transcriptions, and Settings.
 
+## Live transcription
+
+While you speak, the overlay shows your words above the waveform — stabilized
+text renders solid, the still-changing tail renders dimmed, and text that has
+appeared never rewrites itself. What you see live is the raw engine output;
+**what pastes is always the final, cleaned transcription**, so an "um" you
+glimpse live never lands in your document. Toggle it in Settings → General →
+"Live transcription" (on by default). On slower machines the live view simply
+updates less often — it never affects the recording or the final result.
+
 ## Models
 
 Numshub ships no models; pick one in Settings → Models (or during onboarding):
