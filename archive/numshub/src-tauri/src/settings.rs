@@ -119,6 +119,14 @@ impl Settings {
         Ok(())
     }
 
+    /// Fields owned by the backend and mutated through dedicated commands
+    /// (set_active_model / delete_model). A whole-object settings write coming
+    /// from the UI must never clobber them — the UI's copy can be stale (it
+    /// was fetched before the model was activated).
+    pub fn preserve_server_owned(&mut self, current: &Settings) {
+        self.active_model = current.active_model.clone();
+    }
+
     pub fn clean_options(&self) -> crate::cleanup::CleanOptions {
         crate::cleanup::CleanOptions {
             fillers: self.filler_words.clone(),
@@ -213,6 +221,30 @@ mod tests {
         assert_eq!(loaded.hotkey, "F19");
         assert_eq!(loaded.activation_mode, ActivationMode::Toggle);
         assert!(!loaded.filler_words.is_empty());
+    }
+
+    // R5 regression: a whole-object UI write must not clobber the active model
+    // (field bug: activating a model, then saving any other setting from a UI
+    // that fetched settings earlier, reset active_model to null).
+    #[test]
+    fn r5_ui_write_preserves_server_owned_active_model() {
+        let mut current = Settings::default();
+        current.active_model = Some("whisper-tiny".into());
+
+        // Stale UI copy: fetched before activation, then edited.
+        let mut incoming = Settings::default();
+        incoming.launch_at_login = true;
+        assert_eq!(incoming.active_model, None);
+
+        incoming.preserve_server_owned(&current);
+        assert_eq!(incoming.active_model.as_deref(), Some("whisper-tiny"));
+        assert!(incoming.launch_at_login, "UI-owned fields still applied");
+
+        // And a UI copy that happens to carry a value never wins either.
+        let mut incoming2 = Settings::default();
+        incoming2.active_model = Some("stale-other-model".into());
+        incoming2.preserve_server_owned(&current);
+        assert_eq!(incoming2.active_model.as_deref(), Some("whisper-tiny"));
     }
 
     // R8: enhancement endpoint guard.

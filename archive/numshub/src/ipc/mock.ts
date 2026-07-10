@@ -191,9 +191,14 @@ async function invoke(command: string, args?: Record<string, unknown>): Promise<
   switch (command) {
     case "get_settings":
       return structuredClone(state.settings);
-    case "set_settings":
-      state.settings = structuredClone(args!.settings as Settings);
+    case "set_settings": {
+      // Mirrors the Rust command: active_model is server-owned and a
+      // whole-object UI write never clobbers it.
+      const incoming = structuredClone(args!.settings as Settings);
+      incoming.active_model = state.settings.active_model;
+      state.settings = incoming;
       return;
+    }
     case "list_models":
       return modelList();
     case "download_model":

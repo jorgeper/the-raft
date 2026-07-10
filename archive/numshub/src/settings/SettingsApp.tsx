@@ -27,6 +27,8 @@ export default function SettingsApp() {
 
   const refreshModels = useCallback(() => {
     api.listModels().then(setModels).catch(console.error);
+    // active_model is backend-owned; refetch so our copy never goes stale.
+    api.getSettings().then(setSettings).catch(console.error);
   }, []);
 
   const refreshHistory = useCallback(() => {

@@ -138,6 +138,34 @@ test("E5: history list renders entries and click copies", async ({ page }) => {
   expect(copied).toBe("Ship the release notes on Wednesday.");
 });
 
+test("E5b regression: saving another setting does not clobber the active model", async ({
+  page,
+}) => {
+  // Activate a freshly downloaded model…
+  await page.getByTestId("nav-models").click();
+  await page.getByTestId("download-parakeet-tdt-0.6b-v3").click();
+  await expect(page.getByTestId("delete-parakeet-tdt-0.6b-v3")).toBeVisible({ timeout: 5000 });
+  await page.getByTestId("model-radio-parakeet-tdt-0.6b-v3").check();
+  await expect(page.getByTestId("model-active-parakeet-tdt-0.6b-v3")).toBeVisible();
+
+  // …then save an unrelated setting from General…
+  await page.getByTestId("nav-general").click();
+  await page.getByTestId("launch-at-login").check();
+
+  // …and the model must still be active (field bug: it reset to null).
+  await page.getByTestId("nav-models").click();
+  await expect(page.getByTestId("model-active-parakeet-tdt-0.6b-v3")).toBeVisible();
+  const active = await page.evaluate(async () => {
+    const calls = window.__mock!.calls();
+    const saves = calls.filter((c) => c.command === "set_settings");
+    const last = saves[saves.length - 1]?.args?.settings as
+      | { active_model?: string | null }
+      | undefined;
+    return last?.active_model !== undefined ? "sent" : "n/a";
+  });
+  expect(active).toBe("sent"); // the stale copy was sent — backend must ignore it
+});
+
 test("E7: enhancement toggle reveals fields and Test round-trips", async ({ page }) => {
   await page.getByTestId("nav-cleanup").click();
   await expect(page.getByTestId("enhancement-endpoint")).not.toBeAttached();

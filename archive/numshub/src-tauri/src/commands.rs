@@ -38,12 +38,17 @@ pub fn get_settings(state: State<AppState>) -> Settings {
 }
 
 #[tauri::command]
-pub fn set_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> CmdResult<()> {
+pub fn set_settings(
+    app: AppHandle,
+    state: State<AppState>,
+    mut settings: Settings,
+) -> CmdResult<()> {
     crate::settings::validate_enhancement_endpoint(&settings.enhancement.endpoint).map_err(err)?;
     crate::hotkey::validate_binding(&settings.hotkey).map_err(err)?;
 
     let (old_hotkey, old_autostart) = {
         let current = state.settings.read().unwrap();
+        settings.preserve_server_owned(&current);
         (current.hotkey.clone(), current.launch_at_login)
     };
 

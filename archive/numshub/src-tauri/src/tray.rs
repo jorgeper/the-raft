@@ -129,14 +129,19 @@ fn build_menu(app: &AppHandle, state: TrayState) -> anyhow::Result<Menu<tauri::W
 
 pub fn create(app: &AppHandle) -> anyhow::Result<()> {
     let icon = tauri::image::Image::from_path(icon_path(app, TrayState::Idle)?)?;
-    let tray = TrayIconBuilder::with_id("numshub-tray")
+    let mut builder = TrayIconBuilder::with_id("numshub-tray")
         .icon(icon)
         .icon_as_template(true)
         .tooltip("Numshub")
         .show_menu_on_left_click(true)
         .menu(&build_menu(app, TrayState::Idle)?)
-        .on_menu_event(|app, event| on_menu_event(app, event.id.as_ref()))
-        .build(app)?;
+        .on_menu_event(|app, event| on_menu_event(app, event.id.as_ref()));
+    // Diagnostic probe: a text title makes the status item visible even if the
+    // icon fails to render, separating OS-level suppression from icon bugs.
+    if std::env::var("NUMSHUB_TRAY_TITLE").is_ok() {
+        builder = builder.title("Numshub");
+    }
+    let tray = builder.build(app)?;
     app.manage(tray);
     Ok(())
 }
