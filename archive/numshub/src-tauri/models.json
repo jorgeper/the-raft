@@ -1,0 +1,56 @@
+{
+  "models": [
+    {
+      "id": "parakeet-tdt-0.6b-v3",
+      "display_name": "Parakeet V3",
+      "engine": "parakeet",
+      "url": "https://blob.handy.computer/parakeet-v3-int8.tar.gz",
+      "sha256": "43d37191602727524a7d8c6da0eef11c4ba24320f5b4730f1a2497befc2efa77",
+      "size_bytes": 478517071,
+      "languages": "25 European languages",
+      "description": "Fast and accurate — the best balance of speed and quality. Recommended.",
+      "recommended": true,
+      "kind": "archive",
+      "filename": ""
+    },
+    {
+      "id": "whisper-large-v3-turbo",
+      "display_name": "Whisper Large v3 Turbo",
+      "engine": "whisper",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+      "size_bytes": 1624555275,
+      "languages": "99 languages",
+      "description": "Best multilingual coverage. Larger download, slower than Parakeet.",
+      "recommended": false,
+      "kind": "file",
+      "filename": "ggml-large-v3-turbo.bin"
+    },
+    {
+      "id": "whisper-small",
+      "display_name": "Whisper Small",
+      "engine": "whisper",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+      "sha256": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+      "size_bytes": 487601967,
+      "languages": "99 languages",
+      "description": "Mid-size multilingual Whisper. Good quality on modest hardware.",
+      "recommended": false,
+      "kind": "file",
+      "filename": "ggml-small.bin"
+    },
+    {
+      "id": "whisper-tiny",
+      "display_name": "Whisper Tiny",
+      "engine": "whisper",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+      "sha256": "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
+      "size_bytes": 77691713,
+      "languages": "99 languages",
+      "description": "Quick start — small download, fastest transcription, lowest accuracy.",
+      "recommended": false,
+      "kind": "file",
+      "filename": "ggml-tiny.bin"
+    }
+  ]
+}

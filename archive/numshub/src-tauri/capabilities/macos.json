@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "macos-permissions",
+  "description": "macOS permission prompts from onboarding",
+  "platforms": ["macOS"],
+  "windows": ["settings", "overlay"],
+  "permissions": ["macos-permissions:default"]
+}

@@ -1,0 +1,63 @@
+[package]
+name = "numshub"
+version = "0.1.0"
+description = "Numshub — fast, fully-local voice dictation"
+authors = ["jorgeper"]
+license = "MIT"
+edition = "2021"
+default-run = "numshub"
+
+[lib]
+name = "numshub_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [
+  "macos-private-api",
+  "tray-icon",
+  "image-png",
+] }
+tauri-plugin-autostart = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-notification = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+once_cell = "1"
+regex = "1"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+futures-util = "0.3"
+sha2 = "0.10"
+tar = "0.4"
+flate2 = "1"
+cpal = "0.16"
+rubato = "0.16"
+hound = "3.5"
+arboard = "3"
+enigo = "0.6"
+handy-keys = "0.3"
+# Fronts both engine families in-process (SPEC §2): ONNX (Parakeet) and
+# whisper.cpp GGUF (Metal on macOS).
+transcribe-rs = { version = "0.3.8", features = ["onnx", "whisper-cpp"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
+tauri-plugin-macos-permissions = "2"
+transcribe-rs = { version = "0.3.8", features = ["onnx", "whisper-cpp", "whisper-metal"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
