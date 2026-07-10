@@ -63,13 +63,40 @@ pub fn init_capture(app: &AppHandle) -> anyhow::Result<()> {
         Ok(service) => {
             *hotkeys = Some(service);
             log::info!("global hotkey service started");
+            use tauri::Emitter;
+            let _ = app.emit("capture-ready", true);
             Ok(())
         }
         Err(e) => {
-            log::warn!("hotkey service unavailable (permissions?): {e}");
+            // The permission watcher retries every few seconds; only the
+            // first failure is worth a warning.
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            let msg = e.to_string();
+            WARNED.call_once(|| log::warn!("hotkey service unavailable (permissions?): {msg}"));
+            log::debug!("hotkey service unavailable: {msg}");
             Ok(())
         }
     }
+}
+
+/// macOS: Accessibility can be granted while the app is running (System
+/// Settings toggle). Nothing notifies us, so poll until capture starts —
+/// otherwise the hotkey silently does nothing until the next relaunch.
+fn spawn_capture_watcher(app: AppHandle) {
+    std::thread::Builder::new()
+        .name("capture-watcher".into())
+        .spawn(move || loop {
+            {
+                let state = app.state::<AppState>();
+                if state.hotkeys.lock().unwrap().is_some() {
+                    log::debug!("capture watcher done: hotkey service running");
+                    return;
+                }
+            }
+            let _ = init_capture(&app);
+            std::thread::sleep(std::time::Duration::from_secs(3));
+        })
+        .expect("spawn capture watcher");
 }
 
 pub fn run() {
@@ -121,8 +148,11 @@ pub fn run() {
             tray::create(&handle)?;
 
             // Start capture now if permissions already allow it (non-mac, or
-            // Accessibility granted in a previous run).
+            // Accessibility granted in a previous run); on macOS keep watching
+            // so a mid-session grant activates the hotkey without a relaunch.
             let _ = init_capture(&handle);
+            #[cfg(target_os = "macos")]
+            spawn_capture_watcher(handle.clone());
 
             // Headless perf probe (ARCHITECTURE.md §7 numbers): show the
             // overlay, stream synthetic levels, report RSS, exit.
