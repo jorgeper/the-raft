@@ -20,9 +20,11 @@ export default function OverlayApp() {
   const [liveText, setLiveText] = useState<LiveText>(EMPTY_LIVE);
   const [bars, setBars] = useState<number[]>(() => levelsToBars([]));
   const [elapsed, setElapsed] = useState(0);
+  const [overflowing, setOverflowing] = useState(false);
   const historyRef = useRef<number[]>([]);
   const startedRef = useRef<number>(0);
   const liveTextRef = useRef<LiveText>(EMPTY_LIVE);
+  const liveRegionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     document.body.classList.add("overlay-body");
@@ -65,6 +67,17 @@ export default function OverlayApp() {
     return () => clearInterval(timer);
   }, [state]);
 
+  // Fade the top edge only when the text really wraps past the visible area
+  // (a single line stays fully solid).
+  useEffect(() => {
+    const el = liveRegionRef.current;
+    if (!el) {
+      setOverflowing(false);
+      return;
+    }
+    setOverflowing(el.scrollHeight > el.clientHeight + 2);
+  }, [liveText, live, state]);
+
   const mm = String(Math.floor(elapsed / 60)).padStart(1, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
 
@@ -80,7 +93,11 @@ export default function OverlayApp() {
       {state === "recording" && (
         <>
           {live && (
-            <div className="live-text" data-testid="live-text">
+            <div
+              className={`live-text ${overflowing ? "masked" : ""}`}
+              data-testid="live-text"
+              ref={liveRegionRef}
+            >
               {hasLiveText ? (
                 <p>
                   <span data-testid="live-stable">{liveText.stable}</span>

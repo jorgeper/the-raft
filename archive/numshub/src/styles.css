@@ -513,9 +513,13 @@ body.overlay-body {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  /* Older words fade out at the top edge as new lines arrive. */
-  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 18px);
-  mask-image: linear-gradient(180deg, transparent 0, #000 18px);
+}
+
+/* Older words fade gently at the top — only once the text overflows to
+   multiple lines; a single line renders fully solid. */
+.live-text.masked {
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45) 0, #000 12px);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45) 0, #000 12px);
 }
 
 .live-text p {
