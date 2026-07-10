@@ -67,6 +67,44 @@ text instead — dictation never waits on a slow model.
 Numshub is distributed outside the Mac App Store because sandboxed apps cannot
 synthesize paste keystrokes.
 
+## Troubleshooting
+
+### The menu-bar icon doesn't appear (macOS 26 Tahoe)
+
+macOS 26 gates third-party menu-bar items behind a per-app permission — the
+status item is created but the system collapses it to zero width, so the app
+runs fine with no visible icon. This affects many menu-bar apps, not just
+Numshub ([tauri#13770](https://github.com/tauri-apps/tauri/issues/13770),
+[tray-icon#273](https://github.com/tauri-apps/tray-icon/issues/273)).
+
+To fix:
+
+1. Open **System Settings → Menu Bar** (on some builds: System Settings →
+   Control Center, "Menu Bar Only" section).
+2. Scroll to the list of apps allowed in the menu bar.
+3. Find **Numshub** and turn on **Allow in the Menu Bar**.
+4. Quit Numshub (the hotkey still works — or `pkill -x numshub`) and relaunch
+   it.
+
+Notes:
+
+- Numshub only appears in that list after it has been launched at least once
+  from the `.app` bundle (not `tauri dev`).
+- A crowded menu bar can also hide icons silently — on notched MacBooks,
+  macOS drops items that overflow under the notch. Try removing an icon or
+  two (⌘-drag them out) if the toggle alone doesn't do it.
+- If Numshub never shows up in the list, the fallback is signing the bundle
+  with a real Developer ID identity (`bundle > macOS > signingIdentity` in
+  `tauri.conf.json`) — Tahoe ties menu-bar permissions to signed bundles.
+
+### Dictation says "Pick a model" unexpectedly
+
+The active model lives in `~/Library/Application Support/com.numshub.app/
+settings.json` (`active_model`). If it's ever null despite a downloaded model,
+pick the model again in Settings → Models. (A bug where saving any other
+setting reset the active model was fixed in 0.1.0 — update if you're on an
+older build.)
+
 ## Build
 
 Prerequisites: Rust (stable), Node 20+, Xcode Command Line Tools, cmake.
