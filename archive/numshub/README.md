@@ -120,6 +120,45 @@ npm run validate           # full test harness (R, U, E, I suites)
 `~/.cache/numshub-validate/` for the integration test; everything else runs
 offline.
 
+## Installing dev builds
+
+The quickest loop for trying a new build:
+
+```bash
+npm run tauri build     # produces src-tauri/target/release/bundle/macos/Numshub.app
+npm run install:app     # kills the running app, replaces /Applications/Numshub.app, relaunches
+```
+
+`install:app` does the equivalent of:
+
+```bash
+pkill -x numshub                                   # quit the running instance
+rm -rf /Applications/Numshub.app                   # remove the previous version
+ditto src-tauri/target/release/bundle/macos/Numshub.app /Applications/Numshub.app
+open /Applications/Numshub.app
+```
+
+Notes:
+
+- **Install to /Applications rather than running from `target/`.** macOS keys
+  permissions (mic, Accessibility, menu-bar allowance) and the launch-at-login
+  entry to the app's identity and path — a stable `/Applications/Numshub.app`
+  keeps them attached across builds. Running the bundle straight out of
+  `target/` works for a quick look, but every `tauri build` recreates that
+  path and permissions get flaky.
+- Use `ditto` (not Finder drag or `cp -R`) — it preserves the bundle metadata
+  and code signature exactly.
+- Dev builds are ad-hoc signed, and the signature changes with every build. If
+  the hotkey or paste stops working after installing a new build, toggle
+  Numshub **off and on** in System Settings → Privacy & Security →
+  **Accessibility** — macOS sometimes keeps the old grant pointed at the
+  previous signature.
+- The mic permission and the Menu Bar allowance are keyed to the bundle id
+  (`com.numshub.app`) and survive reinstalls; you should not need to re-grant
+  them.
+- `pkill -x numshub` is safe anytime — settings, history, and models live in
+  `~/Library/Application Support/com.numshub.app/`, untouched by reinstalls.
+
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the module map, the
