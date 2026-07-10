@@ -172,6 +172,25 @@ Notes:
 - `pkill -x numshub` is safe anytime — settings, history, and models live in
   `~/Library/Application Support/com.numshub.app/`, untouched by reinstalls.
 
+### Full reset (true first run)
+
+`rm -rf /Applications/Numshub.app` alone is NOT a clean uninstall — macOS
+keeps state keyed to the bundle id: the microphone/Accessibility grants
+(TCC), app data (settings, so onboarding stays "complete"), preferences, and
+WebKit storage all survive. To wipe everything and get the untouched
+first-run experience:
+
+```bash
+npm run clean:app     # runs scripts/deep-clean.sh
+npm run install:app   # fresh install → full onboarding, mic prompt and all
+```
+
+What it removes: the bundle, `~/Library/Application Support/com.numshub.app`
+(settings/history/**models — the big downloads**), mic + Accessibility grants
+(`tccutil reset`), preferences, WebKit/caches/saved state, and the
+launch-at-login agent. The Menu Bar allowance is Control Center state; the
+script restarts Control Center so it forgets the entry.
+
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the module map, the
