@@ -158,11 +158,14 @@ Notes:
   path and permissions get flaky.
 - Use `ditto` (not Finder drag or `cp -R`) — it preserves the bundle metadata
   and code signature exactly.
-- Dev builds are ad-hoc signed, and the signature changes with every build. If
-  the hotkey or paste stops working after installing a new build, toggle
-  Numshub **off and on** in System Settings → Privacy & Security →
-  **Accessibility** — macOS sometimes keeps the old grant pointed at the
-  previous signature.
+- Dev builds are ad-hoc signed, and the signature changes with every build —
+  macOS pins the Accessibility grant to the old signature, so the checkbox
+  looks enabled while the new build is silently denied. `install:app` handles
+  this by running `tccutil reset Accessibility com.numshub.app` on every
+  install: each new build asks for Accessibility once, cleanly, instead of
+  failing mysteriously. (With a real Developer ID signing identity configured
+  in `tauri.conf.json`, grants persist across builds and the reset becomes
+  unnecessary.)
 - The mic permission and the Menu Bar allowance are keyed to the bundle id
   (`com.numshub.app`) and survive reinstalls; you should not need to re-grant
   them.

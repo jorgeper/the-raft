@@ -12,7 +12,7 @@
     "test:e2e": "playwright test",
     "test:rust": "cd src-tauri && cargo test --release",
     "validate": "node scripts/validate.mjs",
-    "install:app": "pkill -x numshub; rm -rf /Applications/Numshub.app && ditto src-tauri/target/release/bundle/macos/Numshub.app /Applications/Numshub.app && open /Applications/Numshub.app"
+    "install:app": "pkill -x numshub; rm -rf /Applications/Numshub.app && ditto src-tauri/target/release/bundle/macos/Numshub.app /Applications/Numshub.app && tccutil reset Accessibility com.numshub.app >/dev/null && echo 'Accessibility grant reset (ad-hoc builds re-key it) — the app will walk you through re-granting.' && open /Applications/Numshub.app"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

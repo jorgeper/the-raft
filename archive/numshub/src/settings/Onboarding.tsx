@@ -248,6 +248,11 @@ function Accessibility({
           <button className="btn primary" data-testid="ax-request" onClick={request}>
             Open System Settings
           </button>
+          <p data-testid="stale-hint">
+            Already enabled in the list but still showing "Not granted" here? macOS ties the
+            permission to each build of the app — remove Numshub from the Accessibility list
+            (−), then add it back. This screen updates by itself.
+          </p>
           <button className="btn" data-testid="ax-defer" onClick={onSkip}>
             Skip — copy to clipboard instead of pasting (no global hotkey)
           </button>
