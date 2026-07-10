@@ -188,8 +188,19 @@ npm run install:app   # fresh install → full onboarding, mic prompt and all
 What it removes: the bundle, `~/Library/Application Support/com.numshub.app`
 (settings/history/**models — the big downloads**), mic + Accessibility grants
 (`tccutil reset`), preferences, WebKit/caches/saved state, and the
-launch-at-login agent. The Menu Bar allowance is Control Center state; the
-script restarts Control Center so it forgets the entry.
+launch-at-login agent.
+
+Two things no script can reset — do them by hand for a 100% pristine run:
+
+1. **Menu Bar allowance**: System Settings → Menu Bar → find Numshub → turn
+   OFF "Allow in the Menu Bar" (Control Center owns this state; there is no
+   public API or `tccutil` service for it).
+2. Nothing else — everything else is covered.
+
+To re-run just the wizard WITHOUT wiping anything (keeps models and
+permissions): Settings → General → **Re-run setup**. Steps whose checks
+already pass are skipped automatically, so a fully-configured app jumps
+straight to the Try It screen.
 
 ## Architecture
 

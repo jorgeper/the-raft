@@ -154,6 +154,16 @@ pub fn run() {
             create_settings_window(&handle, onboarding_needed)?;
             tray::create(&handle)?;
 
+            // First run: bring the wizard to the foreground. LSUIElement apps
+            // don't activate on launch, so an unfocused window opens BEHIND
+            // whatever the user is doing and looks like nothing happened.
+            if onboarding_needed {
+                if let Some(window) = handle.get_webview_window(SETTINGS_LABEL) {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+
             // Start capture now if permissions already allow it (non-mac, or
             // Accessibility granted in a previous run); on macOS keep watching
             // so a mid-session grant activates the hotkey without a relaunch.

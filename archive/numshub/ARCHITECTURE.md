@@ -89,7 +89,7 @@ verifies each fact:
 | --- | --- |
 | `microphone` / `accessibility` | tauri-plugin-macos-permissions checks, polled 1 s |
 | `captureReady` | the hotkey service is actually armed (`get_app_info` + `capture-ready` event from the lib.rs capture watcher) — accessibility is a two-fact gate |
-| `trayVisible` | `tray_item_visible` (src-tauri/src/tray_probe.rs): a CGWindowList probe for a layer-25 window owned by this pid with width > 0 at the top of the screen — ground truth for macOS 26's "Allow in the Menu Bar" gating |
+| `trayVisible` | `tray_item_visible` (src-tauri/src/tray_probe.rs): in-process AppKit probe of the app's NSStatusBarWindow — frame width + occlusion state, on the main thread. (CGWindowList is unreliable here: macOS 26's Control Center hosts visible third-party items, so the app's own server-side window list shows a zero-size placeholder when suppressed and nothing when visible.) The wizard also offers an explicit "I can see the icon" attestation since Apple ships no public API for this state |
 | `modelReady` | registry: active model set AND its files on disk |
 
 Explicit skips (accessibility, menubar) persist in

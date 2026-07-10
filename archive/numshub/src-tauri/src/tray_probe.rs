@@ -1,71 +1,74 @@
 //! Ground-truth check for "is our menu-bar icon actually visible?"
 //! (SPEC2 FR-O2c). macOS 26 gates third-party status items behind a per-app
 //! "Allow in the Menu Bar" setting; a suppressed item still exists but is
-//! collapsed to zero width. CGWindowList sees that truth: a visible status
-//! item is a layer-25 window owned by this process with width > 0.
+//! collapsed to zero width.
+//!
+//! Implementation note: CGWindowList is NOT reliable for this on macOS 26 —
+//! Control Center hosts visible third-party items, so the app's own window
+//! list shows a zero-size placeholder when suppressed and nothing at all when
+//! visible. The in-process AppKit view is authoritative: the status item owns
+//! an NSStatusBarWindow whose frame collapses to zero width when the OS
+//! suppresses it and whose occlusion state reports actual display.
+//! MUST be called on the main thread (AppKit).
 
 #[cfg(target_os = "macos")]
-pub fn tray_item_visible() -> bool {
-    use core_foundation::array::CFArray;
-    use core_foundation::base::TCFType;
-    use core_foundation::dictionary::CFDictionary;
-    use core_foundation::number::CFNumber;
-    use core_foundation::string::CFString;
-    use core_graphics::window::{
-        kCGNullWindowID, kCGWindowListOptionAll, CGWindowListCopyWindowInfo,
-    };
+pub fn tray_item_visible_main_thread() -> bool {
+    use objc2::runtime::{AnyObject, Bool};
+    use objc2::{class, msg_send};
+    use objc2_foundation::NSRect;
+    use std::ffi::CStr;
 
-    const STATUS_WINDOW_LAYER: i64 = 25; // NSStatusWindowLevel
-    let pid = std::process::id() as i64;
+    const OCCLUSION_VISIBLE: usize = 1 << 1; // NSWindowOcclusionStateVisible
 
-    let info = unsafe { CGWindowListCopyWindowInfo(kCGWindowListOptionAll, kCGNullWindowID) };
-    if info.is_null() {
-        return false;
-    }
-    let windows: CFArray<CFDictionary> = unsafe { CFArray::wrap_under_create_rule(info as _) };
-
-    let key = |name: &str| CFString::new(name);
-    for window in windows.iter() {
-        let get_i64 = |k: &str| -> Option<i64> {
-            window
-                .find(key(k).as_CFTypeRef() as *const _)
-                .and_then(|v| {
-                    let n = unsafe { CFNumber::wrap_under_get_rule(*v as _) };
-                    n.to_i64()
-                })
-        };
-        if get_i64("kCGWindowOwnerPID") != Some(pid) {
-            continue;
+    unsafe {
+        let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        if app.is_null() {
+            return false;
         }
-        if get_i64("kCGWindowLayer") != Some(STATUS_WINDOW_LAYER) {
-            continue;
+        let windows: *mut AnyObject = msg_send![app, windows];
+        if windows.is_null() {
+            return false;
         }
-        // Bounds dictionary: {X, Y, Width, Height}. Status items sit at the
-        // top of the screen; the overlay panel is also layer 25 but far from
-        // Y=0 and much taller than a menu bar item.
-        if let Some(bounds_ref) = window.find(key("kCGWindowBounds").as_CFTypeRef() as *const _) {
-            let bounds: CFDictionary =
-                unsafe { CFDictionary::wrap_under_get_rule(*bounds_ref as _) };
-            let get_f64 = |k: &str| -> f64 {
-                bounds
-                    .find(key(k).as_CFTypeRef() as *const _)
-                    .and_then(|v| {
-                        let n = unsafe { CFNumber::wrap_under_get_rule(*v as _) };
-                        n.to_f64()
-                    })
-                    .unwrap_or(0.0)
-            };
-            let (y, width, height) = (get_f64("Y"), get_f64("Width"), get_f64("Height"));
-            if y < 2.0 && height > 0.0 && height <= 60.0 && width > 0.0 {
-                return true;
+        let count: usize = msg_send![windows, count];
+        for i in 0..count {
+            let window: *mut AnyObject = msg_send![windows, objectAtIndex: i];
+            if window.is_null() {
+                continue;
             }
+            let class_obj: *mut AnyObject = msg_send![window, class];
+            let class_name: *mut AnyObject = msg_send![class_obj, description];
+            let cstr: *const std::os::raw::c_char = msg_send![class_name, UTF8String];
+            if cstr.is_null() {
+                continue;
+            }
+            let name = CStr::from_ptr(cstr).to_string_lossy();
+            if !name.contains("NSStatusBarWindow") {
+                continue;
+            }
+            let frame: NSRect = msg_send![window, frame];
+            let is_visible: Bool = msg_send![window, isVisible];
+            let occlusion: usize = msg_send![window, occlusionState];
+            log::debug!(
+                "status bar window: frame {}x{}, visible={}, occlusion_visible={}",
+                frame.size.width,
+                frame.size.height,
+                is_visible.as_bool(),
+                occlusion & OCCLUSION_VISIBLE != 0
+            );
+            // Suppressed items collapse to (near) zero width. Do NOT require
+            // the occlusion-visible bit: on macOS 26 Control Center hosts the
+            // rendered item, so the app-side window never reports it —
+            // measured on a really-visible icon: frame 34x33, isVisible=true,
+            // occlusion_visible=false.
+            return is_visible.as_bool() && frame.size.width > 4.0;
         }
     }
+    // No status bar window at all: the tray was not created.
     false
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn tray_item_visible() -> bool {
+pub fn tray_item_visible_main_thread() -> bool {
     // Windows/Linux have no per-app menu-bar gating; the tray either works
     // or errors loudly at creation.
     true

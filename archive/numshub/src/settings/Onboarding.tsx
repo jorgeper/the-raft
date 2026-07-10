@@ -301,6 +301,9 @@ function MenuBar({
           <button className="btn primary" data-testid="menubar-open" onClick={open}>
             Open System Settings
           </button>
+          <button className="btn" data-testid="menubar-confirm" onClick={onSkip}>
+            I can see the icon — continue
+          </button>
           <button className="btn" data-testid="menubar-defer" onClick={onSkip}>
             I'll do this later
           </button>

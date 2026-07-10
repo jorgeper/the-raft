@@ -263,9 +263,15 @@ pub fn open_settings(app: AppHandle, section: Option<String>) {
 }
 
 /// SPEC2 FR-O2c: ground truth for "the menu-bar icon is actually visible".
+/// The AppKit probe must run on the main thread.
 #[tauri::command]
-pub fn tray_item_visible() -> bool {
-    crate::tray_probe::tray_item_visible()
+pub fn tray_item_visible(app: AppHandle) -> bool {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = app.run_on_main_thread(move || {
+        let _ = tx.send(crate::tray_probe::tray_item_visible_main_thread());
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(2))
+        .unwrap_or(false)
 }
 
 #[tauri::command]
