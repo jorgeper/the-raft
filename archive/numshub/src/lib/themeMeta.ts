@@ -35,8 +35,13 @@ export function parseThemeMeta(css: string, filename: string): ThemeMeta {
   };
 }
 
-/** SPEC §1 no-network guarantee: reject themes referencing remote URLs. */
+/** SPEC §1 no-network guarantee: reject themes referencing remote URLs.
+ * Mirrors src-tauri/src/themes.rs::remote_capable — blunt on purpose:
+ * remote url(), any @import (string syntax bypasses url() checks), and any
+ * backslash (CSS escapes can smuggle a scheme past pattern checks). */
 export function hasRemoteUrl(css: string): boolean {
+  if (css.includes("\\")) return true;
+  if (/@import/i.test(css)) return true;
   return /url\(\s*['"]?\s*(https?:)?\/\//i.test(css);
 }
 

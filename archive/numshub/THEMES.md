@@ -55,8 +55,11 @@ Newsprint (light, serif), High Contrast.
 - You may add extra CSS below the variables, scoped under `.nh-theme`, for
   flourishes the variables can't express (e.g. a different pill shadow).
 - **No remote resources.** Numshub never touches the network, and themes
-  don't get to change that: any `url(http…)` reference makes the theme show
-  up disabled with the reason. System font stacks only.
+  don't get to change that: any remote `url(…)` reference, any `@import`,
+  and any CSS escape sequence (backslashes) makes the theme show up disabled
+  with the reason. Themes are plain variable files — if you hit one of these
+  rules, whatever you were doing has a simpler spelling. System font stacks
+  only; `data:` URIs are fine.
 - Files are capped at 64 KB.
 
 ## Tips

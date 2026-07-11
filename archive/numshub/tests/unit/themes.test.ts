@@ -55,6 +55,13 @@ describe("U9: theme metadata parsing", () => {
     expect(hasRemoteUrl(".nh-theme { --nh-text: #fff; }")).toBe(false);
   });
 
+  it("rejects @import and CSS escape sequences (bypass vectors)", () => {
+    expect(hasRemoteUrl('@import "https://evil.example/steal.css";')).toBe(true);
+    expect(hasRemoteUrl("@IMPORT url(x.css);")).toBe(true);
+    expect(hasRemoteUrl("a { background: url(\\68ttps://evil.example/x); }")).toBe(true);
+    expect(hasRemoteUrl('a { content: "\\2014"; }')).toBe(true); // blunt by design
+  });
+
   it("reports missing contract variables", () => {
     const missing = missingContractVars(".nh-theme { --nh-text: #fff; }");
     expect(missing).toContain("--nh-pill-bg");

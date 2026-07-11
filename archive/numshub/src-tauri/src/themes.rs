@@ -29,11 +29,28 @@ fn meta_tag(comment: &str, tag: &str) -> Option<String> {
     })
 }
 
-fn remote_url(css: &str) -> bool {
-    let lowered = css.to_lowercase();
-    ["url(http", "url('http", "url(\"http", "url(//", "url('//", "url(\"//"]
+/// Anything that could make the webview fetch a remote resource. Themes are
+/// simple variable files, so this is deliberately blunt:
+/// - `url(...)` pointing at http(s) or protocol-relative hosts;
+/// - `@import` in any form (its string syntax bypasses url() checks, and
+///   local imports are meaningless for an injected style tag);
+/// - backslashes anywhere (CSS escape sequences like `url(\68ttp://…)` can
+///   smuggle a scheme past pattern checks).
+fn remote_capable(css: &str) -> Option<&'static str> {
+    if css.contains('\\') {
+        return Some("contains CSS escape sequences — not allowed in themes");
+    }
+    let compact = css.to_lowercase().replace(char::is_whitespace, "");
+    if compact.contains("@import") {
+        return Some("uses @import — not allowed in themes");
+    }
+    let remote = ["url(http", "url('http", "url(\"http", "url(//", "url('//", "url(\"//"]
         .iter()
-        .any(|pat| lowered.replace(char::is_whitespace, "").contains(pat))
+        .any(|pat| compact.contains(pat));
+    if remote {
+        return Some("references a remote url() — Numshub themes are offline-only");
+    }
+    None
 }
 
 /// Read the themes directory. Missing dir = empty list, never an error.
@@ -80,13 +97,13 @@ pub fn list_user_themes(dir: &Path) -> Vec<UserTheme> {
         let name = meta_tag(comment, "name").unwrap_or(fallback_name);
         let variant = meta_tag(comment, "variant").unwrap_or_else(|| "dark".into());
 
-        if remote_url(&css) {
+        if let Some(reason) = remote_capable(&css) {
             themes.push(UserTheme {
                 id,
                 name,
                 variant,
                 css: String::new(),
-                reason: Some("references a remote url() — Numshub themes are offline-only".into()),
+                reason: Some(reason.into()),
             });
             continue;
         }
@@ -149,11 +166,16 @@ mod tests {
             ("a.css", ".nh-theme { background: url(https://evil.example/x.png); }"),
             ("b.css", ".nh-theme { background: url( 'http://x.example/y' ); }"),
             ("c.css", ".nh-theme { src: url(//cdn.example/font.woff); }"),
+            // @import string syntax has no url() — must still be rejected.
+            ("d.css", "@import \"https://evil.example/steal.css\";\n.nh-theme { }"),
+            ("e.css", "@import url(evil.css);\n.nh-theme { }"),
+            // CSS escapes can smuggle a scheme past pattern checks.
+            ("f.css", ".nh-theme { background: url(\\68ttps://evil.example/x); }"),
         ] {
             std::fs::write(dir.path().join(file), css).unwrap();
         }
         let themes = list_user_themes(dir.path());
-        assert_eq!(themes.len(), 3);
+        assert_eq!(themes.len(), 6);
         for theme in &themes {
             assert!(theme.reason.is_some(), "{} should be rejected", theme.id);
             assert!(theme.css.is_empty());

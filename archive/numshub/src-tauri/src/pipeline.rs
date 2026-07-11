@@ -25,7 +25,6 @@ enum Msg {
 enum Stage {
     Idle,
     Recording,
-    Processing,
 }
 
 #[derive(Clone)]
@@ -105,9 +104,6 @@ fn run(app: AppHandle, rx: mpsc::Receiver<Msg>, tx: mpsc::Sender<Msg>) {
                             finish_recording(&app);
                             stage = Stage::Idle;
                         }
-                        Stage::Processing => {
-                            log::debug!("hotkey ignored: pipeline busy");
-                        }
                     }
                 }
             }
@@ -121,7 +117,6 @@ fn run(app: AppHandle, rx: mpsc::Receiver<Msg>, tx: mpsc::Sender<Msg>) {
                     finish_recording(&app);
                     stage = Stage::Idle;
                 }
-                Stage::Processing => {}
             },
             Msg::AutoStop { generation: g } => {
                 if stage == Stage::Recording && g == generation {

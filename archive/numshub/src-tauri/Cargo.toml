@@ -47,14 +47,16 @@ enigo = "0.6"
 handy-keys = "0.3"
 # Fronts both engine families in-process (SPEC §2): ONNX (Parakeet) and
 # whisper.cpp GGUF (Metal on macOS).
-transcribe-rs = { version = "0.3.8", features = ["onnx", "whisper-cpp"] }
+transcribe-rs = { version = "=0.3.11", features = ["onnx", "whisper-cpp"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
+# Pinned to an exact revision (not a movable branch) so a compromised or
+# force-pushed upstream can never silently change what we build.
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e894383aa068ec5365a42994e3ac94ba1b6" }
 tauri-plugin-macos-permissions = "2"
 objc2 = "0.6"
 objc2-foundation = "0.3"
-transcribe-rs = { version = "0.3.8", features = ["onnx", "whisper-cpp", "whisper-metal"] }
+transcribe-rs = { version = "=0.3.11", features = ["onnx", "whisper-cpp", "whisper-metal"] }
 
 [dev-dependencies]
 tempfile = "3"
