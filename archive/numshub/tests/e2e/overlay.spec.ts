@@ -20,23 +20,16 @@ test("E6: waveform animates from level events and switches to transcribing", asy
   await expect(page.getByTestId("rec-dot")).toBeVisible();
   await expect(page.getByTestId("timer")).toBeVisible();
 
-  // Baseline: silence -> all bars at minimum height.
-  const barHeights = () =>
-    page.$$eval("[data-testid=waveform] i", (bars) =>
-      bars.map((b) => parseFloat((b as HTMLElement).style.height)),
+  // Baseline snapshot, then feed loud levels — the canvas must repaint.
+  const snap = () =>
+    page.evaluate(
+      () => (document.querySelector("[data-testid=waveform]") as HTMLCanvasElement).toDataURL(),
     );
-  const before = await barHeights();
-
-  // Feed loud levels; the rightmost bars must grow.
+  const before = await snap();
   await page.evaluate(() => {
     for (let i = 0; i < 10; i++) window.__mock!.emit("mic-level", 0.9);
   });
-  await expect
-    .poll(async () => {
-      const after = await barHeights();
-      return after[after.length - 1];
-    })
-    .toBeGreaterThan(before[before.length - 1]);
+  await expect.poll(snap, { timeout: 4000 }).not.toBe(before);
 
   // Switch to transcribing: thinking shimmer replaces the live waveform.
   await page.evaluate(() => window.__mock!.emit("show-overlay", { state: "transcribing" }));

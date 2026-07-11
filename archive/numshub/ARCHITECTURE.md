@@ -119,6 +119,30 @@ promotes words that two consecutive passes agree on (case/punctuation-
 insensitive) to `stable` — stable text never shrinks and never rewrites; the
 disagreeing tail renders dimmed as `tentative`.
 
+## Overlay appearance (SPEC6)
+
+The recording visualization is a canvas driven by `EffectEngine`
+(src/overlay/effects/engine.ts) through a deliberately small renderer
+interface — `init(ctx, w, h)` / `render(ctx, frame)` / `dispose()` with
+`frame = { level, levels, time, dt, colors, reducedMotion, width, height }`.
+15 built-ins live in src/overlay/effects/, one module each; the registry
+falls back to `classic-bars` on unknown ids. Rendering pauses whenever the
+overlay is hidden (engine.stop on state change) and every renderer receives
+`reducedMotion` to calm itself.
+
+Colors are the theme's job: renderers draw exclusively with
+`frame.colors.{primary,accent,glow}`, resolved from the `--nh-fx-*` CSS
+variables on the pill root — U8 enforces "no hardcoded draw colors" at the
+source level. A theme is the 11-variable contract in THEMES.md applied via
+the `.nh-theme` class; 12 built-ins ship in src/overlay/themes/, and user
+themes are drop-in .css files (size-capped, remote url() rejected —
+src-tauri/src/themes.rs, R11) loaded through `list_user_themes`.
+
+**User JS/TS effects are deferred deliberately**: user code in the overlay
+webview needs an IPC-less sandbox and a frozen API. The renderer interface
+above IS that API surface — if plugins ever land, they implement the same
+contract inside a sandboxed frame, and nothing here changes.
+
 ## Design notes
 
 - **One pipeline thread** serializes Idle→Recording→Processing, so double

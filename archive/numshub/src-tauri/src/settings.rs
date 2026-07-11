@@ -64,6 +64,10 @@ pub struct Settings {
     pub collapse_repeats: bool,
     /// Show words in the overlay while recording (SPEC3, default on).
     pub live_transcription: bool,
+    /// Visualizer effect id (SPEC6; unknown ids fall back to the default).
+    pub overlay_effect: String,
+    /// Overlay theme id — built-in id or `user:<file>` (SPEC6).
+    pub overlay_theme: String,
     pub filler_words: Vec<String>,
     pub enhancement: EnhancementSettings,
     /// Registry id of the active model; None until the user picks one.
@@ -85,6 +89,8 @@ impl Default for Settings {
             keep_history: true,
             collapse_repeats: true,
             live_transcription: true,
+            overlay_effect: "classic-bars".into(),
+            overlay_theme: "indigo".into(),
             filler_words: DEFAULT_FILLERS.iter().map(|s| s.to_string()).collect(),
             enhancement: EnhancementSettings::default(),
             active_model: None,

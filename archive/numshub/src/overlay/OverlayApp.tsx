@@ -5,7 +5,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api, listen } from "../ipc/api";
 import { EMPTY_LIVE, stabilize, type LiveText } from "../lib/liveText";
-import { BAR_COUNT, levelsToBars, pushLevel } from "../lib/waveform";
+import { BAR_COUNT } from "../lib/waveform";
+import { applyTheme } from "./applyTheme";
+import { EffectEngine } from "./effects/engine";
+import { DEFAULT_EFFECT, getEffect } from "./effects";
 
 type OverlayState =
   | "hidden"
@@ -17,37 +20,48 @@ type OverlayState =
 export default function OverlayApp() {
   const [state, setState] = useState<OverlayState>("hidden");
   const [live, setLive] = useState(false);
+  const [effect, setEffect] = useState(DEFAULT_EFFECT);
   const [liveText, setLiveText] = useState<LiveText>(EMPTY_LIVE);
-  const [bars, setBars] = useState<number[]>(() => levelsToBars([]));
   const [elapsed, setElapsed] = useState(0);
   const [overflowing, setOverflowing] = useState(false);
-  const historyRef = useRef<number[]>([]);
   const startedRef = useRef<number>(0);
   const liveTextRef = useRef<LiveText>(EMPTY_LIVE);
   const liveRegionRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const engineRef = useRef<EffectEngine | null>(null);
 
   useEffect(() => {
     document.body.classList.add("overlay-body");
+    // Apply the persisted theme once at startup; every show refreshes it.
+    api
+      .getSettings()
+      .then((s) => {
+        setEffect(s.overlay_effect || DEFAULT_EFFECT);
+        return applyTheme(s.overlay_theme || "");
+      })
+      .catch(() => applyTheme(""));
     const unlisteners: Array<() => void> = [];
     (async () => {
       unlisteners.push(
-        await listen<{ state: string; live?: boolean }>("show-overlay", ({ state, live }) => {
-          historyRef.current = [];
-          setBars(levelsToBars([]));
-          if (state === "recording") {
-            startedRef.current = Date.now();
-            setElapsed(0);
-            // New recording: reset the stabilizer (SPEC3 FR-L4).
-            liveTextRef.current = EMPTY_LIVE;
-            setLiveText(EMPTY_LIVE);
-          }
-          setLive(state === "recording" && live === true);
-          setState(state as OverlayState);
-        }),
+        await listen<{ state: string; live?: boolean; effect?: string; theme?: string }>(
+          "show-overlay",
+          ({ state, live, effect, theme }) => {
+            if (state === "recording") {
+              startedRef.current = Date.now();
+              setElapsed(0);
+              // New recording: reset the stabilizer (SPEC3 FR-L4).
+              liveTextRef.current = EMPTY_LIVE;
+              setLiveText(EMPTY_LIVE);
+            }
+            if (effect) setEffect(effect);
+            if (theme !== undefined) applyTheme(theme);
+            setLive(state === "recording" && live === true);
+            setState(state as OverlayState);
+          },
+        ),
         await listen("hide-overlay", () => setState("hidden")),
         await listen<number>("mic-level", (level) => {
-          pushLevel(historyRef.current, level);
-          setBars(levelsToBars(historyRef.current));
+          engineRef.current?.feed(level);
         }),
         await listen<{ text: string }>("stream-text", ({ text }) => {
           liveTextRef.current = stabilize(liveTextRef.current, text);
@@ -57,6 +71,20 @@ export default function OverlayApp() {
     })();
     return () => unlisteners.forEach((u) => u());
   }, []);
+
+  // Effect engine lifecycle: runs while the recording canvas is mounted,
+  // pauses (stop) the moment the overlay leaves the recording state.
+  useEffect(() => {
+    if (state !== "recording" || !canvasRef.current) return;
+    const engine = new EffectEngine(canvasRef.current);
+    engineRef.current = engine;
+    engine.setEffect(effect);
+    engine.start();
+    return () => {
+      engineRef.current = null;
+      engine.dispose();
+    };
+  }, [state, effect, live]);
 
   useEffect(() => {
     if (state !== "recording") return;
@@ -85,10 +113,11 @@ export default function OverlayApp() {
 
   return (
     <div
-      className={`pill ${state !== "hidden" ? "visible" : ""} ${live ? "live" : ""}`}
+      className={`pill nh-theme ${state !== "hidden" ? "visible" : ""} ${live ? "live" : ""}`}
       data-testid="overlay-pill"
       data-state={state}
       data-live={live ? "true" : "false"}
+      data-effect={getEffect(effect).id}
     >
       {state === "recording" && (
         <>
@@ -115,11 +144,7 @@ export default function OverlayApp() {
           )}
           <div className="pill-row">
             <span className="rec-dot" data-testid="rec-dot" />
-            <div className="wave" data-testid="waveform">
-              {bars.map((h, i) => (
-                <i key={i} style={{ height: `${h}px` }} />
-              ))}
-            </div>
+            <canvas className="fx-canvas" data-testid="waveform" ref={canvasRef} />
             <span className="pill-timer" data-testid="timer">
               {mm}:{ss}
             </span>

@@ -5,6 +5,7 @@ import type {
   HistoryEntry,
   ModelStatus,
   Settings,
+  UserTheme,
 } from "./types";
 
 export type Unlisten = () => void;
@@ -72,4 +73,5 @@ export const api = {
   initializeCapture: () => call<boolean>("initialize_capture"),
   getAppInfo: () => call<AppInfo>("get_app_info"),
   openSettings: (section?: string) => call<void>("open_settings", { section }),
+  listUserThemes: () => call<UserTheme[]>("list_user_themes"),
 };

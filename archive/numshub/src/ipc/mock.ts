@@ -87,12 +87,22 @@ const onboardingMode = params.get("onboarding") === "1";
 // (E9e resume tests).
 const preGranted = new Set((params.get("grant") ?? "").split(",").filter(Boolean));
 
+// Settings survive a reload within a test tab (E13a) via sessionStorage.
+function loadPersistedSettings(): Partial<Settings> {
+  try {
+    return JSON.parse(sessionStorage.getItem("mock-settings") ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
 const state = {
   settings: {
     ...defaultSettings(),
     onboarding_complete: !onboardingMode,
     // Onboarding mode starts with no model at all (the model step is a gate).
     active_model: onboardingMode || params.get("noModel") === "1" ? null : "whisper-tiny",
+    ...loadPersistedSettings(),
   } as Settings,
   // Onboarding mode starts ungranted; the normal mode simulates a healthy,
   // fully configured app (recovery tests break it via __mock.revoke).
@@ -211,6 +221,11 @@ async function invoke(command: string, args?: Record<string, unknown>): Promise<
       const incoming = structuredClone(args!.settings as Settings);
       incoming.active_model = state.settings.active_model;
       state.settings = incoming;
+      try {
+        sessionStorage.setItem("mock-settings", JSON.stringify(state.settings));
+      } catch {
+        /* storage unavailable */
+      }
       return;
     }
     case "list_models":
@@ -297,6 +312,23 @@ async function invoke(command: string, args?: Record<string, unknown>): Promise<
       return state.permissions.menubar;
     case "open_menu_bar_settings":
       return;
+    case "list_user_themes":
+      return [
+        {
+          id: "user:midnight-ocean",
+          name: "Midnight Ocean",
+          variant: "dark",
+          css: ".nh-theme { --nh-pill-bg: rgba(11, 22, 34, 0.92); --nh-fx-primary: rgba(74, 168, 255, 1); --nh-fx-accent: rgba(159, 208, 255, 1); --nh-fx-glow: rgba(74, 168, 255, 0.8); --nh-text: rgba(216, 226, 236, 1); --nh-pill-border: rgba(74, 168, 255, 0.25); --nh-tentative-opacity: 0.55; --nh-placeholder: rgba(216, 226, 236, 0.45); --nh-timer: rgba(216, 226, 236, 0.7); --nh-rec-dot: rgba(255, 92, 119, 1); --nh-font: system-ui; }",
+          reason: null,
+        },
+        {
+          id: "user:broken-remote",
+          name: "Broken Remote",
+          variant: "dark",
+          css: "",
+          reason: "references a remote url() — Numshub themes are offline-only",
+        },
+      ];
     default:
       throw new Error(`mock: unhandled command '${command}'`);
   }

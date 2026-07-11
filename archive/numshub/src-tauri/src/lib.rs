@@ -15,6 +15,7 @@ pub mod registry;
 pub mod settings;
 pub mod state;
 pub mod stt;
+pub mod themes;
 pub mod tray;
 pub mod tray_probe;
 
@@ -135,6 +136,7 @@ pub fn run() {
                 .expect("resolving app data dir");
             std::fs::create_dir_all(&data_dir).ok();
 
+            themes::ensure_themes_dir(&data_dir);
             let settings = settings::Settings::load(&data_dir.join("settings.json"));
             let registry = registry::Registry::embedded().expect("embedded registry is valid");
             let history = history::HistoryStore::load(&data_dir.join("history.json"));

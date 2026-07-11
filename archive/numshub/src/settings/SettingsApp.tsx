@@ -5,16 +5,18 @@ import { useCallback, useEffect, useState } from "react";
 import { api, listen } from "../ipc/api";
 import type { HistoryEntry, ModelStatus, Settings } from "../ipc/types";
 import type { StepId } from "../lib/onboarding";
+import AppearanceSection from "./AppearanceSection";
 import GeneralSection from "./GeneralSection";
 import HotkeySection from "./HotkeySection";
 import ModelsSection from "./ModelsSection";
 import CleanupSection from "./CleanupSection";
 import Onboarding from "./Onboarding";
 
-export type SectionId = "general" | "hotkey" | "models" | "cleanup";
+export type SectionId = "general" | "appearance" | "hotkey" | "models" | "cleanup";
 
 const SECTIONS: { id: SectionId; label: string; icon: string }[] = [
   { id: "general", label: "General", icon: "⚙︎" },
+  { id: "appearance", label: "Appearance", icon: "◐" },
   { id: "hotkey", label: "Hotkey", icon: "⌘" },
   { id: "models", label: "Models", icon: "▣" },
   { id: "cleanup", label: "Cleanup", icon: "✦" },
@@ -179,6 +181,7 @@ export default function SettingsApp() {
             rerunSetup={rerunSetup}
           />
         )}
+        {section === "appearance" && <AppearanceSection settings={settings} save={save} />}
         {section === "hotkey" && (
           <HotkeySection settings={settings} save={save} startSetup={startSetup} />
         )}

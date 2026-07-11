@@ -279,6 +279,12 @@ pub fn open_menu_bar_settings() {
     crate::tray_probe::open_menu_bar_settings();
 }
 
+/// SPEC6 FR-A4: drop-in user themes from <data dir>/themes/.
+#[tauri::command]
+pub fn list_user_themes(state: State<AppState>) -> Vec<crate::themes::UserTheme> {
+    crate::themes::list_user_themes(&state.data_dir.join("themes"))
+}
+
 #[tauri::command]
 pub fn cancel_dictation(state: State<AppState>) {
     state.pipeline.cancel();
@@ -308,5 +314,6 @@ pub fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool {
         open_settings,
         tray_item_visible,
         open_menu_bar_settings,
+        list_user_themes,
     ]
 }

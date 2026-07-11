@@ -29,22 +29,18 @@ test("E10a: live mode renders stabilized text above an animating waveform", asyn
   await expect(page.getByTestId("live-stable")).toHaveText("hello");
   await expect(page.getByTestId("live-tentative")).toHaveText("walled garden");
 
-  // The waveform is still there, below the text, and still animating.
+  // The visualizer canvas is still there, below the text, and still
+  // animating (pixels change once levels arrive).
   await expect(page.getByTestId("waveform")).toBeVisible();
-  const before = await page.$$eval("[data-testid=waveform] i", (bars) =>
-    bars.map((b) => parseFloat((b as HTMLElement).style.height)),
-  );
+  const snap = () =>
+    page.evaluate(
+      () => (document.querySelector("[data-testid=waveform]") as HTMLCanvasElement).toDataURL(),
+    );
+  const before = await snap();
   await page.evaluate(() => {
     for (let i = 0; i < 8; i++) window.__mock!.emit("mic-level", 0.95);
   });
-  await expect
-    .poll(async () => {
-      const after = await page.$$eval("[data-testid=waveform] i", (bars) =>
-        bars.map((b) => parseFloat((b as HTMLElement).style.height)),
-      );
-      return after[after.length - 1];
-    })
-    .toBeGreaterThan(before[before.length - 1]);
+  await expect.poll(snap, { timeout: 4000 }).not.toBe(before);
 
   // A new recording resets the stabilizer.
   await page.evaluate(() =>

@@ -20,6 +20,8 @@ export interface Settings {
   keep_history: boolean;
   collapse_repeats: boolean;
   live_transcription: boolean;
+  overlay_effect: string;
+  overlay_theme: string;
   filler_words: string[];
   enhancement: EnhancementSettings;
   active_model: string | null;
@@ -70,6 +72,14 @@ export interface CaptureEvent {
   is_key_down: boolean;
 }
 
+export interface UserTheme {
+  id: string;
+  name: string;
+  variant: string;
+  css: string;
+  reason: string | null;
+}
+
 export const DEFAULT_ENHANCEMENT: EnhancementSettings = {
   enabled: false,
   endpoint: "http://localhost:11434",
@@ -99,6 +109,8 @@ export function defaultSettings(): Settings {
     keep_history: true,
     collapse_repeats: true,
     live_transcription: true,
+    overlay_effect: "classic-bars",
+    overlay_theme: "indigo",
     filler_words: [...DEFAULT_FILLERS],
     enhancement: { ...DEFAULT_ENHANCEMENT },
     active_model: null,

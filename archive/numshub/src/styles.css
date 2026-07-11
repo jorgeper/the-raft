@@ -431,6 +431,80 @@ button:focus-visible {
   color: var(--recording);
 }
 
+/* ---------- Appearance section ---------- */
+
+.preview-stage {
+  display: flex;
+  justify-content: center;
+  padding: 18px 0;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background:
+    repeating-conic-gradient(var(--hairline) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
+}
+
+.preview-pill {
+  position: relative;
+  inset: auto;
+  width: 320px;
+  height: 56px;
+  margin: 0;
+  pointer-events: none;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.picker-item:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.picker-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.picker-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: 40px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1px solid var(--hairline);
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.swatch i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
 /* ---------- Onboarding ---------- */
 
 .onboarding {
@@ -521,15 +595,23 @@ body.overlay-body {
   gap: 12px;
   margin: 4px;
   border-radius: 100px;
-  background: rgba(22, 22, 26, 0.86);
+  background: var(--nh-pill-bg, rgba(22, 22, 26, 0.86));
   backdrop-filter: blur(18px);
-  color: #f5f5f7;
-  border: 0.5px solid rgba(255, 255, 255, 0.14);
+  color: var(--nh-text, #f5f5f7);
+  font-family: var(--nh-font, inherit);
+  border: 0.5px solid var(--nh-pill-border, rgba(255, 255, 255, 0.14));
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 0.18s ease, transform 0.18s ease;
   pointer-events: none;
+}
+
+.fx-canvas {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  display: block;
 }
 
 .pill.visible {
@@ -574,17 +656,18 @@ body.overlay-body {
   font-size: 14.5px;
   line-height: 1.28;
   font-weight: 450;
-  color: #f5f5f7;
+  color: var(--nh-text, #f5f5f7);
+  font-family: var(--nh-font, inherit);
   letter-spacing: 0.005em;
   text-align: left;
 }
 
 .live-tentative {
-  opacity: 0.55;
+  opacity: var(--nh-tentative-opacity, 0.55);
 }
 
 .live-placeholder {
-  color: rgba(245, 245, 247, 0.45);
+  color: var(--nh-placeholder, rgba(245, 245, 247, 0.45));
   font-style: italic;
 }
 
@@ -592,7 +675,7 @@ body.overlay-body {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--recording);
+  background: var(--nh-rec-dot, var(--recording));
   flex-shrink: 0;
   animation: rec-pulse 1.6s ease-in-out infinite;
 }
@@ -614,14 +697,14 @@ body.overlay-body {
   display: block;
   width: 3px;
   border-radius: 2px;
-  background: linear-gradient(180deg, #9aa2ff, #6a74f0);
+  background: var(--nh-fx-primary, #8a93ff);
   transition: height 70ms linear;
 }
 
 .pill-timer {
   font-family: var(--mono);
   font-size: 12px;
-  color: rgba(245, 245, 247, 0.75);
+  color: var(--nh-timer, rgba(245, 245, 247, 0.75));
   min-width: 38px;
 }
 

@@ -32,6 +32,8 @@ static LAST_LEVEL_EMIT: AtomicU64 = AtomicU64::new(0);
 struct ShowPayload {
     state: String,
     live: bool,
+    effect: String,
+    theme: String,
 }
 
 #[cfg(target_os = "macos")]
@@ -150,12 +152,22 @@ pub fn show_state_with_mode(app: &AppHandle, state: &str, live: bool) {
         }
         let _ = window.show();
         OVERLAY_VISIBLE.store(true, Ordering::SeqCst);
+        // Appearance travels with every show so the overlay never renders
+        // with stale effect/theme choices (SPEC6 FR-A5).
+        let (effect, theme) = {
+            use tauri::Manager;
+            let state = app.state::<crate::state::AppState>();
+            let settings = state.settings.read().unwrap();
+            (settings.overlay_effect.clone(), settings.overlay_theme.clone())
+        };
         let _ = app.emit_to(
             OVERLAY_LABEL,
             "show-overlay",
             ShowPayload {
                 state: state.to_string(),
                 live,
+                effect,
+                theme,
             },
         );
     }

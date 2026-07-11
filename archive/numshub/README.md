@@ -25,6 +25,15 @@ whatever app has focus.
 The menu-bar icon gives you: start/stop dictation, copy or retry the last
 transcription, your five most recent transcriptions, and Settings.
 
+## Looks
+
+Settings → **Appearance** picks the recording visualizer (15 effects, from
+the classic bars to oscilloscope, starfield, fireflies, and aurora) and the
+overlay theme (12 built-ins — Phosphor CRT, Vaporwave, Nord, Newsprint, …),
+with a live preview that runs the real engine on fake voice. Fonts are part
+of the theme. You can also write your own theme as a single CSS file — see
+[THEMES.md](THEMES.md) for the contract and the drop-in folder.
+
 ## Live transcription
 
 While you speak, the overlay shows your words above the waveform — stabilized
