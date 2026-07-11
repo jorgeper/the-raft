@@ -439,11 +439,12 @@ button:focus-visible {
   padding: 18px 0;
   border: 1px solid var(--hairline);
   border-radius: 10px;
-  background:
-    repeating-conic-gradient(var(--hairline) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
+  background: var(--panel-2);
 }
 
-.preview-pill {
+/* Beat .pill's `position: fixed; inset: 0` (defined later in this file) with
+   a two-class selector — the preview must stay inside its stage. */
+.preview-stage .preview-pill {
   position: relative;
   inset: auto;
   width: 320px;
