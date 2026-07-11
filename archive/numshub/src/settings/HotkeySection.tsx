@@ -6,13 +6,16 @@ import { useEffect, useRef, useState } from "react";
 import { api, listen } from "../ipc/api";
 import type { CaptureEvent, Settings } from "../ipc/types";
 import { formatHotkey } from "../lib/hotkey";
+import type { StepId } from "../lib/onboarding";
 
 export default function HotkeySection({
   settings,
   save,
+  startSetup,
 }: {
   settings: Settings;
   save: (s: Settings) => Promise<void>;
+  startSetup: (clearDeferrals?: StepId[]) => Promise<void>;
 }) {
   const [capturing, setCapturing] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -109,6 +112,13 @@ export default function HotkeySection({
             <div className="download-error" data-testid="hotkey-error">
               {error}
             </div>
+            <button
+              className="btn primary"
+              data-testid="hotkey-fix-setup"
+              onClick={() => startSetup(["accessibility"])}
+            >
+              Fix in setup
+            </button>
           </div>
         )}
       </div>

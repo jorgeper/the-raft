@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, listen } from "../ipc/api";
 import type { HistoryEntry, ModelStatus, Settings } from "../ipc/types";
+import type { StepId } from "../lib/onboarding";
 import GeneralSection from "./GeneralSection";
 import HotkeySection from "./HotkeySection";
 import ModelsSection from "./ModelsSection";
@@ -24,6 +25,7 @@ export default function SettingsApp() {
   const [models, setModels] = useState<ModelStatus[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [section, setSection] = useState<SectionId>("general");
+  const [captureDead, setCaptureDead] = useState(false);
 
   const refreshModels = useCallback(() => {
     api.listModels().then(setModels).catch(console.error);
@@ -53,6 +55,33 @@ export default function SettingsApp() {
     return () => unlisteners.forEach((u) => u());
   }, [refreshModels, refreshHistory]);
 
+  // Capture-dead banner (SPEC4 FR-F2.1): poll while the normal sections are
+  // showing; the banner clears itself when the hotkey listener recovers.
+  const onboardingActive = settings ? !settings.onboarding_complete : true;
+  useEffect(() => {
+    if (onboardingActive) {
+      setCaptureDead(false);
+      return;
+    }
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const info = await api.getAppInfo();
+        if (!cancelled) {
+          setCaptureDead(info.platform === "macos" && !info.capture_ready);
+        }
+      } catch {
+        /* window closing */
+      }
+    };
+    check();
+    const poll = setInterval(check, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+  }, [onboardingActive]);
+
   const save = useCallback(async (next: Settings) => {
     setSettings(next);
     try {
@@ -64,6 +93,23 @@ export default function SettingsApp() {
       throw e;
     }
   }, []);
+
+  // SPEC4 FR-F1: the single recovery entry point. Clears the completion flag
+  // (and the given deferrals, so a broken-but-deferred gate is re-checked);
+  // SPEC2's gate resolution then opens the wizard at the first unmet gate.
+  const startSetup = useCallback(
+    async (clearDeferrals: StepId[] = []) => {
+      const current = await api.getSettings();
+      await save({
+        ...current,
+        onboarding_complete: false,
+        onboarding_skips: current.onboarding_skips.filter(
+          (s) => !clearDeferrals.includes(s as StepId),
+        ),
+      });
+    },
+    [save],
+  );
 
   if (!settings) return null;
 
@@ -95,6 +141,21 @@ export default function SettingsApp() {
         ))}
       </nav>
       <main className="settings-content" data-testid={`section-${section}`}>
+        {captureDead && (
+          <div className="banner" data-testid="capture-banner">
+            <span>
+              The dictation hotkey is inactive — Accessibility permission is missing or was
+              re-keyed by an update.
+            </span>
+            <button
+              className="btn primary"
+              data-testid="capture-banner-fix"
+              onClick={() => startSetup(["accessibility"])}
+            >
+              Fix in setup
+            </button>
+          </div>
+        )}
         {section === "general" && (
           <GeneralSection
             settings={settings}
@@ -103,7 +164,9 @@ export default function SettingsApp() {
             refreshHistory={refreshHistory}
           />
         )}
-        {section === "hotkey" && <HotkeySection settings={settings} save={save} />}
+        {section === "hotkey" && (
+          <HotkeySection settings={settings} save={save} startSetup={startSetup} />
+        )}
         {section === "models" && (
           <ModelsSection settings={settings} models={models} refreshModels={refreshModels} />
         )}

@@ -117,6 +117,16 @@ Notes:
   with a real Developer ID identity (`bundle > macOS > signingIdentity` in
   `tauri.conf.json`) — Tahoe ties menu-bar permissions to signed bundles.
 
+### The hotkey stopped working
+
+If the Accessibility permission is revoked or re-keyed (updates to dev builds
+do this), the settings window shows a warning banner on every section: "The
+dictation hotkey is inactive…" — click **Fix in setup** and the wizard opens
+directly on the broken gate; fixing it resumes everything, no relaunch. The
+same button appears on the Hotkey section's error. For a full re-check of
+everything (permissions, menu-bar icon, models), use Settings → General →
+**Re-run setup** — steps that still pass are skipped automatically.
+
 ### Dictation says "Pick a model" unexpectedly
 
 The active model lives in `~/Library/Application Support/com.numshub.app/

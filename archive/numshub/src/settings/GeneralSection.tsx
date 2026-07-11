@@ -134,7 +134,8 @@ export default function GeneralSection({
           <div>
             <div className="row-label">Re-run setup</div>
             <div className="row-sub">
-              Walk the permission and model checks again from the start.
+              If something stopped working (permissions, hotkey, models), this re-checks
+              everything and walks you through fixing whatever fails.
             </div>
           </div>
           <button

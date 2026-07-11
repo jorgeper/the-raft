@@ -94,11 +94,13 @@ const state = {
     // Onboarding mode starts with no model at all (the model step is a gate).
     active_model: onboardingMode || params.get("noModel") === "1" ? null : "whisper-tiny",
   } as Settings,
+  // Onboarding mode starts ungranted; the normal mode simulates a healthy,
+  // fully configured app (recovery tests break it via __mock.revoke).
   permissions: {
-    microphone: preGranted.has("microphone"),
-    accessibility: preGranted.has("accessibility"),
-    captureReady: preGranted.has("capture"),
-    menubar: preGranted.has("menubar"),
+    microphone: !onboardingMode || preGranted.has("microphone"),
+    accessibility: !onboardingMode || preGranted.has("accessibility"),
+    captureReady: !onboardingMode || preGranted.has("capture"),
+    menubar: !onboardingMode || preGranted.has("menubar"),
   },
   models: new Map<string, MockModelState>(
     CATALOG.map((m) => [
@@ -267,6 +269,9 @@ async function invoke(command: string, args?: Record<string, unknown>): Promise<
     case "list_input_devices":
       return ["MacBook Pro Microphone", "External USB Mic"];
     case "start_hotkey_capture":
+      if (!state.permissions.captureReady) {
+        throw new Error("keyboard capture is not initialized (grant Accessibility first)");
+      }
       state.captureTimer = setTimeout(() => {
         emit("hotkey-capture-event", { hotkey_string: "command_right", is_key_down: true });
         setTimeout(() => {
@@ -332,6 +337,8 @@ declare global {
       calls: () => { command: string; args: Record<string, unknown> | undefined }[];
       captureKeys: (hotkeyString: string) => void;
       grant: (what: Grantable) => void;
+      revoke: (what: Grantable) => void;
+      seedDeferrals: (steps: string[]) => void;
     };
   }
 }
@@ -356,5 +363,14 @@ window.__mock = {
       state.permissions.captureReady = true;
       emit("capture-ready", true);
     }
+  },
+  revoke: (what: Grantable) => {
+    if (what === "microphone") state.permissions.microphone = false;
+    if (what === "accessibility") state.permissions.accessibility = false;
+    if (what === "menubar") state.permissions.menubar = false;
+    if (what === "capture") state.permissions.captureReady = false;
+  },
+  seedDeferrals: (steps: string[]) => {
+    state.settings.onboarding_skips = [...steps];
   },
 };
