@@ -69,8 +69,12 @@ text instead — dictation never waits on a slow model.
 
 First-run setup walks these one screen at a time, and each screen verifies
 the *actual* system state before it lets you continue — clicking a button
-never advances the flow; the permission really appearing does. You can re-run
-it anytime from Settings → General → "Re-run setup".
+never advances the flow; the permission really appearing does. You can go
+back at any point (the ‹ Back button or the progress dots) to re-read a
+step's instructions, even one that's already satisfied — it shows in its
+green "met" state and never yanks you forward while you read. Settings →
+General → "Re-run setup" replays the whole walkthrough from the top, with
+everything that still passes shown as met.
 
 1. **Microphone** — to hear you. The wizard triggers the native prompt and
    waits until the permission is genuinely granted. Not skippable.

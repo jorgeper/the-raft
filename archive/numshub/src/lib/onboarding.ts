@@ -65,3 +65,8 @@ export function firstUnmetStep(snap: GateSnapshot, skips: readonly string[]): St
   }
   return "try";
 }
+
+/** Public gate check (SPEC5: Continue enablement and transition detection). */
+export function stepMet(step: StepId, snap: GateSnapshot, skips: readonly string[]): boolean {
+  return gateMet(step, snap, skips);
+}

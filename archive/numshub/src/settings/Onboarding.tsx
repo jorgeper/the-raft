@@ -1,15 +1,34 @@
-// First-run wizard, SPEC2: one screen = one gate = one verified fact.
-// Every permission step polls the REAL system state; Continue never enables
-// from a button click. The wizard resumes at the first unmet gate.
+// First-run wizard, SPEC2 + SPEC5: one screen = one gate = one verified fact,
+// now with backward navigation. Steps before the frontier render in review
+// mode (full instructions, satisfied status); forward movement past an unmet
+// gate remains impossible from every control. Auto-advance fires ONLY when
+// the displayed step's own gate transitions unmet -> met — never while
+// reviewing an already-met step (the no-yank rule).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, listen } from "../ipc/api";
 import { permissions } from "../ipc/permissions";
 import type { DownloadProgress, ModelStatus, Settings } from "../ipc/types";
-import { firstUnmetStep, stepsFor, type GateSnapshot, type StepId } from "../lib/onboarding";
+import {
+  firstUnmetStep,
+  stepMet,
+  stepsFor,
+  type GateSnapshot,
+  type StepId,
+} from "../lib/onboarding";
+import { backTarget, canNavigateTo, isReview, jumpTarget, nextStep } from "../lib/wizardNav";
 
 const POLL_MS = 1000;
 const TRAY_POLL_MS = 1500;
+
+const STEP_NAMES: Record<StepId, string> = {
+  welcome: "Welcome",
+  microphone: "Microphone",
+  accessibility: "Accessibility",
+  menubar: "Menu bar",
+  model: "Model",
+  try: "Try it",
+};
 
 async function readSnapshot(models: ModelStatus[], settings: Settings): Promise<GateSnapshot> {
   const perms = await permissions();
@@ -38,11 +57,14 @@ export default function Onboarding({
   settings,
   models,
   refreshModels,
+  startAtWelcome = false,
   onDone,
 }: {
   settings: Settings;
   models: ModelStatus[];
   refreshModels: () => void;
+  /** Re-run setup walks from the top (SPEC5 §4.3). Session-only intent. */
+  startAtWelcome?: boolean;
   onDone: (settings: Settings) => Promise<void>;
 }) {
   const [snapshot, setSnapshot] = useState<GateSnapshot | null>(null);
@@ -52,6 +74,8 @@ export default function Onboarding({
   modelsRef.current = models;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  // Gate-transition tracking for the displayed step (auto-advance trigger).
+  const metRef = useRef<{ step: StepId | null; met: boolean }>({ step: null, met: false });
 
   const refreshSnapshot = useCallback(async () => {
     try {
@@ -64,32 +88,25 @@ export default function Onboarding({
     }
   }, []);
 
-  // Resume at the first unmet gate (SPEC2 §3) — never a stored index.
+  // Open at the frontier — or at Welcome when re-running the whole walk.
   useEffect(() => {
     refreshSnapshot().then((snap) => {
-      if (snap) setStep(firstUnmetStep(snap, skipsRef.current));
+      if (!snap) return;
+      setStep(startAtWelcome ? "welcome" : firstUnmetStep(snap, skipsRef.current));
     });
-  }, [refreshSnapshot]);
+  }, [refreshSnapshot, startAtWelcome]);
 
-  // Poll while visible; auto-advance the moment the current gate is met.
+  // Poll while visible; keeps every chip truthful.
   useEffect(() => {
     if (!step || step === "try") return;
     const interval = setInterval(
-      async () => {
-        const snap = await refreshSnapshot();
-        if (!snap) return;
-        const next = firstUnmetStep(snap, skipsRef.current);
-        const order = stepsFor(snap.platform);
-        // Only ever move FORWARD automatically (losing a permission
-        // mid-wizard shouldn't yank the user backwards without warning).
-        if (order.indexOf(next) > order.indexOf(step)) setStep(next);
-      },
+      refreshSnapshot,
       step === "menubar" ? TRAY_POLL_MS : POLL_MS,
     );
     return () => clearInterval(interval);
   }, [step, refreshSnapshot]);
 
-  // capture-ready event advances the accessibility gate without waiting a tick.
+  // capture-ready event refreshes immediately (no waiting for the next tick).
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     (async () => {
@@ -100,23 +117,52 @@ export default function Onboarding({
     return () => unlisten?.();
   }, [refreshSnapshot]);
 
-  const skip = useCallback(
-    async (id: StepId) => {
-      if (!skipsRef.current.includes(id)) {
-        skipsRef.current = [...skipsRef.current, id];
-        // Persist so a relaunch honors the skip (SPEC2 §3).
-        await api.setSettings({ ...settingsRef.current, onboarding_skips: skipsRef.current });
+  // Auto-advance ONLY on the displayed step's own unmet -> met transition
+  // (SPEC5 §2.4). Reviewing an already-met step never yanks.
+  useEffect(() => {
+    if (!step || !snapshot) return;
+    const met = stepMet(step, snapshot, skipsRef.current);
+    const prev = metRef.current;
+    metRef.current = { step, met };
+    if (prev.step === step && !prev.met && met && step !== "try") {
+      setStep(firstUnmetStep(snapshot, skipsRef.current));
+    }
+  }, [snapshot, step]);
+
+  const navigate = useCallback(
+    (target: StepId) => {
+      if (!snapshot) return;
+      const frontier = firstUnmetStep(snapshot, skipsRef.current);
+      if (canNavigateTo(target, frontier, snapshot.platform)) {
+        metRef.current = { step: null, met: false };
+        setStep(target);
+        refreshSnapshot();
       }
-      const snap = snapshot ?? (await refreshSnapshot());
-      if (snap) setStep(firstUnmetStep(snap, skipsRef.current));
     },
     [snapshot, refreshSnapshot],
   );
 
-  const advance = useCallback(async () => {
-    const snap = await refreshSnapshot();
-    if (snap) setStep(firstUnmetStep(snap, skipsRef.current));
-  }, [refreshSnapshot]);
+  const goNext = useCallback(() => {
+    if (!step || !snapshot) return;
+    const next = nextStep(step, snapshot.platform);
+    if (next) {
+      metRef.current = { step: null, met: false };
+      setStep(next);
+      refreshSnapshot();
+    }
+  }, [step, snapshot, refreshSnapshot]);
+
+  const skip = useCallback(
+    async (id: StepId) => {
+      if (!skipsRef.current.includes(id)) {
+        skipsRef.current = [...skipsRef.current, id];
+        // Persist so a relaunch honors the deferral (SPEC2 §3).
+        await api.setSettings({ ...settingsRef.current, onboarding_skips: skipsRef.current });
+      }
+      goNext();
+    },
+    [goNext],
+  );
 
   const steps = useMemo(
     () => stepsFor(snapshot?.platform ?? "macos"),
@@ -125,36 +171,74 @@ export default function Onboarding({
 
   if (!step || !snapshot) return null;
 
+  const frontier = firstUnmetStep(snapshot, skipsRef.current);
+  const review = isReview(step, frontier, snapshot.platform);
+  const back = backTarget(step, snapshot.platform);
+  const jump = review ? jumpTarget(step, frontier, snapshot.platform) : null;
+  const met = stepMet(step, snapshot, skipsRef.current);
+
+  const gateProps = { snapshot, met, review, onNext: goNext };
+
   return (
     <div className="onboarding" data-testid="onboarding" data-step={step}>
+      {back && (
+        <button className="wizard-back" data-testid="wizard-back" onClick={() => navigate(back)}>
+          ‹ Back
+        </button>
+      )}
       <div className="steps">
-        {steps.map((s) => (
-          <span
-            key={s}
-            className={`step-dot ${steps.indexOf(s) <= steps.indexOf(step) ? "done" : ""}`}
-          />
-        ))}
+        {steps.map((s) => {
+          const reachable = canNavigateTo(s, frontier, snapshot.platform);
+          return (
+            <button
+              key={s}
+              type="button"
+              title={STEP_NAMES[s]}
+              data-testid={`dot-${s}`}
+              className={`step-dot ${steps.indexOf(s) <= steps.indexOf(step) ? "done" : ""} ${
+                reachable ? "clickable" : ""
+              }`}
+              onClick={() => reachable && navigate(s)}
+            />
+          );
+        })}
       </div>
-      {step === "welcome" && <Welcome onNext={() => setStep(steps[1])} />}
-      {step === "microphone" && <Microphone snapshot={snapshot} onNext={advance} />}
+      {step === "welcome" && <Welcome onNext={goNext} />}
+      {step === "microphone" && <Microphone {...gateProps} />}
       {step === "accessibility" && (
-        <Accessibility snapshot={snapshot} onNext={advance} onSkip={() => skip("accessibility")} />
+        <Accessibility {...gateProps} onSkip={() => skip("accessibility")} />
       )}
-      {step === "menubar" && (
-        <MenuBar snapshot={snapshot} onNext={advance} onSkip={() => skip("menubar")} />
-      )}
+      {step === "menubar" && <MenuBar {...gateProps} onSkip={() => skip("menubar")} />}
       {step === "model" && (
-        <ModelChoice models={models} refreshModels={refreshModels} onNext={advance} />
+        <ModelChoice models={models} refreshModels={refreshModels} onNext={goNext} />
       )}
       {step === "try" && (
         <TryIt
           snapshot={snapshot}
-          goTo={setStep}
+          // Red rows jump straight to the broken gate — deliberately not
+          // frontier-bounded (a lost permission can sit past the frontier).
+          goTo={(s) => {
+            metRef.current = { step: null, met: false };
+            setStep(s);
+            refreshSnapshot();
+          }}
           onDone={() => onDone({ ...settingsRef.current, onboarding_skips: skipsRef.current })}
         />
       )}
+      {jump && (
+        <button className="btn" data-testid="wizard-jump" onClick={() => navigate(jump)}>
+          Jump to where I left off ›
+        </button>
+      )}
     </div>
   );
+}
+
+interface GateStepProps {
+  snapshot: GateSnapshot;
+  met: boolean;
+  review: boolean;
+  onNext: () => void;
 }
 
 function Welcome({ onNext }: { onNext: () => void }) {
@@ -173,7 +257,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
   );
 }
 
-function Microphone({ snapshot, onNext }: { snapshot: GateSnapshot; onNext: () => void }) {
+function Microphone({ snapshot, met, onNext }: GateStepProps) {
   const [requested, setRequested] = useState(false);
   const granted = snapshot.microphone;
 
@@ -202,7 +286,7 @@ function Microphone({ snapshot, onNext }: { snapshot: GateSnapshot; onNext: () =
       <button
         className="btn primary"
         data-testid="onboarding-next"
-        disabled={!granted}
+        disabled={!met}
         onClick={onNext}
       >
         Continue
@@ -213,15 +297,13 @@ function Microphone({ snapshot, onNext }: { snapshot: GateSnapshot; onNext: () =
 
 function Accessibility({
   snapshot,
+  met,
+  review,
   onNext,
   onSkip,
-}: {
-  snapshot: GateSnapshot;
-  onNext: () => void;
-  onSkip: () => void;
-}) {
+}: GateStepProps & { onSkip: () => void }) {
   // Two facts (SPEC2 FR-O2b): the permission AND the armed hotkey listener.
-  const met = snapshot.accessibility && snapshot.captureReady;
+  const reallyMet = snapshot.accessibility && snapshot.captureReady;
 
   const request = async () => {
     const perms = await permissions();
@@ -236,18 +318,18 @@ function Accessibility({
         and pressing ⌘V to paste the finished text. Numshub never reads your screen.
       </p>
       <StatusChip
-        ok={met}
+        ok={reallyMet}
         checking={snapshot.accessibility && !snapshot.captureReady}
         label="Granted ✓ — hotkey armed"
       />
       {snapshot.accessibility && !snapshot.captureReady && (
         <p data-testid="arming-note">Permission granted — arming the hotkey listener…</p>
       )}
-      {!met && (
+      <button className="btn primary" data-testid="ax-request" onClick={request}>
+        Open System Settings
+      </button>
+      {!reallyMet && !review && (
         <>
-          <button className="btn primary" data-testid="ax-request" onClick={request}>
-            Open System Settings
-          </button>
           <p data-testid="stale-hint">
             Already enabled in the list but still showing "Not granted" here? macOS ties the
             permission to each build of the app — remove Numshub from the Accessibility list
@@ -272,13 +354,11 @@ function Accessibility({
 
 function MenuBar({
   snapshot,
+  met,
+  review,
   onNext,
   onSkip,
-}: {
-  snapshot: GateSnapshot;
-  onNext: () => void;
-  onSkip: () => void;
-}) {
+}: GateStepProps & { onSkip: () => void }) {
   const open = async () => {
     const perms = await permissions();
     await perms.openMenuBarSettings();
@@ -291,16 +371,16 @@ function MenuBar({
         macOS decides which apps may show a menu-bar icon. Numshub's icon is how you reach
         settings, history, and retry — without it the app still works, but it's invisible.
       </p>
+      <p>
+        In System Settings, find <b>Numshub</b> under <b>Menu Bar</b> and turn on{" "}
+        <b>Allow in the Menu Bar</b>. This screen updates by itself when the icon appears.
+      </p>
       <StatusChip ok={snapshot.trayVisible} label="Visible ✓" />
-      {!snapshot.trayVisible && (
+      <button className="btn primary" data-testid="menubar-open" onClick={open}>
+        Open System Settings
+      </button>
+      {!snapshot.trayVisible && !review && (
         <>
-          <p>
-            In System Settings, find <b>Numshub</b> under <b>Menu Bar</b> and turn on{" "}
-            <b>Allow in the Menu Bar</b>. This screen updates by itself when the icon appears.
-          </p>
-          <button className="btn primary" data-testid="menubar-open" onClick={open}>
-            Open System Settings
-          </button>
           <button className="btn" data-testid="menubar-confirm" onClick={onSkip}>
             I can see the icon — continue
           </button>
@@ -312,7 +392,7 @@ function MenuBar({
       <button
         className="btn primary"
         data-testid="onboarding-next"
-        disabled={!snapshot.trayVisible}
+        disabled={!met}
         onClick={onNext}
       >
         Continue
@@ -332,6 +412,7 @@ function ModelChoice({
 }) {
   const recommended = models.find((m) => m.recommended);
   const quickStart = models.find((m) => m.id === "whisper-tiny");
+  const active = models.find((m) => m.active && m.downloaded);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -345,7 +426,7 @@ function ModelChoice({
   }, []);
 
   // The verified gate (SPEC2 FR-O2d): downloaded AND active.
-  const ready = models.some((m) => m.downloaded && m.active);
+  const ready = active != null;
 
   const pick = async (m: ModelStatus) => {
     setError(null);
@@ -367,6 +448,11 @@ function ModelChoice({
     <>
       <h1>Pick a model</h1>
       <p>This is the only download Numshub ever makes. You can add or switch models later.</p>
+      {ready && (
+        <p data-testid="active-model-note">
+          Active model: <b>{active.display_name}</b> — change it anytime in Settings → Models.
+        </p>
+      )}
       {downloadingId ? (
         <div style={{ width: 320 }}>
           <div className="progress-track">

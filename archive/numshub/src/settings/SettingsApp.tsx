@@ -26,6 +26,9 @@ export default function SettingsApp() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [section, setSection] = useState<SectionId>("general");
   const [captureDead, setCaptureDead] = useState(false);
+  // Session-only intent (SPEC5 §4.3): Re-run setup walks from the top;
+  // launch resume and Fix-in-setup open at the frontier.
+  const [wizardFromTop, setWizardFromTop] = useState(false);
 
   const refreshModels = useCallback(() => {
     api.listModels().then(setModels).catch(console.error);
@@ -111,6 +114,13 @@ export default function SettingsApp() {
     [save],
   );
 
+  // Re-run setup (SPEC5 §4.3): full walkthrough from Welcome.
+  const rerunSetup = useCallback(async () => {
+    setWizardFromTop(true);
+    const current = await api.getSettings();
+    await save({ ...current, onboarding_complete: false, onboarding_skips: [] });
+  }, [save]);
+
   if (!settings) return null;
 
   if (!settings.onboarding_complete) {
@@ -119,7 +129,11 @@ export default function SettingsApp() {
         settings={settings}
         models={models}
         refreshModels={refreshModels}
-        onDone={(next) => save({ ...next, onboarding_complete: true })}
+        startAtWelcome={wizardFromTop}
+        onDone={async (next) => {
+          await save({ ...next, onboarding_complete: true });
+          setWizardFromTop(false);
+        }}
       />
     );
   }
@@ -162,6 +176,7 @@ export default function SettingsApp() {
             save={save}
             history={history}
             refreshHistory={refreshHistory}
+            rerunSetup={rerunSetup}
           />
         )}
         {section === "hotkey" && (

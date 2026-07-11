@@ -11,11 +11,13 @@ export default function GeneralSection({
   save,
   history,
   refreshHistory,
+  rerunSetup,
 }: {
   settings: Settings;
   save: (s: Settings) => Promise<void>;
   history: HistoryEntry[];
   refreshHistory: () => void;
+  rerunSetup: () => Promise<void>;
 }) {
   const [devices, setDevices] = useState<string[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -138,13 +140,7 @@ export default function GeneralSection({
               everything and walks you through fixing whatever fails.
             </div>
           </div>
-          <button
-            className="btn"
-            data-testid="rerun-setup"
-            onClick={() =>
-              save({ ...settings, onboarding_complete: false, onboarding_skips: [] })
-            }
-          >
+          <button className="btn" data-testid="rerun-setup" onClick={() => rerunSetup()}>
             Re-run
           </button>
         </div>

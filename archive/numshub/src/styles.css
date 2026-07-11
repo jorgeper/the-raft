@@ -463,14 +463,47 @@ button:focus-visible {
 }
 
 .onboarding .step-dot {
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border: none;
   border-radius: 50%;
   background: var(--hairline);
+  cursor: default;
 }
 
 .onboarding .step-dot.done {
   background: var(--accent);
+}
+
+.onboarding .step-dot.clickable {
+  cursor: pointer;
+}
+
+.onboarding .step-dot.clickable:hover {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.wizard-back {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.wizard-back:hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.onboarding {
+  position: relative;
 }
 
 /* ---------- Overlay pill ---------- */
