@@ -1,5 +1,28 @@
 # Verification Record
 
+## M5 — Voice Memory, Settings Polish, Packaging (2026-07-12)
+
+- `cargo test` — **23/23 pass** (adds: voice library remember/replace/forget/threshold
+  round-trip).
+- `cargo test --test voice_memory` — **pass**: session A records Alice (no auto-name,
+  library empty), voiceprint attached at stop, remembered; session B (fresh engine)
+  auto-names her "Alice" on arrival with `auto_named: true`; session C confirms Bob
+  does **not** match her print (threshold 0.70 vs cross-voice ~0.56–0.62).
+- `npx playwright test` — **6/6 pass** (adds: post-stop "Remember this voice" flow and
+  the Settings → Remembered voices list).
+- Full regression: golden_two_speakers, recovery, engine/lib suites all green.
+- **Packaging:** `npm run tauri build` produces `Minutes.app` + `Minutes_0.1.0_aarch64.dmg`
+  (14 MB). Bundle verified: `com.jorgeper.minutes`, `LSMinimumSystemVersion 11.0`,
+  mic-usage string present; app launches and quits cleanly. Fix along the way:
+  whisper.cpp needs macOS ≥ 10.15 for `std::filesystem`, so
+  `bundle.macOS.minimumSystemVersion = "11.0"` (stale CMake caches must be cleared
+  when this changes — `rm -rf target/release/build/whisper-rs-sys-*`).
+- **Hand-off steps (cannot be automated here, documented in README.md):**
+  notarization needs Jorge's Apple Developer credentials; the Windows MSI needs a
+  Windows machine.
+- Perf recap on this Mac (`small`, Metal): utterance finalization ~255 ms after the
+  600 ms silence window ⇒ ~0.9 s from stopping talking to final text (target ≤ ~2 s).
+
 ## M4 — OOBE + Model Manager (2026-07-12)
 
 - `cargo test` — **22/22 pass** (adds: catalog well-formedness — unique names, 64-hex
