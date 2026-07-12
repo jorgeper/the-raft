@@ -8,6 +8,7 @@ pub mod namer;
 pub mod paths;
 pub mod stt;
 pub mod vad;
+pub mod voices;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

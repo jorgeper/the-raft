@@ -34,6 +34,8 @@ struct Shared {
     conversation: Mutex<Conversation>,
     session_audio: Mutex<Vec<f32>>,
     utterance_count: Mutex<u32>,
+    /// Diarizer cluster centroids, index-aligned with `conversation.speakers`.
+    centroids: Mutex<Vec<Vec<f32>>>,
 }
 
 /// Snapshots the conversation to the recovery file every `MINUTES_AUTOSAVE_SECS`
@@ -122,6 +124,7 @@ impl Engine {
             conversation: Mutex::new(Conversation::new_recording(model)),
             session_audio: Mutex::new(Vec::new()),
             utterance_count: Mutex::new(0),
+            centroids: Mutex::new(Vec::new()),
         });
 
         let (chunk_tx, chunk_rx) = crossbeam_channel::unbounded::<Vec<f32>>();
@@ -198,6 +201,12 @@ impl Engine {
 
         let mut conv = self.shared.conversation.lock().unwrap().clone();
         conv.ended_at = Some(chrono::Local::now());
+        // Attach voiceprints so "Remember this voice" has something to keep.
+        let centroids = self.shared.centroids.lock().unwrap();
+        for (i, sp) in conv.speakers.iter_mut().enumerate() {
+            sp.embedding = centroids.get(i).cloned();
+        }
+        drop(centroids);
         let audio = std::mem::take(&mut *self.shared.session_audio.lock().unwrap());
         Ok((conv, audio))
     }
@@ -251,6 +260,7 @@ fn spawn_stt(
     events: Sender<EngineEvent>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
+        let voice_library = crate::voices::load();
         let mut last_partial = Instant::now();
         let mut last_partial_len = 0usize;
         loop {
@@ -266,16 +276,42 @@ fn spawn_stt(
                                     0
                                 }
                             };
+                            // Mirror centroids for stop() and voice matching.
+                            let centroid = diarizer.centroid(speaker_idx).map(|c| c.to_vec());
+                            if let Some(c) = &centroid {
+                                let mut cents = shared.centroids.lock().unwrap();
+                                if speaker_idx < cents.len() {
+                                    cents[speaker_idx] = c.clone();
+                                } else {
+                                    cents.push(c.clone());
+                                }
+                            }
                             let (item, new_speaker, renamed) = {
                                 let mut conv = shared.conversation.lock().unwrap();
                                 let (speaker_id, created) = conv.ensure_speaker(speaker_idx);
                                 let new_speaker =
                                     created.then(|| conv.speakers[speaker_idx].clone());
+                                // Returning voice? Auto-name from the opt-in
+                                // library. Emitted as a second event so the UI
+                                // shows the "Speaker N → Name" undo toast.
+                                let lib_renamed = if created {
+                                    centroid
+                                        .as_deref()
+                                        .and_then(|c| crate::voices::best_match(&voice_library, c))
+                                        .map(|hit| {
+                                            let sp = &mut conv.speakers[speaker_idx];
+                                            sp.name = hit.name.clone();
+                                            sp.auto_named = true;
+                                            sp.clone()
+                                        })
+                                } else {
+                                    None
+                                };
                                 // "I am X": rename this utterance's speaker,
                                 // retroactively and going forward, unless a
                                 // human already named them (spec §5.2).
-                                let renamed = crate::namer::detect_self_name(&text)
-                                    .and_then(|name| {
+                                let renamed = lib_renamed.or_else(|| {
+                                    crate::namer::detect_self_name(&text).and_then(|name| {
                                         let sp = &mut conv.speakers[speaker_idx];
                                         let untouched = sp.name.starts_with("Speaker ");
                                         (untouched || sp.auto_named).then(|| {
@@ -283,7 +319,8 @@ fn spawn_stt(
                                             sp.auto_named = true;
                                             sp.clone()
                                         })
-                                    });
+                                    })
+                                });
                                 let mut count = shared.utterance_count.lock().unwrap();
                                 *count += 1;
                                 let item = Item::Utterance {
