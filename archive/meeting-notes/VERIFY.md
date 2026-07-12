@@ -1,3 +1,24 @@
+# Verification Record
+
+## M2 — Diarization + "I am X" (2026-07-12)
+
+- `cargo test` — **19/19 pass** (adds: diarizer same-voice/different-voice/alternating
+  clustering, namer positives/negatives/two-token-cap/punctuation, engine two-speaker
+  session with `SpeakerUpdated` events).
+- `cargo test --test golden_two_speakers` — **pass**: 4-utterance alice/bob conversation
+  (Samantha + Daniel `say` voices) → exactly 2 speakers; "Well, I am Alice…" auto-names
+  her speaker (`auto_named: true`); her **pre-introduction** utterance carries her
+  speaker id (the retroactive property); Bob stays "Speaker N".
+- `npx playwright test` — **3/3 pass** (adds: second speaker renders its own header +
+  color, "Speaker 1 → Alice" toast appears, Undo restores the old name).
+- Real-mic regression: transcript still exact, finalization 254/277 ms after segmenter
+  close with the diarizer in the loop (no measurable latency cost).
+- Clustering threshold 0.65 tuned on measured fixture similarities (same voice
+  0.92–0.94, cross 0.56–0.62). TTS voices from one engine are artificially close;
+  real-voice tuning may need to lower it — revisit during M5 polish with human audio.
+- Deferred by design: cluster refinement (re-assigning early utterances between
+  existing clusters mid-meeting).
+
 # M1 Verification Record
 
 **Date:** 2026-07-12 · **Machine:** Apple Silicon Mac, macOS 26.5.1 · **Model:** whisper `small` (Metal)
