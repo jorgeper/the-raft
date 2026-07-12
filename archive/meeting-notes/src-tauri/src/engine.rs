@@ -427,6 +427,49 @@ mod tests {
     }
 
     #[test]
+    fn pause_drops_audio_and_keeps_time_continuous() {
+        if !models_ready() {
+            return;
+        }
+        let full = crate::audio::load_wav_16k_mono(std::path::Path::new(
+            "tests/fixtures/twoparts.wav",
+        ))
+        .unwrap();
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        // realtime pacing so pause windows map to real audio spans
+        let src = WavFileSource::new("tests/fixtures/twoparts.wav", true);
+        let eng = Engine::start(Box::new(src), "small", tx).unwrap();
+        std::thread::sleep(Duration::from_secs(1));
+        eng.pause();
+        std::thread::sleep(Duration::from_secs(2));
+        eng.resume();
+        std::thread::sleep(Duration::from_secs(5)); // file finishes streaming
+        let (conv, audio) = eng.stop().unwrap();
+
+        // ~2s of paused audio must be missing from the session buffer.
+        assert!(
+            audio.len() < full.len() - 16000,
+            "paused audio was not dropped: kept {} of {}",
+            audio.len(),
+            full.len()
+        );
+        assert!(audio.len() > 16000, "should still keep unpaused audio");
+
+        // t_* index into the pause-adjusted session audio, so every utterance
+        // must fit inside it.
+        let session_secs = audio.len() as f64 / 16000.0;
+        for item in &conv.items {
+            if let Item::Utterance { t_start, t_end, .. } = item {
+                assert!(t_end > t_start);
+                assert!(
+                    *t_end <= session_secs + 0.25,
+                    "t_end {t_end} outside session audio {session_secs}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn wav_session_produces_final_utterances_and_document() {
         if !models_ready() {
             return;

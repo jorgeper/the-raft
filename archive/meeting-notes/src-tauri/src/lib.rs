@@ -23,6 +23,8 @@ pub fn run() {
             commands::open,
             commands::add_image,
             commands::rename_speaker,
+            commands::get_settings,
+            commands::set_settings,
             commands::check_recovery,
             commands::recover,
             commands::discard_recovery,

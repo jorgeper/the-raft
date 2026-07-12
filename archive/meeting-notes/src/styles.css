@@ -200,6 +200,20 @@ input:focus-visible {
   white-space: nowrap;
 }
 
+.keep-audio {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.keep-audio input {
+  accent-color: var(--accent);
+}
+
 .btn-save {
   background: var(--accent);
   color: #fff;

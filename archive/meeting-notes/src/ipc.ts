@@ -23,6 +23,8 @@ export interface Backend {
   /** Fires with absolute file paths when files are dropped on the window. */
   onDragDrop(cb: (paths: string[]) => void): () => void;
   renameSpeaker(speakerId: string, name: string): Promise<void>;
+  getSettings(): Promise<{ keep_audio: boolean }>;
+  setSettings(settings: { keep_audio: boolean }): Promise<void>;
   checkRecovery(): Promise<Conversation | null>;
   recover(): Promise<Conversation>;
   discardRecovery(): Promise<void>;
@@ -128,6 +130,8 @@ function realBackend(): Backend {
     },
     renameSpeaker: (speakerId, name) =>
       t.invoke("rename_speaker", { speakerId, name }) as Promise<void>,
+    getSettings: () => t.invoke("get_settings") as Promise<{ keep_audio: boolean }>,
+    setSettings: (settings) => t.invoke("set_settings", { settings }) as Promise<void>,
     checkRecovery: () => t.invoke("check_recovery") as Promise<Conversation | null>,
     recover: () => t.invoke("recover") as Promise<Conversation>,
     discardRecovery: () => t.invoke("discard_recovery") as Promise<void>,
@@ -318,6 +322,10 @@ function mockBackend(): Backend {
       speakerCbs.push(cb);
       return () => speakerCbs.splice(speakerCbs.indexOf(cb), 1);
     },
+    async getSettings() {
+      return { keep_audio: true };
+    },
+    async setSettings() {},
     async checkRecovery() {
       return null;
     },

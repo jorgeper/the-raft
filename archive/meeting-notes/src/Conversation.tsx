@@ -38,6 +38,7 @@ function Conversation({ initial, initialAssetUrls, onHome }: Props) {
   const [savedAs, setSavedAs] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; undo: () => void } | null>(null);
+  const [keepAudio, setKeepAudio] = useState(true);
   const [renaming, setRenaming] = useState<string | null>(null);
   const speakersRef = useRef<Speaker[]>(initial?.speakers ?? []);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -47,6 +48,10 @@ function Conversation({ initial, initialAssetUrls, onHome }: Props) {
   const stuckToBottom = useRef(true);
 
   const model = initial?.engine.stt.model ?? "small";
+
+  useEffect(() => {
+    backend.getSettings().then((s) => setKeepAudio(s.keep_audio));
+  }, []);
 
   useEffect(() => {
     const offs = [
@@ -188,9 +193,22 @@ function Conversation({ initial, initialAssetUrls, onHome }: Props) {
         />
         <span className="engine-chip">whisper {model} · on-device</span>
         {canSave && (
-          <button className="btn-save" onClick={handleSave}>
-            {savedAs ? "Saved" : "Save"}
-          </button>
+          <>
+            <label className="keep-audio">
+              <input
+                type="checkbox"
+                checked={keepAudio}
+                onChange={(e) => {
+                  setKeepAudio(e.target.checked);
+                  backend.setSettings({ keep_audio: e.target.checked });
+                }}
+              />
+              Keep audio
+            </label>
+            <button className="btn-save" onClick={handleSave}>
+              {savedAs ? "Saved" : "Save"}
+            </button>
+          </>
         )}
       </header>
 

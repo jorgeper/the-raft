@@ -1,5 +1,22 @@
 # Verification Record
 
+## M3 — Images, Autosave/Recovery, Keep-audio (2026-07-12)
+
+- `cargo test` — **20/20 pass** (adds: `.mnote` asset round-trip incl. audio bytes,
+  pause continuity — ~2 s paused span dropped from session audio and every `t_end`
+  stays inside the pause-adjusted buffer).
+- `cargo test --test recovery` — **pass**: engine with 1 s autosave interval, simulated
+  crash (no `stop()`); recovery JSON parses with the live transcript and the PCM file
+  holds real audio; `recover` re-encodes it to Opus for a full save.
+- `cargo test --test golden_two_speakers` — still green.
+- `npx playwright test` — **3/3 pass** (image card renders from bundled assets on open).
+- Save now honors the `keep_audio` setting (checkbox next to Save, persisted in
+  `settings.json`); saving clears recovery files.
+- Known M3 limits (deliberate): recovered sessions lose dropped-image *bytes* (their
+  source paths die with the crash — items remain in the transcript); real drag-drop
+  onto the app window needs a human hand — the command path and rendering are covered
+  by tests, the drop event uses the documented Tauri webview API.
+
 ## M2 — Diarization + "I am X" (2026-07-12)
 
 - `cargo test` — **19/19 pass** (adds: diarizer same-voice/different-voice/alternating

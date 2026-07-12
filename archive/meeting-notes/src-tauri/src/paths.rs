@@ -17,6 +17,10 @@ pub fn recovery_pcm() -> PathBuf {
     data_root().join("recovery").join("current.pcm")
 }
 
+pub fn settings_path() -> PathBuf {
+    data_root().join("settings.json")
+}
+
 pub fn clear_recovery() {
     std::fs::remove_file(recovery_json()).ok();
     std::fs::remove_file(recovery_pcm()).ok();

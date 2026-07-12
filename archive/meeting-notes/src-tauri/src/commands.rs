@@ -118,7 +118,8 @@ pub fn save(path: String, state: State<'_, AppState>) -> Result<(), String> {
             .map_err(|e| format!("reading dropped image {}: {e}", src.display()))?;
         assets.push((name.clone(), bytes));
     }
-    write_mnote(&path, conv, inner.audio_ogg.as_deref(), &assets).map_err(err)?;
+    let audio = if get_settings().keep_audio { inner.audio_ogg.as_deref() } else { None };
+    write_mnote(&path, conv, audio, &assets).map_err(err)?;
     crate::paths::clear_recovery(); // the meeting is durably on disk now
     Ok(())
 }
@@ -228,6 +229,34 @@ pub fn rename_speaker(
     let sp = sp.ok_or("unknown speaker")?;
     app.emit("timeline/speaker-updated", &EngineEvent::SpeakerUpdated(sp))
         .map_err(err)
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct Settings {
+    pub keep_audio: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings { keep_audio: true }
+    }
+}
+
+#[tauri::command]
+pub fn get_settings() -> Settings {
+    std::fs::read_to_string(crate::paths::settings_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn set_settings(settings: Settings) -> Result<(), String> {
+    let path = crate::paths::settings_path();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(err)?;
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(&settings).map_err(err)?).map_err(err)
 }
 
 #[tauri::command]
