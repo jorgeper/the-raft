@@ -1,11 +1,48 @@
+import { useEffect, useState } from "react";
+import { backend } from "./ipc";
+import type { Conversation } from "./types";
+
 interface Props {
   onNew: () => void;
   onOpen: () => void;
+  onRecovered: (conv: Conversation) => void;
 }
 
-function Home({ onNew, onOpen }: Props) {
+function Home({ onNew, onOpen, onRecovered }: Props) {
+  const [recoverable, setRecoverable] = useState<Conversation | null>(null);
+
+  useEffect(() => {
+    backend.checkRecovery().then(setRecoverable);
+  }, []);
+
   return (
     <div className="home">
+      {recoverable && (
+        <div className="recovery-banner" role="alert">
+          <span>
+            A recording didn't finish saving
+            {recoverable.title !== "Untitled conversation"
+              ? ` — “${recoverable.title}”`
+              : ""}
+            . Recover it?
+          </span>
+          <button
+            className="btn-mini"
+            onClick={async () => onRecovered(await backend.recover())}
+          >
+            Recover
+          </button>
+          <button
+            className="btn-mini quiet"
+            onClick={async () => {
+              await backend.discardRecovery();
+              setRecoverable(null);
+            }}
+          >
+            Discard
+          </button>
+        </div>
+      )}
       <div className="home-center">
         <h1 className="wordmark">Minutes</h1>
         <p className="tagline">Meeting notes that never leave this device.</p>

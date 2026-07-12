@@ -27,6 +27,9 @@ function App() {
       <Home
         onNew={() => setRoute({ view: "conversation", initial: null, assetUrls: {} })}
         onOpen={openSaved}
+        onRecovered={(conv) =>
+          setRoute({ view: "conversation", initial: conv, assetUrls: {} })
+        }
       />
     );
   }

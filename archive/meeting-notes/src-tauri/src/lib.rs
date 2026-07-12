@@ -4,6 +4,7 @@ pub mod diar;
 pub mod document;
 pub mod engine;
 pub mod namer;
+pub mod paths;
 pub mod stt;
 pub mod vad;
 
@@ -22,6 +23,9 @@ pub fn run() {
             commands::open,
             commands::add_image,
             commands::rename_speaker,
+            commands::check_recovery,
+            commands::recover,
+            commands::discard_recovery,
             commands::new_conversation,
         ])
         .run(tauri::generate_context!())

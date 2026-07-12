@@ -67,6 +67,29 @@ input:focus-visible {
   gap: 0;
 }
 
+.recovery-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px auto 0;
+  padding: 9px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.btn-mini {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.btn-mini.quiet {
+  color: var(--muted);
+}
+
 .home-center {
   flex: 1;
   display: flex;

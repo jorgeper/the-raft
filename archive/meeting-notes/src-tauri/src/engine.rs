@@ -30,9 +30,72 @@ pub enum EngineEvent {
 
 struct Shared {
     paused: AtomicBool,
+    stopped: AtomicBool,
     conversation: Mutex<Conversation>,
     session_audio: Mutex<Vec<f32>>,
     utterance_count: Mutex<u32>,
+}
+
+/// Snapshots the conversation to the recovery file every `MINUTES_AUTOSAVE_SECS`
+/// (default 30) and appends new session audio as raw i16 PCM, so a crash loses
+/// at most one interval of audio and no transcript (spec §4.3).
+fn spawn_autosave(shared: Arc<Shared>) {
+    let interval: u64 = std::env::var("MINUTES_AUTOSAVE_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30);
+    if interval == 0 {
+        return;
+    }
+    std::thread::spawn(move || {
+        let mut audio_cursor = 0usize;
+        let mut last_save = Instant::now();
+        loop {
+            std::thread::sleep(Duration::from_millis(250));
+            if shared.stopped.load(Ordering::Relaxed) {
+                return;
+            }
+            if last_save.elapsed() < Duration::from_secs(interval) {
+                continue;
+            }
+            last_save = Instant::now();
+
+            let json_path = crate::paths::recovery_json();
+            if let Some(dir) = json_path.parent() {
+                std::fs::create_dir_all(dir).ok();
+            }
+            let conv = shared.conversation.lock().unwrap().clone();
+            if let Ok(json) = serde_json::to_string(&conv) {
+                let tmp = json_path.with_extension("json.tmp");
+                if std::fs::write(&tmp, json).is_ok() {
+                    std::fs::rename(&tmp, &json_path).ok();
+                }
+            }
+
+            let delta: Vec<f32> = {
+                let audio = shared.session_audio.lock().unwrap();
+                audio[audio_cursor.min(audio.len())..].to_vec()
+            };
+            if !delta.is_empty() {
+                use std::io::Write;
+                let mut bytes = Vec::with_capacity(delta.len() * 2);
+                for s in &delta {
+                    bytes.extend_from_slice(
+                        &(((s.clamp(-1.0, 1.0)) * 32767.0) as i16).to_le_bytes(),
+                    );
+                }
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(crate::paths::recovery_pcm())
+                {
+                    if f.write_all(&bytes).is_ok() {
+                        audio_cursor += delta.len();
+                    }
+                }
+            }
+        }
+    });
 }
 
 pub struct Engine {
@@ -55,6 +118,7 @@ impl Engine {
 
         let shared = Arc::new(Shared {
             paused: AtomicBool::new(false),
+            stopped: AtomicBool::new(false),
             conversation: Mutex::new(Conversation::new_recording(model)),
             session_audio: Mutex::new(Vec::new()),
             utterance_count: Mutex::new(0),
@@ -74,6 +138,7 @@ impl Engine {
             open_snapshot.clone(),
             events.clone(),
         );
+        spawn_autosave(shared.clone());
         let stt_handle = spawn_stt(
             shared.clone(),
             transcriber,
@@ -123,6 +188,7 @@ impl Engine {
     /// Stop capture, drain both workers, return the finished conversation and
     /// the full 16 kHz session audio.
     pub fn stop(mut self) -> Result<(Conversation, Vec<f32>)> {
+        self.shared.stopped.store(true, Ordering::Relaxed);
         self.source.stop();
         // Segmenter exits when the source's chunk sender drops (WavFileSource
         // drops it at end-of-file; MicSource when its thread sees the stop flag).

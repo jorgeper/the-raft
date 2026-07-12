@@ -23,6 +23,9 @@ export interface Backend {
   /** Fires with absolute file paths when files are dropped on the window. */
   onDragDrop(cb: (paths: string[]) => void): () => void;
   renameSpeaker(speakerId: string, name: string): Promise<void>;
+  checkRecovery(): Promise<Conversation | null>;
+  recover(): Promise<Conversation>;
+  discardRecovery(): Promise<void>;
   onPartial(cb: (utteranceId: string, text: string) => void): () => void;
   onFinal(cb: (item: import("./types").Item) => void): () => void;
   onLevel(cb: (rms: number) => void): () => void;
@@ -125,6 +128,9 @@ function realBackend(): Backend {
     },
     renameSpeaker: (speakerId, name) =>
       t.invoke("rename_speaker", { speakerId, name }) as Promise<void>,
+    checkRecovery: () => t.invoke("check_recovery") as Promise<Conversation | null>,
+    recover: () => t.invoke("recover") as Promise<Conversation>,
+    discardRecovery: () => t.invoke("discard_recovery") as Promise<void>,
     onPartial: (cb) =>
       sub<{ utteranceId: string; text: string }>("timeline/partial", (p) =>
         cb(p.utteranceId, p.text),
@@ -312,6 +318,13 @@ function mockBackend(): Backend {
       speakerCbs.push(cb);
       return () => speakerCbs.splice(speakerCbs.indexOf(cb), 1);
     },
+    async checkRecovery() {
+      return null;
+    },
+    async recover() {
+      return conv;
+    },
+    async discardRecovery() {},
   };
 }
 

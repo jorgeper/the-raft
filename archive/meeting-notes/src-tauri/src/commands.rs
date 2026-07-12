@@ -118,7 +118,9 @@ pub fn save(path: String, state: State<'_, AppState>) -> Result<(), String> {
             .map_err(|e| format!("reading dropped image {}: {e}", src.display()))?;
         assets.push((name.clone(), bytes));
     }
-    write_mnote(&path, conv, inner.audio_ogg.as_deref(), &assets).map_err(err)
+    write_mnote(&path, conv, inner.audio_ogg.as_deref(), &assets).map_err(err)?;
+    crate::paths::clear_recovery(); // the meeting is durably on disk now
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -226,6 +228,37 @@ pub fn rename_speaker(
     let sp = sp.ok_or("unknown speaker")?;
     app.emit("timeline/speaker-updated", &EngineEvent::SpeakerUpdated(sp))
         .map_err(err)
+}
+
+#[tauri::command]
+pub fn check_recovery() -> Option<Conversation> {
+    let json = std::fs::read_to_string(crate::paths::recovery_json()).ok()?;
+    serde_json::from_str(&json).ok()
+}
+
+#[tauri::command]
+pub fn recover(state: State<'_, AppState>) -> Result<Conversation, String> {
+    let json = std::fs::read_to_string(crate::paths::recovery_json())
+        .map_err(|_| "no recovery file")?;
+    let conv: Conversation = serde_json::from_str(&json).map_err(err)?;
+    // Recovered audio: raw i16 PCM appended by the autosave thread.
+    let audio_ogg = std::fs::read(crate::paths::recovery_pcm()).ok().and_then(|bytes| {
+        let samples: Vec<f32> = bytes
+            .chunks_exact(2)
+            .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0)
+            .collect();
+        encode_ogg(&samples).ok()
+    });
+    let mut inner = state.0.lock().unwrap();
+    inner.conversation = Some(conv.clone());
+    inner.audio_ogg = audio_ogg;
+    inner.staged_images.clear(); // dropped-image sources are unknowable post-crash
+    Ok(conv)
+}
+
+#[tauri::command]
+pub fn discard_recovery() {
+    crate::paths::clear_recovery();
 }
 
 #[tauri::command]
