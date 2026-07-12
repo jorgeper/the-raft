@@ -30,12 +30,17 @@
 - Non-root capture fails gracefully with a sudo hint (pktap interface creation
   needs root).
 
-### Deferred verification (needs the user)
+### Live capture validation (user-run, 2026-07-11) — PASSED
 
-- **Live capture run:** `sudo .build/debug/gargoyle-spike capture --duration 15`
-  — confirm real flows print with correct process attribution and that the
-  datalink reports DLT_PKTAP (258). Cannot be run non-interactively (sudo
-  password).
+`sudo .build/debug/gargoyle-spike capture --duration 15` on the primary
+machine: per-process attribution confirmed on real traffic (node, Claude
+Helper, netbiosd, mDNSResponder — all with pids), correct in/out direction,
+TCP and UDP, IPv4. **Phase 0 exit criterion met; Tap B is viable.**
+
+Finding: Apple's libpcap reports the pktap datalink as **149** (DLT_USER2,
+Apple's original private assignment), not the official 258. Constants and the
+datalink check now accept both. Parsing was unaffected (it keys off the wire
+header, not the DLT constant).
 
 ### Environment notes / deviations
 
@@ -49,7 +54,6 @@
 
 ### Next
 
-- User runs the sudo capture to validate attribution (the Phase 0 exit
-  criterion, spec §11).
+- Install full Xcode (required for Phase 1's app bundle and extension targets).
 - Phase 1: FlowTap protocol, PcapTap productionization (privileged helper
   instead of sudo-run CLI), GRDB audit store with hash chain, menu-bar app.

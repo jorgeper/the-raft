@@ -17,7 +17,13 @@
 #define GARGOYLE_PKTAP_IFXNAMESIZE 24  /* IF_NAMESIZE (16) + 8 */
 #define GARGOYLE_MAXCOMLEN 16
 
-#define GARGOYLE_DLT_PKTAP 258
+/*
+ * Apple's libpcap reports pktap as DLT_USER2 (149), its original private
+ * assignment; 258 is the later official libpcap allocation. Verified on
+ * macOS 26 (2026-07-11): the live capture reports 149.
+ */
+#define GARGOYLE_DLT_PKTAP        258
+#define GARGOYLE_DLT_PKTAP_DARWIN 149
 
 /* pth_flags */
 #define GARGOYLE_PTH_FLAG_DIR_IN  0x00000001

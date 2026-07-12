@@ -45,8 +45,8 @@ func runCapture(duration: TimeInterval?) -> Int32 {
     let dlt = pcap_datalink(pcap)
     let dltName = pcap_datalink_val_to_name(dlt).map { String(cString: $0) } ?? "\(dlt)"
     print("pktap capture active (datalink: \(dltName) [\(dlt)])")
-    if dlt != GARGOYLE_DLT_PKTAP {
-        fputs("warning: datalink is not DLT_PKTAP(\(GARGOYLE_DLT_PKTAP)); per-packet process metadata is missing on this kernel/libpcap\n", stderr)
+    if dlt != GARGOYLE_DLT_PKTAP && dlt != GARGOYLE_DLT_PKTAP_DARWIN {
+        fputs("warning: datalink is not DLT_PKTAP (\(GARGOYLE_DLT_PKTAP_DARWIN)/\(GARGOYLE_DLT_PKTAP)); per-packet process metadata is missing on this kernel/libpcap\n", stderr)
     }
     if let duration {
         print(String(format: "capturing for %.0fs — generate some traffic…", duration))
