@@ -198,9 +198,11 @@ function Conversation({ initial, initialAssetUrls, onHome }: Props) {
               <input
                 type="checkbox"
                 checked={keepAudio}
-                onChange={(e) => {
-                  setKeepAudio(e.target.checked);
-                  backend.setSettings({ keep_audio: e.target.checked });
+                onChange={async (e) => {
+                  const checked = e.target.checked;
+                  setKeepAudio(checked);
+                  const s = await backend.getSettings();
+                  await backend.setSettings({ ...s, keep_audio: checked });
                 }}
               />
               Keep audio

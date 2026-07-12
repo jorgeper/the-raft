@@ -152,6 +152,158 @@ input:focus-visible {
   background: #5bbd8b;
 }
 
+.btn-gear {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  font-size: 17px;
+  color: var(--muted);
+  padding: 4px 8px;
+}
+
+.btn-gear:hover {
+  color: var(--ink);
+}
+
+/* ------------------------------------------------------ oobe + settings */
+
+.oobe {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.oobe-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  max-width: 560px;
+  padding: 0 24px;
+  text-align: center;
+}
+
+.oobe-title {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.oobe-lead {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.oobe-warn {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.model-row.chosen {
+  border-color: var(--accent);
+}
+
+.model-row input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+.model-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.model-hint {
+  flex: 1;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-size {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dl-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  font-size: 13px;
+}
+
+.dl-row progress,
+.model-row progress {
+  flex: 1;
+  accent-color: var(--accent);
+  height: 6px;
+}
+
+.settings {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.settings-body .model-row {
+  cursor: default;
+  margin-bottom: 8px;
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
 /* -------------------------------------------------------- conversation */
 
 .conversation {

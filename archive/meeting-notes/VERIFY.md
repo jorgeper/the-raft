@@ -1,5 +1,23 @@
 # Verification Record
 
+## M4 — OOBE + Model Manager (2026-07-12)
+
+- `cargo test` — **22/22 pass** (adds: catalog well-formedness — unique names, 64-hex
+  sha256s, https URLs; SHA-256 known-answer test).
+- `cargo test --test download_real -- --ignored` — **pass**: real in-app download of
+  Whisper tiny (78 MB), streamed progress callbacks, sha256 verified against the pinned
+  hash, `.part` renamed into place, cleaned up. Catalog hashes pinned from the Hugging
+  Face LFS API; the already-installed `ggml-small.bin` re-hashed locally and matches.
+- `npx playwright test` — **5/5 pass** (adds: full OOBE walkthrough — welcome → mic →
+  model choice → scripted download progress → done → Home; Settings model manager
+  shows install/delete/download states and active-model radio).
+- `start_recording` now uses `settings.stt_model`; settings gained `stt_model` +
+  `oobe_done` with serde defaults (old settings.json files still parse — covered by
+  the settings default path in `get_settings`).
+- The downloader (`models.rs`) is the app's only network code and runs only on
+  explicit user action from OOBE/Settings, per spec §3.2.
+- Screenshots: OOBE model step and Settings verified visually, light theme.
+
 ## M3 — Images, Autosave/Recovery, Keep-audio (2026-07-12)
 
 - `cargo test` — **20/20 pass** (adds: `.mnote` asset round-trip incl. audio bytes,

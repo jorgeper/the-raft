@@ -47,6 +47,30 @@ export interface Conversation {
 
 export type EngineStatus = "idle" | "recording" | "paused" | "stopped";
 
+export interface Settings {
+  keep_audio: boolean;
+  stt_model: string;
+  oobe_done: boolean;
+}
+
+export interface ModelInfo {
+  name: string;
+  kind: "transcription" | "diarization";
+  label: string;
+  size_bytes: number;
+  hint: string;
+  installed: boolean;
+  active: boolean;
+}
+
+export interface DownloadProgress {
+  model: string;
+  downloaded: number;
+  total: number;
+  done: boolean;
+  error: string | null;
+}
+
 export const SPEAKER_PALETTE = [
   "#5B8DEF",
   "#E0716C",

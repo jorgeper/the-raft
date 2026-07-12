@@ -5,10 +5,11 @@ import type { Conversation } from "./types";
 interface Props {
   onNew: () => void;
   onOpen: () => void;
+  onSettings: () => void;
   onRecovered: (conv: Conversation) => void;
 }
 
-function Home({ onNew, onOpen, onRecovered }: Props) {
+function Home({ onNew, onOpen, onSettings, onRecovered }: Props) {
   const [recoverable, setRecoverable] = useState<Conversation | null>(null);
 
   useEffect(() => {
@@ -17,6 +18,9 @@ function Home({ onNew, onOpen, onRecovered }: Props) {
 
   return (
     <div className="home">
+      <button className="btn-gear" onClick={onSettings} aria-label="Settings" title="Settings">
+        ⚙
+      </button>
       {recoverable && (
         <div className="recovery-banner" role="alert">
           <span>

@@ -3,6 +3,7 @@ pub mod commands;
 pub mod diar;
 pub mod document;
 pub mod engine;
+pub mod models;
 pub mod namer;
 pub mod paths;
 pub mod stt;
@@ -25,6 +26,10 @@ pub fn run() {
             commands::rename_speaker,
             commands::get_settings,
             commands::set_settings,
+            commands::list_models,
+            commands::download_model,
+            commands::delete_model,
+            commands::request_mic_permission,
             commands::check_recovery,
             commands::recover,
             commands::discard_recovery,

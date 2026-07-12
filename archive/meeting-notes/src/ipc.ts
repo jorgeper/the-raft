@@ -1,7 +1,15 @@
 // Typed bridge to the Rust engine. With ?mock=1 in the URL a scripted fake
 // backend drives the UI instead (used by Playwright and browser-only dev).
 
-import type { Conversation, EngineStatus, Item, Speaker } from "./types";
+import type {
+  Conversation,
+  DownloadProgress,
+  EngineStatus,
+  Item,
+  ModelInfo,
+  Settings,
+  Speaker,
+} from "./types";
 
 export interface OpenedConversation {
   conversation: Conversation;
@@ -23,8 +31,13 @@ export interface Backend {
   /** Fires with absolute file paths when files are dropped on the window. */
   onDragDrop(cb: (paths: string[]) => void): () => void;
   renameSpeaker(speakerId: string, name: string): Promise<void>;
-  getSettings(): Promise<{ keep_audio: boolean }>;
-  setSettings(settings: { keep_audio: boolean }): Promise<void>;
+  getSettings(): Promise<Settings>;
+  setSettings(settings: Settings): Promise<void>;
+  listModels(): Promise<ModelInfo[]>;
+  downloadModel(name: string): Promise<void>;
+  deleteModel(name: string): Promise<void>;
+  onDownloadProgress(cb: (p: DownloadProgress) => void): () => void;
+  requestMicPermission(): Promise<boolean>;
   checkRecovery(): Promise<Conversation | null>;
   recover(): Promise<Conversation>;
   discardRecovery(): Promise<void>;
@@ -130,8 +143,14 @@ function realBackend(): Backend {
     },
     renameSpeaker: (speakerId, name) =>
       t.invoke("rename_speaker", { speakerId, name }) as Promise<void>,
-    getSettings: () => t.invoke("get_settings") as Promise<{ keep_audio: boolean }>,
+    getSettings: () => t.invoke("get_settings") as Promise<Settings>,
     setSettings: (settings) => t.invoke("set_settings", { settings }) as Promise<void>,
+    listModels: () => t.invoke("list_models") as Promise<ModelInfo[]>,
+    downloadModel: (name) => t.invoke("download_model", { name }) as Promise<void>,
+    deleteModel: (name) => t.invoke("delete_model", { name }) as Promise<void>,
+    onDownloadProgress: (cb) => sub<DownloadProgress>("models/download-progress", cb),
+    requestMicPermission: () =>
+      t.invoke("request_mic_permission") as Promise<boolean>,
     checkRecovery: () => t.invoke("check_recovery") as Promise<Conversation | null>,
     recover: () => t.invoke("recover") as Promise<Conversation>,
     discardRecovery: () => t.invoke("discard_recovery") as Promise<void>,
@@ -155,6 +174,20 @@ function mockBackend(): Backend {
   const levelCbs: ((rms: number) => void)[] = [];
   const statusCbs: ((s: EngineStatus) => void)[] = [];
   const speakerCbs: ((sp: Speaker) => void)[] = [];
+  const progressCbs: ((p: DownloadProgress) => void)[] = [];
+  const mockSettings: Settings = {
+    keep_audio: true,
+    stt_model: "small",
+    // OOBE shows in mock only when explicitly requested.
+    oobe_done: !new URLSearchParams(window.location.search).has("oobe"),
+  };
+  const mockModels: ModelInfo[] = [
+    { name: "tiny", kind: "transcription", label: "Whisper tiny", size_bytes: 77691713, hint: "fastest, lowest quality", installed: false, active: false },
+    { name: "base", kind: "transcription", label: "Whisper base", size_bytes: 147951465, hint: "quick, fine for clear speech", installed: false, active: false },
+    { name: "small", kind: "transcription", label: "Whisper small", size_bytes: 487601967, hint: "recommended — best realtime balance", installed: true, active: true },
+    { name: "large-v3-turbo", kind: "transcription", label: "Whisper large v3 turbo", size_bytes: 1624555275, hint: "best quality, needs a strong machine", installed: false, active: false },
+    { name: "embedding", kind: "diarization", label: "Speaker embedding (CAM++)", size_bytes: 29292684, hint: "required for speaker labels", installed: true, active: true },
+  ];
   let timers: ReturnType<typeof setTimeout>[] = [];
   let levelTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -323,9 +356,42 @@ function mockBackend(): Backend {
       return () => speakerCbs.splice(speakerCbs.indexOf(cb), 1);
     },
     async getSettings() {
-      return { keep_audio: true };
+      return mockSettings;
     },
-    async setSettings() {},
+    async setSettings(s) {
+      Object.assign(mockSettings, s);
+    },
+    async listModels() {
+      return mockModels.map((m) => ({ ...m }));
+    },
+    async downloadModel(name) {
+      const m = mockModels.find((x) => x.name === name);
+      if (!m) throw new Error("unknown model");
+      let downloaded = 0;
+      const step = m.size_bytes / 5;
+      const timer = setInterval(() => {
+        downloaded = Math.min(m.size_bytes, downloaded + step);
+        const done = downloaded >= m.size_bytes;
+        progressCbs.forEach((cb) =>
+          cb({ model: name, downloaded, total: m.size_bytes, done, error: null }),
+        );
+        if (done) {
+          m.installed = true;
+          clearInterval(timer);
+        }
+      }, 200);
+    },
+    async deleteModel(name) {
+      const m = mockModels.find((x) => x.name === name);
+      if (m) m.installed = false;
+    },
+    onDownloadProgress(cb) {
+      progressCbs.push(cb);
+      return () => progressCbs.splice(progressCbs.indexOf(cb), 1);
+    },
+    async requestMicPermission() {
+      return true;
+    },
     async checkRecovery() {
       return null;
     },

@@ -50,8 +50,9 @@ pub fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(),
     if inner.engine.is_some() {
         return Err("already recording".into());
     }
+    let model = get_settings().stt_model;
     let (tx, rx) = crossbeam_channel::unbounded::<EngineEvent>();
-    let engine = Engine::start(make_source(), DEFAULT_MODEL, tx).map_err(err)?;
+    let engine = Engine::start(make_source(), &model, tx).map_err(err)?;
 
     // Bridge engine events to webview events. Thread exits when the engine
     // drops its sender (on stop).
@@ -233,12 +234,92 @@ pub fn rename_speaker(
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct Settings {
+    #[serde(default = "default_true")]
     pub keep_audio: bool,
+    #[serde(default = "default_model")]
+    pub stt_model: String,
+    #[serde(default)]
+    pub oobe_done: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_model() -> String {
+    DEFAULT_MODEL.into()
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { keep_audio: true }
+        Settings { keep_audio: true, stt_model: DEFAULT_MODEL.into(), oobe_done: false }
+    }
+}
+
+#[tauri::command]
+pub fn list_models() -> Vec<crate::models::ModelInfo> {
+    crate::models::list(&get_settings().stt_model)
+}
+
+#[derive(Serialize, Clone)]
+struct DownloadProgress<'a> {
+    model: &'a str,
+    downloaded: u64,
+    total: u64,
+    done: bool,
+    error: Option<String>,
+}
+
+#[tauri::command]
+pub fn download_model(app: AppHandle, name: String) -> Result<(), String> {
+    crate::models::entry(&name).ok_or("unknown model")?;
+    std::thread::spawn(move || {
+        let mut last_emit = std::time::Instant::now();
+        let result = crate::models::download(&name, |downloaded, total| {
+            // ~4 progress events/second is plenty for a progress bar.
+            if last_emit.elapsed() >= std::time::Duration::from_millis(250) {
+                last_emit = std::time::Instant::now();
+                let _ = app.emit(
+                    "models/download-progress",
+                    DownloadProgress { model: &name, downloaded, total, done: false, error: None },
+                );
+            }
+        });
+        let (done, error) = match result {
+            Ok(()) => (true, None),
+            Err(e) => (false, Some(e.to_string())),
+        };
+        let total = crate::models::entry(&name).map(|e| e.size_bytes).unwrap_or(0);
+        let _ = app.emit(
+            "models/download-progress",
+            DownloadProgress { model: &name, downloaded: total, total, done, error },
+        );
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_model(name: String, state: State<'_, AppState>) -> Result<(), String> {
+    if state.0.lock().unwrap().engine.is_some() {
+        return Err("stop recording before deleting models".into());
+    }
+    crate::models::delete(&name).map_err(err)
+}
+
+/// Opens the mic for an instant so the OS permission prompt fires from OOBE.
+#[tauri::command]
+pub fn request_mic_permission() -> Result<bool, String> {
+    let (tx, _rx) = crossbeam_channel::unbounded();
+    let mut src = MicSource::new();
+    match src.start(tx) {
+        Ok(()) => {
+            src.stop();
+            Ok(true)
+        }
+        Err(e) => {
+            eprintln!("mic permission probe failed: {e}");
+            Ok(false)
+        }
     }
 }
 
