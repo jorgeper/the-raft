@@ -330,6 +330,13 @@ public struct RulesEngine: Sendable {
         sessionApprovals.removeAll()
     }
 
+    /// Returns the hits accumulated since the last drain and resets them, so
+    /// callers persisting counts cannot double-count.
+    public mutating func drainHitCounts() -> [Int64: Int] {
+        defer { hitCounts.removeAll() }
+        return hitCounts
+    }
+
     // MARK: - Evaluation
 
     public mutating func evaluate(_ context: FlowContext, now: Date = Date()) -> Decision {
@@ -382,9 +389,12 @@ public struct RulesEngine: Sendable {
         }
         trace.append("no app-wide rule")
 
-        // 4. Global destination rules (any app, specific destination).
+        // 4. Global rules (any app), most-specific destination first. A
+        //    catch-all (any app → any destination) lives here too: it is the
+        //    least specific global rule, which is what a "Paranoid" profile's
+        //    block-everything rule needs to be.
         let global = candidates
-            .filter { $0.app == .anyApp && $0.destination != .any }
+            .filter { $0.app == .anyApp }
             .max { $0.destination.specificity < $1.destination.specificity }
         if let match = global {
             trace.append("matched global destination rule \(match.id): \(match.summary)")

@@ -11,13 +11,28 @@ final class AppModel: ObservableObject {
         var id: UInt64 { flow.id }
     }
 
+    /// A would-have-blocked flow or an unanswered prompt, awaiting review.
+    struct ReviewItem: Identifiable {
+        var id: UInt64
+        var appName: String
+        var destination: String
+        var reason: String
+        var at: Date
+    }
+
     @Published private(set) var tapConnected = false
     @Published private(set) var recent: [RecentEntry] = []
     @Published private(set) var series: [EgressMeter.Sample] = []
     @Published private(set) var topApps: [(name: String, bytes: Int)] = []
     @Published private(set) var learningRemaining: TimeInterval = 0
     @Published private(set) var digest: [(app: String, destination: String, flows: Int, bytes: Int)] = []
+    @Published private(set) var pendingApprovals: [PendingApproval] = []
+    @Published private(set) var reviewQueue: [ReviewItem] = []
+    @Published private(set) var profiles: [Profile] = []
+    @Published private(set) var activeProfileID: Int64 = 0
+    @Published private(set) var appModes: [AppKey: AppMode] = [:]
     @Published var showDigest = false
+    @Published var showReview = false
     @Published var paused = false {
         didSet {
             guard oldValue != paused else { return }
@@ -25,7 +40,10 @@ final class AppModel: ObservableObject {
         }
     }
     @Published var showSystem = UserDefaults.standard.bool(forKey: "showSystem") {
-        didSet { UserDefaults.standard.set(showSystem, forKey: "showSystem") }
+        didSet {
+            UserDefaults.standard.set(showSystem, forKey: "showSystem")
+            Task { await pipeline.setIncludeSystemApps(showSystem) }
+        }
     }
 
     var visibleRecent: [RecentEntry] {
@@ -33,8 +51,10 @@ final class AppModel: ObservableObject {
     }
 
     let store: AuditStore
+    let ruleStore: RuleStore?
     private let pipeline: FlowPipeline
     private var tap: (any FlowTap)?
+    private var flowApps: [UInt64: AppKey] = [:]
     private var meter = EgressMeter()
     private var coalescer = NotificationCoalescer()
     private let notifier = Notifier()
@@ -59,7 +79,9 @@ final class AppModel: ObservableObject {
             store = (try? AuditStore.inMemory())!
         }
         self.store = store
-        pipeline = FlowPipeline(store: store)
+        let ruleStore = try? RuleStore(store: store)
+        self.ruleStore = ruleStore
+        pipeline = FlowPipeline(store: store, ruleStore: ruleStore)
 
         // First launch starts a 1-hour learning window (spec §4): collect a
         // baseline silently, then offer the digest for review.
@@ -73,11 +95,52 @@ final class AppModel: ObservableObject {
         learningUntil = Date(timeIntervalSince1970: defaults.double(forKey: "learningUntil"))
 
         startTap()
+        reloadRuleState()
 
         uiTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.refreshDerivedState() }
         }
         try? store.applyRetention(detailDays: 30)
+    }
+
+    // MARK: - Rules, profiles, modes
+
+    private func reloadRuleState() {
+        guard let ruleStore else { return }
+        profiles = (try? ruleStore.profiles()) ?? []
+        activeProfileID = (try? ruleStore.activeProfile().id) ?? 0
+        appModes = (try? ruleStore.modes()) ?? [:]
+        let includeSystem = showSystem
+        Task {
+            await pipeline.reloadRules()
+            await pipeline.setIncludeSystemApps(includeSystem)
+        }
+    }
+
+    func activateProfile(_ id: Int64) {
+        guard let ruleStore else { return }
+        try? ruleStore.activateProfile(id: id)
+        reloadRuleState()
+    }
+
+    func setMode(_ mode: AppMode, for flow: ActiveFlow) {
+        guard let ruleStore, let key = flowApps[flow.id] else { return }
+        try? ruleStore.setMode(mode, for: key)
+        reloadRuleState()
+    }
+
+    func mode(for flow: ActiveFlow) -> AppMode {
+        flowApps[flow.id].flatMap { appModes[$0] } ?? .monitor
+    }
+
+    func resolveApproval(_ approval: PendingApproval, action: RuleAction,
+                         scope: RuleScope, destination: Destination? = nil) {
+        pendingApprovals.removeAll { $0.id == approval.id }
+        Task {
+            await pipeline.resolveApproval(id: approval.id, action: action,
+                                           scope: scope, destination: destination)
+            await MainActor.run { self.reloadRuleState() }
+        }
     }
 
     // MARK: - Tap lifecycle
@@ -144,6 +207,32 @@ final class AppModel: ObservableObject {
 
         case .traffic(let deltaOut, let deltaIn, let at):
             meter.add(bytesOut: deltaOut, bytesIn: deltaIn, at: at)
+
+        case .approvalRequested(let approval):
+            flowApps[approval.flow.id] = approval.context.appKey
+            pendingApprovals.append(approval)
+            if approval.retrospective {
+                // Tap B: the flow already happened — this is a review item, and
+                // the prompt must not pretend it is gating anything.
+                reviewQueue.insert(ReviewItem(
+                    id: approval.id, appName: approval.flow.displayName,
+                    destination: approval.context.destinationLabel,
+                    reason: "firewall mode, no matching rule (monitor-only tap: not blocked)",
+                    at: approval.raisedAt), at: 0)
+            }
+            notifier.notify(title: "Approval needed: \(approval.flow.displayName)",
+                            body: "→ \(approval.context.destinationLabel)")
+
+        case .blocked(let flow, let wouldHaveBlocked):
+            reviewQueue.insert(ReviewItem(
+                id: flow.id, appName: flow.displayName,
+                destination: flow.destinationLabel,
+                reason: wouldHaveBlocked ? "would have blocked (monitor-only tap)" : "blocked",
+                at: Date()), at: 0)
+            if reviewQueue.count > 100 { reviewQueue.removeLast(reviewQueue.count - 100) }
+
+        case .profileChanged:
+            reloadRuleState()
         }
     }
 

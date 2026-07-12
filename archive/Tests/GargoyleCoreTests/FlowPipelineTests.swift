@@ -30,8 +30,11 @@ private enum Replay {
 
     static let fakeResolver: @Sendable (Int32, String) -> ResolvedIdentity = { pid, comm in
         if comm == "curl" {
+            // Deliberately not flagged as a system daemon: system apps are
+            // excluded from the pipeline entirely (spec §4), which is covered
+            // by PipelineRulesTests.
             return ResolvedIdentity(signingID: "com.apple.curl", teamID: nil,
-                                    path: "/usr/bin/curl", displayName: "curl", isSystem: true)
+                                    path: "/usr/bin/curl", displayName: "curl", isSystem: false)
         }
         return ResolvedIdentity(signingID: "com.example.\(comm)", teamID: "TEAM42",
                                 path: "/Applications/\(comm).app/Contents/MacOS/\(comm)",
@@ -104,6 +107,9 @@ private enum Replay {
                 case .flowUpdated: kinds.append("updated")
                 case .flowClosed: kinds.append("closed")
                 case .traffic(let out, let inn, _): kinds.append("traffic:\(out)/\(inn)")
+                case .approvalRequested: kinds.append("approval")
+                case .blocked: kinds.append("blocked")
+                case .profileChanged: kinds.append("profile")
                 }
                 if kinds.contains("closed") { break }
             }
