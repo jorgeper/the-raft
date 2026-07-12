@@ -34,36 +34,52 @@ public enum IPParser {
     static let DLT_LOOP: UInt32 = 108
 
     public static func flow(dlt: UInt32, payload: Data) -> FlowTuple? {
+        guard let ip = ipData(dlt: dlt, payload: payload), let first = ip.first else { return nil }
+        return (first >> 4) == 6 ? ipv6Flow(ip) : ipv4Flow(ip)
+    }
+
+    /// For UDP packets, the datagram payload after the 8-byte UDP header
+    /// (used for DNS correlation). Nil for anything else.
+    public static func udpPayload(dlt: UInt32, payload: Data) -> Data? {
+        guard let ip = ipData(dlt: dlt, payload: payload), let first = ip.first else { return nil }
+        let base = ip.startIndex
+        let transport: Data
+        if first >> 4 == 4 {
+            guard ip.count >= 20 else { return nil }
+            let ihl = Int(ip[base] & 0x0F) * 4
+            guard ihl >= 20, ip.count >= ihl, ip[base + 9] == 17 else { return nil }
+            transport = ip.dropFirst(ihl)
+        } else if first >> 4 == 6 {
+            guard ip.count >= 40, ip[base + 6] == 17 else { return nil }
+            transport = ip.dropFirst(40)
+        } else {
+            return nil
+        }
+        guard transport.count > 8 else { return nil }
+        return transport.dropFirst(8)
+    }
+
+    /// Strips the link-layer framing indicated by the pktap-reported DLT,
+    /// returning the IP packet.
+    private static func ipData(dlt: UInt32, payload: Data) -> Data? {
         switch dlt {
         case DLT_EN10MB:
             guard payload.count >= 14 else { return nil }
             let etherType = UInt16(payload[payload.startIndex + 12]) << 8 | UInt16(payload[payload.startIndex + 13])
-            let ip = payload.dropFirst(14)
-            switch etherType {
-            case 0x0800: return ipv4Flow(ip)
-            case 0x86DD: return ipv6Flow(ip)
-            default: return nil
-            }
+            guard etherType == 0x0800 || etherType == 0x86DD else { return nil }
+            return payload.dropFirst(14)
         case DLT_NULL, DLT_LOOP:
             guard payload.count >= 4 else { return nil }
             // 4-byte address family in host byte order.
             let af = payload.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 0, as: UInt32.self) }
-            let ip = payload.dropFirst(4)
-            switch af {
-            case UInt32(AF_INET): return ipv4Flow(ip)
-            case UInt32(AF_INET6), 24, 28: return ipv6Flow(ip)
-            default: return nil
-            }
+            guard af == UInt32(AF_INET) || af == UInt32(AF_INET6) || af == 24 || af == 28 else { return nil }
+            return payload.dropFirst(4)
         case DLT_RAW:
-            guard let first = payload.first else { return nil }
-            return (first >> 4) == 6 ? ipv6Flow(payload) : ipv4Flow(payload)
+            return payload.isEmpty ? nil : payload
         default:
             // Unknown link type: sniff the IP version nibble as a last resort.
-            guard let first = payload.first else { return nil }
-            let version = first >> 4
-            if version == 4 { return ipv4Flow(payload) }
-            if version == 6 { return ipv6Flow(payload) }
-            return nil
+            guard let first = payload.first, first >> 4 == 4 || first >> 4 == 6 else { return nil }
+            return payload
         }
     }
 
