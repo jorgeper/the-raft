@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && bash scripts/collect-dylibs.sh",
     "frontendDist": "../dist"
   },
   "app": {
@@ -32,7 +32,8 @@
     "active": true,
     "targets": "all",
     "macOS": {
-      "minimumSystemVersion": "11.0"
+      "minimumSystemVersion": "11.0",
+      "frameworks": ["dylibs/libsherpa-onnx-c-api.dylib", "dylibs/libonnxruntime.1.17.1.dylib"]
     },
     "icon": [
       "icons/32x32.png",

@@ -28,3 +28,4 @@ models/
 src-tauri/tests/fixtures/*.wav
 test-results/
 playwright-report/
+src-tauri/dylibs/
