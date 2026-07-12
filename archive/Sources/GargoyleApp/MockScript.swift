@@ -5,6 +5,18 @@ import CaptureKit
 /// Synthetic traffic for GARGOYLE_MOCK_TAP=1: exercises the full UI without
 /// root or the helper daemon.
 enum MockScript {
+    /// Identities matching the demo script's process names.
+    static let resolver: @Sendable (Int32, String) -> ResolvedIdentity = { _, comm in
+        if comm == "nsurlsessiond" {
+            return ResolvedIdentity(signingID: "com.apple.nsurlsessiond", teamID: nil,
+                                    path: "/usr/libexec/nsurlsessiond",
+                                    displayName: "nsurlsessiond", isSystem: true)
+        }
+        return ResolvedIdentity(signingID: "com.example.\(comm)", teamID: "TEAM42",
+                                path: "/Applications/\(comm).app",
+                                displayName: comm, isSystem: false)
+    }
+
     static var demoLoop: [(delay: TimeInterval, event: TapConnectionEvent)] {
         func new(_ id: UInt64, _ pid: Int32, _ comm: String, _ dst: String,
                  _ dport: UInt16, _ host: String?) -> TapEvent {

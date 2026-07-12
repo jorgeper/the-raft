@@ -21,6 +21,7 @@ final class AppModel: ObservableObject {
     }
 
     @Published private(set) var tapConnected = false
+    @Published private(set) var monitorOnly = true
     @Published private(set) var recent: [RecentEntry] = []
     @Published private(set) var series: [EgressMeter.Sample] = []
     @Published private(set) var topApps: [(name: String, bytes: Int)] = []
@@ -55,6 +56,11 @@ final class AppModel: ObservableObject {
     private let pipeline: FlowPipeline
     private var tap: (any FlowTap)?
     private var flowApps: [UInt64: AppKey] = [:]
+    private lazy var approvalWindow: ApprovalWindowController? = {
+        // Headless verification runs (GARGOYLE_AUTOEXIT) must not pop windows.
+        ProcessInfo.processInfo.environment["GARGOYLE_NO_PROMPT"] != nil
+            ? nil : ApprovalWindowController(model: self)
+    }()
     private var meter = EgressMeter()
     private var coalescer = NotificationCoalescer()
     private let notifier = Notifier()
@@ -81,7 +87,11 @@ final class AppModel: ObservableObject {
         self.store = store
         let ruleStore = try? RuleStore(store: store)
         self.ruleStore = ruleStore
-        pipeline = FlowPipeline(store: store, ruleStore: ruleStore)
+        // Mock flows carry synthetic pids that no longer exist, so SecCode
+        // can't identify them: fake the identities to match the demo script.
+        pipeline = isMock
+            ? FlowPipeline(store: store, ruleStore: ruleStore, resolveIdentity: MockScript.resolver)
+            : FlowPipeline(store: store, ruleStore: ruleStore)
 
         // First launch starts a 1-hour learning window (spec §4): collect a
         // baseline silently, then offer the digest for review.
@@ -94,6 +104,7 @@ final class AppModel: ObservableObject {
         learningStart = Date(timeIntervalSince1970: defaults.double(forKey: "learningStart"))
         learningUntil = Date(timeIntervalSince1970: defaults.double(forKey: "learningUntil"))
 
+        if isMock { seedMockRules() }
         startTap()
         reloadRuleState()
 
@@ -104,6 +115,29 @@ final class AppModel: ObservableObject {
     }
 
     // MARK: - Rules, profiles, modes
+
+    /// Demo state for GARGOYLE_MOCK_TAP: a blocked destination, a firewalled
+    /// app, and a second profile — so a mock run exercises every rules path.
+    private func seedMockRules() {
+        guard let ruleStore else { return }
+        do {
+            let profileID = try ruleStore.activeProfile().id
+            // node → api.github.com is blocked by rule; Slack is firewalled with
+            // no rule (so it prompts); Safari just monitors; nsurlsessiond is a
+            // system daemon and is excluded. One flow per code path.
+            try ruleStore.addRule(Rule(id: 0, profileID: profileID, app: .anyApp,
+                                       destination: .suffix("github.com"), action: .block,
+                                       notes: "demo: block GitHub API"))
+            try ruleStore.setMode(.firewall, for: AppKey(signingID: "com.example.Slack",
+                                                         teamID: "TEAM42", path: nil))
+            let paranoid = try ruleStore.createProfile(name: "Paranoid")
+            try ruleStore.addRule(Rule(id: 0, profileID: paranoid, app: .anyApp,
+                                       destination: .any, action: .block,
+                                       notes: "demo: block everything"))
+        } catch {
+            fputs("[gargoyle] mock seeding failed: \(error)\n", stderr)
+        }
+    }
 
     private func reloadRuleState() {
         guard let ruleStore else { return }
@@ -124,13 +158,19 @@ final class AppModel: ObservableObject {
     }
 
     func setMode(_ mode: AppMode, for flow: ActiveFlow) {
-        guard let ruleStore, let key = flowApps[flow.id] else { return }
-        try? ruleStore.setMode(mode, for: key)
+        guard let ruleStore else { return }
+        try? ruleStore.setMode(mode, for: flow.appKey)
         reloadRuleState()
     }
 
     func mode(for flow: ActiveFlow) -> AppMode {
-        flowApps[flow.id].flatMap { appModes[$0] } ?? .monitor
+        appModes[flow.appKey] ?? .monitor
+    }
+
+    /// Most recent flow for a display name — the handle the mode toggles need,
+    /// since modes key on the app's signing identity, not its name.
+    func latestFlow(named name: String) -> ActiveFlow? {
+        recent.first { $0.flow.displayName == name }?.flow
     }
 
     func resolveApproval(_ approval: PendingApproval, action: RuleAction,
@@ -149,8 +189,13 @@ final class AppModel: ObservableObject {
         let tap: any FlowTap
         if ProcessInfo.processInfo.environment["GARGOYLE_MOCK_TAP"] != nil {
             tap = MockTap(script: MockScript.demoLoop, loops: true)
+            monitorOnly = true
         } else {
-            tap = PcapTap()
+            // Prefer the content filter when it can actually block; otherwise
+            // degrade to monitor-only and say so in the UI (spec §3).
+            let selection = TapSelector.select()
+            tap = selection.tap
+            monitorOnly = selection.monitorOnly
         }
         self.tap = tap
 
@@ -186,6 +231,7 @@ final class AppModel: ObservableObject {
             if recent.count > 50 { recent.removeLast(recent.count - 50) }
             flowTotals[flow.id] = 0
             maybeNotify(flow)
+            logMock("OPEN  \(flow.displayName) → \(flow.destinationLabel)")
 
         case .flowUpdated(let flow):
             if let index = recent.firstIndex(where: { $0.id == flow.id }) {
@@ -211,6 +257,8 @@ final class AppModel: ObservableObject {
         case .approvalRequested(let approval):
             flowApps[approval.flow.id] = approval.context.appKey
             pendingApprovals.append(approval)
+            approvalWindow?.present(approval)
+            logMock("APPROVAL\(approval.retrospective ? " (retrospective)" : "") \(approval.flow.displayName) → \(approval.context.destinationLabel)")
             if approval.retrospective {
                 // Tap B: the flow already happened — this is a review item, and
                 // the prompt must not pretend it is gating anything.
@@ -230,10 +278,17 @@ final class AppModel: ObservableObject {
                 reason: wouldHaveBlocked ? "would have blocked (monitor-only tap)" : "blocked",
                 at: Date()), at: 0)
             if reviewQueue.count > 100 { reviewQueue.removeLast(reviewQueue.count - 100) }
+            logMock("BLOCK\(wouldHaveBlocked ? " (would-have)" : "") \(flow.displayName) → \(flow.destinationLabel)")
 
         case .profileChanged:
             reloadRuleState()
         }
+    }
+
+    /// Mock runs are verified from the terminal, so mirror the key events there.
+    private func logMock(_ message: String) {
+        guard ProcessInfo.processInfo.environment["GARGOYLE_MOCK_TAP"] != nil else { return }
+        fputs("[mock] \(message)\n", stderr)
     }
 
     private func maybeNotify(_ flow: ActiveFlow) {

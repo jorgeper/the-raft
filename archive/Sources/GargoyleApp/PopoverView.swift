@@ -9,10 +9,16 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             sparkline
+            if !model.pendingApprovals.isEmpty {
+                pendingSection
+            }
             if model.learningRemaining > 0 || model.showDigest {
                 learningSection
             }
             recentSection
+            if model.showReview {
+                reviewSection
+            }
             if !model.topApps.isEmpty {
                 topAppsSection
             }
@@ -20,23 +26,90 @@ struct PopoverView: View {
             footer
         }
         .padding(12)
-        .frame(width: 380)
+        .frame(width: 400)
+    }
+
+    // MARK: - Pending approvals (act inline, spec §7.1)
+
+    private var pendingSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Pending approvals").font(.caption.bold()).foregroundStyle(.orange)
+            ForEach(model.pendingApprovals) { approval in
+                HStack(spacing: 6) {
+                    Text(approval.flow.displayName).font(.caption).lineLimit(1)
+                    Text(approval.context.destinationLabel)
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer()
+                    Button("Allow") {
+                        model.resolveApproval(approval, action: .allow, scope: .persistent)
+                    }
+                    .controlSize(.mini)
+                    Button("Block") {
+                        model.resolveApproval(approval, action: .block, scope: .persistent)
+                    }
+                    .controlSize(.mini)
+                    .tint(.red)
+                }
+            }
+        }
+        .padding(6)
+        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    // MARK: - Review queue
+
+    private var reviewSection: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text("Review queue").font(.caption.bold()).foregroundStyle(.secondary)
+                Spacer()
+                Button("Hide") { model.showReview = false }.controlSize(.mini)
+            }
+            if model.reviewQueue.isEmpty {
+                Text("Nothing blocked or flagged yet.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            ForEach(model.reviewQueue.prefix(10)) { item in
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack {
+                        Image(systemName: "hand.raised.fill")
+                            .font(.caption2).foregroundStyle(.red)
+                        Text(item.appName).font(.caption2)
+                        Text(item.destination).font(.caption2).foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    Text(item.reason)
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(6)
+        .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
     }
 
     // MARK: - Header + sparkline
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Text("Gargoyle").font(.headline)
-            Circle()
-                .fill(model.tapConnected ? Color.green : Color.orange)
-                .frame(width: 7, height: 7)
-            Text(model.tapConnected ? "monitoring" : "helper offline")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
-            if model.paused {
-                Text("paused").font(.caption).foregroundStyle(.orange)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text("Gargoyle").font(.headline)
+                Circle()
+                    .fill(model.tapConnected ? Color.green : Color.orange)
+                    .frame(width: 7, height: 7)
+                Text(model.tapConnected ? "monitoring" : "helper offline")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if model.paused {
+                    Text("paused").font(.caption).foregroundStyle(.orange)
+                }
+            }
+            if model.monitorOnly {
+                // Spec §3: be honest about what this tap can and cannot do.
+                Label("Monitor-only — rules evaluate but cannot block",
+                      systemImage: "eye")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
             }
         }
     }
@@ -160,16 +233,30 @@ struct PopoverView: View {
 
     // MARK: - Top apps
 
+    /// Top apps double as the quick per-app mode toggles (spec §7.1).
     private var topAppsSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Top apps (session)").font(.caption.bold()).foregroundStyle(.secondary)
             ForEach(model.topApps, id: \.name) { app in
-                HStack {
-                    Text(app.name).font(.caption)
+                HStack(spacing: 6) {
+                    Text(app.name).font(.caption).lineLimit(1)
                     Spacer()
                     Text(Self.bytes(app.bytes))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
+                    if let flow = model.latestFlow(named: app.name) {
+                        Picker("", selection: Binding(
+                            get: { model.mode(for: flow) },
+                            set: { model.setMode($0, for: flow) }
+                        )) {
+                            Text("Monitor").tag(AppMode.monitor)
+                            Text("Firewall").tag(AppMode.firewall)
+                            Text("Ignore").tag(AppMode.ignore)
+                        }
+                        .labelsHidden()
+                        .controlSize(.mini)
+                        .frame(width: 90)
+                    }
                 }
             }
         }
@@ -178,18 +265,48 @@ struct PopoverView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack {
-            Button(model.paused ? "Resume" : "Pause") {
-                model.paused.toggle()
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "square.stack.3d.up").font(.caption2).foregroundStyle(.secondary)
+                Picker("", selection: Binding(
+                    get: { model.activeProfileID },
+                    set: { model.activateProfile($0) }
+                )) {
+                    ForEach(model.profiles) { profile in
+                        Text(profile.name).tag(profile.id)
+                    }
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 140)
+
+                Spacer()
+                Button {
+                    model.showReview.toggle()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "hand.raised")
+                        if !model.reviewQueue.isEmpty {
+                            Text("\(model.reviewQueue.count)")
+                        }
+                    }
+                }
+                .controlSize(.small)
+                .help("Review queue")
             }
-            .controlSize(.small)
-            Toggle("System apps", isOn: $model.showSystem)
-                .toggleStyle(.checkbox)
+            HStack {
+                Button(model.paused ? "Resume" : "Pause") {
+                    model.paused.toggle()
+                }
                 .controlSize(.small)
-                .font(.caption)
-            Spacer()
-            Button("Quit") { NSApp.terminate(nil) }
-                .controlSize(.small)
+                Toggle("System apps", isOn: $model.showSystem)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                    .font(.caption)
+                Spacer()
+                Button("Quit") { NSApp.terminate(nil) }
+                    .controlSize(.small)
+            }
         }
     }
 

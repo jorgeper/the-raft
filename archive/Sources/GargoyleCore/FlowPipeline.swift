@@ -11,6 +11,9 @@ public struct ActiveFlow: Sendable, Identifiable, Equatable {
     public let displayName: String
     public let isSystem: Bool
     public let identityID: Int64?
+    /// Signing identity the rules engine keys on — the UI needs it to set
+    /// per-app modes without re-resolving the (possibly dead) process.
+    public let appKey: AppKey
     public let host: String?
     public let proto: UInt8
     public let src: String
@@ -199,7 +202,7 @@ public actor FlowPipeline {
                 openedAt: event.ts.map { Date(timeIntervalSince1970: $0) } ?? Date(),
                 pid: pid, comm: comm, processLabel: processLabel,
                 displayName: identity.displayName, isSystem: identity.isSystem,
-                identityID: identity.id,
+                identityID: identity.id, appKey: identity.key,
                 host: event.host, proto: event.proto ?? 0,
                 src: event.src ?? "?", sport: event.sport ?? 0,
                 dst: event.dst ?? "?", dport: event.dport ?? 0,
