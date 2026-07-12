@@ -39,6 +39,7 @@ function Conversation({ initial, initialAssetUrls, onHome }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; undo: () => void } | null>(null);
   const [keepAudio, setKeepAudio] = useState(true);
+  const [remembered, setRemembered] = useState<Set<string>>(new Set());
   const [renaming, setRenaming] = useState<string | null>(null);
   const speakersRef = useRef<Speaker[]>(initial?.speakers ?? []);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -215,6 +216,36 @@ function Conversation({ initial, initialAssetUrls, onHome }: Props) {
       </header>
 
       {error && <div className="banner-error">{error}</div>}
+
+      {(stopped || viewing) && speakers.length > 0 && (
+        <div className="speaker-strip">
+          {speakers.map((sp) => (
+            <span className="speaker-card" key={sp.id}>
+              <span className="chip" style={{ background: sp.color }} aria-hidden="true" />
+              <span>{sp.name}</span>
+              {remembered.has(sp.id) ? (
+                <span className="model-size">voice remembered</span>
+              ) : (
+                sp.embedding && (
+                  <button
+                    className="btn-mini"
+                    onClick={async () => {
+                      try {
+                        await backend.rememberVoice(sp.id);
+                        setRemembered((prev) => new Set(prev).add(sp.id));
+                      } catch (e) {
+                        setError(String(e));
+                      }
+                    }}
+                  >
+                    Remember this voice
+                  </button>
+                )
+              )}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div
         className="timeline"

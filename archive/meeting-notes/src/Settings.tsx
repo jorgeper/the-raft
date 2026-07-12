@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { backend } from "./ipc";
-import type { DownloadProgress, ModelInfo, Settings as TSettings } from "./types";
+import type {
+  DownloadProgress,
+  ModelInfo,
+  Settings as TSettings,
+  VoiceEntry,
+} from "./types";
 
 interface Props {
   settings: TSettings;
@@ -17,13 +22,16 @@ function fmtSize(bytes: number): string {
 
 function Settings({ settings, onSettingsChange, onRerunOobe, onBack }: Props) {
   const [models, setModels] = useState<ModelInfo[]>([]);
+  const [voices, setVoices] = useState<VoiceEntry[]>([]);
   const [progress, setProgress] = useState<Record<string, DownloadProgress>>({});
   const [error, setError] = useState<string | null>(null);
 
   const refresh = () => backend.listModels().then(setModels);
+  const refreshVoices = () => backend.listVoices().then(setVoices);
 
   useEffect(() => {
     refresh();
+    refreshVoices();
   }, []);
 
   useEffect(() => {
@@ -128,6 +136,30 @@ function Settings({ settings, onSettingsChange, onRerunOobe, onBack }: Props) {
                 </div>
               );
             })}
+        </section>
+
+        <section>
+          <h3 className="section-title">Remembered voices</h3>
+          {voices.length === 0 && (
+            <p className="model-hint">
+              None yet. After a recording, click “Remember this voice” on a
+              speaker to auto-name them in future meetings.
+            </p>
+          )}
+          {voices.map((v) => (
+            <div className="model-row" key={v.id}>
+              <span className="model-label">{v.name}</span>
+              <span className="model-hint">
+                remembered {new Date(v.created_at).toLocaleDateString()}
+              </span>
+              <button
+                className="btn-mini quiet"
+                onClick={() => backend.forgetVoice(v.id).then(refreshVoices)}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
         </section>
 
         <section>

@@ -58,6 +58,22 @@ test("settings shows model manager", async ({ page }) => {
   await expect(page.getByRole("button", { name: /new conversation/i })).toBeVisible();
 });
 
+test("remember-voice flow and voices list in settings", async ({ page }) => {
+  await page.goto("/?mock=1");
+  await page.getByRole("button", { name: /new conversation/i }).click();
+  await page.getByRole("button", { name: /^record$/i }).click();
+  await expect(page.locator(".bubble.final")).toHaveCount(2, { timeout: 10000 });
+  await page.getByRole("button", { name: /stop/i }).click();
+
+  await page.getByRole("button", { name: /remember this voice/i }).first().click();
+  await expect(page.getByText("voice remembered")).toBeVisible();
+
+  await page.getByRole("button", { name: /back to home/i }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("Remembered voices")).toBeVisible();
+  await expect(page.getByText("Jorge")).toBeVisible(); // seeded mock voice
+});
+
 test("open a saved conversation renders its items including images", async ({ page }) => {
   await page.goto("/?mock=1");
   await page.getByRole("button", { name: /open a saved conversation/i }).click();

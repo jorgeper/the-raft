@@ -324,6 +324,32 @@ pub fn request_mic_permission() -> Result<bool, String> {
 }
 
 #[tauri::command]
+pub fn list_voices() -> Vec<crate::voices::VoiceEntry> {
+    crate::voices::load()
+}
+
+#[tauri::command]
+pub fn remember_voice(
+    speaker_id: String,
+    state: State<'_, AppState>,
+) -> Result<crate::voices::VoiceEntry, String> {
+    let inner = state.0.lock().unwrap();
+    let conv = inner.conversation.as_ref().ok_or("no conversation")?;
+    let sp = conv
+        .speakers
+        .iter()
+        .find(|s| s.id == speaker_id)
+        .ok_or("unknown speaker")?;
+    let embedding = sp.embedding.clone().ok_or("speaker has no voiceprint")?;
+    crate::voices::remember(&sp.name, embedding, &conv.id).map_err(err)
+}
+
+#[tauri::command]
+pub fn forget_voice(voice_id: String) -> Result<(), String> {
+    crate::voices::forget(&voice_id).map_err(err)
+}
+
+#[tauri::command]
 pub fn get_settings() -> Settings {
     std::fs::read_to_string(crate::paths::settings_path())
         .ok()

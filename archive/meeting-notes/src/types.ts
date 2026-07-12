@@ -63,6 +63,14 @@ export interface ModelInfo {
   active: boolean;
 }
 
+export interface VoiceEntry {
+  id: string;
+  name: string;
+  embedding: number[];
+  created_at: string;
+  source_conversation: string;
+}
+
 export interface DownloadProgress {
   model: string;
   downloaded: number;

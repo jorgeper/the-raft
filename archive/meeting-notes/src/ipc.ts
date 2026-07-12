@@ -9,6 +9,7 @@ import type {
   ModelInfo,
   Settings,
   Speaker,
+  VoiceEntry,
 } from "./types";
 
 export interface OpenedConversation {
@@ -38,6 +39,9 @@ export interface Backend {
   deleteModel(name: string): Promise<void>;
   onDownloadProgress(cb: (p: DownloadProgress) => void): () => void;
   requestMicPermission(): Promise<boolean>;
+  listVoices(): Promise<VoiceEntry[]>;
+  rememberVoice(speakerId: string): Promise<VoiceEntry>;
+  forgetVoice(voiceId: string): Promise<void>;
   checkRecovery(): Promise<Conversation | null>;
   recover(): Promise<Conversation>;
   discardRecovery(): Promise<void>;
@@ -151,6 +155,10 @@ function realBackend(): Backend {
     onDownloadProgress: (cb) => sub<DownloadProgress>("models/download-progress", cb),
     requestMicPermission: () =>
       t.invoke("request_mic_permission") as Promise<boolean>,
+    listVoices: () => t.invoke("list_voices") as Promise<VoiceEntry[]>,
+    rememberVoice: (speakerId) =>
+      t.invoke("remember_voice", { speakerId }) as Promise<VoiceEntry>,
+    forgetVoice: (voiceId) => t.invoke("forget_voice", { voiceId }) as Promise<void>,
     checkRecovery: () => t.invoke("check_recovery") as Promise<Conversation | null>,
     recover: () => t.invoke("recover") as Promise<Conversation>,
     discardRecovery: () => t.invoke("discard_recovery") as Promise<void>,
@@ -175,6 +183,15 @@ function mockBackend(): Backend {
   const statusCbs: ((s: EngineStatus) => void)[] = [];
   const speakerCbs: ((sp: Speaker) => void)[] = [];
   const progressCbs: ((p: DownloadProgress) => void)[] = [];
+  const mockVoices: VoiceEntry[] = [
+    {
+      id: "voice-demo",
+      name: "Jorge",
+      embedding: [],
+      created_at: new Date().toISOString(),
+      source_conversation: "conv-demo",
+    },
+  ];
   const mockSettings: Settings = {
     keep_audio: true,
     stt_model: "small",
@@ -202,7 +219,7 @@ function mockBackend(): Backend {
       diarization: { engine: "none", model: "none" },
     },
     speakers: [
-      { id: "spk-1", name: "Speaker 1", color: "#5B8DEF", auto_named: false },
+      { id: "spk-1", name: "Speaker 1", color: "#5B8DEF", auto_named: false, embedding: [0.1] },
     ],
     items: [],
   };
@@ -247,6 +264,7 @@ function mockBackend(): Backend {
               name: "Speaker 2",
               color: "#E0716C",
               auto_named: false,
+              embedding: [0.2],
             };
             conv.speakers.push(sp2);
             speakerCbs.forEach((cb) => cb(sp2));
@@ -391,6 +409,26 @@ function mockBackend(): Backend {
     },
     async requestMicPermission() {
       return true;
+    },
+    async listVoices() {
+      return mockVoices.map((v) => ({ ...v }));
+    },
+    async rememberVoice(speakerId) {
+      const sp = conv.speakers.find((s) => s.id === speakerId);
+      if (!sp) throw new Error("unknown speaker");
+      const entry: VoiceEntry = {
+        id: `voice-${mockVoices.length + 1}`,
+        name: sp.name,
+        embedding: [],
+        created_at: new Date().toISOString(),
+        source_conversation: conv.id,
+      };
+      mockVoices.push(entry);
+      return entry;
+    },
+    async forgetVoice(voiceId) {
+      const i = mockVoices.findIndex((v) => v.id === voiceId);
+      if (i >= 0) mockVoices.splice(i, 1);
     },
     async checkRecovery() {
       return null;

@@ -382,6 +382,25 @@ input:focus-visible {
   padding: 8px 20px;
 }
 
+.speaker-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  padding: 12px 20px 0;
+}
+
+.speaker-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 5px 12px;
+}
+
 /* ------------------------------------------------------------ timeline */
 
 .timeline {
