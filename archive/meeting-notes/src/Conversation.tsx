@@ -4,6 +4,7 @@ import type { Conversation as Conv, EngineStatus, Item, Speaker } from "./types"
 
 interface Props {
   initial: Conv | null; // non-null when viewing a saved conversation
+  initialAssetUrls: Record<string, string>;
   onHome: () => void;
 }
 
@@ -25,9 +26,10 @@ function fmtElapsed(s: number): string {
 
 const BARS = 24;
 
-function Conversation({ initial, onHome }: Props) {
+function Conversation({ initial, initialAssetUrls, onHome }: Props) {
   const viewing = initial !== null;
   const [items, setItems] = useState<Item[]>(initial?.items ?? []);
+  const [assetUrls, setAssetUrls] = useState<Record<string, string>>(initialAssetUrls);
   const [speakers, setSpeakers] = useState<Speaker[]>(initial?.speakers ?? []);
   const [title, setTitle] = useState(initial?.title ?? "Untitled conversation");
   const [status, setStatus] = useState<EngineStatus>("idle");
@@ -81,6 +83,27 @@ function Conversation({ initial, onHome }: Props) {
       }),
     ];
     return () => offs.forEach((off) => off());
+  }, []);
+
+  // Files dropped anywhere on the window land in the timeline.
+  const itemsRef = useRef<Item[]>(items);
+  itemsRef.current = items;
+  useEffect(() => {
+    return backend.onDragDrop(async (paths) => {
+      for (const path of paths) {
+        try {
+          const last = itemsRef.current[itemsRef.current.length - 1];
+          const { item, url } = await backend.addImage(path, last?.id ?? null);
+          if (item.type === "image") {
+            setAssetUrls((prev) => ({ ...prev, [item.file]: url }));
+          }
+          setItems((prev) => [...prev, item]);
+        } catch (e) {
+          setError(String(e));
+          setTimeout(() => setError(null), 4000);
+        }
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -191,9 +214,12 @@ function Conversation({ initial, onHome }: Props) {
         {groups.map((g, gi) => {
           const first = g.items[0];
           if (first.type === "image") {
+            const src = assetUrls[first.file];
+            if (!src) return null;
             return (
               <figure className="image-card" key={first.id}>
-                <img src={first.file} alt={first.caption ?? "Dropped image"} />
+                <img src={src} alt={first.caption ?? "Dropped image"} />
+                <figcaption className="stamp">{fmtClock(first.wall_time)}</figcaption>
               </figure>
             );
           }

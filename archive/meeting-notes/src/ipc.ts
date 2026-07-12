@@ -1,7 +1,13 @@
 // Typed bridge to the Rust engine. With ?mock=1 in the URL a scripted fake
 // backend drives the UI instead (used by Playwright and browser-only dev).
 
-import type { Conversation, EngineStatus, Speaker } from "./types";
+import type { Conversation, EngineStatus, Item, Speaker } from "./types";
+
+export interface OpenedConversation {
+  conversation: Conversation;
+  /** item.file → displayable URL for bundled images */
+  assetUrls: Record<string, string>;
+}
 
 export interface Backend {
   startRecording(): Promise<void>;
@@ -9,7 +15,13 @@ export interface Backend {
   resume(): Promise<void>;
   stopRecording(): Promise<Conversation>;
   saveAs(): Promise<string | null>; // returns saved path or null if cancelled
-  openFile(): Promise<Conversation | null>;
+  openFile(): Promise<OpenedConversation | null>;
+  addImage(
+    path: string,
+    afterItemId: string | null,
+  ): Promise<{ item: Item; url: string }>;
+  /** Fires with absolute file paths when files are dropped on the window. */
+  onDragDrop(cb: (paths: string[]) => void): () => void;
   renameSpeaker(speakerId: string, name: string): Promise<void>;
   onPartial(cb: (utteranceId: string, text: string) => void): () => void;
   onFinal(cb: (item: import("./types").Item) => void): () => void;
@@ -74,7 +86,42 @@ function realBackend(): Backend {
         filters: [{ name: "Minutes conversation", extensions: ["mnote"] }],
       });
       if (!path || Array.isArray(path)) return null;
-      return (await t.invoke("open", { path })) as Conversation;
+      const res = (await t.invoke("open", { path })) as {
+        conversation: Conversation;
+        asset_dir: string;
+      };
+      const { convertFileSrc } = await import("@tauri-apps/api/core");
+      const assetUrls: Record<string, string> = {};
+      for (const item of res.conversation.items) {
+        if (item.type === "image") {
+          const base = item.file.replace(/^assets\//, "");
+          assetUrls[item.file] = convertFileSrc(`${res.asset_dir}/${base}`);
+        }
+      }
+      return { conversation: res.conversation, assetUrls };
+    },
+    addImage: async (path, afterItemId) => {
+      const item = (await t.invoke("add_image", { path, afterItemId })) as Item;
+      const { convertFileSrc } = await import("@tauri-apps/api/core");
+      return { item, url: convertFileSrc(path) };
+    },
+    onDragDrop: (cb) => {
+      let unlisten: (() => void) | undefined;
+      let cancelled = false;
+      import("@tauri-apps/api/webview").then(({ getCurrentWebview }) =>
+        getCurrentWebview()
+          .onDragDropEvent((event) => {
+            if (event.payload.type === "drop") cb(event.payload.paths);
+          })
+          .then((u) => {
+            if (cancelled) u();
+            else unlisten = u;
+          }),
+      );
+      return () => {
+        cancelled = true;
+        unlisten?.();
+      };
     },
     renameSpeaker: (speakerId, name) =>
       t.invoke("rename_speaker", { speakerId, name }) as Promise<void>,
@@ -201,7 +248,42 @@ function mockBackend(): Backend {
       return "/tmp/mock.mnote";
     },
     async openFile() {
-      return { ...conv, title: "Reopened conversation" };
+      // Include an image item so image rendering is exercisable in tests.
+      const png =
+        "data:image/svg+xml," +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"><rect width="200" height="120" fill="#5B8DEF"/><text x="16" y="66" fill="#fff" font-family="sans-serif">whiteboard.png</text></svg>',
+        );
+      const img = {
+        type: "image",
+        id: "img-0001",
+        file: "assets/img-0001.png",
+        wall_time: new Date().toISOString(),
+        caption: null,
+      } as const;
+      return {
+        conversation: {
+          ...conv,
+          title: "Reopened conversation",
+          items: [...conv.items, img],
+        },
+        assetUrls: { "assets/img-0001.png": png },
+      };
+    },
+    async addImage(path, _afterItemId) {
+      const n = conv.items.filter((i) => i.type === "image").length + 1;
+      const item = {
+        type: "image",
+        id: `img-${String(n).padStart(4, "0")}`,
+        file: `assets/img-${String(n).padStart(4, "0")}.png`,
+        wall_time: new Date().toISOString(),
+        caption: null,
+      } as const;
+      conv.items.push(item as never);
+      return { item, url: path };
+    },
+    onDragDrop() {
+      return () => {};
     },
     async renameSpeaker(speakerId, name) {
       const sp = conv.speakers.find((s) => s.id === speakerId);

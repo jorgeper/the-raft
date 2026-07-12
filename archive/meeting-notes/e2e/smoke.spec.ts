@@ -31,10 +31,11 @@ test("second speaker gets own header and 'I am X' toast supports undo", async ({
   await expect(page.getByText("Speaker 1 → Alice")).not.toBeVisible();
 });
 
-test("open a saved conversation renders its items", async ({ page }) => {
+test("open a saved conversation renders its items including images", async ({ page }) => {
   await page.goto("/?mock=1");
   await page.getByRole("button", { name: /open a saved conversation/i }).click();
   await expect(page.getByRole("textbox", { name: "Conversation title" })).toHaveValue(
     "Reopened conversation",
   );
+  await expect(page.locator(".image-card img")).toBeVisible();
 });
