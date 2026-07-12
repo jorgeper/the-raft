@@ -1,7 +1,8 @@
 //! Realtime engine: audio source → VAD segmenter → whisper worker → events.
 
 use crate::audio::AudioSource;
-use crate::document::{Conversation, Item};
+use crate::diar::Diarizer;
+use crate::document::{Conversation, Item, Speaker};
 use crate::stt::Transcriber;
 use crate::vad::{Segmenter, Utterance};
 use anyhow::Result;
@@ -24,6 +25,7 @@ pub enum EngineEvent {
     Level { rms: f32 },
     #[serde(rename_all = "camelCase")]
     Status { state: String },
+    SpeakerUpdated(Speaker),
 }
 
 struct Shared {
@@ -47,8 +49,9 @@ impl Engine {
         model: &str,
         events: Sender<EngineEvent>,
     ) -> Result<Engine> {
-        // Load the model before starting capture so a missing model fails fast.
+        // Load models before starting capture so missing files fail fast.
         let transcriber = Transcriber::load(model)?;
+        let diarizer = Diarizer::load()?;
 
         let shared = Arc::new(Shared {
             paused: AtomicBool::new(false),
@@ -74,6 +77,7 @@ impl Engine {
         let stt_handle = spawn_stt(
             shared.clone(),
             transcriber,
+            diarizer,
             utt_rx,
             open_snapshot,
             events.clone(),
@@ -152,6 +156,7 @@ fn spawn_segmenter(
 fn spawn_stt(
     shared: Arc<Shared>,
     mut transcriber: Transcriber,
+    mut diarizer: Diarizer,
     utt_rx: Receiver<Utterance>,
     open_snapshot: Arc<Mutex<Option<Vec<f32>>>>,
     events: Sender<EngineEvent>,
@@ -165,21 +170,34 @@ fn spawn_stt(
                     let closed_at = Instant::now();
                     match transcriber.transcribe(&utt.samples) {
                         Ok(text) if !text.is_empty() => {
-                            let item = {
+                            let speaker_idx = match diarizer.assign(&utt.samples) {
+                                Ok(idx) => idx,
+                                Err(e) => {
+                                    eprintln!("diarization failed: {e}");
+                                    0
+                                }
+                            };
+                            let (item, new_speaker) = {
                                 let mut conv = shared.conversation.lock().unwrap();
+                                let (speaker_id, created) = conv.ensure_speaker(speaker_idx);
+                                let new_speaker =
+                                    created.then(|| conv.speakers[speaker_idx].clone());
                                 let mut count = shared.utterance_count.lock().unwrap();
                                 *count += 1;
                                 let item = Item::Utterance {
                                     id: format!("utt-{:04}", *count),
-                                    speaker_id: conv.speakers[0].id.clone(),
+                                    speaker_id,
                                     text,
                                     t_start: utt.t_start,
                                     t_end: utt.t_end,
                                     wall_time: chrono::Local::now(),
                                 };
                                 conv.items.push(item.clone());
-                                item
+                                (item, new_speaker)
                             };
+                            if let Some(sp) = new_speaker {
+                                let _ = events.send(EngineEvent::SpeakerUpdated(sp));
+                            }
                             eprintln!(
                                 "finalized utterance {}ms after segmenter close",
                                 closed_at.elapsed().as_millis()
@@ -227,10 +245,85 @@ mod tests {
     use super::*;
     use crate::audio::WavFileSource;
 
+    fn models_ready() -> bool {
+        if !crate::stt::model_path("small").exists()
+            || !crate::diar::embedding_model_path().exists()
+        {
+            eprintln!("SKIP: models missing, run scripts/fetch-models.sh (small + embedding)");
+            return false;
+        }
+        true
+    }
+
+    /// Concatenate fixtures with `gap_s` of silence between them into one buffer.
+    fn concat_fixtures(names: &[&str], gap_s: f32) -> Vec<f32> {
+        let gap = vec![0.0f32; (gap_s * 16000.0) as usize];
+        let mut out = Vec::new();
+        for (i, name) in names.iter().enumerate() {
+            if i > 0 {
+                out.extend_from_slice(&gap);
+            }
+            out.extend(
+                crate::audio::load_wav_16k_mono(std::path::Path::new(&format!(
+                    "tests/fixtures/{name}.wav"
+                )))
+                .unwrap(),
+            );
+        }
+        out
+    }
+
+    fn write_temp_wav(samples: &[f32], name: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(name);
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 16000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::create(&path, spec).unwrap();
+        for s in samples {
+            w.write_sample((s.clamp(-1.0, 1.0) * 32767.0) as i16).unwrap();
+        }
+        w.finalize().unwrap();
+        path
+    }
+
+    #[test]
+    fn two_speaker_session_creates_two_speakers() {
+        if !models_ready() {
+            return;
+        }
+        let samples = concat_fixtures(&["alice-1", "bob-1", "alice-2", "bob-2"], 1.0);
+        let path = write_temp_wav(&samples, "minutes-two-speakers.wav");
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let src = WavFileSource::new(path, false);
+        let eng = Engine::start(Box::new(src), "small", tx).unwrap();
+        std::thread::sleep(Duration::from_secs(4));
+        let (conv, _) = eng.stop().unwrap();
+
+        assert!(conv.speakers.len() >= 2, "expected >=2 speakers, got {:?}", conv.speakers);
+        let mut ids: Vec<&str> = conv
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Utterance { speaker_id, .. } => Some(speaker_id.as_str()),
+                _ => None,
+            })
+            .collect();
+        ids.dedup();
+        assert!(ids.len() >= 2, "utterances should not all share one speaker: {ids:?}");
+
+        let speaker_events = rx
+            .try_iter()
+            .filter(|e| matches!(e, EngineEvent::SpeakerUpdated(_)))
+            .count();
+        assert!(speaker_events >= 2, "expected SpeakerUpdated per new speaker");
+    }
+
     #[test]
     fn wav_session_produces_final_utterances_and_document() {
-        if !crate::stt::model_path("small").exists() {
-            eprintln!("SKIP: no model");
+        if !models_ready() {
             return;
         }
         let (tx, rx) = crossbeam_channel::unbounded();

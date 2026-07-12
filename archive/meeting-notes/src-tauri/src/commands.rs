@@ -58,6 +58,7 @@ pub fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(),
                 EngineEvent::Final(_) => "timeline/final",
                 EngineEvent::Level { .. } => "audio/level",
                 EngineEvent::Status { .. } => "engine/status",
+                EngineEvent::SpeakerUpdated(_) => "timeline/speaker-updated",
             };
             let _ = app.emit(channel, &ev);
         }

@@ -76,15 +76,29 @@ impl Conversation {
                 // Real diarization arrives in M2.
                 diarization: EngineChoice { engine: "none".into(), model: "none".into() },
             },
-            speakers: vec![Speaker {
-                id: "spk-1".into(),
-                name: "Speaker 1".into(),
-                color: SPEAKER_PALETTE[0].into(),
-                auto_named: false,
-                embedding: None,
-            }],
+            speakers: Vec::new(),
             items: Vec::new(),
         }
+    }
+
+    /// Speaker for a 0-based diarizer cluster index, created on first sight.
+    /// Returns (speaker_id, was_created).
+    pub fn ensure_speaker(&mut self, idx: usize) -> (String, bool) {
+        if let Some(sp) = self.speakers.get(idx) {
+            return (sp.id.clone(), false);
+        }
+        // Diarizer indices are dense, so this only ever appends one.
+        let n = self.speakers.len() + 1;
+        let sp = Speaker {
+            id: format!("spk-{n}"),
+            name: format!("Speaker {n}"),
+            color: SPEAKER_PALETTE[(n - 1) % SPEAKER_PALETTE.len()].into(),
+            auto_named: false,
+            embedding: None,
+        };
+        let id = sp.id.clone();
+        self.speakers.push(sp);
+        (id, true)
     }
 }
 
@@ -131,9 +145,12 @@ mod tests {
     fn mnote_round_trip() {
         let mut c = Conversation::new_recording("small");
         c.title = "Standup".into();
+        let (spk, created) = c.ensure_speaker(0);
+        assert!(created);
+        assert_eq!(c.ensure_speaker(0), (spk.clone(), false));
         c.items.push(Item::Utterance {
             id: "utt-0001".into(),
-            speaker_id: c.speakers[0].id.clone(),
+            speaker_id: spk,
             text: "hello world".into(),
             t_start: 1.0,
             t_end: 2.5,
