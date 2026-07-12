@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod document;
+pub mod engine;
 pub mod stt;
 pub mod vad;
 
