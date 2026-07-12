@@ -87,6 +87,20 @@ impl Engine {
         Ok(Engine { shared, source, events, seg_handle, stt_handle })
     }
 
+    /// Insert a dropped image into the live timeline at the current moment.
+    pub fn add_image(&self, file_name: &str) -> Item {
+        let mut conv = self.shared.conversation.lock().unwrap();
+        let n = conv.items.iter().filter(|i| matches!(i, Item::Image { .. })).count() + 1;
+        let item = Item::Image {
+            id: format!("img-{n:04}"),
+            file: format!("assets/{file_name}"),
+            wall_time: chrono::Local::now(),
+            caption: None,
+        };
+        conv.items.push(item.clone());
+        item
+    }
+
     /// Manual rename from the UI; wins over any future "I am X" for this speaker.
     pub fn rename_speaker(&self, speaker_id: &str, name: &str) -> Option<Speaker> {
         let mut conv = self.shared.conversation.lock().unwrap();

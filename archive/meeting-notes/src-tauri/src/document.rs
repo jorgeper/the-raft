@@ -102,7 +102,12 @@ impl Conversation {
     }
 }
 
-pub fn write_mnote(path: &Path, conv: &Conversation, audio_ogg: Option<&[u8]>) -> Result<()> {
+pub fn write_mnote(
+    path: &Path,
+    conv: &Conversation,
+    audio_ogg: Option<&[u8]>,
+    assets: &[(String, Vec<u8>)],
+) -> Result<()> {
     let file = std::fs::File::create(path)
         .with_context(|| format!("creating {}", path.display()))?;
     let mut zw = zip::ZipWriter::new(file);
@@ -112,13 +117,16 @@ pub fn write_mnote(path: &Path, conv: &Conversation, audio_ogg: Option<&[u8]>) -
     zw.start_file("conversation.json", json_opts)?;
     zw.write_all(serde_json::to_string_pretty(conv)?.as_bytes())?;
 
+    // Opus and images are already compressed; store them raw.
+    let store_opts = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored);
     if let Some(ogg) = audio_ogg {
-        // Opus is already compressed; store it raw.
-        let store_opts = zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored)
-            .large_file(ogg.len() as u64 >= 0xFFFF_FFFF);
-        zw.start_file("audio.ogg", store_opts)?;
+        zw.start_file("audio.ogg", store_opts.large_file(ogg.len() as u64 >= 0xFFFF_FFFF))?;
         zw.write_all(ogg)?;
+    }
+    for (name, bytes) in assets {
+        zw.start_file(format!("assets/{name}"), store_opts)?;
+        zw.write_all(bytes)?;
     }
 
     zw.finish()?;
@@ -126,15 +134,45 @@ pub fn write_mnote(path: &Path, conv: &Conversation, audio_ogg: Option<&[u8]>) -
 }
 
 pub fn read_mnote(path: &Path) -> Result<Conversation> {
+    Ok(read_mnote_full(path)?.0)
+}
+
+/// Conversation plus bundled image assets (file_name, bytes) and audio.
+pub fn read_mnote_full(
+    path: &Path,
+) -> Result<(Conversation, Vec<(String, Vec<u8>)>, Option<Vec<u8>>)> {
     let file = std::fs::File::open(path)
         .with_context(|| format!("opening {}", path.display()))?;
     let mut za = zip::ZipArchive::new(file)?;
-    let mut entry = za
-        .by_name("conversation.json")
-        .context("no conversation.json in .mnote")?;
-    let mut json = String::new();
-    entry.read_to_string(&mut json)?;
-    Ok(serde_json::from_str(&json)?)
+    let conv: Conversation = {
+        let mut entry = za
+            .by_name("conversation.json")
+            .context("no conversation.json in .mnote")?;
+        let mut json = String::new();
+        entry.read_to_string(&mut json)?;
+        serde_json::from_str(&json)?
+    };
+    let mut assets = Vec::new();
+    let names: Vec<String> = za
+        .file_names()
+        .filter(|n| n.starts_with("assets/"))
+        .map(String::from)
+        .collect();
+    for name in names {
+        let mut entry = za.by_name(&name)?;
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes)?;
+        assets.push((name.trim_start_matches("assets/").to_string(), bytes));
+    }
+    let audio = match za.by_name("audio.ogg") {
+        Ok(mut entry) => {
+            let mut bytes = Vec::new();
+            entry.read_to_end(&mut bytes)?;
+            Some(bytes)
+        }
+        Err(_) => None,
+    };
+    Ok((conv, assets, audio))
 }
 
 #[cfg(test)]
@@ -156,14 +194,25 @@ mod tests {
             t_end: 2.5,
             wall_time: chrono::Local::now(),
         });
+        c.items.push(Item::Image {
+            id: "img-0001".into(),
+            file: "assets/img-0001.png".into(),
+            wall_time: chrono::Local::now(),
+            caption: None,
+        });
         let dir = std::env::temp_dir().join(format!("mnote-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.mnote");
-        write_mnote(&path, &c, Some(b"OggS-fake")).unwrap();
+        let fake_png = vec![0x89u8, b'P', b'N', b'G', 1, 2, 3];
+        write_mnote(&path, &c, Some(b"OggS-fake"), &[("img-0001.png".into(), fake_png.clone())])
+            .unwrap();
+        let (back, assets, audio) = read_mnote_full(&path).unwrap();
+        assert_eq!(assets, vec![("img-0001.png".to_string(), fake_png)]);
+        assert_eq!(audio.as_deref(), Some(&b"OggS-fake"[..]));
+        assert_eq!(back.items.len(), 2);
         let back = read_mnote(&path).unwrap();
         assert_eq!(back.title, "Standup");
         assert_eq!(back.schema_version, 1);
-        assert_eq!(back.items.len(), 1);
         match &back.items[0] {
             Item::Utterance { text, .. } => assert_eq!(text, "hello world"),
             _ => panic!("expected utterance"),

@@ -20,6 +20,7 @@ pub fn run() {
             commands::stop,
             commands::save,
             commands::open,
+            commands::add_image,
             commands::rename_speaker,
             commands::new_conversation,
         ])
