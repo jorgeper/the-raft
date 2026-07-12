@@ -1,5 +1,63 @@
 # Gargoyle — Progress
 
+## Phase 2 — Rules + Firewall (2026-07-12)
+
+### Built
+
+- **RulesEngine** (spec §5): first-match precedence — session/once approvals →
+  app+destination (most-specific) → app-wide → global (incl. catch-all) →
+  per-app mode → global default. Destination matching for host / `*.suffix` /
+  IP / CIDR (v4+v6) / ANY with specificity ranking; port and protocol
+  narrowing; scope expiry (`persistent | until-quit | until | once`); rules
+  suspended on signer change; system daemons excluded and never firewalled.
+  Every decision carries an ordered **why-trace**.
+- **RuleStore**: profiles (exactly one active, switchable), rules, per-app
+  modes, verdict events with traces, hit counts, JSON profile export/import.
+- **Pipeline integration**: every flow is judged on open. `ignore` drops it
+  before the audit log; `block` emits a blocked event; firewall + no rule
+  raises an approval. **Tap B records `wouldHaveBlocked` rather than claiming
+  a block** (spec §2.2) — the packets did leave. Verdicts + traces persist to
+  `verdict_events` keyed on the audited flow.
+- **FilterVerdictPolicy**: pure, tested **fail-closed** logic (spec §13.1) —
+  an unanswerable prompt drops the flow and records a missed prompt, while
+  monitored/ignored flows are never dropped for want of a prompt.
+- **FilterTap + TapSelector**: Tap A interface and tap selection; reports
+  `isAvailable == false` until the signed extension exists, so the app
+  degrades to Tap B and shows the monitor-only badge.
+- **UI**: always-on-top approval window (allow once/until-quit/always/domain,
+  block once/always), inline approvals in the popover, review queue, profile
+  switcher, working per-app mode toggles.
+
+### Verified
+
+- **88 tests green**, including 22 rules-precedence tests (the spec §12 TDD
+  mandate), profile switching changing live verdicts, would-have-blocked
+  labeling, approval → persisted rule → next flow allowed, ignored/system
+  flows never audited, and fail-closed policy.
+- **Live mock run** exercised every path in the real app:
+  `BLOCK (would-have) node → api.github.com` (rule),
+  `APPROVAL (retrospective) Slack → wss.slack.com` (firewall, no rule),
+  Safari monitored, `nsurlsessiond` silently excluded as a system daemon.
+
+### Deferred verification (needs the user / signed bundle)
+
+- **Actual blocking is not verifiable yet.** `NEFilterDataProvider` requires a
+  signed .app bundle with the content-filter entitlement (Apple Developer
+  account) plus a System Settings approval. The verdict contract and
+  fail-closed policy are built and tested; the live extension target is the
+  remaining work. Until then Gargoyle is honest: rules evaluate, blocks are
+  labeled *would-have-blocked*, and the UI shows a monitor-only badge.
+- Real-traffic run of the rules engine (needs `sudo scripts/install-helper.sh`).
+
+### Decisions / deviations
+
+- The precedence stage "global destination rules" also accepts a catch-all
+  (any app → any destination), so a "Paranoid" block-everything profile works.
+- Pending approvals outlive their flow: on Tap B the connection has already
+  finished, and the item still needs a human verdict in the review queue.
+- Bulk actions on the review queue and the precedence *visualization* are
+  deferred to Phase 3 (the trace data is already persisted per verdict).
+
 ## Phase 1 — Monitor + Audit (2026-07-11)
 
 ### Built
