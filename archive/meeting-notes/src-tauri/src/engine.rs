@@ -177,11 +177,24 @@ fn spawn_stt(
                                     0
                                 }
                             };
-                            let (item, new_speaker) = {
+                            let (item, new_speaker, renamed) = {
                                 let mut conv = shared.conversation.lock().unwrap();
                                 let (speaker_id, created) = conv.ensure_speaker(speaker_idx);
                                 let new_speaker =
                                     created.then(|| conv.speakers[speaker_idx].clone());
+                                // "I am X": rename this utterance's speaker,
+                                // retroactively and going forward, unless a
+                                // human already named them (spec §5.2).
+                                let renamed = crate::namer::detect_self_name(&text)
+                                    .and_then(|name| {
+                                        let sp = &mut conv.speakers[speaker_idx];
+                                        let untouched = sp.name.starts_with("Speaker ");
+                                        (untouched || sp.auto_named).then(|| {
+                                            sp.name = name;
+                                            sp.auto_named = true;
+                                            sp.clone()
+                                        })
+                                    });
                                 let mut count = shared.utterance_count.lock().unwrap();
                                 *count += 1;
                                 let item = Item::Utterance {
@@ -193,9 +206,12 @@ fn spawn_stt(
                                     wall_time: chrono::Local::now(),
                                 };
                                 conv.items.push(item.clone());
-                                (item, new_speaker)
+                                (item, new_speaker, renamed)
                             };
                             if let Some(sp) = new_speaker {
+                                let _ = events.send(EngineEvent::SpeakerUpdated(sp));
+                            }
+                            if let Some(sp) = renamed {
                                 let _ = events.send(EngineEvent::SpeakerUpdated(sp));
                             }
                             eprintln!(

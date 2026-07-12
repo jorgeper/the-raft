@@ -3,6 +3,7 @@ pub mod commands;
 pub mod diar;
 pub mod document;
 pub mod engine;
+pub mod namer;
 pub mod stt;
 pub mod vad;
 
