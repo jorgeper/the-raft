@@ -1,0 +1,44 @@
+# M1 Verification Record
+
+**Date:** 2026-07-12 · **Machine:** Apple Silicon Mac, macOS 26.5.1 · **Model:** whisper `small` (Metal)
+
+## Test suite
+
+- `cargo test` — **11/11 pass**: `.mnote` round-trip, resampler ×2, WAV source streaming,
+  VAD (silence / speech / 900 ms pause-split), whisper artifact filter, whisper fixture
+  transcription, engine WAV-session integration, Opus encode magic bytes.
+- `npx playwright test` — **2/2 pass** (mock backend at `?mock=1`): record flow renders
+  partial → 2 final bubbles → stop → Save visible; open-saved renders title.
+
+## Real-microphone end-to-end (definition-of-done)
+
+`cargo test --test real_mic -- --ignored --nocapture` — records from the **real default
+microphone** via cpal (48 kHz native → 16 kHz), while `afplay` speaks the two-sentence
+fixture through the speakers into the room.
+
+```
+mic capture started at 48000 Hz native
+finalized utterance 254ms after segmenter close
+finalized utterance 259ms after segmenter close
+== real-mic transcript: this is the first sentence. and after a pause, this is the second sentence.
+== captured 9.6s of audio
+test result: ok. 1 passed; 0 failed
+```
+
+- **Transcript accuracy:** both sentences exact.
+- **Latency:** finalization ≈ 255 ms of whisper time after the 600 ms end-of-utterance
+  silence window ⇒ ≈ 0.9 s from when a speaker stops talking to final text. Target was ≤ ~2 s. ✅
+- Note: the room-audio path failed on the first run because system output was muted —
+  the pipeline correctly produced *no* utterances from a silent room (VAD held at zero).
+
+## UI visual check
+
+Screenshots taken in mock mode (light + dark): home, live partial bubble, listening pill
+with waveform + elapsed, stopped state with Save. Both themes render correctly.
+
+## Not yet covered (known, deliberate)
+
+- Interactive click-through of the packaged app window by a human (the same command/event
+  path is covered by mock-UI Playwright + real-engine tests; `MINUTES_FAKE_MIC=<wav>` runs
+  the full app against a file source for manual checks).
+- Windows build, autosave/recovery (M3), diarization (M2), OOBE/model manager (M4).
