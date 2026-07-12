@@ -30,7 +30,7 @@ let package = Package(
         .executableTarget(name: "gargoyle-helperd", dependencies: ["CaptureKit", "CPcap"]),
 
         // Menu-bar app.
-        .executableTarget(name: "GargoyleApp", dependencies: ["GargoyleCore"]),
+        .executableTarget(name: "GargoyleApp", dependencies: ["GargoyleCore", "CaptureKit"]),
 
         // Phase 0 spike CLI, kept for ad-hoc capture debugging.
         .executableTarget(name: "gargoyle-spike", dependencies: ["CaptureKit", "CPcap"]),

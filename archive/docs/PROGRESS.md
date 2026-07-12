@@ -1,5 +1,59 @@
 # Gargoyle — Progress
 
+## Phase 1 — Monitor + Audit (2026-07-11)
+
+### Built
+
+- **CaptureKit** (shared by helper + app): pktap/IP parsers (from Phase 0),
+  `TapEvent` JSON-lines wire protocol, `FlowAggregator` (bidirectional flows,
+  stat deltas, idle close), passive `DNSCorrelator` (A/AAAA→query-name with
+  compression parsing), `PktapCapture`, `TapSocketServer`.
+- **gargoyle-helperd**: root capture daemon (launchd), streams TapEvents over
+  a uid-restricted unix socket (`/var/run/gargoyle.sock`, 0600); `--stdout`
+  debug mode.
+- **GargoyleCore**: `FlowTap` protocol with `PcapTap` (auto-reconnect client)
+  and `MockTap` (scripted replay); `FlowPipeline` actor (identity resolution,
+  active flows, finalization); `AuditStore` (GRDB WAL, hash-chained `flows`,
+  per-app/day aggregates, 30-day retention); `AppIdentityResolver` (SecCode
+  signing ID/team ID, unsigned fallback); `EgressMeter`; `NotificationCoalescer`.
+- **GargoyleApp**: SwiftUI `MenuBarExtra` window popover — 60s egress
+  sparkline (Swift Charts), recent flows, top apps, pause, system-apps toggle,
+  learning-mode banner + digest; UserNotifications with per app+destination
+  coalescing (console fallback unbundled); `GARGOYLE_MOCK_TAP` /
+  `GARGOYLE_AUTOEXIT` for rootless verification.
+- **scripts/**: `install-helper.sh` (launchd bootstrap), `uninstall-helper.sh`,
+  `build-app.sh` (ad-hoc-signed `dist/Gargoyle.app`).
+
+### Verified
+
+- 47 tests green (Swift Testing): hash chain (tamper + deletion detection,
+  retention-safe verify), flow-replay harness through the full pipeline,
+  DNS parsing (CNAME, compression loops), aggregator lifecycle, socket
+  round-trip integration (client+server over temp socket, reconnect),
+  identity resolution of a live process, meter/coalescer.
+- Mock-mode app run: launched, streamed synthetic flows, exited 0; audit rows
+  landed hash-chained (verified via sqlite3 before switching mock mode to an
+  in-memory store).
+- `dist/Gargoyle.app` builds and signs (ad-hoc).
+
+### Deferred verification (needs the user)
+
+- `sudo scripts/install-helper.sh` (launchd daemon install), then run
+  `dist/Gargoyle.app` and confirm real flows appear with app names/hostnames.
+- First bundled launch: approve the notification-permission prompt.
+
+### Decisions / deviations
+
+- **FilterTap (Tap A) deferred to Phase 2** — only needed for verdicts, and it
+  requires the signed extension bundle Phase 2 builds anyway.
+- Helper install is a sudo script + launchd daemon for now; SMAppService
+  packaging can replace it when the Xcode project lands in Phase 2.
+- Long-lived flows finalize at close/quit only (no periodic checkpointing yet).
+- Live sparkline *menu-bar icon* (v0.3 optional) deferred to Phase 3 polish;
+  popover sparkline is in.
+- Per-app quick mode toggles in the popover await the Phase 2 rules engine
+  (top-apps list is read-only in Phase 1).
+
 ## Phase 0 — Spike (2026-07-11)
 
 ### Built
