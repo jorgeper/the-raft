@@ -5,15 +5,8 @@
       "author": "Reviewer",
       "createdAt": "2026-07-06T12:39:03.950Z",
       "body": "test",
-      "resolved": false,
-      "thread": [
-        {
-          "id": "483bfef2-d739-40d9-b380-c05bcd76f382",
-          "author": "Reviewer",
-          "createdAt": "2026-07-06T12:39:12.669Z",
-          "body": "foo"
-        }
-      ],
+      "resolved": true,
+      "thread": [],
       "anchor": {
         "exact": " fofofof type the renderer supports, and it is comfortably longer than two thousand words so that margin a",
         "prefix": "entionally mixes every block fof",
@@ -80,6 +73,21 @@
         "suffix": " illustrative snippet, not execu",
         "start": 1483,
         "end": 1502
+      }
+    },
+    {
+      "id": "9eedf519-7f59-464f-a5e7-372dfd8b27cd",
+      "author": "Reviewer",
+      "createdAt": "2026-07-06T12:48:39.104Z",
+      "body": "xxx",
+      "resolved": false,
+      "thread": [],
+      "anchor": {
+        "exact": "ndered text as the single source of truth for positions. Every selection is captured with enough redundancy to survive ordinary editing sessions. A reviewer can leave a n",
+        "prefix": "The document model treats the re",
+        "suffix": "ote without ever touching the un",
+        "start": 477,
+        "end": 647
       }
     }
   ]
