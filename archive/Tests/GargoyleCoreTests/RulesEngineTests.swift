@@ -61,6 +61,23 @@ private func rule(_ destination: Destination, action: RuleAction = .block,
         #expect(Destination.cidr("0.0.0.0/0").matches(host: nil, ip: "8.8.8.8"))
     }
 
+    /// Prefixes that don't fall on a byte boundary exercise the partial-byte
+    /// mask — where an overflowing shift used to crash.
+    @Test func cidrHandlesNonByteAlignedPrefixes() {
+        let twelve = Destination.cidr("104.16.0.0/12")     // 104.16.0.0 – 104.31.255.255
+        #expect(twelve.matches(host: nil, ip: "104.16.11.34"))
+        #expect(twelve.matches(host: nil, ip: "104.31.255.255"))
+        #expect(!twelve.matches(host: nil, ip: "104.32.0.1"))
+        #expect(!twelve.matches(host: nil, ip: "104.15.255.255"))
+
+        let twenty = Destination.cidr("140.82.112.0/20")   // 140.82.112.0 – 140.82.127.255
+        #expect(twenty.matches(host: nil, ip: "140.82.113.4"))
+        #expect(!twenty.matches(host: nil, ip: "140.82.128.1"))
+
+        #expect(Destination.cidr("10.0.0.0/7").matches(host: nil, ip: "11.1.1.1"))
+        #expect(!Destination.cidr("10.0.0.0/7").matches(host: nil, ip: "12.1.1.1"))
+    }
+
     @Test func cidrMatchesRangeV6() {
         let cidr = Destination.cidr("2606:4700::/32")
         #expect(cidr.matches(host: nil, ip: "2606:4700:1:2::3"))

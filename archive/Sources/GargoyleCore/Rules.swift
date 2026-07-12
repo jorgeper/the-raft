@@ -102,7 +102,8 @@ struct CIDR {
                 if bytes[index] != other[index] { return false }
                 remaining -= 8
             } else if remaining > 0 {
-                let mask = UInt8(0xFF << (8 - remaining))
+                // Shift within UInt8: `UInt8(0xFF << 4)` would overflow Int→UInt8.
+                let mask: UInt8 = 0xFF << UInt8(8 - remaining)
                 return (bytes[index] & mask) == (other[index] & mask)
             } else {
                 return true
