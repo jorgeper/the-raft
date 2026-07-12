@@ -27,7 +27,14 @@ cpal = "0.18"
 hound = "3.5"
 crossbeam-channel = "0.5"
 voice_activity_detector = "0.2"
+dirs = "6"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
+
+[target."cfg(target_os = \"macos\")".dependencies]
+whisper-rs = { version = "0.16", features = ["metal"] }
+
+[target."cfg(not(target_os = \"macos\"))".dependencies]
+whisper-rs = { version = "0.16" }
 
