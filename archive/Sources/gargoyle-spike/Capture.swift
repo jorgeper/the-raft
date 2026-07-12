@@ -1,6 +1,6 @@
 import Foundation
 import CPcap
-import SpikeCore
+import CaptureKit
 
 // Set from a C signal handler, so it must be a global flag.
 nonisolated(unsafe) var gStopRequested: sig_atomic_t = 0
