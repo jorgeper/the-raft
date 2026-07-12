@@ -33,6 +33,7 @@ dirs = "6"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
+sherpa-rs = "0.6"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 whisper-rs = { version = "0.16", features = ["metal"] }

@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod commands;
+pub mod diar;
 pub mod document;
 pub mod engine;
 pub mod stt;
