@@ -35,6 +35,10 @@ function Conversation({ initial, onHome }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [savedAs, setSavedAs] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; undo: () => void } | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const speakersRef = useRef<Speaker[]>(initial?.speakers ?? []);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const levelsRef = useRef<number[]>(Array(BARS).fill(0));
   const [, forceLevel] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -56,6 +60,25 @@ function Conversation({ initial, onHome }: Props) {
         forceLevel((n) => n + 1);
       }),
       backend.onStatus((s) => setStatus(s)),
+      backend.onSpeakerUpdated((sp) => {
+        const old = speakersRef.current.find((s) => s.id === sp.id);
+        if (old && sp.auto_named && old.name !== sp.name) {
+          const oldName = old.name;
+          setToast({
+            text: `${oldName} → ${sp.name}`,
+            undo: () => {
+              backend.renameSpeaker(sp.id, oldName);
+              setToast(null);
+            },
+          });
+          clearTimeout(toastTimer.current);
+          toastTimer.current = setTimeout(() => setToast(null), 10000);
+        }
+        speakersRef.current = old
+          ? speakersRef.current.map((s) => (s.id === sp.id ? sp : s))
+          : [...speakersRef.current, sp];
+        setSpeakers(speakersRef.current);
+      }),
     ];
     return () => offs.forEach((off) => off());
   }, []);
@@ -85,7 +108,8 @@ function Conversation({ initial, onHome }: Props) {
       setPartial(null);
       setElapsed(0);
       setSavedAs(null);
-      setSpeakers([{ id: "spk-1", name: "Speaker 1", color: "#5B8DEF", auto_named: false }]);
+      speakersRef.current = [];
+      setSpeakers([]);
     } catch (e) {
       setError(String(e));
     }
@@ -95,6 +119,7 @@ function Conversation({ initial, onHome }: Props) {
     try {
       const conv = await backend.stopRecording();
       setItems(conv.items);
+      speakersRef.current = conv.speakers;
       setSpeakers(conv.speakers);
     } catch (e) {
       setError(String(e));
@@ -177,7 +202,31 @@ function Conversation({ initial, onHome }: Props) {
             <section className="group" key={`${first.id}-${gi}`}>
               <header className="group-head">
                 <span className="chip" style={{ background: sp.color }} aria-hidden="true" />
-                <span className="speaker-name">{sp.name}</span>
+                {renaming === `${sp.id}-${gi}` ? (
+                  <input
+                    className="speaker-rename"
+                    defaultValue={sp.name}
+                    autoFocus
+                    aria-label="Speaker name"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                      if (e.key === "Escape") setRenaming(null);
+                    }}
+                    onBlur={(e) => {
+                      const name = e.currentTarget.value.trim();
+                      if (name && name !== sp.name) backend.renameSpeaker(sp.id, name);
+                      setRenaming(null);
+                    }}
+                  />
+                ) : (
+                  <button
+                    className="speaker-name"
+                    title="Rename speaker"
+                    onClick={() => setRenaming(`${sp.id}-${gi}`)}
+                  >
+                    {sp.name}
+                  </button>
+                )}
                 <time className="stamp">{fmtClock(first.wall_time)}</time>
               </header>
               {g.items.map(
@@ -195,12 +244,21 @@ function Conversation({ initial, onHome }: Props) {
           <section className="group">
             <header className="group-head">
               <span className="chip chip-live" aria-hidden="true" />
-              <span className="speaker-name">Speaker 1</span>
+              <span className="speaker-name-static">Listening</span>
             </header>
             <p className="bubble partial">{partial.text}</p>
           </section>
         )}
       </div>
+
+      {toast && (
+        <div className="toast" role="status">
+          <span>{toast.text}</span>
+          <button className="toast-undo" onClick={toast.undo}>
+            Undo
+          </button>
+        </div>
+      )}
 
       {!viewing && (
         <div className={`pill ${status}`}>

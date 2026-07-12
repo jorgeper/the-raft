@@ -20,6 +20,7 @@ pub fn run() {
             commands::stop,
             commands::save,
             commands::open,
+            commands::rename_speaker,
             commands::new_conversation,
         ])
         .run(tauri::generate_context!())

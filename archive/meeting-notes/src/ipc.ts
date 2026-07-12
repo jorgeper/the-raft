@@ -1,7 +1,7 @@
 // Typed bridge to the Rust engine. With ?mock=1 in the URL a scripted fake
 // backend drives the UI instead (used by Playwright and browser-only dev).
 
-import type { Conversation, EngineStatus } from "./types";
+import type { Conversation, EngineStatus, Speaker } from "./types";
 
 export interface Backend {
   startRecording(): Promise<void>;
@@ -10,10 +10,12 @@ export interface Backend {
   stopRecording(): Promise<Conversation>;
   saveAs(): Promise<string | null>; // returns saved path or null if cancelled
   openFile(): Promise<Conversation | null>;
+  renameSpeaker(speakerId: string, name: string): Promise<void>;
   onPartial(cb: (utteranceId: string, text: string) => void): () => void;
   onFinal(cb: (item: import("./types").Item) => void): () => void;
   onLevel(cb: (rms: number) => void): () => void;
   onStatus(cb: (state: EngineStatus) => void): () => void;
+  onSpeakerUpdated(cb: (speaker: Speaker) => void): () => void;
 }
 
 function isMock(): boolean {
@@ -74,6 +76,8 @@ function realBackend(): Backend {
       if (!path || Array.isArray(path)) return null;
       return (await t.invoke("open", { path })) as Conversation;
     },
+    renameSpeaker: (speakerId, name) =>
+      t.invoke("rename_speaker", { speakerId, name }) as Promise<void>,
     onPartial: (cb) =>
       sub<{ utteranceId: string; text: string }>("timeline/partial", (p) =>
         cb(p.utteranceId, p.text),
@@ -82,6 +86,7 @@ function realBackend(): Backend {
     onLevel: (cb) => sub<{ rms: number }>("audio/level", (p) => cb(p.rms)),
     onStatus: (cb) =>
       sub<{ state: EngineStatus }>("engine/status", (p) => cb(p.state)),
+    onSpeakerUpdated: (cb) => sub<Speaker>("timeline/speaker-updated", cb),
   };
 }
 
@@ -92,6 +97,7 @@ function mockBackend(): Backend {
   const finalCbs: ((item: import("./types").Item) => void)[] = [];
   const levelCbs: ((rms: number) => void)[] = [];
   const statusCbs: ((s: EngineStatus) => void)[] = [];
+  const speakerCbs: ((sp: Speaker) => void)[] = [];
   let timers: ReturnType<typeof setTimeout>[] = [];
   let levelTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -111,11 +117,11 @@ function mockBackend(): Backend {
     items: [],
   };
 
-  const utt = (id: string, text: string, t0: number, t1: number) =>
+  const utt = (id: string, text: string, t0: number, t1: number, spk = "spk-1") =>
     ({
       type: "utterance",
       id,
-      speaker_id: "spk-1",
+      speaker_id: spk,
       text,
       t_start: t0,
       t_end: t1,
@@ -135,6 +141,8 @@ function mockBackend(): Backend {
         [
           1400,
           () => {
+            // Real engine emits SpeakerUpdated when a speaker first appears.
+            speakerCbs.forEach((cb) => cb({ ...conv.speakers[0] }));
             const item = utt("utt-0001", "This is the first sentence.", 0.4, 2.1);
             conv.items.push(item as never);
             finalCbs.forEach((cb) => cb(item));
@@ -144,14 +152,33 @@ function mockBackend(): Backend {
         [
           2400,
           () => {
+            const sp2: Speaker = {
+              id: "spk-2",
+              name: "Speaker 2",
+              color: "#E0716C",
+              auto_named: false,
+            };
+            conv.speakers.push(sp2);
+            speakerCbs.forEach((cb) => cb(sp2));
             const item = utt(
               "utt-0002",
               "And after a pause, this is the second sentence.",
               3.0,
               5.2,
+              "spk-2",
             );
             conv.items.push(item as never);
             finalCbs.forEach((cb) => cb(item));
+          },
+        ],
+        [
+          3000,
+          () => {
+            // Scripted "I am Alice" auto-rename of speaker 1.
+            const sp = conv.speakers[0];
+            sp.name = "Alice";
+            sp.auto_named = true;
+            speakerCbs.forEach((cb) => cb({ ...sp }));
           },
         ],
       ];
@@ -176,6 +203,13 @@ function mockBackend(): Backend {
     async openFile() {
       return { ...conv, title: "Reopened conversation" };
     },
+    async renameSpeaker(speakerId, name) {
+      const sp = conv.speakers.find((s) => s.id === speakerId);
+      if (!sp) throw new Error("unknown speaker");
+      sp.name = name;
+      sp.auto_named = false;
+      speakerCbs.forEach((cb) => cb({ ...sp }));
+    },
     onPartial(cb) {
       partialCbs.push(cb);
       return () => partialCbs.splice(partialCbs.indexOf(cb), 1);
@@ -191,6 +225,10 @@ function mockBackend(): Backend {
     onStatus(cb) {
       statusCbs.push(cb);
       return () => statusCbs.splice(statusCbs.indexOf(cb), 1);
+    },
+    onSpeakerUpdated(cb) {
+      speakerCbs.push(cb);
+      return () => speakerCbs.splice(speakerCbs.indexOf(cb), 1);
     },
   };
 }

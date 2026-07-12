@@ -120,6 +120,34 @@ pub fn open(path: String, state: State<'_, AppState>) -> Result<Conversation, St
 }
 
 #[tauri::command]
+pub fn rename_speaker(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    speaker_id: String,
+    name: String,
+) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("name cannot be empty".into());
+    }
+    let mut inner = state.0.lock().unwrap();
+    let sp = if let Some(eng) = inner.engine.as_ref() {
+        eng.rename_speaker(&speaker_id, name)
+    } else if let Some(conv) = inner.conversation.as_mut() {
+        conv.speakers.iter_mut().find(|s| s.id == speaker_id).map(|sp| {
+            sp.name = name.to_string();
+            sp.auto_named = false;
+            sp.clone()
+        })
+    } else {
+        None
+    };
+    let sp = sp.ok_or("unknown speaker")?;
+    app.emit("timeline/speaker-updated", &EngineEvent::SpeakerUpdated(sp))
+        .map_err(err)
+}
+
+#[tauri::command]
 pub fn new_conversation(state: State<'_, AppState>) -> Result<(), String> {
     let mut inner = state.0.lock().unwrap();
     if inner.engine.is_some() {

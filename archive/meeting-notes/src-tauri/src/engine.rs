@@ -87,6 +87,15 @@ impl Engine {
         Ok(Engine { shared, source, events, seg_handle, stt_handle })
     }
 
+    /// Manual rename from the UI; wins over any future "I am X" for this speaker.
+    pub fn rename_speaker(&self, speaker_id: &str, name: &str) -> Option<Speaker> {
+        let mut conv = self.shared.conversation.lock().unwrap();
+        let sp = conv.speakers.iter_mut().find(|s| s.id == speaker_id)?;
+        sp.name = name.to_string();
+        sp.auto_named = false;
+        Some(sp.clone())
+    }
+
     pub fn pause(&self) {
         self.shared.paused.store(true, Ordering::Relaxed);
         let _ = self.events.send(EngineEvent::Status { state: "paused".into() });
