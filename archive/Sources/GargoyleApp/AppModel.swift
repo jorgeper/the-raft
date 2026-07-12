@@ -22,6 +22,15 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var tapConnected = false
     @Published private(set) var monitorOnly = true
+    @Published private(set) var watcherEvents: [WatcherEvent] = []
+    /// Destinations with traffic in the last few seconds — the constellation
+    /// animates the edges of these.
+    @Published private(set) var liveDestinations: Set<String> = []
+
+    /// One-second heartbeat the history-backed views refresh on.
+    let tick = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+
+    let heuristics = HeuristicsDB()
     @Published private(set) var recent: [RecentEntry] = []
     @Published private(set) var series: [EgressMeter.Sample] = []
     @Published private(set) var topApps: [(name: String, bytes: Int)] = []
@@ -56,6 +65,9 @@ final class AppModel: ObservableObject {
     private let pipeline: FlowPipeline
     private var tap: (any FlowTap)?
     private var flowApps: [UInt64: AppKey] = [:]
+    private let persistenceWatcher = PersistenceWatcher()
+    private let quarantineWatcher = QuarantineWatcher()
+    private let avWatcher = AVUsageWatcher()
     private lazy var approvalWindow: ApprovalWindowController? = {
         // Headless verification runs (GARGOYLE_AUTOEXIT) must not pop windows.
         ProcessInfo.processInfo.environment["GARGOYLE_NO_PROMPT"] != nil
@@ -107,11 +119,57 @@ final class AppModel: ObservableObject {
         if isMock { seedMockRules() }
         startTap()
         reloadRuleState()
+        startWatchers()
 
         uiTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.refreshDerivedState() }
         }
         try? store.applyRetention(detailDays: 30)
+    }
+
+    // MARK: - Watchers (spec §9)
+
+    private func startWatchers() {
+        persistenceWatcher.onEvents = { [weak self] events in
+            Task { @MainActor [weak self] in self?.record(events) }
+        }
+        persistenceWatcher.start()
+
+        avWatcher.onEvents = { [weak self] events in
+            Task { @MainActor [weak self] in self?.record(events) }
+        }
+        avWatcher.start()
+    }
+
+    private func record(_ events: [WatcherEvent]) {
+        for event in events where !watcherEvents.contains(where: { $0.id == event.id }) {
+            watcherEvents.insert(event, at: 0)
+            reviewQueue.insert(ReviewItem(
+                id: UInt64(truncatingIfNeeded: event.id.hashValue),
+                appName: event.title, destination: event.detail,
+                reason: event.kind.rawValue, at: event.at), at: 0)
+            notifier.notify(title: event.title, body: event.detail)
+            logMock("WATCHER \(event.kind.rawValue): \(event.detail)")
+        }
+        if watcherEvents.count > 100 { watcherEvents.removeLast(watcherEvents.count - 100) }
+    }
+
+    /// A freshly downloaded app reaching the network is exactly the moment to
+    /// speak up (spec §9).
+    private func checkQuarantine(_ flow: ActiveFlow) {
+        guard let event = quarantineWatcher.check(path: flow.appKey.path ?? identityPath(flow),
+                                                  appName: flow.displayName,
+                                                  destination: flow.destinationLabel) else { return }
+        record([event])
+    }
+
+    private func identityPath(_ flow: ActiveFlow) -> String? {
+        // AppKey carries a path only for unsigned binaries; signed apps resolve
+        // theirs from the identity row.
+        try? store.writerForTesting.read { db in
+            try String.fetchOne(db, sql: "SELECT path FROM app_identities WHERE id = ?",
+                                arguments: [flow.identityID])
+        }
     }
 
     // MARK: - Rules, profiles, modes
@@ -173,6 +231,62 @@ final class AppModel: ObservableObject {
         recent.first { $0.flow.displayName == name }?.flow
     }
 
+    // MARK: - Rules access for the main window
+
+    func activeRules() -> [Rule] {
+        (try? ruleStore?.activeRules()) as? [Rule] ?? []
+    }
+
+    func recentVerdicts() -> [VerdictEvent] {
+        (try? ruleStore?.verdictEvents(limit: 40)) as? [VerdictEvent] ?? []
+    }
+
+    func hitCount(_ id: Int64) -> Int {
+        (try? ruleStore?.hitCount(id: id)) as? Int ?? 0
+    }
+
+    func deleteRule(_ id: Int64) {
+        try? ruleStore?.deleteRule(id: id)
+        reloadRuleState()
+    }
+
+    /// Pre-filled rule creation from the constellation inspector.
+    func addRule(action: RuleAction, destination: Destination, appLabel: String) {
+        guard let ruleStore,
+              let flow = recent.first(where: { $0.flow.processLabel == appLabel })?.flow,
+              let profileID = try? ruleStore.activeProfile().id else { return }
+        try? ruleStore.addRule(Rule(id: 0, profileID: profileID, app: .app(flow.appKey),
+                                    destination: destination, action: action,
+                                    notes: "from constellation inspector"))
+        reloadRuleState()
+    }
+
+    func clearReviewQueue() {
+        reviewQueue.removeAll()
+    }
+
+    func exportActiveProfile() {
+        guard let ruleStore, let data = try? ruleStore.exportProfile(id: activeProfileID) else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "gargoyle-profile.json"
+        panel.allowedContentTypes = [.json]
+        if panel.runModal() == .OK, let url = panel.url {
+            try? data.write(to: url)
+        }
+    }
+
+    func importProfile() {
+        guard let ruleStore else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url,
+           let data = try? Data(contentsOf: url) {
+            try? ruleStore.importProfile(data)
+            reloadRuleState()
+        }
+    }
+
     func resolveApproval(_ approval: PendingApproval, action: RuleAction,
                          scope: RuleScope, destination: Destination? = nil) {
         pendingApprovals.removeAll { $0.id == approval.id }
@@ -230,7 +344,9 @@ final class AppModel: ObservableObject {
             recent.insert(RecentEntry(flow: flow, closed: false), at: 0)
             if recent.count > 50 { recent.removeLast(recent.count - 50) }
             flowTotals[flow.id] = 0
+            liveDestinations.insert(flow.host ?? flow.dst)
             maybeNotify(flow)
+            checkQuarantine(flow)
             logMock("OPEN  \(flow.displayName) → \(flow.destinationLabel)")
 
         case .flowUpdated(let flow):
@@ -250,6 +366,11 @@ final class AppModel: ObservableObject {
                 recent[index].closed = true
             }
             flowTotals.removeValue(forKey: flow.id)
+            let destination = flow.host ?? flow.dst
+            // Keep the edge animated while any other flow still uses it.
+            if !recent.contains(where: { !$0.closed && ($0.flow.host ?? $0.flow.dst) == destination }) {
+                liveDestinations.remove(destination)
+            }
 
         case .traffic(let deltaOut, let deltaIn, let at):
             meter.add(bytesOut: deltaOut, bytesIn: deltaIn, at: at)

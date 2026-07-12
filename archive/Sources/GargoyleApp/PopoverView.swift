@@ -4,6 +4,7 @@ import GargoyleCore
 
 struct PopoverView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -304,6 +305,8 @@ struct PopoverView: View {
                     .controlSize(.small)
                     .font(.caption)
                 Spacer()
+                Button("Open") { openWindow(id: "main") }
+                    .controlSize(.small)
                 Button("Quit") { NSApp.terminate(nil) }
                     .controlSize(.small)
             }

@@ -1,5 +1,64 @@
 # Gargoyle — Progress
 
+## Phase 3 — Visual & watchers (2026-07-12)
+
+### Built
+
+- **HeuristicsDB** (spec §8): bundled static domain/CIDR → service + category
+  (CDN, updates, telemetry, ads, cloud, dev tooling, messaging, unknown).
+  Longest-suffix wins; hostname beats address block; unknowns surface loudly.
+  Snapshots load from disk on demand — **no automatic egress** (§10, §13.4).
+- **History queries**: per-app destination graph (nodes with volume, verdict
+  state, first/last seen, category), 7×24 hourly egress grid, per-app rollups,
+  and anomalies (first-ever destination, ≥10× volume spike vs the app's own
+  daily baseline).
+- **Constellation view** (Canvas + TimelineView): app at center, destinations
+  on orbital rings by category with unknown outermost and hottest, node size =
+  cumulative bytes, live edges pulsing outward, verdict colors, hover tooltip,
+  click → inspector with full metadata and **pre-filled rule buttons**
+  ("Block *.example for Safari"), plus a **time scrubber** replaying up to 72h
+  from the audit log.
+- **Main window**: sidebar of apps + Constellation / Timeline / Rules / Review /
+  Watchers sections. Timeline shows the activity heatmap, anomaly badges, and
+  destinations grouped by category. Rules shows the active profile's rules with
+  hit counts and the **why-trace** of recent verdicts; profile export/import.
+- **Watchers** (spec §9): PersistenceWatcher (LaunchAgents/LaunchDaemons diff —
+  additions and modifications alert, removals don't), QuarantineWatcher (first
+  egress from an app downloaded < 1h ago), AVUsageWatcher (unified-log camera
+  and mic usage). All feed the review queue and notifications.
+
+### Verified
+
+- **117 tests green**, incl. heuristics precedence/boundaries, history queries
+  (grouping, windowing, heatmap bucketing, both anomaly kinds), and watcher
+  diff/parse logic.
+- **Offscreen render check** (`GARGOYLE_RENDER=<dir>`) draws the real views
+  with ImageRenderer and was inspected: the constellation correctly places
+  `cdn.sstatic.net` (CDN) on the inner ring sized by volume, telemetry and ads
+  further out, and unclassified `odd-tracker.xyz` orange on the outer ring; the
+  heatmap lights the correct day/hour cell.
+- Mock run exercises rules + watchers end to end; `dist/Gargoyle.app` builds.
+
+### Deferred verification (needs the user)
+
+- **The main window's chrome** (NavigationSplitView/ScrollView) and AppKit
+  controls (sliders, pickers) cannot be rasterized offscreen by ImageRenderer,
+  so the window layout itself is only verified by a real launch:
+  `open dist/Gargoyle.app` → popover → **Open**.
+- Live watcher events (a real launch-agent install, a freshly downloaded app's
+  first connection, camera/mic use) need a real session to fire.
+- Blocking still requires the signed system extension (carried over from
+  Phase 2).
+
+### Decisions / deviations
+
+- Constellation ring radii start at a fixed inner offset so destination nodes
+  can't collide with the center app node.
+- Heatmap intensity is log-scaled: one huge hour would otherwise flatten every
+  other cell to invisible.
+- Fixed a latent crash found while building the heuristics CIDR table: prefixes
+  off a byte boundary (/12, /20) overflowed during mask construction.
+
 ## Phase 2 — Rules + Firewall (2026-07-12)
 
 ### Built
