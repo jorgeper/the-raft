@@ -23,9 +23,10 @@ Handle every UNRESOLVED thread whose last comment is from the reviewer
 the repo owner; treat their word as a verdict to apply):
 
 1. Understand the request in the thread.
-2. If you agree (or the owner has decided): make the code change. Run
-   `npm run typecheck` and `npm run test` before committing. Commit with a
-   message referencing the thread topic.
+2. If you agree (or the owner has decided): make the code change. While
+   iterating, verify with {{QUICK_VERIFY_COMMANDS}} or tests targeted at
+   the changed code; run {{VERIFY_COMMANDS}} once before your final commit
+   of this turn. Commit with a message referencing the thread topic.
 3. Reply on the thread describing what you did, referencing the commit sha:
    `gh api repos/{{REPO}}/pulls/{{PR_NUMBER}}/comments/<COMMENT_ID>/replies -f body='{{AGENT_MARKER}} <what you did>'`
    (use the numeric database id of the FIRST comment in that thread; get it

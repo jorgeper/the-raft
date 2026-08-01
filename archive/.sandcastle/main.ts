@@ -11,7 +11,7 @@
 //                        agent, then merge on the next pass.
 //   Phase 0.7 (Debate):  PRs awaiting an agent turn resume the outer
 //                        reviewer ⇄ addresser debate in PR review threads.
-//   Phase 1 (Plan):      An opus agent picks unblocked issues among those
+//   Phase 1 (Plan):      A Fable agent picks unblocked issues among those
 //                        with no open PR (dependency analysis).
 //   Phase 2 (Execute):   Per issue: a spec writer distills the issue into a
 //                        committed spec (specs/issue-<n>.md, linked from the
@@ -33,18 +33,20 @@
 // cannot approve their own PRs.
 //
 // Usage:
-//   npx tsx .sandcastle/main.mts              run the loop
-//   npx tsx .sandcastle/main.mts --init       create the label vocabulary
-//   npx tsx .sandcastle/main.mts --doctor     check env/auth/docker/labels
-//   npx tsx .sandcastle/main.mts --help       show usage
+//   npx tsx .sandcastle/main.ts              run the loop
+//   npx tsx .sandcastle/main.ts --init       create the label vocabulary
+//   npx tsx .sandcastle/main.ts --doctor     check env/auth/docker/labels
+//   npx tsx .sandcastle/main.ts --help       show usage
 
 import { existsSync, readFileSync } from "node:fs";
 import { execFile } from "node:child_process";
+import { basename } from "node:path";
 import { promisify } from "node:util";
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 import { z } from "zod";
 import { parseEnvFile, prSetupGuide, readPrConfig } from "./env.mts";
+import { runInstallScan } from "./install-scan.mts";
 import {
   APPROVED_LABEL,
   classifyIssue,
@@ -53,7 +55,22 @@ import {
   type ThreadState,
 } from "./state.mts";
 import * as github from "./github.mts";
+import { logStep, timed } from "./timing.mts";
 import { printHelp, runDoctor, runInit } from "./setup.mts";
+import {
+  COPY_TO_WORKTREE,
+  GOAL_MAX_TURNS,
+  IMPLEMENT_ATTEMPTS,
+  INSTALL_COMMAND,
+  MARKER_DETAIL,
+  MAX_DEBATE_ROUNDS,
+  MAX_ITERATIONS,
+  PR_SUMMARY_DETAILED,
+  QUICK_VERIFY_COMMANDS,
+  SPEC_DIR,
+  VERIFY_COMMANDS,
+} from "./config.mts";
+import { effectiveQuickCommands, verifyCommandsText } from "./verify.mts";
 
 const execFileAsync = promisify(execFile);
 
@@ -69,7 +86,9 @@ if (cliArgs.includes("--init")) {
   process.exit(0);
 }
 if (cliArgs.includes("--doctor")) {
-  process.exit(await runDoctor());
+  process.exit(
+    await runDoctor({ imageGaps: cliArgs.includes("--image-gaps") }),
+  );
 }
 
 // The planner emits its plan as JSON inside <plan> tags; Output.object extracts
@@ -89,46 +108,22 @@ const specSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Configuration — every knob for this template, in one place
+// Configuration — knobs live in ./config.mts (one place, also read by the
+// doctor). Only derived values stay here.
 // ---------------------------------------------------------------------------
-
-// Repo-relative directory where per-issue specs are committed. Rename to
-// "prd", "docs/specs", etc. — the spec writer, goal statements, and issue
-// comments all follow it. Specs land at `<SPEC_DIR>/issue-<n>.md`.
-const SPEC_DIR = "specs";
-
-// Inner turn bound for each implementer attempt: "or stop after N turns" is
-// appended to the goal so a stalled attempt ends and the next fresh-context
-// attempt takes over instead of spinning forever.
-const GOAL_MAX_TURNS = 25;
-
-// Outer fresh-context attempts per issue (`maxIterations` of the goal run).
-// Each attempt is a full autonomous /goal session, so keep this small.
-const IMPLEMENT_ATTEMPTS = 4;
-
-// Maximum number of classify→plan→execute→merge cycles before stopping.
-const MAX_ITERATIONS = 10;
-
-// Reviewer turns per debate invocation before deadlocked threads escalate to
-// the owner as NEEDS-DECISION.
-const MAX_DEBATE_ROUNDS = 3;
 
 // Issues carrying this label get a PR + outer review instead of the inner
 // reviewer + local merge.
 const PR_LABEL = github.REQUIRE_PR_LABEL;
 
 // The branch merges target and PRs diff against.
-const TARGET_BRANCH = "master";
-
-// When true, PR/issue markers carry full provenance: **[agent · harness ·
-// model]**. Set false for plain **[agent]** markers. Turn-taking parses the
-// agent name either way.
-const MARKER_DETAIL = true;
-
-// When true (default), PR descriptions include a commit-by-commit
-// walkthrough so the owner never has to click into individual commits.
-// False keeps the tighter what/why summary — fewer pr-writer tokens.
-const PR_SUMMARY_DETAILED = true;
+// The branch the loop runs on — merges, pushes, and the merge phase's
+// branchAhead() all anchor here. Derived, never hardcoded: a "master"
+// default silently stranded every implemented branch on main-based repos
+// (branchAhead was always false, so nothing ever merged).
+const TARGET_BRANCH = (
+  await execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"])
+).stdout.trim();
 
 // Models are deliberately NOT configured here: each agent's harness and
 // model are declared inline at its sandbox.run()/run() call site, so any
@@ -137,13 +132,24 @@ const PR_SUMMARY_DETAILED = true;
 const branchFor = (issueNumber: number) => `sandcastle/issue-${issueNumber}`;
 
 // Hooks run inside the sandbox before the agent starts each iteration.
+// The install command comes from the detected toolchain (config.mts).
 const hooks = {
-  sandbox: { onSandboxReady: [{ command: "npm install" }] },
+  sandbox: { onSandboxReady: [{ command: INSTALL_COMMAND }] },
 };
 
-// Copy node_modules from the host into the worktree before each sandbox
-// starts.
-const copyToWorktree = ["node_modules"];
+// Copied from the host into the worktree before each sandbox starts.
+const copyToWorktree = [...COPY_TO_WORKTREE];
+
+// Prompt-ready rendering of the verify commands, injected as the
+// VERIFY_COMMANDS prompt arg everywhere agents are told to verify work.
+const VERIFY_TEXT = verifyCommandsText(VERIFY_COMMANDS);
+
+// Inner-loop rendering: the quick subset while iterating (QUICK_VERIFY_TEXT),
+// with the full suite reserved for the once-before-done gate. Falls back to
+// the full list when QUICK_VERIFY_COMMANDS is empty.
+const QUICK_VERIFY_TEXT = verifyCommandsText(
+  effectiveQuickCommands(QUICK_VERIFY_COMMANDS, VERIFY_COMMANDS),
+);
 
 // ---------------------------------------------------------------------------
 // Agent identity & attribution
@@ -323,38 +329,44 @@ const runDebate = async (
     if (turn === "pr-reviewer") {
       reviewerTurns += 1;
       const finalRound = reviewerTurns >= MAX_DEBATE_ROUNDS;
-      const model = "claude-opus-4-8";
-      await sandbox.run({
-        name: "pr-reviewer",
-        maxIterations: 1,
-        agent: sandcastle.claudeCode(model),
-        promptFile: "./.sandcastle/pr-review-prompt.md",
-        promptArgs: {
-          AGENT_NAME: "pr-reviewer",
-          AGENT_MARKER: markerFor("pr-reviewer", "claude-code", model),
-          PR_NUMBER: prNumber,
-          REPO: repo,
-          THREADS_JSON: threadsJson,
-          FINAL_ROUND: String(finalRound),
-        },
-      });
+      const model = "claude-fable-5";
+      await timed("pr-reviewer", { pr: prNumber, round: reviewerTurns }, () =>
+        sandbox.run({
+          name: "pr-reviewer",
+          maxIterations: 1,
+          agent: sandcastle.claudeCode(model),
+          promptFile: "./.sandcastle/pr-review-prompt.md",
+          promptArgs: {
+            AGENT_NAME: "pr-reviewer",
+            AGENT_MARKER: markerFor("pr-reviewer", "claude-code", model),
+            PR_NUMBER: prNumber,
+            REPO: repo,
+            THREADS_JSON: threadsJson,
+            FINAL_ROUND: String(finalRound),
+          },
+        }),
+      );
       if (finalRound) break;
     } else {
-      const model = "claude-opus-4-8";
-      await sandbox.run({
-        name: "addresser",
-        maxIterations: 25,
-        agent: sandcastle.claudeCode(model),
-        promptFile: "./.sandcastle/pr-address-prompt.md",
-        promptArgs: {
-          AGENT_NAME: "addresser",
-          AGENT_MARKER: markerFor("addresser", "claude-code", model),
-          PR_NUMBER: prNumber,
-          REPO: repo,
-          THREADS_JSON: threadsJson,
-          BRANCH: branch,
-        },
-      });
+      const model = "claude-fable-5";
+      await timed("addresser", { pr: prNumber }, () =>
+        sandbox.run({
+          name: "addresser",
+          maxIterations: 25,
+          agent: sandcastle.claudeCode(model),
+          promptFile: "./.sandcastle/pr-address-prompt.md",
+          promptArgs: {
+            AGENT_NAME: "addresser",
+            AGENT_MARKER: markerFor("addresser", "claude-code", model),
+            PR_NUMBER: prNumber,
+            REPO: repo,
+            THREADS_JSON: threadsJson,
+            BRANCH: branch,
+            VERIFY_COMMANDS: VERIFY_TEXT,
+            QUICK_VERIFY_COMMANDS: QUICK_VERIFY_TEXT,
+          },
+        }),
+      );
       await pushBranch(sandbox.worktreePath, branch);
     }
 
@@ -424,15 +436,58 @@ const warnUncommittedSkill = async (): Promise<void> => {
   }
 };
 
+// Nudge, not a gate (prd/007): an empty VERIFY_COMMANDS means init deferred
+// detection — agents can't be told how to verify until it's set.
+const warnEmptyVerifyCommands = (): void => {
+  if (VERIFY_COMMANDS.length > 0) return;
+  console.warn(
+    `⚠ VERIFY_COMMANDS in .sandcastle/config.mts is empty — spec goals and merge checks can't name verification commands.\n` +
+      `  Fix: run the "sandcastle-customize" skill from your coding agent in this repo, or edit .sandcastle/config.mts by hand.`,
+  );
+};
+
+// Nudge, not a gate (prd/007 Tier-1 guard): the loop anchors merges and PRs
+// to the branch it runs on — starting it on a side branch is usually an
+// accident worth flagging, never blocking.
+const warnNonDefaultBranch = async (): Promise<void> => {
+  try {
+    const { stdout } = await execFileAsync("gh", [
+      "repo",
+      "view",
+      "--json",
+      "defaultBranchRef",
+      "--jq",
+      ".defaultBranchRef.name",
+    ]);
+    const defaultBranch = stdout.trim();
+    if (defaultBranch && defaultBranch !== TARGET_BRANCH) {
+      console.warn(
+        `⚠ loop is running on "${TARGET_BRANCH}" but the repo's default branch is "${defaultBranch}" — merges and PRs will target "${TARGET_BRANCH}".\n` +
+          `  If that's not intended, stop and re-run from "${defaultBranch}".`,
+      );
+    }
+  } catch {
+    // Best-effort nudge; never block the loop on gh availability.
+  }
+};
+
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
 
 await warnUncommittedSkill();
+warnEmptyVerifyCommands();
+await warnNonDefaultBranch();
 await nudgeConversationalLanes();
 
+// Image-gap nudge (prd/006): logs modified after this instant belong to
+// this run's scan window.
+const LOOP_START_MS = Date.now();
+
 for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
-  console.log(`\n=== Iteration ${iteration}/${MAX_ITERATIONS} ===\n`);
+  console.log();
+  logStep(`=== Iteration ${iteration}/${MAX_ITERATIONS} ===`);
+  console.log();
 
   const openIssues = await github.listSandcastleIssues();
   if (openIssues.length === 0) {
@@ -509,17 +564,23 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
       copyToWorktree,
     });
     try {
-      await sandbox.run({
-        name: "conflict-resolver",
-        maxIterations: 10,
-        agent: sandcastle.claudeCode("claude-opus-4-8"),
-        promptFile: "./.sandcastle/pr-conflict-prompt.md",
-        promptArgs: {
-          AGENT_NAME: "conflict-resolver",
-          BRANCH: branch,
-          TARGET_BRANCH,
-        },
-      });
+      await timed("conflict-resolver", { pr: entry.snapshot!.number }, () =>
+        sandbox.run({
+          name: "conflict-resolver",
+          maxIterations: 10,
+          agent: sandcastle.claudeCode("claude-fable-5"),
+          promptFile: "./.sandcastle/pr-conflict-prompt.md",
+          // TARGET_BRANCH is a built-in prompt arg (injected by run()) —
+          // passing it in promptArgs is a PromptError that kills the run
+          // before it logs anything.
+          promptArgs: {
+            AGENT_NAME: "conflict-resolver",
+            BRANCH: branch,
+            VERIFY_COMMANDS: VERIFY_TEXT,
+            QUICK_VERIFY_COMMANDS: QUICK_VERIFY_TEXT,
+          },
+        }),
+      );
       await pushBranch(sandbox.worktreePath, branch);
       // Merge is picked up by the next iteration's classification pass.
     } finally {
@@ -587,17 +648,19 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     break;
   }
 
-  const plan = await sandcastle.run({
-    hooks,
-    sandbox: docker(),
-    name: "planner",
-    // One iteration is enough: the planner just needs to read and reason.
-    maxIterations: 1,
-    agent: sandcastle.claudeCode("claude-opus-4-8"),
-    promptFile: "./.sandcastle/plan-prompt.md",
-    promptArgs: { CANDIDATE_NUMBERS: candidates.join(", ") },
-    output: sandcastle.Output.object({ tag: "plan", schema: planSchema }),
-  });
+  const plan = await timed("planner", { candidates: candidates.length }, () =>
+    sandcastle.run({
+      hooks,
+      sandbox: docker(),
+      name: "planner",
+      // One iteration is enough: the planner just needs to read and reason.
+      maxIterations: 1,
+      agent: sandcastle.claudeCode("claude-fable-5"),
+      promptFile: "./.sandcastle/plan-prompt.md",
+      promptArgs: { CANDIDATE_NUMBERS: candidates.join(", ") },
+      output: sandcastle.Output.object({ tag: "plan", schema: planSchema }),
+    }),
+  );
 
   const issues = plan.output.issues;
 
@@ -637,23 +700,27 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
         // the durable source of truth; the <spec> tag just hands the
         // statement to this script (extractTag pattern, like the pr-writer —
         // sandbox.run has no structured output).
-        const specModel = "claude-opus-4-8";
+        const specModel = "claude-fable-5";
         const specPath = `${SPEC_DIR}/issue-${issue.id}.md`;
-        const specRun = await sandbox.run({
-          name: "spec-writer",
-          maxIterations: 1,
-          agent: sandcastle.claudeCode(specModel),
-          promptFile: "./.sandcastle/spec-prompt.md",
-          promptArgs: {
-            TASK_ID: issue.id,
-            ISSUE_TITLE: issue.title,
-            BRANCH: issue.branch,
-            SPEC_PATH: specPath,
-            REPO: await github.repoSlug(),
-            AGENT_MARKER: markerFor("spec-writer", "claude-code", specModel),
-          },
-          completionSignal: "</spec>",
-        });
+        const specRun = await timed("spec-writer", { issue: issue.id }, async () =>
+          sandbox.run({
+            name: "spec-writer",
+            maxIterations: 1,
+            agent: sandcastle.claudeCode(specModel),
+            promptFile: "./.sandcastle/spec-prompt.md",
+            promptArgs: {
+              TASK_ID: issue.id,
+              ISSUE_TITLE: issue.title,
+              BRANCH: issue.branch,
+              SPEC_PATH: specPath,
+              REPO: await github.repoSlug(),
+              AGENT_MARKER: markerFor("spec-writer", "claude-code", specModel),
+              VERIFY_COMMANDS: VERIFY_TEXT,
+              QUICK_VERIFY_COMMANDS: QUICK_VERIFY_TEXT,
+            },
+            completionSignal: "</spec>",
+          }),
+        );
         const specJson = github.extractTag(specRun.stdout, "spec");
         if (specJson === null) {
           throw new Error(
@@ -674,14 +741,16 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
         // self-verifies (judge checks the condition after every turn); the
         // outer iterations are fresh-context retries that continue from git
         // state when an attempt exhausts its turn bound.
-        const implementerModel = "claude-opus-4-8";
-        const implement = await sandbox.run({
-          name: "implementer",
-          goal: spec.goal,
-          goalMaxTurns: GOAL_MAX_TURNS,
-          maxIterations: IMPLEMENT_ATTEMPTS,
-          agent: sandcastle.claudeCode(implementerModel),
-        });
+        const implementerModel = "claude-fable-5";
+        const implement = await timed("implementer", { issue: issue.id }, () =>
+          sandbox.run({
+            name: "implementer",
+            goal: spec.goal,
+            goalMaxTurns: GOAL_MAX_TURNS,
+            maxIterations: IMPLEMENT_ATTEMPTS,
+            agent: sandcastle.claudeCode(implementerModel),
+          }),
+        );
 
         if (!implement.goalMet) {
           // Unverified work never merges: keep the branch and commits for the
@@ -696,13 +765,16 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 
         if (!isPrMode) {
           // Legacy path — inner reviewer commits directly, merger merges later.
-          const review = await sandbox.run({
-            name: "reviewer",
-            maxIterations: 1,
-            agent: sandcastle.claudeCode("claude-opus-4-8"),
-            promptFile: "./.sandcastle/review-prompt.md",
-            promptArgs: { TASK_ID: issue.id, BRANCH: issue.branch, TARGET_BRANCH },
-          });
+          const review = await timed("reviewer", { issue: issue.id }, () =>
+            sandbox.run({
+              name: "reviewer",
+              maxIterations: 1,
+              agent: sandcastle.claudeCode("claude-fable-5"),
+              promptFile: "./.sandcastle/review-prompt.md",
+              // TARGET_BRANCH reaches the prompt via the built-in arg.
+              promptArgs: { TASK_ID: issue.id, BRANCH: issue.branch },
+            }),
+          );
           return {
             ...review,
             commits: [...implement.commits, ...review.commits],
@@ -720,10 +792,12 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
         let body: string | null = null;
         if (implement.resume) {
           try {
-            const writeup = await implement.resume(prWriterPrompt(issue.id), {
-              name: "pr-writer",
-              completionSignal: "</pr-body>",
-            });
+            const writeup = await timed("pr-writer", { issue: issue.id }, () =>
+              implement.resume!(prWriterPrompt(issue.id), {
+                name: "pr-writer",
+                completionSignal: "</pr-body>",
+              }),
+            );
             title = github.extractTag(writeup.stdout, "pr-title") ?? title;
             body = github.extractTag(writeup.stdout, "pr-body");
             if (body === null) {
@@ -822,24 +896,36 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   // Phase 3: Merge (legacy branches only — PR branches merge via approval)
   // -------------------------------------------------------------------------
-  await sandcastle.run({
-    hooks,
-    sandbox: docker(),
-    name: "merger",
-    maxIterations: 1,
-    agent: sandcastle.claudeCode("claude-opus-4-8"),
-    promptFile: "./.sandcastle/merge-prompt.md",
-    promptArgs: {
-      BRANCHES: completedBranches.map((b) => `- ${b}`).join("\n"),
-      ISSUES: completedIssues.map((i) => `- ${i.id}: ${i.title}`).join("\n"),
-    },
-  });
+  await timed("merger", { branches: completedBranches.length }, () =>
+    sandcastle.run({
+      hooks,
+      sandbox: docker(),
+      name: "merger",
+      maxIterations: 1,
+      agent: sandcastle.claudeCode("claude-fable-5"),
+      promptFile: "./.sandcastle/merge-prompt.md",
+      promptArgs: {
+        BRANCHES: completedBranches.map((b) => `- ${b}`).join("\n"),
+        ISSUES: completedIssues.map((i) => `- ${i.id}: ${i.title}`).join("\n"),
+        VERIFY_COMMANDS: VERIFY_TEXT,
+      },
+    }),
+  );
 
   // PR-mode branches fork from local HEAD but their PR diffs are computed
   // against origin/master — keep the remote in sync with local merges.
   await execFileAsync("git", ["push", "origin", TARGET_BRANCH]);
 
   console.log("\nBranches merged.");
+}
+
+// Image-gap nudge (prd/006): scan this run's logs for expensive in-sandbox
+// installs and suggest the Dockerfile fix. Best-effort, never blocks.
+for (const nudge of await runInstallScan(
+  `sandcastle:${basename(process.cwd())}`,
+  LOOP_START_MS,
+)) {
+  console.warn(nudge);
 }
 
 console.log("\nAll done.");
