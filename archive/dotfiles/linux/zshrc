@@ -1,0 +1,109 @@
+# =============================================================================
+#  ~/.zshrc — Jorge Pereira (Linux / Debian-Ubuntu)
+#
+#  Source of truth: <repo>/dotfiles/linux/zshrc  (this file)
+#  ~/.zshrc is a symlink to it, so edits here take effect in new shells.
+#
+#  This is the Linux counterpart to ../zshrc (macOS). Same experience —
+#  Starship prompt, vi keybindings, eza/bat/fd/fzf, the same aliases and
+#  plugins — adapted for apt-based installs instead of Homebrew.
+#
+#  Layout:  PATH/env → prompt → editing → tools → aliases →
+#           completions → plugins → history/options
+# =============================================================================
+
+# ---- PATH & core environment ------------------------------------------------
+export PATH="$HOME/.local/bin:$PATH"            # starship, eza, and bat/fd shims live here
+export PATH="$HOME/.rbenv/bin:$PATH"            # rbenv shims (only used if rbenv is installed)
+# Homebrew on Linux (optional) — activates only if you ever install linuxbrew.
+[ -x /home/linuxbrew/.linuxbrew/bin/brew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+export EDITOR="nvim"                            # default editor for git, etc.
+
+# ---- Prompt: Starship -------------------------------------------------------
+command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"
+
+# ---- Editing: vi keybindings on the command line ----------------------------
+bindkey -v
+
+# ---- Debian/Ubuntu binary names --------------------------------------------
+# On Debian/Ubuntu, bat installs as `batcat` and fd as `fdfind`. The installer
+# drops `bat`/`fd` shims in ~/.local/bin so the aliases and fzf config below
+# work unchanged; these fallbacks cover the case where the shims are missing.
+command -v bat >/dev/null 2>&1 || { command -v batcat >/dev/null 2>&1 && alias bat='batcat'; }
+command -v fd  >/dev/null 2>&1 || { command -v fdfind >/dev/null 2>&1 && alias fd='fdfind'; }
+
+# ---- FZF fuzzy finder (backed by fd, previews via bat) ----------------------
+export FZF_DEFAULT_COMMAND='fd --type f'
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+export FZF_ALT_C_COMMAND='fd --type d'
+export FZF_DEFAULT_OPTS='
+  --height 40%
+  --layout=reverse
+  --border
+  --preview "bat --style=numbers --color=always --line-range :200 {}"
+'
+# Bind the interactive widgets: Ctrl-R history, Ctrl-T files, Alt-C cd.
+# fzf ≥0.48 ships `fzf --zsh`; older apt builds ship example scripts instead.
+if command -v fzf >/dev/null 2>&1; then
+  if fzf --zsh >/dev/null 2>&1; then
+    source <(fzf --zsh)
+  else
+    for _f in /usr/share/doc/fzf/examples/key-bindings.zsh \
+              /usr/share/doc/fzf/examples/completion.zsh; do
+      [ -f "$_f" ] && source "$_f"
+    done
+    unset _f
+  fi
+fi
+
+# ---- Aliases ----------------------------------------------------------------
+# eza — a modern `ls` with icons
+alias ls='eza --icons'
+alias ll='eza -lh --icons'
+alias la='eza -la --icons'
+# other tool swaps
+alias cat='bat'                     # syntax-highlighted cat
+alias findf='fd'                    # friendlier find
+alias f='fzf'
+alias vf='nvim $(fzf)'              # fuzzy-pick a file and open it in nvim
+alias cf='cd $(fd --type d | fzf)'  # fuzzy-pick a directory and cd into it
+alias please='sudo'
+alias ..='cd ..'
+
+# ---- Completions (compinit + Docker CLI) ------------------------------------
+# Run compinit before plugins so completion widgets exist when they load.
+fpath=($HOME/.docker/completions $fpath)   # Docker completions (if present)
+autoload -Uz compinit
+compinit
+
+# ---- rbenv (Ruby version manager) -------------------------------------------
+# Stays dormant until rbenv is actually installed, then activates automatically.
+command -v rbenv >/dev/null 2>&1 && eval "$(rbenv init - zsh)"
+
+# ---- Oh My Zsh plugins (sourced directly; OMZ core is NOT loaded) -----------
+ZSH_CUSTOM=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}
+
+# Autosuggestions — fish-style inline suggestion from history as you type.
+[ -f $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ] && \
+  source $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+
+# Syntax highlighting — colours the command line. Must be sourced *before*
+# history-substring-search (below), which wraps its widgets.
+[ -f $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ] && \
+  source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# Substring history search — type a fragment, then ↑/↓ to walk matching history.
+[ -f $ZSH_CUSTOM/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh ] && \
+  source $ZSH_CUSTOM/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
+bindkey '^[[A' history-substring-search-up      # ↑
+bindkey '^[[B' history-substring-search-down    # ↓
+
+# ---- History & shell options ------------------------------------------------
+setopt NO_CASE_GLOB           # case-insensitive globbing
+setopt CORRECT                # suggest corrections for mistyped commands
+setopt INC_APPEND_HISTORY     # append each command to history as it runs
+setopt SHARE_HISTORY          # share history live across all open shells
+
+HISTFILE=~/.zsh_history
+HISTSIZE=10000                # commands kept in memory per session
+SAVEHIST=10000                # commands persisted to $HISTFILE

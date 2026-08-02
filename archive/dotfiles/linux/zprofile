@@ -1,0 +1,14 @@
+# =============================================================================
+#  ~/.zprofile — Jorge Pereira (Linux / Debian-Ubuntu)
+#
+#  Login-shell profile. The Linux counterpart to ../zprofile (macOS), which
+#  wires up the macOS Python.framework, Homebrew, and Agency paths. On Linux
+#  almost all PATH setup lives in ~/.zshrc; this file only carries the couple
+#  of things that belong in a login shell.
+# =============================================================================
+
+# User-local binaries (starship, eza, bat/fd shims, pip --user installs).
+export PATH="$HOME/.local/bin:$PATH"
+
+# Homebrew on Linux (optional) — activates only if you ever install linuxbrew.
+[ -x /home/linuxbrew/.linuxbrew/bin/brew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
