@@ -87,7 +87,7 @@ class StatsPanel(Static):
             table.add_column(justify="right")
         table.add_row(
             "", "[dim]prompts[/]", "[dim]input[/]", "[dim]output[/]", "[dim]cache rd[/]",
-            "[dim]est. cost[/]",
+            "[dim]API value*[/]",
         )
         for name, label in (("today", "Today"), ("7d", "Last 7 days"), ("30d", "Last 30 days")):
             t = stats[name]
@@ -113,6 +113,7 @@ class StatsPanel(Static):
                 f"[dim]${t.cost_usd:,.2f}[/]",
             )
         self.update(table)
+        self.border_subtitle = "*what this would cost at API list prices — you pay a flat subscription, not this"
 
 
 class SessionsPanel(Static):
