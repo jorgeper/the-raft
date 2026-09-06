@@ -12,6 +12,7 @@ from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
+from textual.timer import Timer
 from textual.widgets import Collapsible, Footer, Static
 
 from claude_usage.aggregate import Totals, aggregate
@@ -19,7 +20,13 @@ from claude_usage.analytics import cache_hit_rate, sidechain_share, tool_counts
 from claude_usage.burn import BurnRate, burn_rate, project_exhaustion
 from claude_usage.format import GRUVBOX, bar, fmt_delta, fmt_tokens, limit_label
 from claude_usage.history import daily_series, hour_heatmap, top_projects
-from claude_usage.limits import Limit, fetch_limits
+from claude_usage.limits import (
+    LIMITS_POLL_SECONDS,
+    Limit,
+    describe_error,
+    fetch_limits,
+    next_poll_delay,
+)
 from claude_usage.pricing import context_window
 from claude_usage.scanner import ScanState, scan_transcripts
 from claude_usage.session_stats import SessionStats, session_stats
@@ -327,16 +334,19 @@ class UsageApp(App):
         self._scan_state = ScanState()
         self._records: list[Record] = []
         self._limit_samples: dict[str, deque[tuple[datetime, float]]] = {}
+        self._limits_delay: float = LIMITS_POLL_SECONDS
+        self._limits_timer: Timer | None = None
         self.query_one(StatsPanel).show(None)
         self.refresh_limits()
         self.refresh_stats()
-        self.set_interval(60, self.refresh_limits)
         self.set_interval(30, self.refresh_stats)
 
-    def _stamp(self, cid: str, summary: str | None) -> None:
+    def _stamp(self, cid: str, summary: str | None, next_at: datetime | None = None) -> None:
         base = next(title for c, title, _ in SECTIONS if c == cid)
         parts = [base] + ([summary] if summary else [])
         parts.append(f"updated {datetime.now().astimezone():%H:%M:%S}")
+        if next_at:
+            parts.append(f"next {next_at.astimezone():%H:%M}")
         self.query_one(f"#sec-{cid}", Collapsible).title = " · ".join(parts)
 
     def action_toggle(self, cid: str) -> None:
@@ -348,7 +358,17 @@ class UsageApp(App):
         self.refresh_stats()
 
     def refresh_limits(self) -> None:
+        # Manual `r` or a timer firing: drop any pending timer so we never double-schedule.
+        if self._limits_timer:
+            self._limits_timer.stop()
+            self._limits_timer = None
         self.run_worker(self._load_limits, thread=True, exclusive=True, group="limits")
+
+    def _schedule_limits(self, failed: bool) -> datetime:
+        """Arm the next limits poll; backs off after failures (e.g. HTTP 429)."""
+        self._limits_delay = next_poll_delay(self._limits_delay, failed)
+        self._limits_timer = self.set_timer(self._limits_delay, self.refresh_limits)
+        return datetime.now(timezone.utc) + timedelta(seconds=self._limits_delay)
 
     def refresh_stats(self) -> None:
         self.run_worker(self._load_stats, thread=True, exclusive=True, group="stats")
@@ -356,28 +376,28 @@ class UsageApp(App):
     def _show_and_stamp(self, cid: str, panel, *args) -> None:
         self._stamp(cid, panel.show(*args))
 
+    def _show_limits(self, failed: bool, *args) -> None:
+        next_at = self._schedule_limits(failed)
+        self._stamp("limits", self.query_one(LimitsPanel).show(*args), next_at)
+
     def _load_limits(self) -> None:
         now = datetime.now(timezone.utc)
         try:
             limits = fetch_limits()
         except Exception as exc:  # degrade, never crash the panel
             self.call_from_thread(
-                self._show_and_stamp, "limits", self.query_one(LimitsPanel),
-                None, f"unavailable: {type(exc).__name__}",
+                self._show_limits, True, None, f"unavailable: {describe_error(exc)}",
             )
             return
         projections: dict[str, datetime] = {}
         for limit in limits:
-            samples = self._limit_samples.setdefault(limit.kind, deque(maxlen=30))
+            samples = self._limit_samples.setdefault(limit.kind, deque(maxlen=8))
             samples.append((now, limit.percent))
             eta = project_exhaustion(list(samples), now=now)
             if eta:
                 projections[limit.kind] = eta
         burn = burn_rate(self._records, now=now)
-        self.call_from_thread(
-            self._show_and_stamp, "limits", self.query_one(LimitsPanel),
-            limits, None, projections, burn,
-        )
+        self.call_from_thread(self._show_limits, False, limits, None, projections, burn)
 
     def _load_stats(self) -> None:
         try:

@@ -24,7 +24,7 @@ A gruvbox-themed terminal dashboard for **Claude Code** usage on macOS. One scre
 | `3` | **Sessions** | Every session from the last 24h: live indicator, project + git branch, model, context fill (tokens and % of the model's window), duration, prompt count, subagent calls, last tool used, value. |
 | `4` | **History & Analytics** | Side by side: a 30-day daily value chart, hour-of-week activity heatmap, and top projects — next to a tool-call leaderboard, cache hit rate, and subagent share. Collapsed by default. |
 
-Other keys: **Esc**/`q` quit · `r` force refresh. Data auto-refreshes on its own — local stats every 30s, rate-limit meters every 60s — and each section title shows its last update time.
+Other keys: **Esc**/`q` quit · `r` force refresh. Data auto-refreshes on its own — local stats every 30s, rate-limit meters every 30 min (backing off up to 2h if the usage endpoint answers HTTP 429) — and each section title shows its last update time, plus the next scheduled poll for rate limits.
 
 ## Install
 

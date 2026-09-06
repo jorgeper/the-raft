@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
@@ -79,3 +80,28 @@ def fetch_limits() -> list[Limit]:
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
         return parse_usage_payload(json.load(resp))
+
+
+def describe_error(exc: BaseException) -> str:
+    """Short human-readable reason for a failed fetch, e.g. 'HTTP 429 Too Many Requests · rate_limit_error'."""
+    if isinstance(exc, urllib.error.HTTPError):
+        text = f"HTTP {exc.code} {exc.reason}"
+        try:
+            body = json.loads(exc.read())
+            kind = (body.get("error") or {}).get("type")
+        except (ValueError, TypeError, AttributeError, OSError):
+            kind = None
+        return f"{text} · {kind}" if kind else text
+    msg = str(exc)
+    return f"{type(exc).__name__}: {msg}" if msg else type(exc).__name__
+
+
+LIMITS_POLL_SECONDS = 30 * 60
+LIMITS_POLL_MAX_SECONDS = 2 * 60 * 60
+
+
+def next_poll_delay(previous: float, failed: bool) -> float:
+    """Base interval after a success; double the previous delay (capped) after a failure."""
+    if not failed:
+        return LIMITS_POLL_SECONDS
+    return min(previous * 2, LIMITS_POLL_MAX_SECONDS)
