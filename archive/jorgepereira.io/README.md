@@ -1,6 +1,8 @@
 # jorgepereira.io
 
-Everything that runs under the `jorgepereira.io` domain — the main website plus one app per subdomain.
+Everything that runs under the `jorgepereira.io` domain. Right now that is the static website only;
+the apps that used to live on subdomains (hank, buckos, playground, rippy-rippy) are kept in this
+repo as code but are **not deployed** (torn down from the VPS in September 2026).
 
 **Adding a new app?** Follow [ADDING-AN-APP.md](ADDING-AN-APP.md) — the full pattern (app
 architecture, Google auth, Caddy/compose/DNS wiring, deployment, README conventions).
@@ -11,28 +13,29 @@ architecture, Google auth, Caddy/compose/DNS wiring, deployment, README conventi
 Internet
   │
   ▼
-┌────────────────────────────────────────────────────────┐
-│  Caddy (ports 80 + 443)                                │
-│  Automatic HTTPS via Let's Encrypt                     │
-│                                                        │
-│  jorgepereira.io            → site container :80       │
-│  hank.jorgepereira.io       → hank :8000 / hank-web :8001 │
-│  playground.jorgepereira.io → playground container :8002 │
-│  buckos.jorgepereira.io     → buckos container :3000   │
-└────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────┐
+│  Caddy (ports 80 + 443)                        │
+│  Automatic HTTPS via Let's Encrypt             │
+│                                                │
+│  jorgepereira.io  →  site container :80        │
+└────────────────────────────────────────────────┘
 ```
 
 Docker containers managed by docker-compose, one per service:
 
-| Service | What it does | Internal port | Docs |
-|---------|-------------|---------------|------|
-| **caddy** | Reverse proxy + HTTPS termination | 80, 443 (exposed) | — |
-| **site** | Static website (nginx) | 80 (internal) | — |
-| **hank** | Telegram bot (FastAPI) | 8000 (internal) | [hank/README.md](hank/README.md) |
-| **hank-web** | Memory browser web UI (FastAPI) | 8001 (internal) | [hank/README.md](hank/README.md) |
-| **playground** | Mini-apps playground | 8002 (internal) | [playground/README.md](playground/README.md) |
-| **buckos** | Family Ƀuckos app (Express + React) | 3000 (internal) | [buckos/README.md](buckos/README.md) |
-| **rippy-rippy** | Workout tracker for friends (Express + React) | 3001 (internal) | [rippy-rippy/README.md](rippy-rippy/README.md) |
+| Service | What it does | Internal port | Deployed? | Docs |
+|---------|-------------|---------------|-----------|------|
+| **caddy** | Reverse proxy + HTTPS termination | 80, 443 (exposed) | yes | — |
+| **site** | Static website (nginx) | 80 (internal) | yes | — |
+| hank | Telegram bot (FastAPI) | 8000 | no | [hank/README.md](hank/README.md) |
+| hank-web | Memory browser web UI for hank (FastAPI) | 8001 | no | [hank/README.md](hank/README.md) |
+| buckos | Family Ƀuckos app (Express + React) — the reference implementation for new apps | 3000 | no | [buckos/README.md](buckos/README.md) |
+| playground | Mini-apps playground | 8002 | no | [playground/README.md](playground/README.md) |
+| rippy-rippy | Workout tracker for friends (Express + React) | 3001 | no | [rippy-rippy/README.md](rippy-rippy/README.md) |
+
+To deploy one of the undeployed apps again, add its service + volume back to `docker-compose.yml`,
+its block to the `Caddyfile`, and its DNS A record, as described in
+[ADDING-AN-APP.md](ADDING-AN-APP.md).
 
 ## How HTTPS and the reverse proxy work
 
@@ -48,64 +51,40 @@ HTTPS encrypts traffic between the browser and the server. To prove the server i
 
 ```
 Browser → https://jorgepereira.io → Caddy → (decrypts) → site:80 (plain HTTP)
-Browser → https://hank.jorgepereira.io/telegram → Caddy → hank:8000 (bot endpoints)
-Browser → https://hank.jorgepereira.io/app → Caddy → hank-web:8001 (web UI)
 ```
 
-The site and bot containers never deal with HTTPS — they serve plain HTTP internally. Caddy handles all the encryption. This is configured in the `Caddyfile`:
+The app containers never deal with HTTPS — they serve plain HTTP internally. Caddy handles all the encryption. This is configured in the `Caddyfile`:
 
 ```
 jorgepereira.io {
     reverse_proxy site:80
 }
-
-hank.jorgepereira.io {
-    @bot path /telegram /email /health
-    reverse_proxy @bot hank:8000
-    reverse_proxy hank-web:8001
-}
 ```
 
-Docker networking lets Caddy reach the other containers by service name (`site`, `hank`).
+Docker networking lets Caddy reach the other containers by service name (`site`).
 
 ## Project structure
 
 ```
 jorgepereira.io/
 ├── Caddyfile              # Shared Caddy config — routes domains to services
-├── docker-compose.yml     # All services
+├── docker-compose.yml     # Deployed services (caddy + site)
 ├── redeploy.sh            # Rebuild + restart a service on the VPS
 ├── ADDING-AN-APP.md       # The pattern for building/deploying a new app here
 ├── THEME.md               # Shared look & feel (design tokens) every app starts from
 ├── CLAUDE.md              # Points Claude Code at the pattern when building apps
-├── buckos/                # buckos.jorgepereira.io family app (see buckos/README.md)
-├── rippy-rippy/           # rippy-rippy.jorgepereira.io workout tracker (see rippy-rippy/README.md)
-├── playground/            # playground.jorgepereira.io mini-apps (see playground/README.md)
-├── site/                  # jorgepereira.io static website
+├── site/                  # jorgepereira.io static website (deployed)
 │   ├── Dockerfile         # nginx serving static files
 │   └── html/
 │       ├── index.html
 │       ├── demos.html
 │       ├── wind.html
 │       └── wisy.html
-└── hank/                  # hank.jorgepereira.io Telegram bot
-    ├── Dockerfile
-    ├── requirements.txt
-    ├── CLAUDE.md
-    ├── PLAN.md
-    ├── LOG.md
-    ├── README.md          # Hank-specific docs (setup, processors, testing)
-    ├── .env.example
-    ├── .env.local.example
-    ├── .env.cloud.example
-    └── app/
-        ├── main.py
-        ├── bot.py
-        ├── processor.py
-        ├── email_handler.py
-        └── processors/
-            ├── claude.py
-            └── helloworld.py
+├── buckos/                # family app — reference implementation, not deployed
+├── hank/                  # Telegram bot — not deployed
+├── hank-web/              # hank memory browser UI — not deployed
+├── playground/            # mini-apps — not deployed
+└── rippy-rippy/           # workout tracker — not deployed
 ```
 
 ## Local development
@@ -120,28 +99,14 @@ docker run -d -p 3000:80 --name jorgepereira-site jorgepereira-site
 
 Open http://localhost:3000
 
-### Run the bot only
-
-```bash
-cd hank
-cp .env.local.example .env.local
-# Edit .env.local — set TELEGRAM_BOT_TOKEN and ANTHROPIC_API_KEY
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python -m app.main
-```
-
 ### Run everything with docker-compose
 
 ```bash
-cp hank/.env.local.example hank/.env.local
-# Edit hank/.env.local — set TELEGRAM_BOT_TOKEN and ANTHROPIC_API_KEY
 docker-compose up --build
 ```
 
-This starts all three services. Locally, Caddy won't be able to get certificates (no public domain), but the site and bot still work:
-- Site: http://localhost:80
-- Bot: communicates via Telegram polling (no web access needed)
+Locally, Caddy won't be able to get certificates (no public domain), but the site still answers at
+http://localhost:80.
 
 ## VPS deployment (Hostinger)
 
@@ -152,27 +117,9 @@ Do this once to get the VPS ready.
 **Prerequisites:**
 - Hostinger VPS with SSH access
 - Docker and Docker Compose installed
+- An A record for `jorgepereira.io` in Porkbun pointing at the VPS IP
 
-**1. Configure DNS:**
-
-Add an A record for `hank.jorgepereira.io` in Porkbun:
-
-1. Go to [porkbun.com](https://porkbun.com) → **Domain Management**
-2. Click **DNS** next to `jorgepereira.io`
-3. Add a new record:
-   - **Type:** `A`
-   - **Name:** `hank`
-   - **Points to:** your VPS IP address (same IP as `jorgepereira.io`)
-   - **TTL:** 14400 (default)
-4. Save and wait for propagation (usually a few minutes, can take up to 24 hours)
-
-Verify it's working:
-```bash
-dig hank.jorgepereira.io +short
-# Should return your VPS IP
-```
-
-**2. Clone the repo:**
+**1. Clone the repo:**
 
 ```bash
 ssh jorge@<your-vps-ip>
@@ -181,63 +128,19 @@ sudo chown -R jorge:jorge /opt/sandbox
 cd /opt/sandbox/jorgepereira.io
 ```
 
-**3. Configure the bot environment:**
-
-```bash
-cp hank/.env.cloud.example hank/.env.cloud
-nano hank/.env.cloud
-```
-
-Set these values:
-```
-TELEGRAM_BOT_TOKEN=<your-bot-token>
-ANTHROPIC_API_KEY=<your-api-key>
-MODE=webhook
-PROCESSOR=claude
-WEBHOOK_BASE_URL=https://hank.jorgepereira.io
-TELEGRAM_WEBHOOK_SECRET=<generate-a-random-string>
-```
-
-Generate a random secret:
-```bash
-openssl rand -hex 32
-```
-
-**4. Configure the web UI environment:**
-
-```bash
-cp hank-web/.env.cloud.example hank-web/.env.cloud
-nano hank-web/.env.cloud
-```
-
-Set these values (see [hank README](hank/README.md#setting-up-google-oauth-web-ui) for Google OAuth setup):
-```
-GOOGLE_CLIENT_ID=<your-client-id>.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=<your-client-secret>
-ALLOWED_EMAIL=jorgeper@gmail.com
-SESSION_SECRET=<run: openssl rand -hex 32>
-```
-
-**5. Set the default env files:**
-
-```bash
-echo -e "ENV_FILE=hank/.env.cloud\nWEB_ENV_FILE=hank-web/.env.cloud" > .env
-```
-
-**6. Start everything:**
+**2. Start everything:**
 
 ```bash
 docker-compose up -d --build
 ```
 
-Caddy will automatically obtain Let's Encrypt certificates for both domains.
+Caddy will automatically obtain a Let's Encrypt certificate for the domain.
 
-**7. Verify:**
+**3. Verify:**
 
 ```bash
 docker-compose ps
-curl https://jorgepereira.io
-curl https://hank.jorgepereira.io/health
+curl -I https://jorgepereira.io
 ```
 
 ---
@@ -250,58 +153,11 @@ After pushing HTML changes to `main`:
 ssh jorge@<your-vps-ip>
 cd /opt/sandbox/jorgepereira.io
 git pull
-docker rm -f $(docker ps -aq --filter name=site)
-docker-compose up -d --build site
+./redeploy.sh site
 ```
 
-### Deploying bot changes
-
-After pushing bot code changes to `main`:
-
-```bash
-ssh jorge@<your-vps-ip>
-cd /opt/sandbox/jorgepereira.io
-git pull
-docker rm -f $(docker ps -aq --filter name=hank)
-docker-compose up -d --build hank
-```
-
-### Deploying web UI changes
-
-After pushing hank-web code changes to `main`:
-
-```bash
-ssh jorge@<your-vps-ip>
-cd /opt/sandbox/jorgepereira.io
-git pull
-docker rm -f $(docker ps -aq --filter name=hank-web)
-docker-compose up -d --build hank-web
-```
-
-### Deploying buckos changes
-
-See [buckos/README.md](buckos/README.md#vps-deployment-docker--caddy) for full setup. After pushing changes to `main`:
-
-```bash
-ssh jorge@<your-vps-ip>
-cd /opt/sandbox && git pull
-cd jorgepereira.io
-docker rm -f $(docker ps -aq --filter name=buckos)
-docker-compose up -d --build buckos
-```
-
-### Deploying rippy-rippy changes
-
-See [rippy-rippy/README.md](rippy-rippy/README.md#vps-deployment-docker--caddy) for full setup.
-After pushing changes to `main`:
-
-```bash
-ssh jorge@<your-vps-ip>
-cd /opt/sandbox && git pull
-cd jorgepereira.io
-docker rm -f $(docker ps -aq --filter name=rippy-rippy)
-docker-compose up -d --build rippy-rippy
-```
+`redeploy.sh` does `docker rm -f` before `docker-compose up -d --build` because the VPS runs
+docker-compose v1, which crashes with `KeyError: 'ContainerConfig'` when recreating a container.
 
 ### Deploying Caddy config changes
 
@@ -314,19 +170,17 @@ git pull
 docker-compose restart caddy
 ```
 
+Caddy only reads the Caddyfile at start, so a restart is required.
+
 ---
 
 ### Useful commands
 
 ```bash
 docker-compose ps                  # status of all services
-docker-compose logs -f hank        # follow bot logs
-docker-compose logs -f hank-web    # follow web UI logs
 docker-compose logs -f site        # follow site logs
 docker-compose logs -f caddy       # follow Caddy logs
-docker-compose restart hank        # restart just the bot
-docker-compose stop hank           # stop the bot (site stays up)
-docker-compose start hank          # start it again
+docker-compose restart site        # restart just the site
 ```
 
 ## Adding a new service
@@ -337,7 +191,7 @@ version:
 
 1. Build the app in a self-contained `foo/` directory: multi-stage Dockerfile, `/api/health`
    endpoint, `.env.example` + `.env.cloud.example`, data in a volume at `/app/data`
-2. Add the service (and its volume) to `docker-compose.yml`
+2. Add the service (and its volume) to `docker-compose.yml`, and add it to `caddy.depends_on`
 3. Add a block to the `Caddyfile`:
    ```
    foo.jorgepereira.io {

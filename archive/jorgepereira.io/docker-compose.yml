@@ -10,57 +10,13 @@ services:
       - caddy_data:/data
     depends_on:
       - site
-      - hank
-      - hank-web
-      - playground
-      - buckos
-      - rippy-rippy
 
   site:
     build: site
     restart: unless-stopped
 
-  hank:
-    build: hank
-    env_file: ${ENV_FILE:-hank/.env.local}
-    restart: unless-stopped
-    volumes:
-      - hank_data:/app/data
-
-  hank-web:
-    build: hank-web
-    env_file: ${WEB_ENV_FILE:-hank-web/.env.local}
-    restart: unless-stopped
-    volumes:
-      - hank_data:/app/data:ro
-
-  playground:
-    build: playground
-    env_file: ${PLAYGROUND_ENV_FILE:-playground/.env.local}
-    restart: unless-stopped
-    volumes:
-      - playground_data:/app/data
-
-  buckos:
-    build: buckos
-    env_file: ${BUCKOS_ENV_FILE:-buckos/.env}
-    restart: unless-stopped
-    volumes:
-      - buckos_data:/app/data
-
-  rippy-rippy:
-    build: rippy-rippy
-    env_file: ${RIPPY_RIPPY_ENV_FILE:-rippy-rippy/.env}
-    restart: unless-stopped
-    volumes:
-      - rippy-rippy_data:/app/data
+  # hank/, hank-web/, buckos/, playground/ and rippy-rippy/ are kept in the repo as code
+  # but are not deployed. See ADDING-AN-APP.md to wire an app back in.
 
 volumes:
   caddy_data:
-  hank_data:
-  playground_data:
-  buckos_data:
-  rippy-rippy_data:
-  # Legacy volume kept so Docker doesn't error on existing deployments.
-  # Data should be migrated from hank_memories to hank_data.
-  hank_memories:

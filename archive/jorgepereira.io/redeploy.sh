@@ -1,7 +1,7 @@
 #!/bin/bash
 # Redeploy a service (or all services) and follow logs.
 # Usage:
-#   ./redeploy.sh hank     # redeploy just hank
+#   ./redeploy.sh caddy    # redeploy just caddy
 #   ./redeploy.sh site     # redeploy just site
 #   ./redeploy.sh          # redeploy everything
 

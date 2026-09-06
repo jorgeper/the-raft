@@ -23,13 +23,14 @@ env files, README, and (if it needs persistence) a named Docker volume.
 Current internal port allocations (each app has its own container, so clashes aren't fatal, but
 keep them unique for sanity):
 
-| App | Subdomain | Internal port |
-|---|---|---|
-| site | jorgepereira.io | 80 |
-| hank | hank.jorgepereira.io | 8000 |
-| hank-web | hank.jorgepereira.io (paths) | 8001 |
-| playground | playground.jorgepereira.io | 8002 |
-| buckos | buckos.jorgepereira.io | 3000 |
+| App | Subdomain | Internal port | Deployed? |
+|---|---|---|---|
+| site | jorgepereira.io | 80 | yes |
+| hank | hank.jorgepereira.io | 8000 | no (code kept, not in compose/Caddyfile) |
+| hank-web | hank.jorgepereira.io (paths) | 8001 | no (code kept, not in compose/Caddyfile) |
+| playground | playground.jorgepereira.io | 8002 | no (code kept, not in compose/Caddyfile) |
+| buckos | buckos.jorgepereira.io | 3000 | no (code kept, not in compose/Caddyfile) |
+| rippy-rippy | rippy-rippy.jorgepereira.io | 3001 | no (code kept, not in compose/Caddyfile) |
 
 ## What every app must have
 

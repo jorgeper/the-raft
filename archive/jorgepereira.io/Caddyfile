@@ -1,26 +1,3 @@
 jorgepereira.io {
 	reverse_proxy site:80
 }
-
-playground.jorgepereira.io {
-	reverse_proxy playground:8002
-}
-
-buckos.jorgepereira.io {
-	reverse_proxy buckos:3000
-}
-
-rippy-rippy.jorgepereira.io {
-	reverse_proxy rippy-rippy:3001
-}
-
-hank.jorgepereira.io {
-	# Bot endpoints — telegram webhook, email webhook, health check
-	@bot {
-		path /telegram /email /health
-	}
-	reverse_proxy @bot hank:8000
-
-	# Web UI — everything else (login, auth, app, api)
-	reverse_proxy hank-web:8001
-}
