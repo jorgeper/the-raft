@@ -42,3 +42,12 @@ def test_opus_and_haiku_rates():
 
 def test_unknown_model_uses_fallback_rate():
     assert cost_usd(usage("mystery-model", input_tokens=1_000_000)) > 0
+
+
+def test_context_window_by_model():
+    from claude_usage.pricing import context_window
+
+    assert context_window("claude-fable-5") == 1_000_000
+    assert context_window("claude-opus-5") == 1_000_000
+    assert context_window("claude-haiku-4-5-20251001") == 200_000
+    assert context_window("claude-3-5-sonnet-20241022") == 200_000

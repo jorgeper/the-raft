@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 
 @dataclass
@@ -18,6 +19,21 @@ class Record:
     cache_create_5m_tokens: int = 0
     cache_create_1h_tokens: int = 0
     dedup_key: tuple[str, str] = field(default=("", ""))
+    cwd: str = ""
+    git_branch: str = ""
+    tools: list[str] = field(default_factory=list)
+    is_sidechain: bool = False
+    source: Path | None = None  # transcript file = session identity
+
+    @property
+    def context_tokens(self) -> int:
+        """Tokens the model saw on this call (fresh input + all cache tiers)."""
+        return (
+            self.input_tokens
+            + self.cache_read_tokens
+            + self.cache_create_5m_tokens
+            + self.cache_create_1h_tokens
+        )
 
 
 def _parse_ts(value: str) -> datetime | None:
@@ -47,10 +63,20 @@ def parse_line(line: str) -> Record | None:
         if not usage:
             return None
         cache_create = usage.get("cache_creation") or {}
+        content = message.get("content")
+        tools = (
+            [b.get("name", "") for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
+            if isinstance(content, list)
+            else []
+        )
         return Record(
             kind="usage",
             timestamp=ts,
             model=message.get("model", ""),
+            cwd=data.get("cwd", ""),
+            git_branch=data.get("gitBranch", ""),
+            tools=tools,
+            is_sidechain=bool(data.get("isSidechain")),
             input_tokens=usage.get("input_tokens", 0),
             output_tokens=usage.get("output_tokens", 0),
             cache_read_tokens=usage.get("cache_read_input_tokens", 0),

@@ -30,6 +30,17 @@ def rates_for(model: str) -> tuple[float, float]:
     return _FALLBACK
 
 
+# 1M-context models: the Claude 5 family and Opus/Sonnet 4.6+; everything else 200K.
+_MILLION_CONTEXT = ("fable", "mythos", "opus-5", "opus-4-6", "opus-4-7", "opus-4-8",
+                    "sonnet-5", "sonnet-4-6")
+
+
+def context_window(model: str) -> int:
+    if any(n in model for n in _MILLION_CONTEXT):
+        return 1_000_000
+    return 200_000
+
+
 def cost_usd(rec: Record) -> float:
     inp, out = rates_for(rec.model)
     return (

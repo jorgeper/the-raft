@@ -46,6 +46,7 @@ def scan_transcripts(root: Path, state: ScanState) -> list[Record]:
             rec = parse_line(raw.decode("utf-8", errors="replace"))
             if rec is None:
                 continue
+            rec.source = path
             if rec.kind == "usage" and rec.dedup_key != ("", ""):
                 if rec.dedup_key in state.seen:
                     continue

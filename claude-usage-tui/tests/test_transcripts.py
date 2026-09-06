@@ -8,9 +8,16 @@ ASSISTANT_LINE = json.dumps(
         "timestamp": "2026-09-05T18:00:00.000Z",
         "requestId": "req_1",
         "isSidechain": False,
+        "cwd": "/Users/x/src/proj",
+        "gitBranch": "main",
         "message": {
             "id": "msg_1",
             "model": "claude-fable-5",
+            "content": [
+                {"type": "text", "text": "hi"},
+                {"type": "tool_use", "name": "Bash", "input": {}},
+                {"type": "tool_use", "name": "Edit", "input": {}},
+            ],
             "usage": {
                 "input_tokens": 2,
                 "output_tokens": 100,
@@ -56,6 +63,21 @@ def test_assistant_line_yields_usage_record():
     assert rec.cache_create_1h_tokens == 200
     assert rec.timestamp.year == 2026
     assert rec.dedup_key == ("msg_1", "req_1")
+    assert rec.cwd == "/Users/x/src/proj"
+    assert rec.git_branch == "main"
+    assert rec.tools == ["Bash", "Edit"]
+    assert rec.is_sidechain is False
+    # Context the model saw on this call: fresh input + cache read + cache writes.
+    assert rec.context_tokens == 2 + 5000 + 100 + 200
+
+
+def test_sidechain_assistant_line_is_flagged():
+    import json as _json
+
+    data = _json.loads(ASSISTANT_LINE)
+    data["isSidechain"] = True
+    rec = parse_line(_json.dumps(data))
+    assert rec.is_sidechain is True
 
 
 def test_user_prompt_line_yields_prompt_record():

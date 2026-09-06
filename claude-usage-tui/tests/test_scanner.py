@@ -27,6 +27,7 @@ def test_incremental_scan_only_reads_new_lines(tmp_path):
     state = ScanState()
     records = scan_transcripts(tmp_path / "projects", state)
     assert len(records) == 1
+    assert records[0].source == f  # session identity for per-session stats
 
     with f.open("a") as fh:
         fh.write(make_line("m2", "r2") + "\n")
