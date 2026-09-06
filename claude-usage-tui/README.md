@@ -4,9 +4,10 @@ A gruvbox-themed terminal dashboard for **Claude Code** usage on macOS. One scre
 
 ```
 ▼ Rate limits · live · updated 21:27:41
-  Session (5h)        ██████████████████████░░░░░░░░░░░░░░░░░░  55%   resets in 1h 42m
-  Week (all models)   ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  29%   resets in 1d 7h
-  Week (Opus/Fable)   ███████████████████░░░░░░░░░░░░░░░░░░░░░  47%   resets in 1d 7h
+  Session (5h)        ██████████████████████░░░░░░░░░░░░░░░░░░  55%   resets Sat 23:09 (in 1h 42m)
+  Week (all models)   ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  29%   resets Mon 05:00 (in 1d 7h 33m)
+                      ⚠ at this pace, hits 100% ~Sun 23:49 (in 1d 2h 22m), before the reset Mon 05:00 (in 1d 7h 33m)
+  Week (Opus/Fable)   ███████████████████░░░░░░░░░░░░░░░░░░░░░  47%   resets Mon 05:00 (in 1d 7h 33m)
   Burn (last hour)    38.5K out-tok/min · $12/h API value · 96 calls
 
 ▼ Usage (all projects) · $46 today · updated 21:27:41

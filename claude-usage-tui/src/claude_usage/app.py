@@ -18,7 +18,7 @@ from textual.widgets import Collapsible, Footer, Static
 from claude_usage.aggregate import Totals, aggregate
 from claude_usage.analytics import cache_hit_rate, sidechain_share, tool_counts
 from claude_usage.burn import BurnRate, burn_rate, project_exhaustion
-from claude_usage.format import GRUVBOX, bar, fmt_delta, fmt_tokens, limit_label
+from claude_usage.format import GRUVBOX, bar, fmt_delta, fmt_tokens, fmt_when, limit_label
 from claude_usage.history import daily_series, hour_heatmap, top_projects
 from claude_usage.limits import (
     LIMITS_POLL_SECONDS,
@@ -81,8 +81,8 @@ class LimitsPanel(Static):
                 table.add_row(
                     "",
                     Text(
-                        f"⚠ at this pace, hits 100% ~{eta.astimezone():%H:%M} "
-                        f"(before the {limit.resets_at.astimezone():%H:%M} reset)",
+                        f"⚠ at this pace, hits 100% ~{fmt_when(eta)}, "
+                        f"before the reset {fmt_when(limit.resets_at)}",
                         style=GRUVBOX["yellow"],
                     ),
                     "",

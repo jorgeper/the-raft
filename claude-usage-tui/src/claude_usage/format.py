@@ -41,16 +41,34 @@ def fmt_tokens(n: int) -> str:
     return str(n)
 
 
-def fmt_delta(until: datetime | None) -> str:
+def fmt_countdown(delta_seconds: float) -> str:
+    """'2h 10m', '1d 3h 5m', or 'now' once the moment has passed."""
+    secs = int(delta_seconds)
+    if secs <= 0:
+        return "now"
+    days, rem = divmod(secs, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    return f"{hours}h {minutes}m"
+
+
+def fmt_when(moment: datetime, now: datetime | None = None) -> str:
+    """Local weekday + clock, then how far away it is: 'Sat 23:49 (in 2h 10m)'."""
+    now = now or datetime.now(timezone.utc)
+    countdown = fmt_countdown((moment - now).total_seconds())
+    tail = "now" if countdown == "now" else f"in {countdown}"
+    return f"{moment.astimezone():%a %H:%M} ({tail})"
+
+
+def fmt_delta(until: datetime | None, now: datetime | None = None) -> str:
     if until is None:
         return ""
-    secs = (until - datetime.now(timezone.utc)).total_seconds()
-    if secs <= 0:
+    now = now or datetime.now(timezone.utc)
+    if (until - now).total_seconds() <= 0:
         return "resetting…"
-    hours, rem = divmod(int(secs), 3600)
-    if hours >= 24:
-        return f"resets in {hours // 24}d {hours % 24}h"
-    return f"resets in {hours}h {rem // 60}m"
+    return f"resets {fmt_when(until, now=now)}"
 
 
 def bar(percent: float, width: int = 40) -> Text:
