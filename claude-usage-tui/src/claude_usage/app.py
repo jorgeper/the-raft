@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 from datetime import datetime, timezone
+from importlib.metadata import version
 from pathlib import Path
 
 from rich.table import Table
@@ -12,55 +14,13 @@ from textual.containers import Vertical
 from textual.widgets import Footer, Static
 
 from claude_usage.aggregate import Totals, aggregate
+from claude_usage.format import GRUVBOX, bar, fmt_delta, fmt_tokens, limit_label
 from claude_usage.limits import Limit, fetch_limits
 from claude_usage.scanner import ScanState, scan_transcripts
 from claude_usage.sessions import count_claude_processes, recent_sessions
 from claude_usage.transcripts import Record
 
 PROJECTS_ROOT = Path.home() / ".claude" / "projects"
-
-KIND_LABELS = {
-    "session": "Session (5h)",
-    "five_hour": "Session (5h)",
-    "seven_day": "Week (all models)",
-    "weekly_all": "Week (all models)",
-    "weekly_scoped": "Week (Opus/Fable)",
-    "seven_day_opus": "Week (Opus)",
-    "seven_day_sonnet": "Week (Sonnet)",
-}
-
-
-def fmt_tokens(n: int) -> str:
-    if n >= 1_000_000_000:
-        return f"{n / 1e9:.1f}B"
-    if n >= 1_000_000:
-        return f"{n / 1e6:.1f}M"
-    if n >= 1_000:
-        return f"{n / 1e3:.1f}K"
-    return str(n)
-
-
-def fmt_delta(until: datetime | None) -> str:
-    if until is None:
-        return ""
-    secs = (until - datetime.now(timezone.utc)).total_seconds()
-    if secs <= 0:
-        return "resetting…"
-    hours, rem = divmod(int(secs), 3600)
-    if hours >= 24:
-        return f"resets in {hours // 24}d {hours % 24}h"
-    return f"resets in {hours}h {rem // 60}m"
-
-
-def bar(percent: float, width: int = 40) -> Text:
-    percent = max(0.0, min(100.0, percent))
-    filled = round(width * percent / 100)
-    color = "green" if percent < 60 else "yellow" if percent < 85 else "red"
-    text = Text()
-    text.append("█" * filled, style=color)
-    text.append("░" * (width - filled), style="grey37")
-    text.append(f" {percent:3.0f}%", style=f"bold {color}")
-    return text
 
 
 class LimitsPanel(Static):
@@ -70,8 +30,7 @@ class LimitsPanel(Static):
         table.add_column()
         table.add_column(style="dim")
         for limit in limits or []:
-            label = KIND_LABELS.get(limit.kind, limit.kind.replace("_", " ").title())
-            table.add_row(label, bar(limit.percent), fmt_delta(limit.resets_at))
+            table.add_row(limit_label(limit.kind), bar(limit.percent), fmt_delta(limit.resets_at))
         self.update(table)
         self.border_subtitle = f"[red]{error}[/]" if error else "live"
 
@@ -97,7 +56,7 @@ class StatsPanel(Static):
                 fmt_tokens(t.input_tokens + t.cache_write_tokens),
                 fmt_tokens(t.output_tokens),
                 fmt_tokens(t.cache_read_tokens),
-                f"[bold cyan]${t.cost_usd:,.2f}[/]",
+                f"[bold {GRUVBOX['aqua']}]${t.cost_usd:,.2f}[/]",
             )
         by_model = sorted(
             ((m, t) for m, t in stats["30d"].by_model.items() if t.cost_usd >= 0.01),
@@ -128,7 +87,7 @@ class SessionsPanel(Static):
             cwd = s.cwd.replace(home, "~") if s.cwd else s.path.parent.name
             idle = int(s.idle_seconds)
             when = "active now" if idle < 90 else f"{idle // 60}m ago"
-            table.add_row(f"[green]●[/] {cwd}", when)
+            table.add_row(f"[{GRUVBOX['green']}]●[/] {cwd}", when)
         self.update(table)
         self.border_subtitle = f"{process_count} claude process(es)"
 
@@ -151,6 +110,7 @@ class UsageApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.theme = "gruvbox"
         self.query_one(LimitsPanel).border_title = "Rate limits"
         self.query_one(StatsPanel).border_title = "Usage (all projects)"
         self.query_one(SessionsPanel).border_title = "Local sessions"
@@ -205,8 +165,37 @@ class UsageApp(App):
         self.call_from_thread(self.query_one(SessionsPanel).show, sessions, count)
 
 
+def run_once() -> None:
+    from claude_usage.snapshot import snapshot_text
+
+    try:
+        limits = fetch_limits()
+    except Exception:
+        limits = None
+    records = scan_transcripts(PROJECTS_ROOT, ScanState())
+    stats = aggregate(records, now=datetime.now(timezone.utc))
+    print(snapshot_text(limits, stats), end="")
+
+
 def main() -> None:
-    UsageApp().run()
+    parser = argparse.ArgumentParser(
+        prog="claude-usage",
+        description="Terminal dashboard for Claude Code usage: rate-limit meters, "
+        "token/cost stats, active sessions. With no arguments, opens the "
+        "full-screen dashboard (Esc quits, r refreshes).",
+    )
+    parser.add_argument(
+        "--once", action="store_true",
+        help="print a one-shot snapshot to stdout and exit (no full-screen UI)",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {version('claude-usage-tui')}"
+    )
+    args = parser.parse_args()
+    if args.once:
+        run_once()
+    else:
+        UsageApp().run()
 
 
 if __name__ == "__main__":
