@@ -1,0 +1,27 @@
+# Black Sun orchestrator — /etc/systemd/system/black-sun.service
+# See deploy/vps.md for the full setup and the safety posture this assumes.
+
+[Unit]
+Description=Black Sun orchestrator (blacksun run --watch)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blacksun
+Group=blacksun
+WorkingDirectory=/opt/blacksun/agentic-harness
+EnvironmentFile=/opt/blacksun/black-sun.env
+ExecStart=/opt/blacksun/agentic-harness/.venv/bin/python -m blacksun run --watch
+Restart=on-failure
+RestartSec=30
+
+# Containment: this unit owns its two directories and nothing else.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/blacksun
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

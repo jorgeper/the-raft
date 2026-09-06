@@ -1,0 +1,6 @@
+blacksun:
+  root: ..
+  python: ../.venv/bin/python
+poll:
+  events_ms: 250
+  snapshot_s: 5
