@@ -11,7 +11,7 @@ from pathlib import Path
 from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.containers import VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Collapsible, Footer, Static
 
 from claude_usage.aggregate import Totals, aggregate
@@ -282,8 +282,7 @@ SECTIONS = [
     ("limits", "Rate limits", False),
     ("stats", "Usage (all projects)", False),
     ("sessions", "Sessions (last 24h)", False),
-    ("history", "History (30 days)", True),
-    ("analytics", "Analytics (30 days)", True),
+    ("history", "History & Analytics (30 days)", True),
 ]
 
 
@@ -298,24 +297,29 @@ class UsageApp(App):
         for i, (cid, title, _) in enumerate(SECTIONS)
     ]
     CSS = """
-    Screen { padding: 0 1; }
-    Collapsible { border: none; background: $surface; margin-bottom: 1; }
+    Screen { padding: 0 1; background: #1d2021; }
+    VerticalScroll { background: #1d2021; }
+    Collapsible { border: none; background: #282828; margin-bottom: 1; }
     CollapsibleTitle { color: $accent; text-style: bold; }
-    Contents > Static { padding: 0 2 1 2; height: auto; }
+    Contents Static { padding: 0 2 1 2; height: auto; }
+    #hist-row { height: auto; }
+    #hist-row > HistoryPanel { width: 62; }
+    #hist-row > AnalyticsPanel { width: 1fr; }
     """
 
     def compose(self) -> ComposeResult:
-        panels = {
-            "limits": LimitsPanel(),
-            "stats": StatsPanel(),
-            "sessions": SessionsDetailPanel(),
-            "history": HistoryPanel(),
-            "analytics": AnalyticsPanel(),
-        }
         with VerticalScroll():
-            for cid, title, collapsed in SECTIONS:
-                with Collapsible(title=title, collapsed=collapsed, id=f"sec-{cid}"):
-                    yield panels[cid]
+            with Collapsible(title="Rate limits", collapsed=False, id="sec-limits"):
+                yield LimitsPanel()
+            with Collapsible(title="Usage (all projects)", collapsed=False, id="sec-stats"):
+                yield StatsPanel()
+            with Collapsible(title="Sessions (last 24h)", collapsed=False, id="sec-sessions"):
+                yield SessionsDetailPanel()
+            with Collapsible(
+                title="History & Analytics (30 days)", collapsed=True, id="sec-history"
+            ), Horizontal(id="hist-row"):
+                yield HistoryPanel()
+                yield AnalyticsPanel()
         yield Footer()
 
     def on_mount(self) -> None:
@@ -391,9 +395,7 @@ class UsageApp(App):
             per_session, processes,
         )
         self.call_from_thread(self._show_and_stamp, "history", self.query_one(HistoryPanel), records)
-        self.call_from_thread(
-            self._show_and_stamp, "analytics", self.query_one(AnalyticsPanel), records
-        )
+        self.call_from_thread(self.query_one(AnalyticsPanel).show, records)
 
 
 def run_once() -> None:
