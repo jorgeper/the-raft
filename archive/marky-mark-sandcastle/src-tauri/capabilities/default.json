@@ -1,0 +1,49 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Marky Mark main window: fs for documents/sidecars/themes, dialogs, window control",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:menu:default",
+    "core:window:allow-set-title",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:event:allow-listen",
+    "core:event:allow-emit",
+    "updater:default",
+    "process:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize",
+    "core:window:allow-is-focused",
+    "dialog:default",
+    "clipboard-manager:allow-read-text",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "$APPCONFIG" }, { "path": "$APPCONFIG/**" }]
+    },
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "http://**" }, { "url": "https://**" }]
+    },
+    {
+      "identifier": "opener:allow-reveal-item-in-dir",
+      "allow": [{ "path": "**" }, { "path": "$HOME/**" }]
+    },
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    "fs:allow-write-file",
+    "fs:allow-copy-file",
+    "fs:allow-exists",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-mkdir",
+    "fs:allow-read-dir",
+    "fs:allow-watch",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "**" }, { "path": "$APPCONFIG" }, { "path": "$APPCONFIG/**" }, { "path": "$HOME/**" }]
+    }
+  ]
+}

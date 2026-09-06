@@ -1,0 +1,46 @@
+# SPEC19 §3.3: when a versioned release is PUBLISHED (the human flips the
+# draft), copy its latest.json onto the rolling `updater` release — the fixed
+# endpoint Check for Updates… polls. Drafts never reach it; GitHub's
+# `releases/latest` convenience skips pre-releases, hence this indirection.
+name: updater-manifest
+on:
+  release:
+    # `published` alone is flaky for draft-flips and pre-releases; listen to
+    # all three (the job is idempotent — clobber upload) and keep a manual
+    # dispatch as the recovery lever.
+    types: [published, prereleased, released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to advance the updater manifest from"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  advance:
+    if: github.event_name == 'workflow_dispatch' || github.event.release.tag_name != 'updater'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy latest.json to the rolling updater release
+        run: |
+          gh release download "$TAG" --pattern latest.json --dir manifest || {
+            echo "::warning::$TAG has no latest.json (pre-SPEC19 release?) — nothing to advance"; exit 0; }
+          # --prerelease keeps it out of the `releases/latest` slot for good:
+          # --latest=false only breaks ties among FULL releases, and with every
+          # real release an alpha the rolling release was claiming "latest",
+          # hijacking the README's latest-release link.
+          if ! gh release view updater > /dev/null 2>&1; then
+            gh release create updater --latest=false --prerelease \
+              --title "Updater manifest (rolling)" \
+              --notes "Machine-consumed pointer for Check for Updates… — always mirrors the newest PUBLISHED release's latest.json. Not for humans; grab the newest release instead."
+          else
+            gh release edit updater --prerelease > /dev/null
+          fi
+          gh release upload updater manifest/latest.json --clobber
+          echo "updater manifest advanced to $TAG"
