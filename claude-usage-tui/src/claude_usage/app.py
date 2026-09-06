@@ -11,8 +11,8 @@ from pathlib import Path
 from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.containers import Vertical, VerticalScroll
-from textual.widgets import Footer, Static, TabbedContent, TabPane
+from textual.containers import VerticalScroll
+from textual.widgets import Collapsible, Footer, Static
 
 from claude_usage.aggregate import Totals, aggregate
 from claude_usage.analytics import cache_hit_rate, sidechain_share, tool_counts
@@ -62,7 +62,7 @@ class LimitsPanel(Static):
         error: str | None,
         projections: dict[str, datetime] | None = None,
         burn: BurnRate | None = None,
-    ) -> None:
+    ) -> str:
         table = Table.grid(padding=(0, 2))
         table.add_column(min_width=18)
         table.add_column()
@@ -91,14 +91,14 @@ class LimitsPanel(Static):
                 "",
             )
         self.update(table)
-        self.border_subtitle = f"[{GRUVBOX['red']}]{error}[/]" if error else "live"
+        return error or "live"
 
 
 class StatsPanel(Static):
-    def show(self, stats: dict[str, Totals] | None) -> None:
+    def show(self, stats: dict[str, Totals] | None) -> str:
         if stats is None:
             self.update(Text("scanning transcripts…", style="dim italic"))
-            return
+            return "scanning…"
         table = Table.grid(padding=(0, 2))
         table.add_column(min_width=18, style="bold")
         for _ in range(5):
@@ -130,18 +130,21 @@ class StatsPanel(Static):
                 f"[dim]{fmt_tokens(t.cache_read_tokens)}[/]",
                 f"[dim]${t.cost_usd:,.2f}[/]",
             )
+        table.add_row(
+            "[dim italic]*API list prices — you pay a flat subscription, not this[/]",
+        )
         self.update(table)
-        self.border_subtitle = "*API list prices — you pay a flat subscription, not this"
+        return f"${stats['today'].cost_usd:,.0f} today"
 
 
 # ---------------------------------------------------------------- Sessions
 
 
 class SessionsDetailPanel(Static):
-    def show(self, stats: dict[Path, SessionStats] | None, process_count: int) -> None:
+    def show(self, stats: dict[Path, SessionStats] | None, process_count: int) -> str:
         if stats is None:
             self.update(Text("scanning transcripts…", style="dim italic"))
-            return
+            return "scanning…"
         now = datetime.now(timezone.utc)
         recent = sorted(
             (s for s in stats.values() if now - s.last_ts < timedelta(hours=24)),
@@ -179,10 +182,8 @@ class SessionsDetailPanel(Static):
         if not recent:
             table.add_row(Text("no sessions in the last 24 hours", style="dim italic"))
         self.update(table)
-        self.border_subtitle = (
-            f"{sum(1 for s in recent if (now - s.last_ts).total_seconds() < 300)} live · "
-            f"{process_count} claude process(es) · last 24h"
-        )
+        live = sum(1 for s in recent if (now - s.last_ts).total_seconds() < 300)
+        return f"{live} live · {process_count} process(es)"
 
 
 # ---------------------------------------------------------------- History
@@ -277,43 +278,48 @@ class AnalyticsPanel(Static):
 # ---------------------------------------------------------------- App
 
 
+SECTIONS = [
+    ("limits", "Rate limits", False),
+    ("stats", "Usage (all projects)", False),
+    ("sessions", "Sessions (last 24h)", False),
+    ("history", "History (30 days)", True),
+    ("analytics", "Analytics (30 days)", True),
+]
+
+
 class UsageApp(App):
     TITLE = "Claude Usage"
     BINDINGS = [
         ("escape", "quit", "Quit"),
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
-        ("1", "tab('overview')", "Overview"),
-        ("2", "tab('sessions')", "Sessions"),
-        ("3", "tab('history')", "History"),
-        ("4", "tab('analytics')", "Analytics"),
+    ] + [
+        (str(i + 1), f"toggle('{cid}')", title.split(" (")[0])
+        for i, (cid, title, _) in enumerate(SECTIONS)
     ]
     CSS = """
     Screen { padding: 0 1; }
-    Static { border: round $primary 40%; padding: 1 2; margin-bottom: 1; height: auto; }
-    TabPane { padding: 1 0 0 0; }
+    Collapsible { border: none; background: $surface; margin-bottom: 1; }
+    CollapsibleTitle { color: $accent; text-style: bold; }
+    Contents > Static { padding: 0 2 1 2; height: auto; }
     """
 
     def compose(self) -> ComposeResult:
-        with TabbedContent(initial="overview"):
-            with TabPane("Overview", id="overview"), Vertical():
-                yield LimitsPanel(id="limits")
-                yield StatsPanel(id="stats")
-            with TabPane("Sessions", id="sessions"), Vertical():
-                yield SessionsDetailPanel(id="sessions-detail")
-            with TabPane("History", id="history"), VerticalScroll():
-                yield HistoryPanel(id="history-panel")
-            with TabPane("Analytics", id="analytics"), VerticalScroll():
-                yield AnalyticsPanel(id="analytics-panel")
+        panels = {
+            "limits": LimitsPanel(),
+            "stats": StatsPanel(),
+            "sessions": SessionsDetailPanel(),
+            "history": HistoryPanel(),
+            "analytics": AnalyticsPanel(),
+        }
+        with VerticalScroll():
+            for cid, title, collapsed in SECTIONS:
+                with Collapsible(title=title, collapsed=collapsed, id=f"sec-{cid}"):
+                    yield panels[cid]
         yield Footer()
 
     def on_mount(self) -> None:
         self.theme = "gruvbox"
-        self.query_one(LimitsPanel).border_title = "Rate limits"
-        self.query_one(StatsPanel).border_title = "Usage (all projects)"
-        self.query_one(SessionsDetailPanel).border_title = "Sessions"
-        self.query_one(HistoryPanel).border_title = "History"
-        self.query_one(AnalyticsPanel).border_title = "Analytics"
         self._scan_state = ScanState()
         self._records: list[Record] = []
         self._limit_samples: dict[str, deque[tuple[datetime, float]]] = {}
@@ -323,8 +329,15 @@ class UsageApp(App):
         self.set_interval(60, self.refresh_limits)
         self.set_interval(30, self.refresh_stats)
 
-    def action_tab(self, tab: str) -> None:
-        self.query_one(TabbedContent).active = tab
+    def _stamp(self, cid: str, summary: str | None) -> None:
+        base = next(title for c, title, _ in SECTIONS if c == cid)
+        parts = [base] + ([summary] if summary else [])
+        parts.append(f"updated {datetime.now().astimezone():%H:%M:%S}")
+        self.query_one(f"#sec-{cid}", Collapsible).title = " · ".join(parts)
+
+    def action_toggle(self, cid: str) -> None:
+        section = self.query_one(f"#sec-{cid}", Collapsible)
+        section.collapsed = not section.collapsed
 
     def action_refresh(self) -> None:
         self.refresh_limits()
@@ -336,13 +349,17 @@ class UsageApp(App):
     def refresh_stats(self) -> None:
         self.run_worker(self._load_stats, thread=True, exclusive=True, group="stats")
 
+    def _show_and_stamp(self, cid: str, panel, *args) -> None:
+        self._stamp(cid, panel.show(*args))
+
     def _load_limits(self) -> None:
         now = datetime.now(timezone.utc)
         try:
             limits = fetch_limits()
         except Exception as exc:  # degrade, never crash the panel
             self.call_from_thread(
-                self.query_one(LimitsPanel).show, None, f"unavailable: {type(exc).__name__}"
+                self._show_and_stamp, "limits", self.query_one(LimitsPanel),
+                None, f"unavailable: {type(exc).__name__}",
             )
             return
         projections: dict[str, datetime] = {}
@@ -353,7 +370,10 @@ class UsageApp(App):
             if eta:
                 projections[limit.kind] = eta
         burn = burn_rate(self._records, now=now)
-        self.call_from_thread(self.query_one(LimitsPanel).show, limits, None, projections, burn)
+        self.call_from_thread(
+            self._show_and_stamp, "limits", self.query_one(LimitsPanel),
+            limits, None, projections, burn,
+        )
 
     def _load_stats(self) -> None:
         try:
@@ -365,10 +385,15 @@ class UsageApp(App):
         except Exception:
             return
         records = self._records
-        self.call_from_thread(self.query_one(StatsPanel).show, stats)
-        self.call_from_thread(self.query_one(SessionsDetailPanel).show, per_session, processes)
-        self.call_from_thread(self.query_one(HistoryPanel).show, records)
-        self.call_from_thread(self.query_one(AnalyticsPanel).show, records)
+        self.call_from_thread(self._show_and_stamp, "stats", self.query_one(StatsPanel), stats)
+        self.call_from_thread(
+            self._show_and_stamp, "sessions", self.query_one(SessionsDetailPanel),
+            per_session, processes,
+        )
+        self.call_from_thread(self._show_and_stamp, "history", self.query_one(HistoryPanel), records)
+        self.call_from_thread(
+            self._show_and_stamp, "analytics", self.query_one(AnalyticsPanel), records
+        )
 
 
 def run_once() -> None:
@@ -389,7 +414,8 @@ def main() -> None:
         description="Terminal dashboard for Claude Code usage: rate-limit meters, "
         "token/cost stats, per-session detail, history, analytics. With no "
         "arguments, opens the full-screen dashboard (Esc quits, r refreshes, "
-        "1-4 switch tabs).",
+        "1-5 toggle sections). Data auto-refreshes: stats every 30s, meters "
+        "every 60s.",
     )
     parser.add_argument(
         "--once", action="store_true",
