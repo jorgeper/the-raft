@@ -6,14 +6,8 @@ Personal project monorepo.
 
 ### jorgepereira.io
 
-Everything deployed under the `jorgepereira.io` domain — the static site and the Hank Telegram bot. Uses docker-compose with a shared Caddy reverse proxy for HTTPS.
-
-See [`jorgepereira.io/README.md`](jorgepereira.io/README.md) for full docs.
-
-```bash
-cd jorgepereira.io
-docker-compose up --build
-```
+Moved to its own repo: [github.com/jorgeper/jorgepereira.io](https://github.com/jorgeper/jorgepereira.io)
+(history preserved via `git subtree split`).
 
 ### workout-app
 

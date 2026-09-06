@@ -1,8 +1,0 @@
-.env
-.env.local
-.env.cloud
-.venv/
-__pycache__/
-*.pyc
-data/
-identities.json

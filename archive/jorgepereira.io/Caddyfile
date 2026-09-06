@@ -1,3 +1,0 @@
-jorgepereira.io {
-	reverse_proxy site:80
-}
