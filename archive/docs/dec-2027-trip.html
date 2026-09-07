@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Holiday Season Planning Calendar — Dec 20, 2026 to Jan 9, 2027</title>
+<style>
+  :root {
+    --ink: #23302c;
+    --ink-soft: #5f6f69;
+    --paper: #fbfaf7;
+    --cell: #ffffff;
+    --line: #d9ded9;
+    --pine: #2e5947;
+    --pine-tint: #e7efe9;
+    --berry: #a03a2e;
+    --berry-tint: #f6e9e5;
+    --loc-home: #cfd6cd;
+    --loc-seoul: #9ec5d8;
+    --loc-bangkok: #f0c987;
+    --loc-chiangmai: #c9b8e8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 40px 24px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 2px solid var(--pine);
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+  }
+  h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
+  h1 span { color: var(--pine); }
+  .year { font-size: 15px; color: var(--ink-soft); font-weight: 500; }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    align-items: center;
+    margin-bottom: 16px;
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+  .legend .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+  }
+  .legend .sw {
+    width: 22px;
+    height: 9px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+  .legend .stripe-note { font-style: italic; }
+  .dow {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .dow div {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    text-align: right;
+    padding: 0 8px 4px;
+  }
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+  .day {
+    background: var(--cell);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    min-height: 140px;
+    padding: 8px 8px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .day .num {
+    font-size: 13px;
+    font-weight: 600;
+    align-self: flex-end;
+    color: var(--ink);
+  }
+  .day.weekend { background: #f5f4ef; }
+  .day.break { background: var(--pine-tint); border-color: #c3d5c8; }
+  .day.break .num { color: var(--pine); }
+  .day.month-start { border-color: var(--pine); border-width: 2px; }
+  .event {
+    font-size: 12px;
+    line-height: 1.35;
+    padding: 3px 6px;
+    border-radius: 5px;
+    background: var(--pine-tint);
+    color: var(--pine);
+    font-weight: 500;
+  }
+  .event.alt { background: var(--berry-tint); color: var(--berry); }
+  .event.travel { background: #e3ecf4; color: #2b567e; }
+  .day.break .event { background: #d3e2d7; }
+  .day.break .event.travel { background: #d6e2ec; color: #2b567e; }
+  .stripes { margin-top: auto; display: flex; flex-direction: column; gap: 3px; padding-top: 4px; }
+  .stripe { height: 9px; border-radius: 4px; }
+  .key-dates {
+    margin-top: 28px;
+    border-top: 2px solid var(--pine);
+    padding-top: 14px;
+  }
+  .key-dates h2 { font-size: 18px; font-weight: 600; margin-bottom: 10px; }
+  .key-dates ul { list-style: none; }
+  .key-dates li {
+    display: flex;
+    gap: 14px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .key-dates .kd-date {
+    flex: 0 0 170px;
+    font-weight: 600;
+    color: var(--pine);
+  }
+  .key-dates .kd-date.alt { color: var(--berry); }
+  .key-dates .kd-date.travel { color: #2b567e; }
+  footer {
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+  }
+  @media print {
+    body { padding: 0; background: #fff; }
+    .day { min-height: 96px; }
+  }
+  @media (max-width: 720px) {
+    .dow { display: none; }
+    #grid { grid-template-columns: 1fr; }
+    .day .num::after { content: attr(data-full); font-weight: 400; color: var(--ink-soft); margin-left: 6px; }
+    .day .num { align-self: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Holiday season <span>Dec 20 – Jan 9</span></h1>
+    <div class="year">2026 – 2027 planning calendar</div>
+  </header>
+
+  <div class="legend">
+    <span class="chip"><span class="sw" style="background:var(--loc-home)"></span>Home (Bellevue)</span>
+    <span class="chip"><span class="sw" style="background:var(--loc-seoul)"></span>Seoul</span>
+    <span class="chip"><span class="sw" style="background:var(--loc-bangkok)"></span>Bangkok</span>
+    <span class="chip"><span class="sw" style="background:var(--loc-chiangmai)"></span>Chiang Mai</span>
+    <span class="chip"><span class="sw" style="background:linear-gradient(90deg,var(--loc-home),var(--loc-bangkok))"></span>Travel day</span>
+    <span class="stripe-note">Top stripe: our family &nbsp;·&nbsp; bottom stripe: Karen's family</span>
+  </div>
+
+  <div class="dow">
+    <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+  </div>
+  <div id="grid"></div>
+
+  <section class="key-dates">
+    <h2>Key dates</h2>
+    <ul id="key-dates-list"></ul>
+  </section>
+
+  <footer>School dates from the Bellevue School District 2026-27 academic calendar (applies to Cherry Crest Elementary and Chinook Middle). Green-shaded days are winter break (Dec 21 – Jan 1). Each cell carries two location stripes — top is our family, bottom is Karen's family; blended stripes are travel days between the two places.</footer>
+</div>
+
+<script>
+/* ============================================================
+   EVENTS — keys are "M-D". type: omit = green, "alt" = berry,
+   "travel" = blue.
+   ============================================================ */
+const EVENTS = {
+  "12-18": [{ text: "Last day of school before break" }],
+  "12-20": [{ text: "Us: fly Seattle → Seoul", type: "travel" }],
+  "12-21": [{ text: "Us: land in Seoul", type: "travel" },
+            { text: "Winter break begins" }],
+  "12-23": [{ text: "Karen's family → Thailand", type: "travel" }],
+  "12-24": [{ text: "Winter holiday", type: "alt" }],
+  "12-25": [{ text: "Us: fly Seoul → Bangkok", type: "travel" },
+            { text: "Winter holiday", type: "alt" }],
+  "12-28": [{ text: "Karen's: Bangkok → Chiang Mai", type: "travel" }],
+  "12-30": [{ text: "Karen's: Chiang Mai → Bangkok", type: "travel" }],
+  "12-31": [{ text: "New Year holiday", type: "alt" }],
+  "1-1":  [{ text: "New Year holiday", type: "alt" }],
+  "1-3":  [{ text: "Us: fly Bangkok → Seattle (tentative)", type: "travel" },
+           { text: "Karen's family returns", type: "travel" }],
+  "1-4":  [{ text: "School resumes" }],
+};
+
+/* ============================================================
+   LOCATION TRACKS — one entry per family, in stripe order
+   (first = top stripe). Each segment: { from, to, place } or
+   { on, fromPlace, toPlace } for a travel day (renders as a
+   color blend). Dates are "M-D". Places: home, bangkok, chiangmai.
+   ============================================================ */
+const TRACKS = [
+  { name: "Our family", segments: [
+    { from: "12-6", to: "12-19", place: "home" },
+    { on: "12-20", fromPlace: "home", toPlace: "seoul" },
+    { from: "12-21", to: "12-24", place: "seoul" },
+    { on: "12-25", fromPlace: "seoul", toPlace: "bangkok" },
+    { from: "12-26", to: "1-2", place: "bangkok" },
+    { on: "1-3", fromPlace: "bangkok", toPlace: "home" },
+    { from: "1-4", to: "1-16", place: "home" },
+  ]},
+  { name: "Karen's family", segments: [
+    { from: "12-6", to: "12-22", place: "home" },
+    { on: "12-23", fromPlace: "home", toPlace: "bangkok" },
+    { from: "12-24", to: "12-27", place: "bangkok" },
+    { on: "12-28", fromPlace: "bangkok", toPlace: "chiangmai" },
+    { from: "12-29", to: "12-29", place: "chiangmai" },
+    { on: "12-30", fromPlace: "chiangmai", toPlace: "bangkok" },
+    { from: "12-31", to: "1-2", place: "bangkok" },
+    { on: "1-3", fromPlace: "bangkok", toPlace: "home" },
+    { from: "1-4", to: "1-16", place: "home" },
+  ]},
+];
+
+const PLACE_COLORS = {
+  home: "var(--loc-home)",
+  seoul: "var(--loc-seoul)",
+  bangkok: "var(--loc-bangkok)",
+  chiangmai: "var(--loc-chiangmai)",
+};
+const PLACE_NAMES = {
+  home: "Home (Bellevue)",
+  seoul: "Seoul",
+  bangkok: "Bangkok",
+  chiangmai: "Chiang Mai",
+};
+
+/* Grid range: Sun Dec 20, 2026 through Sat Jan 9, 2027 */
+const START = new Date(2026, 11, 20);
+const END   = new Date(2027, 0, 9);
+const BREAK_START = new Date(2026, 11, 21);
+const BREAK_END   = new Date(2027, 0, 1);
+
+const KEY_DATES = [
+  { date: "Fri, Dec 18", label: "Last day of school before winter break (Cherry Crest & Chinook)" },
+  { date: "Sun, Dec 20", label: "Us: depart Seattle → Seoul (land Dec 21 local, crossing the date line)", type: "travel" },
+  { date: "Mon, Dec 21", label: "Winter break begins — Bellevue School District" },
+  { date: "Wed, Dec 23", label: "Karen's family departs for Thailand (in country through Jan 3)", type: "travel" },
+  { date: "Thu–Fri, Dec 24–25", label: "Winter holiday", type: "alt" },
+  { date: "Fri, Dec 25", label: "Us: fly Seoul → Bangkok — join Karen's family there", type: "travel" },
+  { date: "Mon, Dec 28", label: "Karen's family flies Bangkok → Chiang Mai", type: "travel" },
+  { date: "Wed, Dec 30", label: "Karen's family flies Chiang Mai → Bangkok", type: "travel" },
+  { date: "Thu–Fri, Dec 31–Jan 1", label: "New Year holiday — both families in Bangkok", type: "alt" },
+  { date: "Sun, Jan 3", label: "Us: fly Bangkok → Seattle (tentative — lands same day); Karen's family also returns", type: "travel" },
+  { date: "Mon, Jan 4", label: "School resumes" },
+];
+
+function parseMD(s) {
+  const [m, d] = s.split("-").map(Number);
+  return new Date(m === 12 ? 2026 : 2027, m - 1, d);
+}
+function locationFor(track, dt) {
+  for (const seg of track.segments) {
+    if (seg.on) {
+      if (+parseMD(seg.on) === +dt) return seg;
+    } else if (dt >= parseMD(seg.from) && dt <= parseMD(seg.to)) {
+      return seg;
+    }
+  }
+  return null;
+}
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const grid = document.getElementById("grid");
+
+for (let dt = new Date(START); dt <= END; dt.setDate(dt.getDate() + 1)) {
+  const m = dt.getMonth() + 1;
+  const d = dt.getDate();
+  const weekday = dt.getDay();
+  const key = m + "-" + d;
+  const cell = document.createElement("div");
+  cell.className = "day"
+    + (weekday === 0 || weekday === 6 ? " weekend" : "")
+    + (dt >= BREAK_START && dt <= BREAK_END ? " break" : "")
+    + (d === 1 ? " month-start" : "");
+  const num = document.createElement("div");
+  num.className = "num";
+  num.textContent = (d === 1 || +dt === +START) ? MONTHS[dt.getMonth()] + " " + d : d;
+  num.dataset.full = dt.toLocaleDateString("en-US", { weekday: "short" });
+  cell.appendChild(num);
+  (EVENTS[key] || []).forEach(ev => {
+    const e = document.createElement("div");
+    e.className = "event" + (ev.type ? " " + ev.type : "");
+    e.textContent = ev.text;
+    cell.appendChild(e);
+  });
+  const stripes = document.createElement("div");
+  stripes.className = "stripes";
+  TRACKS.forEach(track => {
+    const s = document.createElement("div");
+    s.className = "stripe";
+    const seg = locationFor(track, dt);
+    if (seg && seg.on) {
+      s.style.background = "linear-gradient(90deg, " + PLACE_COLORS[seg.fromPlace] + ", " + PLACE_COLORS[seg.toPlace] + ")";
+      s.title = track.name + ": " + PLACE_NAMES[seg.fromPlace] + " → " + PLACE_NAMES[seg.toPlace];
+    } else if (seg) {
+      s.style.background = PLACE_COLORS[seg.place];
+      s.title = track.name + ": " + PLACE_NAMES[seg.place];
+    }
+    stripes.appendChild(s);
+  });
+  cell.appendChild(stripes);
+  grid.appendChild(cell);
+}
+
+const kdList = document.getElementById("key-dates-list");
+KEY_DATES.forEach(kd => {
+  const li = document.createElement("li");
+  const dt = document.createElement("span");
+  dt.className = "kd-date" + (kd.type ? " " + kd.type : "");
+  dt.textContent = kd.date;
+  const lb = document.createElement("span");
+  lb.textContent = kd.label;
+  li.appendChild(dt);
+  li.appendChild(lb);
+  kdList.appendChild(li);
+});
+</script>
+</body>
+</html>
