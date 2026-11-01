@@ -317,6 +317,20 @@ const fragmentShader = /* glsl */ `
     float disc = smoothstep(0.99985, 0.99993, cosT);
     col += uSunDisc * disc * sunUp * (uGlow + vec3(0.5));
 
+    #ifdef LIGHTING_PROBE
+      // The scene's ambient light only (not the visible sky, the haze or reflections). Below the horizon is the
+      // land, not haze: grass and earth lit by the sun and the sky bounce a muted olive light up into the shade.
+      // Without it a shaded white surface (birch bark, a pale stone) saw blue from above and below and turned
+      // cobalt. The sun term is in the probe's units (scene.environmentIntensity 0.34; the sun light is 8) and
+      // halved because much of the land around is itself in shade.
+      float skyLum = dot(uHorizon + uZenith, vec3(0.2126, 0.7152, 0.0722)) * 0.5;
+      vec3 sunOnGround = 7.5 * 0.5 * max(uSunDir.y, 0.0) * sunUp * vec3(1.0, 0.85, 0.65);
+      vec3 ground = vec3(0.24, 0.25, 0.13) * (sunOnGround + skyLum);
+      col = mix(col, ground, smoothstep(0.0, -0.12, y));
+      // A little less saturated than the painted sky: shade stays cool without going electric blue.
+      col = mix(col, vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), 0.2);
+    #endif
+
     gl_FragColor = vec4(col, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -351,10 +365,15 @@ export function createSky() {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.frustumCulled = false;
   const probeMesh = new THREE.Mesh(geometry, material);
+  /** For the probe while it's baked into the scene's ambient light (PMREM): land below the horizon. */
+  const lightingMaterial = material.clone();
+  lightingMaterial.uniforms = uniforms;
+  lightingMaterial.defines = { LIGHTING_PROBE: '' };
 
   return {
     mesh,
     probeMesh,
+    lightingMaterial,
     uniforms,
     /** Sets the palette for a sun elevation (degrees); `evening` picks the dusk palette over the dawn one. */
     update(sunDir: THREE.Vector3, elevation: number, evening: boolean, clouds: number) {

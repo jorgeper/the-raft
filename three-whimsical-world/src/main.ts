@@ -218,7 +218,10 @@ function updateSun() {
 
   cubeCamera.update(renderer, skyScene);
   envTarget?.dispose();
+  // The ambient light sees land below the horizon; the cube (haze, water) keeps the painted sky.
+  sky.probeMesh.material = sky.lightingMaterial;
   envTarget = pmrem.fromScene(skyScene);
+  sky.probeMesh.material = sky.mesh.material;
   scene.environment = envTarget.texture;
   // Modest sky fill: shadows stay deep enough for light and shade to model the scene.
   scene.environmentIntensity = 0.34;

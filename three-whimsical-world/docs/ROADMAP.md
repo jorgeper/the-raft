@@ -97,15 +97,17 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Known issues
 
-- White birch trunks in shade turn saturated cobalt: their shaded side gets almost only blue sky ambient (a red
-  tint shows nearly black there), and the cyan shadow grade pushes it further. Needs a less saturated diffuse
-  sky ambient (or a warmer bounce term from the ground), checked against the Valheim references.
 - ~35 fps deep in forest at night with the torch on (1280×720, headless). Lower render scale if needed.
 - Forest light beams are moderate by default; the "volumetric light" slider strengthens them.
 - Nights are very dark without the torch, by design.
 
 ## Done
 
+- Ground bounce in the ambient light: the lighting probe (only the PMREM that lights the scene; the haze and water
+  keep the painted sky) now sees sunlit olive land below the horizon instead of blue haze, and a slightly less
+  saturated sky above. Shaded white birch bark went from cobalt (50, 83, 128) to a muted steel grey-blue
+  (55, 67, 93); the grade's contrast still cools it a little, as Valheim's shade does. Shots: `.playwright-mcp/vol/`
+  (`g-w1b.jpg`, `bis-g-*.png` grade bisect).
 - Two-cascade sun shadows (`src/cascades.ts`): a sharp near map (60 m half-width, 4096 on High) redrawn every
   frame and a wide far map (600 m on High) redrawn every 6 frames or when the sun turns, blended at the edge of the
   near square. The far light has zero intensity and exists only for its map; patched shader chunks light with the
