@@ -15,6 +15,9 @@ const resolveMaterial = new THREE.ShaderMaterial({
     tCurrent: { value: null as THREE.Texture | null },
     tHistory: { value: null as THREE.Texture | null },
     tDepth: { value: null as THREE.Texture | null },
+    /** Motion of objects that move on their own (`MotionPass`): rg = uv offset to last frame, b = view depth, a = 1. */
+    tMotion: { value: null as THREE.Texture | null },
+    uMotionOn: { value: 0 },
     uProjInv: { value: new THREE.Matrix4() },
     uViewInv: { value: new THREE.Matrix4() },
     uPrevViewProj: { value: new THREE.Matrix4() },
@@ -53,6 +56,8 @@ const resolveMaterial = new THREE.ShaderMaterial({
     uniform sampler2D tCurrent;
     uniform sampler2D tHistory;
     uniform sampler2D tDepth;
+    uniform sampler2D tMotion;
+    uniform float uMotionOn;
     uniform mat4 uProjInv;
     uniform mat4 uViewInv;
     uniform mat4 uPrevViewProj;
@@ -120,7 +125,8 @@ const resolveMaterial = new THREE.ShaderMaterial({
       // Where was this point last frame? (The sky reprojects by direction alone.)
       vec4 ndc = vec4(nearestUv * 2.0 - 1.0, min(nearest, 0.9999999) * 2.0 - 1.0, 1.0);
       vec4 view = uProjInv * ndc;
-      vec3 world = (uViewInv * vec4(view.xyz / view.w, 1.0)).xyz;
+      vec3 viewPos = view.xyz / view.w;
+      vec3 world = (uViewInv * vec4(viewPos, 1.0)).xyz;
       // Wind: last frame this surface stood that far back along the wind (alpha = 1 + motion * scale).
       float wind = nearest < 1.0 ? clamp(texture2D(tCurrent, nearestUv).a - 1.0, -0.9, 0.9) / ${MOTION_SCALE.toFixed(1)} * uWindMotion : 0.0;
       world.xz -= wind * vec2(${WIND_DIR.x.toFixed(6)}, ${WIND_DIR.y.toFixed(6)});
@@ -128,6 +134,11 @@ const resolveMaterial = new THREE.ShaderMaterial({
       vec4 prev = uPrevViewProj * vec4(world, 1.0);
       // The nearest neighbor supplies the motion; apply it to this pixel.
       vec2 prevUv = vUv + (prev.xy / prev.w * 0.5 + 0.5 - nearestUv);
+      // A moving object (character, deer, ...) carries its own motion, where it is the surface the scene shows.
+      if (uMotionOn > 0.5) {
+        vec4 mv = texture2D(tMotion, nearestUv);
+        if (mv.a > 0.5 && abs(mv.b + viewPos.z) < 0.05 + 0.02 * mv.b) prevUv = vUv + mv.xy;
+      }
       bool offscreen = any(lessThan(prevUv, vec2(0.0))) || any(greaterThan(prevUv, vec2(1.0))) || prev.w <= 0.0;
 
       vec3 history = toYCoCg(sampleHistory(prevUv));
@@ -148,7 +159,8 @@ const resolveMaterial = new THREE.ShaderMaterial({
       // (into bloom blobs along leaves against the sun). Nothing upstream exceeds the haze pass's 6.6 cap.
       result = clamp(result, 0.0, 6.6 / 7.6);
       // The history is kept squashed; unsquash for the frame that moves on down the pipeline.
-      gl_FragColor = vec4(result, 1.0);
+      // Alpha: how fast this pixel moves, so the copy can sharpen what the resampling softened.
+      gl_FragColor = vec4(result, smoothstep(2.0, 8.0, pixels));
     }
   `,
   depthTest: false,
@@ -158,22 +170,32 @@ const resolveMaterial = new THREE.ShaderMaterial({
 /** Hands the resolved frame on, optionally sharpened (`uSharpen`) to win back the crispness the blending costs. */
 const copyMaterial = new THREE.ShaderMaterial({
   // Sharpen off by default: it amplified what's left of the jitter into shimmer on grass (it bought ~10% edge energy).
-  uniforms: { tSource: { value: null as THREE.Texture | null }, uTexel: { value: new THREE.Vector2() }, uSharpen: { value: 0 } },
+  // While moving, each frame resamples the history once more and softens it; a sharpen scaled by the pixel's motion
+  // wins that back without touching the still view.
+  uniforms: {
+    tSource: { value: null as THREE.Texture | null },
+    uTexel: { value: new THREE.Vector2() },
+    uSharpen: { value: 0 },
+    uSharpenMoving: { value: 0.3 },
+  },
   vertexShader: resolveMaterial.vertexShader,
   fragmentShader: /* glsl */ `
     uniform sampler2D tSource;
     uniform vec2 uTexel;
     uniform float uSharpen;
+    uniform float uSharpenMoving;
     varying vec2 vUv;
     vec3 unsquash(vec3 c) { return c / max(1.0 - max(c.r, max(c.g, c.b)), 1e-3); }
     void main() {
-      vec3 c = texture2D(tSource, vUv).rgb;
+      vec4 src = texture2D(tSource, vUv);
+      vec3 c = src.rgb;
+      float sharpen = uSharpen + uSharpenMoving * src.a;
       vec3 n = texture2D(tSource, vUv + vec2(0.0, uTexel.y)).rgb + texture2D(tSource, vUv - vec2(0.0, uTexel.y)).rgb
         + texture2D(tSource, vUv + vec2(uTexel.x, 0.0)).rgb + texture2D(tSource, vUv - vec2(uTexel.x, 0.0)).rgb;
       // Sharpened in the squashed space, so bright edges don't ring. Capped at the haze pass's 6.6 (squashed): a
       // lone bright pixel (sun through a gap in the leaves) overshoots, and unsquashing values near 1 blew it up
       // a thousandfold into a bloom blob.
-      vec3 s = clamp(c + uSharpen * (4.0 * c - n), 0.0, 6.6 / 7.6);
+      vec3 s = clamp(c + sharpen * (4.0 * c - n), 0.0, 6.6 / 7.6);
       gl_FragColor = vec4(unsquash(s), 1.0);
     }
   `,
@@ -200,7 +222,11 @@ export class TAAPass extends Pass {
   private current = 0;
   private quad = new FullScreenQuad();
   private frame = 0;
-  private prevViewProj = new THREE.Matrix4();
+  /** Last frame's unjittered view-projection, and this frame's (set by `jitter`). */
+  readonly prevViewProj = new THREE.Matrix4();
+  readonly viewProjNow = new THREE.Matrix4();
+  /** Per-object motion (a `MotionPass` target), or null. */
+  motion: THREE.Texture | null = null;
   private prevCamPos = new THREE.Vector3();
   private width = 1;
   private height = 1;
@@ -236,6 +262,7 @@ export class TAAPass extends Pass {
     const k = this.jitterScale * (1 + (this.jitterMoving - 1) * moving);
     const jx = (halton(this.frame + 1, 2) - 0.5) * k, jy = (halton(this.frame + 1, 3) - 0.5) * k;
     this.unjitteredProjInv.copy(this.camera.projectionMatrixInverse);
+    this.viewProjNow.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     const p = this.camera.projectionMatrix.elements;
     p[8] += (jx * 2) / this.width;
     p[9] += (jy * 2) / this.height;
@@ -266,6 +293,8 @@ export class TAAPass extends Pass {
     u.tCurrent.value = readBuffer.texture;
     u.tHistory.value = prev.texture;
     u.tDepth.value = this.depth;
+    u.tMotion.value = this.motion;
+    u.uMotionOn.value = this.motion ? 1 : 0;
     u.uProjInv.value.copy(this.jittered ? this.unjitteredProjInv : this.camera.projectionMatrixInverse);
     u.uViewInv.value.copy(this.camera.matrixWorld);
     u.uPrevViewProj.value.copy(this.prevViewProj);

@@ -13,6 +13,7 @@ import type { SunShadows } from './cascades';
 import { VolumetricPass, VIS_UPSAMPLE } from './volumetric';
 import type { CloudPass } from './clouds';
 import { LuminancePass } from './exposure';
+import { MotionPass } from './motion';
 
 const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
@@ -192,7 +193,11 @@ const AtmosphereShader = {
       vec3 scatterColor = uSunColor * mix(vec3(1.0), vec3(1.3, 0.86, 0.5), uHueSplit * mix(0.6, 1.0, uForest));
 
       if (isSky && uCloudsOn > 0.5) {
-        vec4 cl = texture2D(tClouds, vUv);
+        // A small tent filter over the half-res march: its per-pixel jitter reads as stripes when sampled raw.
+        vec2 ct = 1.0 / vec2(textureSize(tClouds, 0));
+        vec4 cl = texture2D(tClouds, vUv) * 0.4
+          + (texture2D(tClouds, vUv + vec2(ct.x, ct.y)) + texture2D(tClouds, vUv + vec2(-ct.x, ct.y))
+          + texture2D(tClouds, vUv + vec2(ct.x, -ct.y)) + texture2D(tClouds, vUv - ct)) * 0.15;
         color = color * cl.a + cl.rgb;
       }
       // The sky as drawn (and capped in sky.ts); the sun disc is the only part far above the cap.
@@ -488,6 +493,8 @@ export function createPost(
   water?: Water,
   /** Volumetric clouds, composited over the sky by the haze pass. */
   clouds?: CloudPass,
+  /** Groups whose meshes move on their own (character, animals), for the TAA's motion vectors. */
+  movers: () => (THREE.Object3D | null | undefined)[] = () => [],
 ) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
@@ -519,6 +526,10 @@ export function createPost(
   if (clouds) atmosphere.uniforms.tClouds.value = clouds.texture;
   composer.addPass(atmosphere);
   const taa = new TAAPass(camera, target.depthTexture!);
+  // Drawn after the scene (it needs the frame's bone poses) and before the TAA that reads it.
+  const motion = new MotionPass(camera, taa, movers);
+  taa.motion = motion.target.texture;
+  composer.insertPass(motion, 1);
   composer.addPass(taa);
   // Meters the finished HDR frame for eye adaptation (main.ts turns it into exposure).
   const luminance = new LuminancePass();
@@ -558,6 +569,7 @@ export function createPost(
     sceneDepth: target.depthTexture!,
     grade: grade.uniforms,
     taa,
+    motion,
     /** The frame's metered brightness (geometric mean of HDR luminance, before exposure). */
     luminance,
     /** 0 = natural look; higher = dreamier (haze split, beams, flares, glow, grade). */
@@ -588,6 +600,7 @@ export function createPost(
       const noise = taa.enabled ? (noiseFrame * 0.618034) % 1 : 0;
       u.uNoiseOffset.value = noise;
       volumetric.uniforms.uNoiseOffset.value = noise;
+      if (clouds) clouds.noiseOffset = noise;
       volumetric.uniforms.uForest.value = u.uForest.value;
       // Nothing to march while the volumetric slider is off (or at night, when main sets it to 0).
       volumetric.enabled = u.uVolumetric.value > 0;

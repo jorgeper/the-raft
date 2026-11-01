@@ -4,6 +4,16 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Next
 
+0. **User's second queue (2026-11-01), in this order:**
+   1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
+   2. A **Performance** panel section: every costly effect gets a switch, labeled with what it costs.
+   3. Realism and polish: shore foam and breaking waves, caustics in shallows, rivers that visibly flow; dappled
+      sun on the forest floor, light through thin leaves, a longer golden hour.
+   4. Weather: rain (streaks, splashes and rings, wet ground, puddles, grey-violet sky, a rainbow after), morning
+      mist that burns off, dew sparkle, weather that changes by itself, and a night sky (Milky Way, moon phases,
+      shooting stars, aurora).
+   The user wants it all to feel cozy and gorgeous.
+
 0. **User's queue (2026-11-01), in this order:**
    1. ~~River banks~~ (done, see Done).
    2. ~~Teal shade~~ (done, see Done). The sky cap (see Done) made the sky near a low sun richer, but the
@@ -105,6 +115,23 @@ In priority order: the first items are the user's requests for the next sessions
 - Nights are very dark without the torch, by design.
 
 ## Done
+
+- TAA artifacts in motion, cloud stripes, and tree cost (user, 2026-11-01):
+  - **Motion vectors for things that move on their own** (`src/motion.ts`): the TAA reprojected the character
+    (who moves with the camera) as if it stood still in the world, so running smeared the legs and cape into the
+    grass. A `MotionPass` redraws only the movers (character, deer, frogs, fish, birds, butterflies, leaves) into a
+    small target with their screen motion back to last frame (from last frame's object, instance and bone
+    matrices) and their view depth; the TAA uses that motion where the depth matches the scene's. Running in third
+    person keeps the character sharp now (`.playwright-mcp/taa/both.png`).
+  - **Sharpen while moving** (`uSharpenMoving` 0.3 in `taa.ts`): each frame in motion resamples the history and
+    softens it. A sharpen scaled by the pixel's motion (from 2 px/frame) doubles grass sharpness at a run (9.8 → 19.5)
+    and leaves the still view alone (flicker 1.93 → 2.02; walking +10%).
+  - **Cloud stripes**: the half-res cloud march used a fixed interleaved-gradient jitter that read as vertical
+    stripes. The jitter now moves each frame (the TAA averages it) and the haze pass tent-filters the clouds.
+  - **Trees cost 11-12 ms of a 21 ms frame** (`scripts/measure/perf.js`): 432 trees between 100 and 240 m were
+    drawn with ~9.6k triangles each. Three geometry levels now (75 / 140 / 240 m, then impostors), the first two
+    scaled by the preset's `treeDetail` (medium 0.8). Meadow 20.9 → 15.5 ms, forest 21.8 → 17.5 ms at 1280×720
+    medium; the default view holds 60 fps.
 
 - Motion flicker, the fog that wouldn't clear, and a switch for seeing in the dark (user, 2026-11-01):
   - **TAA while moving** (`uGammaMoving`/`uMinMaxMoving` in `taa.ts`): the variance box widened against still-view

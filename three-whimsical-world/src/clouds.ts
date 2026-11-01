@@ -33,6 +33,8 @@ function createMaterial(sky: SkyUniforms) {
       uViewInv: { value: new THREE.Matrix4() },
       /** The cover field's drift with the wind (the sky's `uCloudOffset` minus the camera's own part). */
       uDrift: { value: new THREE.Vector2() },
+      /** Per-frame shift of the march jitter (golden-ratio sequence), so the TAA averages it into smooth clouds. */
+      uNoiseOffset: { value: 0 },
       // Shared with the sky, so the palette and cover stay in step with it.
       uSunDir: sky.uSunDir,
       uCloudLit: sky.uCloudLit,
@@ -48,6 +50,7 @@ function createMaterial(sky: SkyUniforms) {
       uniform mat4 uProjInv;
       uniform mat4 uViewInv;
       uniform vec2 uDrift;
+      uniform float uNoiseOffset;
       uniform vec3 uSunDir;
       uniform vec3 uCloudLit;
       uniform vec3 uCloudShade;
@@ -102,7 +105,7 @@ function createMaterial(sky: SkyUniforms) {
         t1 = min(t1, t0 + 4500.0);
         const int STEPS = CLOUD_STEPS;
         float stepLen = (t1 - t0) / float(STEPS);
-        float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + uNoiseOffset);
 
         float cosT = dot(dir, uSunDir);
         // Henyey-Greenstein, forward lobe plus a little back-scatter: silver linings toward the sun.
@@ -155,6 +158,8 @@ export class CloudPass extends Pass {
   private target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
   private quad = new FullScreenQuad();
   private material: THREE.ShaderMaterial;
+  /** Set each frame by the post chain (0 without TAA). */
+  noiseOffset = 0;
 
   constructor(private camera: THREE.PerspectiveCamera, private sky: SkyUniforms) {
     super();
@@ -182,6 +187,7 @@ export class CloudPass extends Pass {
 
   render(renderer: THREE.WebGLRenderer) {
     const u = this.material.uniforms;
+    u.uNoiseOffset.value = this.noiseOffset;
     u.uProjInv.value.copy(this.camera.projectionMatrixInverse);
     u.uViewInv.value.copy(this.camera.matrixWorld);
     // The sky's offset includes the camera's own position over the layer; the march works in world space.

@@ -6,6 +6,7 @@ import type { WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
 import { bakeImpostor, createImpostorMesh, textureReady } from './impostor';
 import { FAR_CASTERS } from './cascades';
+import { quality } from './quality';
 
 type TreeOptions = Tree['options'];
 
@@ -112,8 +113,10 @@ const FOREST: Variant[] = [
  * triangles. Past the last one, trees are drawn as baked impostor quads.
  */
 const LODS = [
-  { maxDist: 100, leafCount: 1, leafSize: 1, geo: 1 },
-  { maxDist: 240, leafCount: 0.5, leafSize: 1.6, geo: 0.5 },
+  { maxDist: 75, leafCount: 1, leafSize: 1, geo: 1 },
+  { maxDist: 140, leafCount: 0.5, leafSize: 1.6, geo: 0.5 },
+  // 140-240 m: a tree is a few dozen pixels tall; a fifth of the leaves (bigger) keeps the crown's outline.
+  { maxDist: 240, leafCount: 0.2, leafSize: 2.5, geo: 0.34 },
 ];
 
 // Tree geometry and impostors depend only on the species, so they're built once and reused across worlds.
@@ -407,7 +410,8 @@ export class Trees {
         impostor.count++;
         continue;
       }
-      let lod = LODS.findIndex((l) => d < l.maxDist);
+      // The quality preset pulls the finer levels in (the impostor distance stays put, so they don't pop closer).
+      let lod = LODS.findIndex((l, i) => d < (i < LODS.length - 1 ? l.maxDist * quality.treeDetail : l.maxDist));
       // Beyond the last level but impostors aren't baked yet: use the coarsest geometry.
       if (lod === -1) lod = LODS.length - 1;
       const [branches, leaves] = this.meshes[pl.variant][lod];

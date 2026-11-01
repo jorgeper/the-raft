@@ -127,7 +127,10 @@ scene.add(world.group);
 // Glowing motes draw over the haze so it doesn't fog them out.
 const overlay = new THREE.Scene();
 const clouds = new CloudPass(camera, sky.uniforms);
-const post = createPost(renderer, scene, camera, cubeTarget.texture, sunShadows, overlay, water, clouds);
+// Things that move on their own get motion vectors for the TAA (the character joins once it has loaded).
+let characterRoot: THREE.Object3D | null = null;
+const movers = () => [characterRoot, world.deer.group, world.life.group, world.pondLife.group];
+const post = createPost(renderer, scene, camera, cubeTarget.texture, sunShadows, overlay, water, clouds, movers);
 post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow, quality.cloudSteps);
 sky.setVolumetricClouds(quality.cloudSteps > 0);
 
@@ -137,6 +140,7 @@ const player = new THREE.Object3D();
 // The Viking (missing model files just mean no body).
 const character = await characterLoad;
 if (character) scene.add(character.root);
+characterRoot = character?.root ?? null;
 
 // Pollen and dust in the sunlight, fireflies at night (scaled by whimsy).
 const motes = new Motes();

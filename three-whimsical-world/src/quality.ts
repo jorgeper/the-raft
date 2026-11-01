@@ -33,6 +33,8 @@ export interface QualityPreset {
   waterReflectionSteps: number;
   /** Volumetric cloud march steps (0 = the sky's flat painted clouds). */
   cloudSteps: number;
+  /** Scales the distances where trees switch to coarser geometry (1 = full detail to 75 m, mid to 140 m). */
+  treeDetail: number;
 }
 
 export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
@@ -53,9 +55,10 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     motes: 0.3,
     waterReflectionSteps: 0,
     cloudSteps: 0,
+    treeDetail: 0.6,
   },
   medium: {
-    label: 'Medium: 85% resolution, thinner grass, half-res AO',
+    label: 'Medium (default): 85% resolution, thinner grass, half-res AO, nearer tree detail',
     renderScale: 0.85,
     shadowMapSize: 2048,
     shadowExtent: 60,
@@ -71,9 +74,10 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     motes: 0.6,
     waterReflectionSteps: 16,
     cloudSteps: 16,
+    treeDetail: 0.8,
   },
   high: {
-    label: 'High: full resolution and detail (the default)',
+    label: 'High: full resolution and detail',
     renderScale: 1,
     shadowMapSize: 4096,
     shadowExtent: 60,
@@ -89,6 +93,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     motes: 1,
     waterReflectionSteps: 32,
     cloudSteps: 24,
+    treeDetail: 1,
   },
   ultra: {
     label: 'Ultra: 125% supersampling, grass to 150 m, finer beams (slow)',
@@ -107,6 +112,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     motes: 1,
     waterReflectionSteps: 48,
     cloudSteps: 32,
+    treeDetail: 1.3,
   },
 };
 
