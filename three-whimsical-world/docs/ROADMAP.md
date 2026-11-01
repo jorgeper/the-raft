@@ -120,6 +120,13 @@ In priority order: the first items are the user's requests for the next sessions
   step of the march and washed the frame out (user report: a beach at 95, -34 in the evening). The factor now
   averages the mask over a 12 m patch, counting only ground trees grow on, and the beam term has a soft ceiling.
   Shots: `.playwright-mcp/bright/` (`g-b.jpg` before, `g-r.jpg` after).
+- Sunlit forests no longer wash out (user report: a forest hillside facing the afternoon sun). The forest's beam
+  gain is tuned for mostly shaded air; where the sun reaches under the canopy nearly every step of the march is
+  lit, and the gain painted a white veil over the whole view (bisected: beams off took the frame from 214 to 158
+  mean luma; nothing else moved it more than 17). Now `litAround()` (`src/volumetric.ts`) averages the sun
+  visibility on two rings of taps around each pixel, and the beam scatter falls back to open air's thin glow as
+  that turns lit. Washed views: 214 → 164-180; dark forests and the beam shots unchanged; same fps. Shots:
+  `.playwright-mcp/bright2/` (`ab1.jpg`, `ab2.jpg`: before left, after right) and `.playwright-mcp/vol/g-nab.jpg`.
 - Volumetric clouds (`src/clouds.ts`): cumulus raymarched at half resolution through a slab around the cloud
   layer, shaped by the same 2D cover field as the cloud shadows (so shadows still match). A cumulus profile (flat
   bases, tops as tall as the cover is thick) is eroded by billowing 3D noise. Three steps toward the sun

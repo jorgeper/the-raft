@@ -274,14 +274,18 @@ const AtmosphereShader = {
         float hg = (1.0 - g * g) / (4.0 * 3.14159 * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
         // Capped so staring into the sun doesn't flood the frame; the sky already has its own glow there.
         // The broad lobe is what makes beams read side-on; whimsy widens it further.
-        float phase = min(hg + mix(0.03, 0.3, uForest) * (1.0 + 0.6 * uWhimsy), mix(0.5, 0.75, uForest));
-        float density = mix(0.0015, 0.024, uForest) * (1.0 + 0.5 * uWhimsy);
-        float scatter = (1.0 - exp(-density * marchLen)) * phase * mix(3.0, 5.5, uForest);
+        // The forest's strong scatter is tuned for air that is mostly shaded, where it draws bright beams between
+        // dark stretches. Where the sun reaches under the canopy (a clearing, a forest edge, a low sun) nearly all
+        // the air is lit; there it painted the forest's beam glow over every pixel and washed the view out to white.
+        // So the beams fall back to open air's thin glow as the air around this pixel turns lit.
+        float beamForest = uForest * (1.0 - smoothstep(0.4, 0.85, litAround(vUv)));
+        float phase = min(hg + mix(0.03, 0.3, beamForest) * (1.0 + 0.6 * uWhimsy), mix(0.5, 0.75, beamForest));
+        float density = mix(0.0015, 0.024, beamForest) * (1.0 + 0.5 * uWhimsy);
+        float scatter = (1.0 - exp(-density * marchLen)) * phase * mix(3.0, 5.5, beamForest);
         // Beams read from the contrast between lit and shadowed air: pow() deepens the shadowed stretches.
         // (The half-res march is smooth enough to take a harder curve without breaking into noise.)
         float beam = scatter * pow(vis, 2.0) * (1.0 + 0.5 * uWhimsy);
-        // Soft ceiling: a forest's strong scatter is tuned for air that is mostly shaded. In a sunlit clearing (or
-        // looking into a low sun) every step is lit, and uncapped it washed the whole frame out to white. The knee
+        // Soft ceiling, a second guard against a white veil (looking into a low sun every step is lit). The knee
         // leaves the dim, shaded range nearly linear, so beams keep their contrast against it.
         const float BEAM_MAX = 0.8;
         beam = BEAM_MAX * (1.0 - exp(-beam / BEAM_MAX));

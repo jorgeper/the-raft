@@ -156,6 +156,19 @@ export const VIS_UPSAMPLE = /* glsl */ `
     // No texel at a matching depth (a thin twig): take the plain bilinear value.
     return wSum > 1e-4 ? sum / wSum : texture2D(tVis, uv).r;
   }
+  // How much of the air around this pixel sees the sun: two rings of taps across a good part of the screen.
+  // Beams are the contrast between lit and shaded air; where nearly all of it is lit there are no beams to draw.
+  float litAround(vec2 uv) {
+    float aspect = uVisTexel.y / uVisTexel.x;
+    float sum = texture2D(tVis, uv).r;
+    for (int k = 0; k < 8; k++) {
+      float a = float(k) * 0.785398;
+      sum += texture2D(tVis, clamp(uv + vec2(cos(a) / aspect, sin(a)) * 0.1, 0.0, 1.0)).r;
+      // The outer ring is turned half a step, so its taps fall between the inner ones.
+      sum += texture2D(tVis, clamp(uv + vec2(cos(a + 0.39) / aspect, sin(a + 0.39)) * 0.25, 0.0, 1.0)).r;
+    }
+    return sum / 17.0;
+  }
 `;
 
 export class VolumetricPass extends Pass {
