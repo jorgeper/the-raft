@@ -17,6 +17,7 @@ import { Motes } from './motes';
 import { loadPlants } from './plants';
 import { QUALITY_PRESETS, quality, setQuality, type QualityLevel } from './quality';
 import { FpsMeter } from './fps';
+import { SunShadows, seeFarCasters } from './cascades';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
 const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
@@ -75,21 +76,12 @@ let envTarget: THREE.WebGLRenderTarget | null = null;
 // One directional light plays the sun by day and the moon by night.
 const sun = new THREE.DirectionalLight('#fff1dc', 3.2);
 sun.castShadow = true;
-/** Sizes the sun's shadow map and frustum from the quality preset (the map is rebuilt on the next render). */
-function applyShadowQuality() {
-  const size = quality.shadowMapSize, extent = quality.shadowExtent;
-  if (sun.shadow.mapSize.x !== size) {
-    sun.shadow.mapSize.set(size, size);
-    sun.shadow.map?.dispose();
-    sun.shadow.map = null;
-  }
-  Object.assign(sun.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 1, far: 1200 });
-  sun.shadow.camera.updateProjectionMatrix();
-}
-applyShadowQuality();
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.6;
 scene.add(sun, sun.target);
+// A sharp near cascade (the sun itself) plus a far one out toward the horizon, sized by the quality preset.
+const sunShadows = new SunShadows(sun, scene);
+seeFarCasters(camera);
 // Faint blue fill so nights are dark but readable.
 const nightFill = new THREE.HemisphereLight('#3a4f7a', '#0d120c', 0);
 scene.add(nightFill);
@@ -130,7 +122,7 @@ scene.add(world.group);
 
 // Glowing motes draw over the haze so it doesn't fog them out.
 const overlay = new THREE.Scene();
-const post = createPost(renderer, scene, camera, cubeTarget.texture, sun, overlay, water);
+const post = createPost(renderer, scene, camera, cubeTarget.texture, sunShadows, overlay, water);
 post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow);
 
 // The player's eye: mouse look and WASD move this; the camera follows it in first person, or orbits behind the
@@ -367,7 +359,7 @@ function applyDisplay() {
 function applyQuality(keepScale = false) {
   setQuality(display.quality);
   if (!keepScale) display.renderScale = quality.renderScale;
-  applyShadowQuality();
+  sunShadows.applyQuality();
   post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow);
   water.setReflectionSteps(quality.waterReflectionSteps);
   qualityInfo.text = QUALITY_PRESETS[display.quality].label;
@@ -403,6 +395,7 @@ minimap.onNavigate = (x, z) => {
   snapView();
   world.update(camera, true);
   post.taa.reset();
+  sunShadows.refresh();
 };
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') {
@@ -687,8 +680,7 @@ renderer.setAnimationLoop((now) => {
   renderer.toneMappingExposure = baseExposure * eyeAdapt;
 
   // Keep the shadow frustum centered on the viewer.
-  sun.target.position.copy(camera.position);
-  sun.position.copy(camera.position).addScaledVector(lightDir, 500);
+  sunShadows.update(camera.position, lightDir);
   stars.position.copy(camera.position);
 
   const pixelsPerMeter = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
@@ -709,5 +701,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, sky, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, fps, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, sky, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, fps, sunShadows, get world() { return world; } },
 });

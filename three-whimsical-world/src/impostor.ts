@@ -66,6 +66,15 @@ export function bakeImpostor(
   return { texture: target.texture, geometry };
 }
 
+/** Turns the quad about its trunk to face the camera (needs `bbRoot` and `toCam`). */
+const BILLBOARD = /* glsl */ `
+  float bbScale = length(instanceMatrix[0].xyz);
+  vec3 bbRight = vec3(toCam.z, 0.0, -toCam.x);
+  vec3 bbPos = bbRoot + (bbRight * transformed.x + vec3(0.0, transformed.y, 0.0)) * bbScale;
+  vec4 mvPosition = viewMatrix * vec4(bbPos, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+`;
+
 /** Instanced, cylindrically billboarded quads using a baked impostor texture. */
 export function createImpostorMesh(impostor: Impostor, capacity: number) {
   const material = new THREE.MeshStandardMaterial({
@@ -90,20 +99,27 @@ export function createImpostorMesh(impostor: Impostor, capacity: number) {
         vec3 transformedNormal = normalize(mat3(viewMatrix) * normalize(toCam + vec3(0.0, 0.8, 0.0)));
         `,
       )
-      .replace(
-        '#include <project_vertex>',
-        /* glsl */ `
-        float bbScale = length(instanceMatrix[0].xyz);
-        vec3 bbRight = vec3(toCam.z, 0.0, -toCam.x);
-        vec3 bbPos = bbRoot + (bbRight * transformed.x + vec3(0.0, transformed.y, 0.0)) * bbScale;
-        vec4 mvPosition = viewMatrix * vec4(bbPos, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-        `,
-      );
+      .replace('#include <project_vertex>', BILLBOARD);
   };
   const mesh = new THREE.InstancedMesh(impostor.geometry, material, Math.max(capacity, 1));
   mesh.count = 0;
   mesh.frustumCulled = false;
   mesh.receiveShadow = true;
+  // For the far shadow cascade the quad turns to face the sun (the shadow camera), so it casts the crown's
+  // silhouette. (The renderer copies the map and alpha test over from the material above.)
+  const depth = new THREE.MeshDepthMaterial();
+  depth.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <project_vertex>',
+      /* glsl */ `
+      vec3 bbRoot = instanceMatrix[3].xyz;
+      vec3 toCam = cameraPosition - bbRoot;
+      toCam.y = 0.0;
+      toCam = normalize(toCam);
+      ${BILLBOARD}
+      `,
+    );
+  };
+  mesh.customDepthMaterial = depth;
   return mesh;
 }

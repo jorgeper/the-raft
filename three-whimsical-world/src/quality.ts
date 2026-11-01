@@ -10,8 +10,11 @@ export interface QualityPreset {
   label: string;
   renderScale: number;
   shadowMapSize: number;
-  /** Half-width of the sun's shadow frustum around the viewer, meters. */
+  /** Half-width of the sharp near shadow square around the viewer, meters. */
   shadowExtent: number;
+  /** The far shadow cascade toward the horizon: half-width (0 = off) and map size. */
+  farShadowExtent: number;
+  farShadowMapSize: number;
   /** Fraction of grass blades drawn, and how far grass reaches (m). */
   grassDensity: number;
   grassRadius: number;
@@ -32,10 +35,12 @@ export interface QualityPreset {
 
 export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
   low: {
-    label: 'Low: 70% resolution, short grass reach, no AO, glow or land reflections',
+    label: 'Low: 70% resolution, short grass reach, shadows to 90 m, no AO, glow or land reflections',
     renderScale: 0.7,
     shadowMapSize: 1024,
     shadowExtent: 90,
+    farShadowExtent: 0,
+    farShadowMapSize: 1024,
     grassDensity: 0.35,
     grassRadius: 60,
     coverDensity: 0.45,
@@ -50,7 +55,9 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     label: 'Medium: 85% resolution, thinner grass, half-res AO',
     renderScale: 0.85,
     shadowMapSize: 2048,
-    shadowExtent: 120,
+    shadowExtent: 60,
+    farShadowExtent: 400,
+    farShadowMapSize: 1024,
     grassDensity: 0.6,
     grassRadius: 90,
     coverDensity: 0.7,
@@ -65,7 +72,9 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     label: 'High: full resolution and detail (the default)',
     renderScale: 1,
     shadowMapSize: 4096,
-    shadowExtent: 160,
+    shadowExtent: 60,
+    farShadowExtent: 600,
+    farShadowMapSize: 2048,
     grassDensity: 1,
     grassRadius: 120,
     coverDensity: 1,
@@ -80,7 +89,9 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     label: 'Ultra: 125% supersampling, grass to 150 m, finer beams (slow)',
     renderScale: 1.25,
     shadowMapSize: 4096,
-    shadowExtent: 200,
+    shadowExtent: 80,
+    farShadowExtent: 800,
+    farShadowMapSize: 4096,
     grassDensity: 1,
     grassRadius: 150,
     coverDensity: 1,

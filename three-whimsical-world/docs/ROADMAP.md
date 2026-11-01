@@ -40,7 +40,8 @@ In priority order: the first items are the user's requests for the next sessions
 7. **Procedural rocks with scanned textures** for outcrops, slabs and standing stones: sharp fracture-face
    geometry plus triplanar Poly Haven/ambientCG rock textures (the scans alone repeat after ~17 shapes).
    Through Blender MCP when it's connected.
-8. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
+8. (Done, see below: two-cascade sun shadows.) Possible follow-up: three 0.187's `SunLight` addon (native CSM in
+   the WebGL renderer) if more cascades are ever needed; it would mean porting the volumetrics' shadow lookups.
 9. **Temporal anti-aliasing**: landed as an opt-in (Display → "temporal AA", `src/taa.ts`): Halton jitter,
    depth reprojection, variance clipping, Catmull-Rom history and a light sharpen; it also averages away the
    volumetric and AO noise. Static views are clean; grass swaying in the wind still softens a little because only
@@ -79,6 +80,14 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Two-cascade sun shadows (`src/cascades.ts`): a sharp near map (60 m half-width, 4096 on High) redrawn every
+  frame and a wide far map (600 m on High) redrawn every 6 frames or when the sun turns, blended at the edge of the
+  near square. The far light has zero intensity and exists only for its map; patched shader chunks light with the
+  near light and pick the shadow per fragment. Only full-detail trees draw into the near map; mid-detail trees and
+  sun-facing impostors draw into the far map alone (layer `FAR_CASTERS`), so distant groves and forest edges now
+  cast shadows. The far shadow coordinate is computed per fragment, not passed from the vertex shader: the extra
+  per-vertex coordinate cost ~3 ms on the vertex-heavy trees and cover. Cost now 0–2 fps (High meadow 38 vs 39,
+  forest 33 vs 33, hill 39 vs 41); off on Low. The volumetric beams march through both maps. Shots: `.playwright-mcp/csm/`.
 - Realistic water (`src/water.ts`): drawn by its own pass after the opaque scene, it refracts the seabed through
   the waves with per-channel absorption (turquoise shallows, deep blue offshore), caustics on the shallow bottom,
   screen-space reflections of the land and trees (sky probe where they miss; steps scale with quality), a thin

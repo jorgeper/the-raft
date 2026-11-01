@@ -9,6 +9,7 @@ import { AOPass } from './ao';
 import { CLOUD_NOISE, CLOUD_HEIGHT } from './sky';
 import { WaterPass, type Water } from './water';
 import { TAAPass } from './taa';
+import type { SunShadows } from './cascades';
 
 const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
@@ -53,6 +54,9 @@ const AtmosphereShader = {
     // Volumetric sunlight: march each view ray through the sun's shadow map.
     tShadow: { value: null as THREE.Texture | null },
     uShadowMatrix: { value: new THREE.Matrix4() },
+    // The far cascade, for beams beyond the near shadow square.
+    tShadowFar: { value: null as THREE.Texture | null },
+    uShadowMatrixFar: { value: new THREE.Matrix4() },
     uVolumetric: { value: 1 },
     // Torch glow scattered by the haze around the flame.
     uTorchPos: { value: new THREE.Vector3() },
@@ -99,6 +103,10 @@ const AtmosphereShader = {
     uniform float uForest;
     uniform sampler2DShadow tShadow;
     uniform mat4 uShadowMatrix;
+    #ifdef HAS_SHADOW_FAR
+    uniform sampler2DShadow tShadowFar;
+    uniform mat4 uShadowMatrixFar;
+    #endif
     uniform float uVolumetric;
     uniform vec3 uTorchPos;
     uniform vec3 uTorchColor;
@@ -146,7 +154,18 @@ const AtmosphereShader = {
         vec4 sc = uShadowMatrix * vec4(p, 1.0);
         vec3 c = sc.xyz / sc.w;
         bool inside = all(greaterThan(c, vec3(0.0))) && all(lessThan(c, vec3(1.0)));
-        lit += inside ? texture(tShadow, vec3(c.xy, c.z - 0.0015)) : 1.0;
+        if (inside) {
+          lit += texture(tShadow, vec3(c.xy, c.z - 0.0015));
+        } else {
+          #ifdef HAS_SHADOW_FAR
+            vec4 fc = uShadowMatrixFar * vec4(p, 1.0);
+            vec3 f = fc.xyz / fc.w;
+            bool insideFar = all(greaterThan(f, vec3(0.0))) && all(lessThan(f, vec3(1.0)));
+            lit += insideFar ? texture(tShadowFar, vec3(f.xy, f.z - 0.001)) : 1.0;
+          #else
+            lit += 1.0;
+          #endif
+        }
       }
       return lit / float(STEPS);
     }
@@ -400,7 +419,7 @@ export function createPost(
   scene: THREE.Scene,
   camera: THREE.PerspectiveCamera,
   sky: THREE.Texture,
-  sun: THREE.DirectionalLight,
+  sun: SunShadows,
   /** Drawn after the haze (unfogged), e.g. glowing motes; its materials test against `sceneDepth` themselves. */
   overlay?: THREE.Scene,
   /** Translucent water, drawn over the opaque scene before AO and haze. */
@@ -427,13 +446,21 @@ export function createPost(
   atmosphere.uniforms.tAO.value = ao.texture;
   // The sun's shadow map only exists after the first scene render, so hook it up from inside the pass.
   atmosphere.beforeRender = () => {
-    const depth = sun.shadow.map?.depthTexture;
-    if (depth && atmosphere.uniforms.tShadow.value !== depth) {
-      atmosphere.uniforms.tShadow.value = depth;
-      atmosphere.material.defines.HAS_SHADOW = '';
+    const u = atmosphere.uniforms, defines = atmosphere.material.defines;
+    const depth = sun.near.shadow.map?.depthTexture ?? null;
+    const farDepth = sun.far.visible ? (sun.far.shadow.map?.depthTexture ?? null) : null;
+    const hasFar = farDepth !== null;
+    // (Right after a quality change the maps are rebuilt; wait for the near one before rebinding.)
+    if (depth && (u.tShadow.value !== depth || hasFar !== 'HAS_SHADOW_FAR' in defines || (hasFar && u.tShadowFar.value !== farDepth))) {
+      u.tShadow.value = depth;
+      u.tShadowFar.value = farDepth;
+      defines.HAS_SHADOW = '';
+      if (hasFar) defines.HAS_SHADOW_FAR = '';
+      else delete defines.HAS_SHADOW_FAR;
       atmosphere.material.needsUpdate = true;
     }
-    atmosphere.uniforms.uShadowMatrix.value.copy(sun.shadow.matrix);
+    u.uShadowMatrix.value.copy(sun.near.shadow.matrix);
+    u.uShadowMatrixFar.value.copy(sun.far.shadow.matrix);
   };
   composer.addPass(atmosphere);
   const taa = new TAAPass(camera, target.depthTexture!);

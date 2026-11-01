@@ -5,6 +5,7 @@ import { TERRAIN_SIZE } from './terrain';
 import type { WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
 import { bakeImpostor, createImpostorMesh, textureReady } from './impostor';
+import { FAR_CASTERS } from './cascades';
 
 type TreeOptions = Tree['options'];
 
@@ -341,7 +342,9 @@ export class Trees {
           mesh.count = 0;
           // Culling is done per instance in update(), so the whole-world bounds check is skipped.
           mesh.frustumCulled = false;
-          mesh.castShadow = lod === 0;
+          // Full-detail trees shadow both cascades; coarser ones only the far map (see FAR_CASTERS).
+          mesh.castShadow = true;
+          if (lod > 0) mesh.layers.set(FAR_CASTERS);
           mesh.receiveShadow = true;
           this.group.add(mesh);
         }
@@ -369,6 +372,8 @@ export class Trees {
         impostorCache.set(key, impostor);
       }
       const mesh = createImpostorMesh(impostor, this.counts[vi]);
+      mesh.castShadow = true;
+      mesh.layers.set(FAR_CASTERS);
       this.group.add(mesh);
       return mesh;
     });
