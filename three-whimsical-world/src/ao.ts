@@ -12,9 +12,17 @@ const vertexShader = /* glsl */ `
 const depthHelpers = /* glsl */ `
   uniform sampler2D tDepth;
   uniform mat4 uProjInv;
+  // Depth and position from the same full-res texel. The AO runs at half res, where each pixel center falls on a
+  // corner between four depth texels: sampling there picked one by float rounding, which flips sides across the
+  // frame (at its middle row, and here and there in columns), and the reconstructed ground stepped by a texel there.
+  // The AO read the steps as creases: a dark band across the middle when looking down, faint vertical streaks.
   vec3 viewPos(vec2 uv) {
-    float d = texture2D(tDepth, uv).x;
-    vec4 v = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    vec2 size = vec2(textureSize(tDepth, 0));
+    // (Nudged off the corner so the pick is the same everywhere.)
+    ivec2 px = clamp(ivec2(floor(uv * size - 0.25)), ivec2(0), ivec2(size) - 1);
+    float d = texelFetch(tDepth, px, 0).x;
+    vec2 at = (vec2(px) + 0.5) / size;
+    vec4 v = uProjInv * vec4(at * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
     return v.xyz / v.w;
   }
 `;
@@ -57,7 +65,11 @@ const aoMaterial = new THREE.ShaderMaterial({
         float t = (float(i) + 0.5) / float(SAMPLES);
         float angle = (float(i) + noise) * 2.39996;
         vec2 offset = vec2(cos(angle), sin(angle)) * sqrt(t) * diskUv;
-        vec3 v = viewPos(vUv + offset) - P;
+        // Off the screen the depth is the edge's, clamped, which would read as a wall that isn't there (close to
+        // the ground the disk can span the frame).
+        vec2 suv = vUv + offset;
+        if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
+        vec3 v = viewPos(suv) - P;
         float vv = dot(v, v);
         float falloff = max(1.0 - vv / (uRadius * uRadius), 0.0);
         occlusion += max(dot(v, N) - 0.01 * -P.z, 0.0) / (vv + 0.05) * falloff;
