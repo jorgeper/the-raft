@@ -11,6 +11,7 @@ import { GroundCover } from './cover';
 import { Life } from './life';
 import { DeerHerds } from './deer';
 import { PondLife } from './pond-life';
+import { createLandmarks } from './landmarks';
 
 /** Everything generated from a seed and params. Dispose it and build a new one to regenerate. */
 export class World {
@@ -33,6 +34,7 @@ export class World {
     this.group.add(createFarLand(this.fns));
     this.rocks = createRocks(this.fns, scannedRocks);
     this.group.add(this.rocks.group);
+    this.group.add(createLandmarks(this.fns));
 
     this.trees = new Trees(this.fns, renderer);
     this.grass = new Grass(this.fns);

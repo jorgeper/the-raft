@@ -107,6 +107,8 @@ export function createRocks(world: WorldFns, scanned: ScannedRock[] = []): Rocks
     const y = height(x, z) - sink * size * (0.35 * shapes[shape].aspect + 0.05);
     const m = new THREE.Matrix4().compose(p.set(x, y, z), q, s);
     const color = tints[Math.floor(rand() * tints.length)];
+    // Landmarks keep their ground clear; skipped after the draws so every other rock stays put.
+    if (world.clearing(x, z) > 0.5) return;
     placements.push({ shape, matrix: m, color, size, center: new THREE.Vector3(x, y + size * 0.4, z) });
   };
   const pickShape = () => Math.floor(rand() * shapes.length);
@@ -192,19 +194,23 @@ export function createRocks(world: WorldFns, scanned: ScannedRock[] = []): Rocks
     place(pickShape(), x, z, 0.12 + rand() * 0.3, 0.25, 0.6);
   }
 
-  // A small ring of standing stones on the bluff above the beach, near the start view.
+  // Rings of standing stones (worldgen's circles: the first on the bluff above the beach, near the start view).
   const ring: THREE.Matrix4[][] = fractured.standing.map(() => []);
-  const cx = 30, cz = -40, radius = 7;
-  for (let i = 0; i < 7; i++) {
-    if (i === 4) continue; // one fallen gap
-    const a = (i / 7) * Math.PI * 2 + rand() * 0.2;
-    const x = cx + Math.cos(a) * radius, z = cz + Math.sin(a) * radius;
-    // Broad face toward the ring's center.
-    e.set((rand() - 0.5) * 0.12, Math.PI / 2 - a, (rand() - 0.5) * 0.12);
-    q.setFromEuler(e);
-    const size = 1.3 + rand() * 0.5;
-    s.set(size, size, size);
-    ring[i % 2].push(new THREE.Matrix4().compose(p.set(x, height(x, z) - 0.3, z), q, s));
+  for (const circle of world.landmarks) {
+    if (circle.kind !== 'circle') continue;
+    const { x: cx, z: cz, radius } = circle;
+    const count = Math.round(radius);
+    for (let i = 0; i < count; i++) {
+      if (i === 4) continue; // one fallen gap
+      const a = (i / count) * Math.PI * 2 + rand() * 0.2;
+      const x = cx + Math.cos(a) * radius, z = cz + Math.sin(a) * radius;
+      // Broad face toward the ring's center.
+      e.set((rand() - 0.5) * 0.12, Math.PI / 2 - a, (rand() - 0.5) * 0.12);
+      q.setFromEuler(e);
+      const size = 1.3 + rand() * 0.5;
+      s.set(size, size, size);
+      ring[i % 2].push(new THREE.Matrix4().compose(p.set(x, height(x, z) - 0.3, z), q, s));
+    }
   }
   fractured.standing.forEach((stone, i) => {
     const mesh = new THREE.InstancedMesh(stone.lod0, stone.material, ring[i].length);

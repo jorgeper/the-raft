@@ -313,6 +313,8 @@ export class Trees {
         radius: all[variant].height * k * 0.6,
         color: new THREE.Color().setRGB(0.85 + rand() * 0.25, 0.88 + rand() * 0.22, 0.8 + rand() * 0.2),
       });
+      // Landmarks keep their ground open. Dropped after the draws, so the rest of the forest stays where it was.
+      if (world.clearing(x, z) > 0.5) this.placements.pop();
     };
 
     const step = 5;

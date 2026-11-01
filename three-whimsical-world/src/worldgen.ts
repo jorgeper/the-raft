@@ -60,6 +60,22 @@ export interface WorldFns {
   ponds: Pond[];
   /** Signed distance (m) from the nearest pond's waterline: negative in the water (large far from any pond). */
   pondEdge: FieldFn;
+  /** Stone circles, rune stones and burial mounds (mounds are part of `height`). */
+  landmarks: Landmark[];
+  /** 1 where a landmark keeps the ground clear of trees and boulders, 0 elsewhere. */
+  clearing: FieldFn;
+}
+
+export interface Landmark {
+  kind: 'circle' | 'mound' | 'runestone';
+  x: number;
+  z: number;
+  /** Ring radius of a circle, footprint radius of a mound, ~1.5 m around a rune stone. */
+  radius: number;
+  /** A mound's height above the land; unused otherwise. */
+  height: number;
+  /** Which way it faces (a rune stone's carved face, a circle's gap). */
+  yaw: number;
 }
 
 export interface Pond {
@@ -232,8 +248,22 @@ export function createWorld(params: WorldParams): WorldFns {
   };
   const pondEdge: FieldFn = (x, z) => pondAt(x, z)[0];
 
+  // Burial mounds raise the land (filled in below, once the forest field exists to choose their sites).
+  const mounds: Landmark[] = [];
+  const moundHeight = (x: number, z: number) => {
+    let add = 0;
+    for (const m of mounds) {
+      const dx = x - m.x, dz = z - m.z;
+      if (Math.abs(dx) > m.radius || Math.abs(dz) > m.radius) continue;
+      const t = (dx * dx + dz * dz) / (m.radius * m.radius);
+      // A full dome with a soft foot, a little lumpy.
+      if (t < 1) add = Math.max(add, m.height * Math.pow(1 - t, 1.6) * (1 + 0.06 * noise(x * 0.3 + m.x, z * 0.3)));
+    }
+    return add;
+  };
+
   const height: HeightFn = (x, z) => {
-    const h = baseHeight(x, z);
+    const h = baseHeight(x, z) + moundHeight(x, z);
     const [e, p] = pondAt(x, z);
     if (!p) return h;
     // A bowl under the water, then a low shore rising back to the land over a few meters.
@@ -257,5 +287,66 @@ export function createWorld(params: WorldParams): WorldFns {
     return smoothstep(0.42, 0.62, n);
   };
 
-  return { params, height, forest, dirt, river: riverField, riverEdge, riverCenters, ponds, pondEdge };
+  // Landmarks: stone circles on open meadow (one in reach of the start), barrow clusters with a rune stone beside
+  // them, and lone rune stones. Their own random stream, so nothing else moves.
+  const siteRand = mulberry32(params.seed * 53 + 1301);
+  const landmarks: Landmark[] = [];
+  const site = (x: number, z: number, r: number, maxForest: number, tolerance: number) => {
+    const h0 = baseHeight(x, z);
+    if (h0 < 4 || h0 > 60 || riverEdge(x, z) < r + 18 || coastline(z) - x < 90) return false;
+    if (forest(x, z) > maxForest || pondEdge(x, z) < r + 12) return false;
+    if (landmarks.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius + r + 25)) return false;
+    let lo = Infinity, hi = -Infinity;
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      const hh = baseHeight(x + Math.cos(a) * r, z + Math.sin(a) * r);
+      lo = Math.min(lo, hh);
+      hi = Math.max(hi, hh);
+    }
+    return hi - lo < tolerance;
+  };
+  const add = (kind: Landmark['kind'], x: number, z: number, radius: number, h = 0) =>
+    landmarks.push({ kind, x, z, radius, height: h, yaw: siteRand() * Math.PI * 2 });
+  // The ring on the bluff above the beach (rocks.ts raises it), with a rune stone on the way up from the start.
+  landmarks.push({ kind: 'circle', x: 30, z: -40, radius: 7, height: 0, yaw: 0 });
+  landmarks.push({ kind: 'runestone', x: 15, z: -43, radius: 1.5, height: 0, yaw: Math.atan2(-30 - 15, 0 + 43) });
+  for (let i = 0, n = 0; i < 4000 && n < 2; i++) {
+    const x = -750 + siteRand() * 850, z = -900 + siteRand() * 1800, r = 7 + siteRand() * 3;
+    if (site(x, z, r + 3, 0.12, 2)) (add('circle', x, z, r), n++);
+  }
+  for (let i = 0, n = 0; i < 4000 && n < 3; i++) {
+    const x = -750 + siteRand() * 850, z = -900 + siteRand() * 1800;
+    if (!site(x, z, 40, 0.25, 6)) continue;
+    // A barrow cemetery: two to four mounds side by side, and a rune stone at its edge.
+    const count = 2 + Math.floor(siteRand() * 3), dir = siteRand() * Math.PI * 2;
+    let cx = x, cz = z, prev = 0;
+    for (let k = 0; k < count; k++) {
+      const r = 7 + siteRand() * 4, h = 1.8 + siteRand() * 1.4;
+      if (k > 0) {
+        const a = dir + (siteRand() - 0.5) * 1.2;
+        cx += Math.cos(a) * (prev + r + 2);
+        cz += Math.sin(a) * (prev + r + 2);
+      }
+      const m: Landmark = { kind: 'mound', x: cx, z: cz, radius: r, height: h, yaw: 0 };
+      landmarks.push(m);
+      mounds.push(m);
+      prev = r;
+    }
+    // The carved face looks out, away from the barrows.
+    landmarks.push({ kind: 'runestone', x: x - Math.cos(dir) * 13, z: z - Math.sin(dir) * 13, radius: 1.5, height: 0, yaw: Math.atan2(-Math.cos(dir), -Math.sin(dir)) });
+    n++;
+  }
+  for (let i = 0, n = 0; i < 4000 && n < 6; i++) {
+    const x = -750 + siteRand() * 850, z = -900 + siteRand() * 1800;
+    if (site(x, z, 3, 0.5, 1.5)) (add('runestone', x, z, 1.5), n++);
+  }
+  const clearing: FieldFn = (x, z) => {
+    for (const l of landmarks) {
+      const reach = l.kind === 'circle' ? l.radius + 4 : l.kind === 'mound' ? l.radius * 0.9 : 2.5;
+      if (Math.abs(x - l.x) < reach && Math.abs(z - l.z) < reach && Math.hypot(x - l.x, z - l.z) < reach) return 1;
+    }
+    return 0;
+  };
+
+  return { params, height, forest, dirt, river: riverField, riverEdge, riverCenters, ponds, pondEdge, landmarks, clearing };
 }
