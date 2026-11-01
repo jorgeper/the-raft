@@ -75,6 +75,22 @@ const BILLBOARD = /* glsl */ `
   gl_Position = projectionMatrix * mvPosition;
 `;
 
+/**
+ * Autumn leaves (GLSL): an instance color with little blue marks an autumn tree (trees.ts), its green/red ratio
+ * picks copper-red to gold. Takes the lit-free leaf color after the instance color was applied and returns it
+ * turned by brightness.
+ */
+export const AUTUMN_LEAVES = /* glsl */ `
+  vec3 autumnLeaves(vec3 c, vec3 inst, float mask) {
+    float autumn = (1.0 - smoothstep(0.4, 0.6, inst.b / max(inst.r, 1e-3))) * mask;
+    if (autumn <= 0.0) return c;
+    float lum = dot(c / max(inst, vec3(1e-3)), vec3(0.3, 0.59, 0.11));
+    float hue = smoothstep(0.55, 1.0, inst.g / max(inst.r, 1e-3));
+    vec3 turned = mix(vec3(2.6, 0.72, 0.2), vec3(2.8, 1.95, 0.26), hue) * lum * inst.r;
+    return mix(c, turned, autumn * 0.9);
+  }
+`;
+
 /** Instanced, cylindrically billboarded quads using a baked impostor texture. */
 export function createImpostorMesh(impostor: Impostor, capacity: number) {
   const material = new THREE.MeshStandardMaterial({
@@ -87,6 +103,16 @@ export function createImpostorMesh(impostor: Impostor, capacity: number) {
     roughness: 0.9,
   });
   material.onBeforeCompile = (shader) => {
+    // Autumn trees turn only their leaves: the green pixels of the bake, not the trunk.
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${AUTUMN_LEAVES}`)
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        #ifdef USE_INSTANCING_COLOR
+          diffuseColor.rgb = autumnLeaves(diffuseColor.rgb, vColor, smoothstep(0.0, 0.04, diffuseColor.g - diffuseColor.r * 0.95));
+        #endif`,
+      );
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <defaultnormal_vertex>',

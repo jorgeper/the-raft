@@ -5,7 +5,7 @@ import { createNoise2D } from 'simplex-noise';
 import { TERRAIN_SIZE } from './terrain';
 import type { WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
-import { bakeImpostor, createImpostorMesh, textureReady } from './impostor';
+import { AUTUMN_LEAVES, bakeImpostor, createImpostorMesh, textureReady } from './impostor';
 import { FAR_CASTERS } from './cascades';
 import { quality } from './quality';
 
@@ -233,6 +233,15 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
     Object.assign(shader.uniforms, sunLight);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;')
+      .replace('#include <common>', `#include <common>\n${AUTUMN_LEAVES}`)
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        #ifdef USE_INSTANCING_COLOR
+          // Autumn trees (see the placement): vColor is the instance color times the vertex AO (grey).
+          diffuseColor.rgb = autumnLeaves(diffuseColor.rgb, vColor, 1.0);
+        #endif`,
+      )
       .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
@@ -313,6 +322,18 @@ export class Trees {
         radius: all[variant].height * k * 0.6,
         color: new THREE.Color().setRGB(0.85 + rand() * 0.25, 0.88 + rand() * 0.22, 0.8 + rand() * 0.2),
       });
+      // A first touch of autumn, in drifts: birches turning gold, young broadleaf and the odd big tree copper-red.
+      // The leaf shader reads a low blue/red ratio in the instance color as "autumn" and its green/red as the hue.
+      const preset = all[variant].preset;
+      const kind = preset.startsWith('Aspen') ? 0.55 : /Small|Medium/.test(preset) && !preset.startsWith('Pine') ? 0.3 : /Ash|Oak/.test(preset) ? 0.08 : 0;
+      if (kind > 0) {
+        const drift = THREE.MathUtils.smoothstep(noise(x * 0.008 + 41, z * 0.008 - 17), -0.2, 0.5);
+        const h = (Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
+        if (Math.abs(h) < kind * drift) {
+          const gold = preset.startsWith('Aspen') ? 1 : 0.55 + Math.abs((h * 7.3) % 1) * 0.25;
+          this.placements[this.placements.length - 1].color.setRGB(1, gold, 0.3);
+        }
+      }
       // Landmarks keep their ground open. Dropped after the draws, so the rest of the forest stays where it was.
       if (world.clearing(x, z) > 0.5) this.placements.pop();
     };
