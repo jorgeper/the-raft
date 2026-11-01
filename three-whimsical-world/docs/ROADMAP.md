@@ -45,8 +45,8 @@ In priority order: the first items are the user's requests for the next sessions
    - Deer landed (`src/deer.ts`, `public/models/deer.glb`): herds of a stag and a few does at forest edges that
      graze, look up, wander and bolt into the trees when you come within 26 m. The model was built in Blender from
      metaballs (no skeleton); the vertex shader swings the legs and lowers the neck from a per-instance pose, and
-     the shadow pass uses the same pose. Shots: `.playwright-mcp/deer/`. Next: a proper skinned rig with a
-     gallop cycle, fawns, and deer pausing to stare at the player before fleeing.
+     the shadow pass uses the same pose. Shots: `.playwright-mcp/deer/`. Since rigged and animated, with fawns
+     and staring (see Done). Next: spotted fawn coats, grazing steps, ears flicking on their own bones.
    - Forest floor landed: velvety moss cushions (speckled, bump-shaded) in damp patches, and litter cards of fallen
      leaves and spruce needles, thickest at the forest edge. Forest 32 fps (was 33). Shots: `b2/f2-*`.
    - Water mist landed: a thin layer at sea and river level (not the ground under the viewer), drawn into drifting
@@ -101,6 +101,19 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Rigged, animated deer: one 23-bone skeleton for the doe and stag bodies, built and keyed by
+  `scripts/blender/rig-deer.py` (bone-heat weights, then cleaned by region: antlers and ears on the head, no
+  weights across legs). Five looping clips: Idle, Graze (the neck reaches down and the front legs splay so the
+  muzzle is in the grass), Alert (head high, turning to look), Walk (lateral four-beat) and Gallop (bounding,
+  spine flexing). Each deer is a skinned clone with its own mixer; states crossfade, and gait playback follows
+  ground speed. New behavior: within 48 m deer stop and turn to stare at the player, and bolt inside 26 m. Some
+  herds bring a fawn that keeps to its mother. Same fps (13 deer: 40 vs 40). Shots: `.playwright-mcp/deer/`
+  (`g-rig.jpg`, `g-stare.jpg`, `fawn-crop.jpg`).
+- White-out next to forests fixed: the camera's forest factor came straight from the forest mask, which runs on
+  over beaches and water beside a forest. In open sunlit air there, the forest-strength beam scatter lit every
+  step of the march and washed the frame out (user report: a beach at 95, -34 in the evening). The factor now
+  averages the mask over a 12 m patch, counting only ground trees grow on, and the beam term has a soft ceiling.
+  Shots: `.playwright-mcp/bright/` (`g-b.jpg` before, `g-r.jpg` after).
 - Volumetric clouds (`src/clouds.ts`): cumulus raymarched at half resolution through a slab around the cloud
   layer, shaped by the same 2D cover field as the cloud shadows (so shadows still match). A cumulus profile (flat
   bases, tops as tall as the cover is thick) is eroded by billowing 3D noise. Three steps toward the sun

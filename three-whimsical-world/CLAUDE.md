@@ -40,6 +40,8 @@ volumetric, shafts, fog, AO) before changing code.
   its march until the sun's map is there, and the atmosphere pass treats visibility as 1 until then (`uVisOn`).
 - Hot reload can interrupt Playwright navigation (`ERR_ABORTED`); just navigate again.
 - lil-gui 0.21 uses different DOM class names than older docs show; drive settings through `__app` instead.
+- In Blender scripts run through MCP, `bpy.ops.wm.read_homefile` leaves the context without an active object (later
+  `mode_set` calls fail); delete objects and data blocks instead, as `scripts/blender/rig-deer.py` does.
 
 ## Assets and references
 
