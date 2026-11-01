@@ -4,6 +4,7 @@ import GUI from 'lil-gui';
 import { createWater, addRipple } from './water';
 import { wind, sunLight, windControl, WindDrift } from './wind';
 import { VIBES, type VibeName } from './vibes';
+import { Tour } from './tour';
 import { createPost } from './post';
 import { World } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
@@ -661,6 +662,58 @@ function regenerate() {
   );
 }
 
+// --- Cinematic flythrough (K): a tour of the world from dawn to sunset, with no HUD and cinema bars. Everything
+// it changes (where you stand, the time of day, fly / walk, the view) is put back when it ends or is stopped.
+const cinema = { letterbox: true };
+let tour: Tour | null = null;
+let beforeTour: { pos: THREE.Vector3; quat: THREE.Quaternion; time: number; daySpeed: number; mode: typeof movement.mode; view: typeof movement.view } | null = null;
+let sinceTourLight = 0;
+function startTour() {
+  // Built for the current world (the waypoints come from its coast, oak, river and falls).
+  if (!tour || tour.fns !== world.fns) tour = new Tour(world.fns);
+  beforeTour = {
+    pos: player.position.clone(), quat: player.quaternion.clone(), time: settings.time, daySpeed: settings.daySpeed,
+    mode: movement.mode, view: movement.view,
+  };
+  controls.unlock();
+  settings.daySpeed = 0;
+  movement.mode = 'fly';
+  movement.view = 'first';
+  document.body.classList.add('cinema');
+  document.body.classList.toggle('letterbox', cinema.letterbox);
+  tour.start();
+  tour.update(0, player);
+  snapView();
+  world.update(camera, true);
+  post.taa.reset();
+  sunShadows.refresh();
+}
+function endTour() {
+  tour?.stop();
+  document.body.classList.remove('cinema', 'letterbox');
+  if (!beforeTour) return;
+  player.position.copy(beforeTour.pos);
+  player.quaternion.copy(beforeTour.quat);
+  settings.time = beforeTour.time;
+  settings.daySpeed = beforeTour.daySpeed;
+  movement.mode = beforeTour.mode;
+  movement.view = beforeTour.view;
+  beforeTour = null;
+  timeCtrl.updateDisplay();
+  updateSun();
+  snapView();
+  world.update(camera, true);
+  post.taa.reset();
+  sunShadows.refresh();
+}
+const toggleTour = () => (tour?.active ? endTour() : startTour());
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyK' && !e.repeat) toggleTour();
+});
+const cinemaGui = gui.addFolder('Cinematic');
+cinemaGui.add({ go: toggleTour }, 'go').name('🎬 flythrough (K)');
+cinemaGui.add(cinema, 'letterbox').name('cinema bars');
+
 // --- Camera controls
 const controls = new PointerLockControls(player as unknown as THREE.Camera, renderer.domElement);
 controls.pointerSpeed = movement.sensitivity;
@@ -711,6 +764,8 @@ if (camParam?.length === 6 && camParam.every(Number.isFinite)) {
   player.position.set(-30, world.height(-30, 0) + EYE_HEIGHT, 0);
   lookAt(player, 400, 4, -60);
 }
+// ?tour starts the flythrough once the world has settled (for recording).
+if (query.has('tour')) setTimeout(startTour, 1500);
 // ?view=first|third picks the view for a shot.
 if (query.get('view') === 'first' || query.get('view') === 'third') movement.view = query.get('view') as 'first' | 'third';
 
@@ -903,7 +958,21 @@ renderer.setAnimationLoop((now) => {
   fps.frame(now);
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.1);
-  const motion = updateCamera(dt);
+  // The flythrough flies the eye and runs the clock; re-light a few times a second as the sun moves.
+  const touring = tour?.active ?? false;
+  let motion = { grounded: false, jumped: false };
+  if (touring) {
+    const hours = tour!.update(dt, player);
+    if (hours === null) endTour();
+    else {
+      settings.time = hours;
+      sinceTourLight += dt;
+      if (sinceTourLight > 0.15) {
+        sinceTourLight = 0;
+        updateSun();
+      }
+    }
+  } else motion = updateCamera(dt);
   updateView(dt);
   const torchAim = updateCharacter(dt, motion);
 
@@ -1037,5 +1106,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { sound, windControl, windDrift, applyVibe, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
+  __app: { sound, windControl, windDrift, applyVibe, startTour, endTour, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
 });

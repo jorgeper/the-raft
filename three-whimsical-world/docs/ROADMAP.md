@@ -137,6 +137,15 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Cinematic flythrough (user, 2026-11-01): K, the "🎬 flythrough" button, or `?tour` (starts after 1.5 s, for
+  recording). `src/tour.ts` builds a 152 s path from the world itself: in low over the sea at dawn with the sun
+  rising behind the land, over the surf and beach, skimming the meadow (the clock jumps to the afternoon), a slow
+  rising orbit of a stone circle on open meadow (a giant oak if there's none), up over the forest canopy, down the
+  river gorge to the nearest waterfall, then climbing out to look back over the land as the sun sets into the sea.
+  Centripetal splines for position and aim, an eased pace through the keys (monotone cubic), the path lifted clear of
+  the ground ahead of each rise, and banking in turns. No HUD, cinema bars (panel toggle). Everything it changes
+  (place, time, fly/walk, view) is put back when it ends or K stops it. 56 fps headless.
+
 - Vibes (user, 2026-11-01): a "🎨 vibe" dropdown at the top of the panel, with a strength slider and `?vibe=name`.
   Whimsical (the tuned cyan-and-gold look) is the default and switches the vibe pass off, so it stays pixel for
   pixel as it was. The others are one display-space pass after the grade (`src/vibes.ts`): Amethyst (purple
