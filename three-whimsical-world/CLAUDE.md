@@ -49,6 +49,9 @@ volumetric, shafts, fog, AO) before changing code.
   write alpha 1. A new swaying material should go through `addWind`; one that writes its own alpha reads as motion.
 - glTF vertex colors can be normalized Uint16: `setXYZ` past 1 wraps to near 0 (the deer's white rumps turned
   blue). Clamp to 1 when brightening them.
+- The cliff shell (`src/cliff-worker.ts`) is a half-meter mesh: relief finer than ~1 m, or steps sharper than that,
+  alias into combs and moiré. Keep its features broad (the scans' normal map carries the grain), and keep rows on
+  level contours so near-horizontal seams don't stair-step across the triangles.
 - In Blender scripts run through MCP, `bpy.ops.wm.read_homefile` leaves the context without an active object (later
   `mode_set` calls fail); delete objects and data blocks instead, as `scripts/blender/rig-deer.py` does.
 

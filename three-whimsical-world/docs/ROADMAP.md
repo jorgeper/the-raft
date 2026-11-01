@@ -137,6 +137,17 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Real rock on the cliffs (user, 2026-11-01: "too unrealistic, too flat"): the 2.5 m heightfield drew a 30 m gorge
+  wall as a couple of long flat triangles. `src/cliffs.ts` now has a worker (`src/cliff-worker.ts`) re-tessellate the
+  steep cells near the camera (40 m tiles within ~200 m) and push them out into rock: broad buttresses, vertical
+  joints splitting the rock into columns, beds that swell into ledges with seams and overhangs, blocky in some places
+  and massive in others. Rows follow level contours (every 0.4 m) and their points line up across rows, so seams and
+  joints don't stair-step; normals are central differences of one global surface function, so cells and tiles meet
+  without seams. The shell uses the terrain's material (define `CLIFF_SHELL`): the bedding colors come from the same
+  beds as the geometry (`src/strata.ts`, shared by JS and GLSL), stains streak down the faces, moss sits on ledge
+  tops, and the relief eases back onto the terrain between 150 and 195 m. Up to ~1.2M triangles on the steepest
+  mountain, still 60 fps. Snow now settles on the ledges.
+
 - Coastal life (user, 2026-11-01): `src/coast.ts`. A flock of gulls wheels over the shallows near the camera
   (crooked "M" wings that beat, glide and fold); now and then one folds and plunges for a fish, splashes, rests on
   the water and labours back up. Every minute or so a humpback surfaces a few hundred metres out: either three

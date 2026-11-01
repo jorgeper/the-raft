@@ -4,11 +4,14 @@ import { mulberry32, smoothstep, type HeightFn, type WorldFns } from './worldgen
 import { groundUniforms } from './ground';
 import { weatherUniforms, RAIN_RIPPLES } from './weather';
 import { trampleUniforms, PRINT_RES } from './trample';
+import { STRATA_GLSL } from './strata';
+import { CLIFF_FADE } from './cliffs';
 
 export type { HeightFn } from './worldgen';
 
 export const TERRAIN_SIZE = 2000;
-const SEGMENTS = 800;
+export const TERRAIN_SEGMENTS = 800;
+const SEGMENTS = TERRAIN_SEGMENTS;
 
 const COLORS = {
   grassLush: new THREE.Color('#577a24'),
@@ -134,19 +137,58 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
   geo.setAttribute('aGrass', new THREE.BufferAttribute(grass, 1));
   geo.setAttribute('aSplat', new THREE.BufferAttribute(splat, 4));
 
+  const mesh = new THREE.Mesh(geo, terrainMaterial());
+  mesh.receiveShadow = true;
+  mesh.castShadow = true;
+  return mesh;
+}
+
+/**
+ * The ground's material. `shell`: for the cliff shell (`src/cliffs.ts`), whose vertices carry how far they were
+ * pushed out of the face (`aDisp`): the relief eases back onto the terrain with distance, and the shell wins the
+ * depth test where it lies right on the terrain.
+ */
+export function terrainMaterial(shell = false) {
   const mat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.95, specularIntensity: 0.15 });
+  mat.defines = {};
   // Scanned ground textures, when `npm run assets` has fetched them (loaded before the world is built).
-  if (groundUniforms.tGroundDiff.value) mat.defines = { USE_GROUND: '' };
+  if (groundUniforms.tGroundDiff.value) mat.defines.USE_GROUND = '';
+  if (shell) {
+    mat.defines.CLIFF_SHELL = '';
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = -1;
+    mat.polygonOffsetUnits = -2;
+  }
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, terrainUniforms, groundUniforms, weatherUniforms, trampleUniforms);
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nattribute float aGrass;\nattribute vec4 aSplat;\nvarying float vGrass;\nvarying vec3 vWorld;\nvarying vec4 vSplat;\nvarying vec3 vWorldNormal;',
+        `#include <common>
+        attribute float aGrass;
+        attribute vec4 aSplat;
+        varying float vGrass;
+        varying vec3 vWorld;
+        varying vec4 vSplat;
+        varying vec3 vWorldNormal;
+        #ifdef CLIFF_SHELL
+          attribute vec3 aDisp;
+          varying float vShell;
+        #endif`,
       )
       .replace(
         '#include <begin_vertex>',
-        '#include <begin_vertex>\nvGrass = aGrass;\nvSplat = aSplat;\nvWorld = (modelMatrix * vec4(position, 1.0)).xyz;\nvWorldNormal = normalize(mat3(modelMatrix) * objectNormal);',
+        `#include <begin_vertex>
+        vGrass = aGrass;
+        vSplat = aSplat;
+        #ifdef CLIFF_SHELL
+          // The rock's relief eases back onto the terrain far off (the shadows keep it: they're cast nearby).
+          float shellFade = 1.0 - smoothstep(${CLIFF_FADE[0].toFixed(1)}, ${CLIFF_FADE[1].toFixed(1)}, distance((modelMatrix * vec4(position, 1.0)).xz, cameraPosition.xz));
+          transformed -= aDisp * (1.0 - shellFade);
+          vShell = length(aDisp) * shellFade;
+        #endif
+        vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vWorldNormal = normalize(mat3(modelMatrix) * objectNormal);`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -156,6 +198,10 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         varying vec3 vWorld;
         varying vec4 vSplat;
         varying vec3 vWorldNormal;
+        #ifdef CLIFF_SHELL
+          varying float vShell;
+        #endif
+        ${STRATA_GLSL}
         uniform float uGrassRadius;
         uniform float uWet;
         uniform float uSnow;
@@ -250,23 +296,38 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         #else
           diffuseColor.rgb *= 0.82 + 0.36 * mottle;
         #endif
-        // Bedding on cliff faces: layers of warm ochre and cool grey stone a meter or two thick, gently warped and
-        // tilted, with dark seams where one bed overhangs the next. Reads from afar, where the scans have faded.
+        // Bedding on cliff faces: beds of warm ochre and cool grey stone, 1 to 5 m thick, gently warped and dipping
+        // (src/strata.ts, the same beds the cliff shell weathers into ledges), a seam shadowed at each bed's base,
+        // and stains streaking down the face. In places the beds blur together. Reads from afar, past the scans.
         {
-          float faceY = normalize(vWorldNormal).y;
-          float cliff = smoothstep(0.3, 0.65, vSplat.z) * (1.0 - smoothstep(0.5, 0.8, faceY));
+          vec3 fN = normalize(vWorldNormal);
+          float rockK = smoothstep(0.3, 0.65, vSplat.z);
+          float cliff = rockK * (1.0 - smoothstep(0.5, 0.8, fN.y));
           if (cliff > 0.0) {
-            float bedY = vWorld.y + (tNoise(vWorld.xz * 0.015) - 0.5) * 9.0 + (tNoise(vWorld.xz * 0.09) - 0.5) * 1.4
-              + dot(vWorld.xz, vec2(0.012, -0.008));
-            float bedA = tNoise(vec2(bedY * 0.45, 3.7));
-            float bedB = tNoise(vec2(bedY * 1.6, 9.1));
-            vec3 bed = mix(vec3(1.14, 0.98, 0.82), vec3(0.8, 0.86, 0.94), smoothstep(0.3, 0.7, bedA)) * (0.84 + 0.32 * bedB);
-            float seamK = bedY * 0.38 + bedA * 0.6, seamAt = fract(seamK);
-            // Some beds part with a deep shadowed seam, others barely show a line.
-            float seamDepth = 0.15 + 0.5 * smoothstep(0.3, 0.8, tNoise(vec2(floor(seamK) * 1.7, 5.3)));
-            float seam = 1.0 - seamDepth * smoothstep(0.86, 0.95, seamAt) * (1.0 - smoothstep(0.95, 1.0, seamAt));
-            diffuseColor.rgb *= mix(vec3(1.0), bed * seam, cliff * 0.85);
+            float B = bedCoord(vWorld);
+            float k = floor(B), f = B - k;
+            float hA = bedHash(k, 1u), hB = bedHash(k, 2u);
+            vec3 bed = mix(vec3(1.14, 0.98, 0.82), vec3(0.8, 0.86, 0.94), smoothstep(0.3, 0.7, hA)) * (0.8 + 0.38 * hB);
+            // Fine lamination within a bed.
+            bed *= 0.93 + 0.14 * tNoise(vec2(B * 6.0, (vWorld.x + vWorld.z) * 0.04));
+            float banding = smoothstep(0.25, 0.7, tNoise(vWorld.xz * 0.018 + vWorld.y * 0.012));
+            bed = mix(vec3(0.97, 0.93, 0.88), bed, 0.4 + 0.6 * banding);
+            float seam = 1.0 - 0.45 * (1.0 - smoothstep(0.0, 0.07, f)) * (0.35 + 0.65 * bedHash(k, 3u));
+            // Stains: long streaks of dark where water runs down the face. Projected along x and along z by which way
+            // the face looks, so they don't swim as the face turns.
+            vec2 aw = abs(fN.xz) / max(abs(fN.x) + abs(fN.z), 1e-3);
+            float sx = tNoise(vec2(vWorld.z * 0.45, vWorld.y * 0.02)) * 0.75 + tNoise(vec2(vWorld.z * 1.3, vWorld.y * 0.05)) * 0.25;
+            float sz = tNoise(vec2(vWorld.x * 0.45, vWorld.y * 0.02)) * 0.75 + tNoise(vec2(vWorld.x * 1.3, vWorld.y * 0.05)) * 0.25;
+            float streak = sx * aw.x + sz * aw.y;
+            float stain = smoothstep(0.6, 0.85, streak) * 0.8;
+            diffuseColor.rgb *= mix(vec3(1.0), bed * seam * mix(vec3(1.0), vec3(0.5, 0.48, 0.46), stain), cliff * 0.85);
           }
+          #ifdef CLIFF_SHELL
+            // Moss and grass take hold on the ledges' tops.
+            float ledge = smoothstep(0.72, 0.92, fN.y) * rockK * smoothstep(0.3, 0.8, vShell);
+            float mossy = ledge * smoothstep(0.4, 0.65, tNoise(vWorld.xz * 0.35 + vWorld.y * 0.3));
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.22, 0.27, 0.12) * (0.8 + 0.4 * mottle), mossy * 0.7);
+          #endif
         }
         // Beach: wind ripples and grain on dry sand (only where the splat says sand, not on river stones), and a
         // darker band where the water wets the shore.
@@ -363,8 +424,5 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         }`,
       );
   };
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.receiveShadow = true;
-  mesh.castShadow = true;
-  return mesh;
+  return mat;
 }

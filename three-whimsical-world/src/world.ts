@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createWorld, type WorldFns, type WorldParams } from './worldgen';
-import { createTerrainMesh, terrainUniforms } from './terrain';
+import { createTerrainMesh, terrainMaterial, terrainUniforms, TERRAIN_SIZE, TERRAIN_SEGMENTS } from './terrain';
+import { Cliffs } from './cliffs';
 import { createFarLand } from './far';
 import { createRocks, type Rocks } from './rocks';
 import type { ScannedRock } from './scanned-rocks';
@@ -31,10 +32,15 @@ export class World {
   readonly pondLife: PondLife;
   readonly coast: CoastLife;
   readonly waterfalls: Waterfalls;
+  /** Rock relief on the cliffs near the camera. */
+  readonly cliffs: Cliffs;
 
   constructor(params: WorldParams, renderer: THREE.WebGLRenderer, scannedRocks: ScannedRock[] = []) {
     this.fns = createWorld({ ...params });
-    this.group.add(createTerrainMesh(this.fns));
+    const terrain = createTerrainMesh(this.fns);
+    this.group.add(terrain);
+    this.cliffs = new Cliffs(terrain, this.fns, TERRAIN_SIZE, TERRAIN_SEGMENTS, terrainMaterial(true));
+    this.group.add(this.cliffs.group);
     this.group.add(createFarLand(this.fns));
     this.rocks = createRocks(this.fns, scannedRocks);
     this.group.add(this.rocks.group);
@@ -62,6 +68,7 @@ export class World {
     this.cover.update(camera.position, fill ? Infinity : 2);
     this.trees.update(camera);
     this.rocks.update(camera);
+    this.cliffs.update(camera.position);
   }
 
   dispose() {
@@ -73,6 +80,7 @@ export class World {
     this.pondLife.dispose();
     this.waterfalls.dispose();
     this.coast.dispose();
+    this.cliffs.dispose();
     // Free everything generated for this world; scanned-rock geometry and materials are shared, so they stay.
     this.group.traverse((o) => {
       const mesh = o as THREE.Mesh;
