@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { createWorld, type WorldFns, type WorldParams } from './worldgen';
 import { createTerrainMesh, createDepthTexture, terrainUniforms } from './terrain';
 import { createFarLand } from './far';
-import { createRocks } from './rocks';
+import { createRocks, type Rocks } from './rocks';
+import type { ScannedRock } from './scanned-rocks';
 import { Trees } from './trees';
 import { Grass, GRASS_RADIUS } from './grass';
 import { GroundCover } from './cover';
@@ -17,13 +18,15 @@ export class World {
   private trees: Trees;
   private grass: Grass;
   private cover: GroundCover;
+  private rocks: Rocks;
 
-  constructor(params: WorldParams, renderer: THREE.WebGLRenderer) {
+  constructor(params: WorldParams, renderer: THREE.WebGLRenderer, scannedRocks: ScannedRock[] = []) {
     this.fns = createWorld({ ...params });
     this.group.add(createTerrainMesh(this.fns));
     this.depthTexture = createDepthTexture(this.fns.height, 512, MAX_WATER_DEPTH);
     this.group.add(createFarLand(this.fns));
-    this.group.add(createRocks(this.fns));
+    this.rocks = createRocks(this.fns, scannedRocks);
+    this.group.add(this.rocks.group);
 
     this.trees = new Trees(this.fns, renderer);
     this.grass = new Grass(this.fns);
@@ -41,6 +44,7 @@ export class World {
     this.grass.update(camera.position, fill ? Infinity : 3);
     this.cover.update(camera.position, fill ? Infinity : 2);
     this.trees.update(camera);
+    this.rocks.update(camera);
   }
 
   dispose() {
@@ -48,12 +52,13 @@ export class World {
     this.grass.dispose();
     this.cover.dispose();
     this.depthTexture.dispose();
-    // Terrain, far land and rocks own their geometry and materials outright.
+    // Free everything generated for this world; scanned-rock geometry and materials are shared, so they stay.
     this.group.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
-      mesh.geometry?.dispose();
-      for (const m of [mesh.material].flat()) m?.dispose();
+      if ((mesh as THREE.InstancedMesh).isInstancedMesh) (mesh as THREE.InstancedMesh).dispose();
+      if (!mesh.geometry?.userData.shared) mesh.geometry?.dispose();
+      for (const m of [mesh.material].flat()) if (!m?.userData.shared) m?.dispose();
     });
     this.group.clear();
   }

@@ -9,6 +9,7 @@ import { World, MAX_WATER_DEPTH } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
 import { Torch } from './torch';
 import { Minimap } from './minimap';
+import { loadScannedRocks, rockMoss } from './scanned-rocks';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 // --- Display: the view fills the window up to a configurable maximum size, centered when the window is larger.
@@ -105,7 +106,9 @@ scene.add(water.mesh);
 
 // --- World (regenerated from the World panel)
 const params: WorldParams = { ...DEFAULT_PARAMS };
-let world = new World(params, renderer);
+// Photoscanned rocks are fetched by `npm run assets`; without them the world uses procedural rocks.
+const scannedRocks = await loadScannedRocks();
+let world = new World(params, renderer, scannedRocks);
 scene.add(world.group);
 water.uniforms.uDepth.value = world.depthTexture;
 
@@ -213,6 +216,7 @@ worldGui.add(params, 'bigTrees', 0, 2, 0.05).name('big trees');
 worldGui.add(params, 'smallTrees', 0, 2, 0.05).name('small trees');
 worldGui.add(params, 'bushes', 0, 3, 0.05);
 worldGui.add(params, 'flowers', 0, 2, 0.05);
+worldGui.add(rockMoss.uMossAmount, 'value', 0, 1, 0.01).name('moss on rocks');
 const actions = {
   regenerate: () => regenerate(),
   randomSeed: () => {
@@ -321,7 +325,7 @@ function regenerate() {
     setTimeout(() => {
       scene.remove(world.group);
       world.dispose();
-      world = new World(params, renderer);
+      world = new World(params, renderer, scannedRocks);
       scene.add(world.group);
       water.uniforms.uDepth.value = world.depthTexture;
       camera.position.y = Math.max(world.height(camera.position.x, camera.position.z), 0) + (movement.mode === 'fly' ? 20 : EYE_HEIGHT);

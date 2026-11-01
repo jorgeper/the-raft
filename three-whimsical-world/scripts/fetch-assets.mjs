@@ -1,0 +1,105 @@
+// Downloads CC0 photoscanned rocks from Poly Haven and builds two detail levels of each for the scene.
+// Usage: npm run assets            (skips assets already built)
+//        npm run assets -- --force (rebuilds the models; downloads stay cached)
+//
+// Raw downloads go to .cache/polyhaven/, built models to public/assets/rocks/ (both gitignored).
+
+import { mkdir, writeFile, access } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { NodeIO } from '@gltf-transform/core';
+import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import { weld, simplify, prune, dedup } from '@gltf-transform/functions';
+import { MeshoptSimplifier } from 'meshoptimizer';
+
+const ROOT = new URL('..', import.meta.url).pathname;
+const CACHE = join(ROOT, '.cache/polyhaven');
+const OUT = join(ROOT, 'public/assets/rocks');
+const RESOLUTION = '1k';
+
+/** Poly Haven model ids. Sets contain several rocks; the scene splits them into separate variants. */
+// boulder_01 was tried and left out: its scan won't simplify below ~54k triangles.
+const ROCKS = ['rock_07', 'rock_09', 'rock_moss_set_01', 'rock_moss_set_02', 'rock_face_01', 'stone_01'];
+
+/** Target triangles per detail level, for the whole file (sets share it across their rocks). */
+/** The far level is geometry only: the scene reuses the near level's materials for it. */
+const LODS = [
+  { name: 'lod0', triangles: 6000, textures: true },
+  { name: 'lod1', triangles: 900, textures: false },
+];
+
+const force = process.argv.includes('--force');
+const exists = (p) => access(p).then(() => true, () => false);
+
+async function download(url, path) {
+  if (await exists(path)) return;
+  const res = await fetch(url, { headers: { 'User-Agent': '3d-tests asset fetcher' } });
+  if (!res.ok) throw new Error(`${res.status} fetching ${url}`);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, Buffer.from(await res.arrayBuffer()));
+}
+
+async function fetchModel(id) {
+  const res = await fetch(`https://api.polyhaven.com/files/${id}`, { headers: { 'User-Agent': '3d-tests asset fetcher' } });
+  if (!res.ok) throw new Error(`${res.status} listing files for ${id}`);
+  const entry = (await res.json()).gltf?.[RESOLUTION]?.gltf;
+  if (!entry) throw new Error(`${id} has no ${RESOLUTION} glTF`);
+  const dir = join(CACHE, id);
+  const gltfPath = join(dir, `${id}.gltf`);
+  await download(entry.url, gltfPath);
+  for (const [relative, file] of Object.entries(entry.include ?? {})) {
+    // Keep downloads inside the asset's own folder.
+    const target = join(dir, relative);
+    if (!target.startsWith(dir)) throw new Error(`refusing path outside cache: ${relative}`);
+    await download(file.url, target);
+  }
+  return gltfPath;
+}
+
+function countTriangles(doc) {
+  let tris = 0;
+  for (const mesh of doc.getRoot().listMeshes()) {
+    for (const prim of mesh.listPrimitives()) {
+      const indices = prim.getIndices();
+      tris += (indices ? indices.getCount() : prim.getAttribute('POSITION').getCount()) / 3;
+    }
+  }
+  return tris;
+}
+
+async function main() {
+  await MeshoptSimplifier.ready;
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+  await mkdir(OUT, { recursive: true });
+  const manifest = [];
+
+  for (const id of ROCKS) {
+    const outputs = LODS.map((lod) => join(OUT, `${id}.${lod.name}.glb`));
+    if (!force && (await Promise.all(outputs.map(exists))).every(Boolean)) {
+      console.log(`✓ ${id} (already built)`);
+      manifest.push(id);
+      continue;
+    }
+    process.stdout.write(`↓ ${id} … `);
+    const gltfPath = await fetchModel(id);
+    const parts = [];
+    for (const [i, lod] of LODS.entries()) {
+      const doc = await io.read(gltfPath);
+      const before = countTriangles(doc);
+      const ratio = Math.min(1, lod.triangles / before);
+      if (!lod.textures) for (const texture of doc.getRoot().listTextures()) texture.dispose();
+      await doc.transform(dedup(), weld(), simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.5 }), prune());
+      await io.write(outputs[i], doc);
+      parts.push(`${lod.name} ${Math.round(before)}→${Math.round(countTriangles(doc))} tris`);
+    }
+    console.log(parts.join(', '));
+    manifest.push(id);
+  }
+
+  await writeFile(join(OUT, 'manifest.json'), JSON.stringify({ rocks: manifest, lods: LODS.map((l) => l.name) }, null, 2));
+  console.log(`Wrote ${manifest.length} rocks to ${OUT}`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

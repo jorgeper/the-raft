@@ -12,3 +12,5 @@ node_modules/
 .playwright-mcp/
 dist/
 reference/
+.cache/
+public/assets/
