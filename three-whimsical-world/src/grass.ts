@@ -6,7 +6,8 @@ import { addWind, sunLight } from './wind';
 
 const CHUNK = 24;
 export const GRASS_RADIUS = 120;
-const BLADES_PER_CHUNK = 24000;
+// Many thin blades rather than fewer wide ones: Valheim's meadow reads as a full, soft field.
+const BLADES_PER_CHUNK = 44000;
 const FULL_DENSITY_DIST = 22;
 const GRID = 2; // height sampling step inside a chunk, meters
 const CLUMP_SIZE = 0.9; // meters between clump centers
@@ -22,11 +23,12 @@ function createBladeGeometry() {
   const colors: number[] = [];
   const indices: number[] = [];
   const base = new THREE.Color(0.16, 0.2, 0.1);
-  const tip = new THREE.Color(1.05, 1.04, 0.86);
+  // Sun-bleached, yellowing tips like Valheim's meadow grass.
+  const tip = new THREE.Color(1.22, 1.16, 0.72);
   const c = new THREE.Color();
   for (let i = 0; i < segments; i++) {
     const t = i / segments;
-    const halfWidth = 0.025 * (1 - 0.75 * t ** 1.4);
+    const halfWidth = 0.016 * (1 - 0.75 * t ** 1.4);
     const lean = 0.35 * t * t;
     positions.push(-halfWidth, t, lean, halfWidth, t, lean);
     // Face direction tilts back as the blade leans forward.
@@ -104,9 +106,9 @@ export class Grass {
   private geometry = createBladeGeometry();
   private material: THREE.MeshPhysicalMaterial;
   private colorNoise = createNoise2D(hashSeed(11, 5));
-  private lush = new THREE.Color('#4e7e10');
-  private deep = new THREE.Color('#355e12');
-  private dry = new THREE.Color('#9a9e34');
+  private lush = new THREE.Color('#74a01e');
+  private deep = new THREE.Color('#58861e');
+  private dry = new THREE.Color('#b4b040');
   // Under the forest canopy the little grass there is darker and bluer.
   private shade = new THREE.Color('#2a4a1c');
 
@@ -247,8 +249,8 @@ export class Grass {
       const fromCenter = clumpAt(x, z, clump);
       // Blades fan outward from their clump center and are tallest in the middle.
       const outward = Math.atan2(x - clump.x, z - clump.z);
-      // Knee-high on the character (Valheim's meadow grass), not waist-high.
-      const bladeHeight = 0.6 * (0.45 + rand() * 0.45) * clump.height * (1.2 - 0.45 * fromCenter / CLUMP_SIZE) * (1.15 - 0.4 * dry) * (1 - 0.35 * forest);
+      // Knee- to thigh-high on the character, like Valheim's meadows.
+      const bladeHeight = 0.78 * (0.45 + rand() * 0.45) * clump.height * (1.2 - 0.45 * fromCenter / CLUMP_SIZE) * (1.15 - 0.4 * dry) * (1 - 0.35 * forest);
       q.setFromAxisAngle(up, outward + (rand() - 0.5) * 1.2);
       s.set(0.75 + rand() * 0.6, bladeHeight, clump.lean * (0.6 + rand() * 0.8));
       p.set(x, h - 0.05, z);
