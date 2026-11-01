@@ -95,19 +95,45 @@ function createFernGeometry() {
 function createFlowerGeometry() {
   const positions: number[] = [];
   const head: number[] = [];
+  const normals: number[] = [];
   const stemTop = 0.32, w = 0.008;
-  positions.push(-w, 0, 0, w, 0, 0, 0, stemTop, 0, 0, 0, -w, 0, 0, w, 0, stemTop, 0);
-  head.push(0, 0, 0, 0, 0, 0);
-  const petals = 7, r = 0.045;
+  const tri = (a: number[], b: number[], c: number[], flag: number, n: number[] = [0, 1, 0]) => {
+    positions.push(...a, ...b, ...c);
+    head.push(flag, flag, flag);
+    normals.push(...n, ...n, ...n);
+  };
+  tri([-w, 0, 0], [w, 0, 0], [0, stemTop, 0], 0, [0, 0.3, 1]);
+  tri([0, 0, -w], [0, 0, w], [0, stemTop, 0], 0, [1, 0.3, 0]);
+  // Separate petals, each a small cupped oval with a gap to its neighbours, around a raised golden center.
+  const petals = 8, len = 0.05, width = 0.017;
   for (let i = 0; i < petals; i++) {
-    const a0 = (i / petals) * Math.PI * 2, a1 = ((i + 1) / petals) * Math.PI * 2;
-    positions.push(0, stemTop + 0.01, 0, Math.cos(a0) * r, stemTop, Math.sin(a0) * r, Math.cos(a1) * r, stemTop, Math.sin(a1) * r);
-    head.push(1, 1, 1);
+    const a = (i / petals) * Math.PI * 2;
+    const dx = Math.cos(a), dz = Math.sin(a), sx = -dz, sz = dx;
+    const at = (t: number, s: number) => [
+      dx * (0.008 + t * len) + sx * s,
+      stemTop + 0.012 * t * t,
+      dz * (0.008 + t * len) + sz * s,
+    ];
+    // Rounded ovals: narrow at the base, broadest past the middle, a blunt rounded tip.
+    const profile: [number, number][] = [[0, 0.45], [0.35, 1], [0.7, 0.95], [0.92, 0.6]];
+    const ring = profile.map(([t, k]) => [at(t, -width * k), at(t, width * k)]);
+    for (let k = 0; k < ring.length - 1; k++) {
+      tri(ring[k][0], ring[k][1], ring[k + 1][1], 1);
+      tri(ring[k][0], ring[k + 1][1], ring[k + 1][0], 1);
+    }
+    const last = ring[ring.length - 1], tip = at(1.02, 0);
+    tri(last[0], last[1], tip, 1);
+  }
+  const disc = 7, r = 0.011;
+  for (let i = 0; i < disc; i++) {
+    const a0 = (i / disc) * Math.PI * 2, a1 = ((i + 1) / disc) * Math.PI * 2;
+    tri([0, stemTop + 0.008, 0], [Math.cos(a0) * r, stemTop + 0.004, Math.sin(a0) * r], [Math.cos(a1) * r, stemTop + 0.004, Math.sin(a1) * r], 2);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('aHead', new THREE.Float32BufferAttribute(head, 1));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(positions.length / 3).fill([0, 1, 0]).flat(), 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.normalizeNormals();
   return geo;
 }
 
@@ -321,7 +347,9 @@ export class GroundCover {
           // Chunks where no flowers landed have no per-instance colors at all.
           `#include <begin_vertex>
           #ifdef USE_INSTANCING_COLOR
-            vFlower = mix(vec3(0.18, 0.32, 0.08), instanceColor.rgb, aHead);
+            vFlower = mix(vec3(0.18, 0.32, 0.08), instanceColor.rgb * 0.85, min(aHead, 1.0));
+            // The center: golden, a deeper orange in yellow flowers.
+            vFlower = mix(vFlower, instanceColor.b < 0.3 ? vec3(0.9, 0.62, 0.1) : vec3(0.95, 0.75, 0.12), step(1.5, aHead));
           #else
             vFlower = vec3(0.18, 0.32, 0.08);
           #endif`,

@@ -62,7 +62,8 @@ In priority order: the first items are the user's requests for the next sessions
 10. **Volumetric clouds**. Cloud shadows landed: the sky's clouds are anchored to the world (layer at
     `CLOUD_HEIGHT` 900 m) and the haze pass casts the same field down the sun ray onto land and sea ("cloud
     shadows" slider). Still open: raymarched volumetric cloud shapes.
-11. Small: grass blade textures. (Done: calmer fern greens, the eye opening up under a canopy, caustics and
+11. Small: (Done: grass blade detail per fragment (pale midrib, veins, darker edges, ~18% of blades with sun-dried
+   brown tips), real flower heads (eight rounded petals around a golden center instead of flat heptagons); calmer fern greens, the eye opening up under a canopy, caustics and
    textured shore foam with the water.)
 
 ## Ideas for a gorgeous, rich land (suggested to the user, not yet prioritized)

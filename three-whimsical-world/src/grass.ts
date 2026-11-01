@@ -23,6 +23,8 @@ function createBladeGeometry() {
   const positions: number[] = [];
   const normals: number[] = [];
   const colors: number[] = [];
+  // Across the blade: -1 at the left edge, +1 at the right, 0 at the tip (for the midrib and veins).
+  const side: number[] = [];
   const indices: number[] = [];
   const base = new THREE.Color(0.16, 0.2, 0.1);
   // Sun-bleached, yellowing tips like Valheim's meadow grass.
@@ -38,10 +40,12 @@ function createBladeGeometry() {
     normals.push(-0.5, fy, fz, 0.5, fy, fz);
     c.copy(base).lerp(tip, Math.pow(t, 0.8));
     colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    side.push(-1, 1);
   }
   positions.push(0, 1, 0.35);
   normals.push(0, 0.7, 1);
   colors.push(tip.r, tip.g, tip.b);
+  side.push(0);
   for (let i = 0; i < segments - 1; i++) {
     const a = i * 2;
     indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
@@ -53,6 +57,7 @@ function createBladeGeometry() {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('aSide', new THREE.Float32BufferAttribute(side, 1));
   geo.setIndex(indices);
   geo.normalizeNormals();
   return geo;
@@ -144,13 +149,30 @@ export class Grass {
     this.material.onBeforeCompile = (shader, renderer) => {
       patchVertex.call(this.material, shader, renderer);
       Object.assign(shader.uniforms, sunLight);
-      shader.vertexShader = ('varying float vTip;\n' + shader.vertexShader).replace(
-        '#include <beginnormal_vertex>',
-        // Bias normals upward so the field reads as one soft surface while blades keep some individual shading.
-        '#include <beginnormal_vertex>\nobjectNormal = normalize(mix(objectNormal, vec3(0.0, 1.0, 0.0), 0.45));',
-      );
+      shader.vertexShader = ('varying float vTip;\nattribute float aSide;\nvarying float vSide;\nvarying float vBlade;\n' + shader.vertexShader)
+        .replace(
+          '#include <beginnormal_vertex>',
+          // Bias normals upward so the field reads as one soft surface while blades keep some individual shading.
+          '#include <beginnormal_vertex>\nobjectNormal = normalize(mix(objectNormal, vec3(0.0, 1.0, 0.0), 0.45));',
+        )
+        .replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\nvSide = aSide;\nvBlade = fract(sin(float(gl_InstanceID) * 12.9898) * 43758.5453);',
+        );
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying float vTip;\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;')
+        .replace('#include <common>', '#include <common>\nvarying float vTip;\nvarying float vSide;\nvarying float vBlade;\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;')
+        .replace(
+          '#include <color_fragment>',
+          // Blade detail: a pale midrib, fine lengthwise veins, darker edges, and some blades with sun-dried tips.
+          // (Only reads up close; far blades are a pixel wide and average to the plain color.)
+          `#include <color_fragment>
+          float across = abs(vSide) / max(1.0 - vTip * 0.9, 0.1);
+          float rib = 1.0 - smoothstep(0.0, 0.22, across);
+          diffuseColor.rgb *= (1.0 + 0.22 * rib) * (0.93 + 0.07 * cos(across * 15.7)) * (1.0 - 0.2 * smoothstep(0.65, 1.0, across));
+          float dried = step(0.82, vBlade) * smoothstep(0.55 + 0.25 * fract(vBlade * 7.0), 0.95, vTip);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.48, 0.22) * (0.8 + 0.4 * fract(vBlade * 13.0)), dried * 0.85);
+          diffuseColor.rgb *= 0.9 + 0.2 * fract(vBlade * 3.7);`,
+        )
         .replace(
           '#include <emissivemap_fragment>',
           // Translucency: blades glow warm yellow-green when the sun is behind them, strongest at the tips.
