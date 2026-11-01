@@ -4,7 +4,7 @@ import GUI from 'lil-gui';
 import { createWater } from './water';
 import { wind, sunLight } from './wind';
 import { createPost } from './post';
-import { World, MAX_WATER_DEPTH } from './world';
+import { World } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
 import { Torch } from './torch';
 import { Minimap } from './minimap';
@@ -107,8 +107,9 @@ const stars = (() => {
 })();
 scene.add(stars);
 
-const water = createWater(cubeTarget.texture, new THREE.DataTexture(), MAX_WATER_DEPTH);
-scene.add(water.mesh);
+// Drawn by its own pass after the opaque scene, so it can refract and reflect it.
+const water = createWater(cubeTarget.texture);
+water.setReflectionSteps(quality.waterReflectionSteps);
 
 // --- World (regenerated from the World panel)
 const params: WorldParams = { ...DEFAULT_PARAMS };
@@ -124,11 +125,10 @@ let world = new World(params, renderer, scannedRocks);
 /** The world settings the current world was built from, to tell whether a reset needs a regenerate. */
 let builtParams = JSON.stringify(params);
 scene.add(world.group);
-water.uniforms.uDepth.value = world.depthTexture;
 
 // Glowing motes draw over the haze so it doesn't fog them out.
 const overlay = new THREE.Scene();
-const post = createPost(renderer, scene, camera, cubeTarget.texture, sun, overlay);
+const post = createPost(renderer, scene, camera, cubeTarget.texture, sun, overlay, water);
 post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow);
 
 // The player's eye: mouse look and WASD move this; the camera follows it in first person, or orbits behind the
@@ -363,6 +363,7 @@ function applyQuality(keepScale = false) {
   if (!keepScale) display.renderScale = quality.renderScale;
   applyShadowQuality();
   post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow);
+  water.setReflectionSteps(quality.waterReflectionSteps);
   qualityInfo.text = QUALITY_PRESETS[display.quality].label;
   applyDisplay();
   world.update(camera, true);
@@ -421,7 +422,6 @@ function regenerate() {
       world = new World(params, renderer, scannedRocks);
       builtParams = JSON.stringify(params);
       scene.add(world.group);
-      water.uniforms.uDepth.value = world.depthTexture;
       player.position.y = Math.max(world.height(player.position.x, player.position.z), 0) + (movement.mode === 'fly' ? 20 : EYE_HEIGHT);
       snapView();
       world.update(camera, true);
@@ -649,6 +649,8 @@ renderer.setAnimationLoop((now) => {
   }
 
   water.uniforms.uTime.value = timer.getElapsed();
+  water.uniforms.uHaze.value = settings.fogDensity;
+  water.uniforms.uGlitter.value = 0.5 + settings.whimsy;
   sky.uniforms.uTime.value = timer.getElapsed();
   post.atmosphere.uTime.value = timer.getElapsed();
   post.atmosphere.uGroundY.value = Math.max(world.height(camera.position.x, camera.position.z), 0);

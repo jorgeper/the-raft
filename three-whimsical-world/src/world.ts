@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createWorld, type WorldFns, type WorldParams } from './worldgen';
-import { createTerrainMesh, createDepthTexture, terrainUniforms } from './terrain';
+import { createTerrainMesh, terrainUniforms } from './terrain';
 import { createFarLand } from './far';
 import { createRocks, type Rocks } from './rocks';
 import type { ScannedRock } from './scanned-rocks';
@@ -9,13 +9,10 @@ import { Grass } from './grass';
 import { quality } from './quality';
 import { GroundCover } from './cover';
 
-export const MAX_WATER_DEPTH = 10;
-
 /** Everything generated from a seed and params. Dispose it and build a new one to regenerate. */
 export class World {
   readonly group = new THREE.Group();
   readonly fns: WorldFns;
-  readonly depthTexture: THREE.DataTexture;
   private trees: Trees;
   private grass: Grass;
   private cover: GroundCover;
@@ -24,7 +21,6 @@ export class World {
   constructor(params: WorldParams, renderer: THREE.WebGLRenderer, scannedRocks: ScannedRock[] = []) {
     this.fns = createWorld({ ...params });
     this.group.add(createTerrainMesh(this.fns));
-    this.depthTexture = createDepthTexture(this.fns.height, 512, MAX_WATER_DEPTH);
     this.group.add(createFarLand(this.fns));
     this.rocks = createRocks(this.fns, scannedRocks);
     this.group.add(this.rocks.group);
@@ -52,7 +48,6 @@ export class World {
     this.trees.dispose();
     this.grass.dispose();
     this.cover.dispose();
-    this.depthTexture.dispose();
     // Free everything generated for this world; scanned-rock geometry and materials are shared, so they stay.
     this.group.traverse((o) => {
       const mesh = o as THREE.Mesh;

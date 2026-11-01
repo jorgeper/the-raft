@@ -24,11 +24,6 @@ In priority order: the first items are the user's requests for the next sessions
      ground fog (amount / height / patchiness controls) pools in hollows; S-curve "depth" and three-way
      "color richness" grade (cyan shade, rosy mids, gold light). Side-on beams are still faint: try a dedicated
      beam pass at half resolution with more steps, and denser canopy shadow casters.
-5. **Realistic water** (user request: more translucent, especially where it meets the ground):
-   - Shallows you can see into: refraction of the seabed and riverbed through the surface, depth-tinted
-     absorption (clear turquoise at the edge, deep blue offshore), sand and pebbles visible near the shore.
-   - Soft shorelines: depth-faded edges instead of a hard line, wet darkening on the sand, foam lapping in and out.
-   - Caustics shimmering on the shallow bottom; planar reflection of terrain, trees and islands.
 6. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
    - Undergrowth variety: berry bushes (raspberry, blueberry), thistles, mushrooms, dandelions and clover, tall
      grass tufts, reeds by rivers, fallen leaves and needle litter, moss carpets on forest floors.
@@ -74,6 +69,11 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Realistic water (`src/water.ts`): drawn by its own pass after the opaque scene, it refracts the seabed through
+  the waves with per-channel absorption (turquoise shallows, deep blue offshore), caustics on the shallow bottom,
+  screen-space reflections of the land and trees (sky probe where they miss; steps scale with quality), a thin
+  dissolving waterline, lacy foam lapping in and out, and sun glitter (raised by whimsy). Shots:
+  `.playwright-mcp/water/`.
 - Less fog and sun glare. A bisect showed ground fog lit by the bright haze toward the sun made most of the
   white-out, not the disc or bloom. Ground fog is now 0.22 and burns off as the sun climbs, its mist is capped in
   brightness, haze is 0.0006 with half the whimsy boost, the forward-scatter lobe is tighter and capped, the sky's

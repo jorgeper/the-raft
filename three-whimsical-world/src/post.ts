@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { WebGLRenderTarget } from 'three';
 import { AOPass } from './ao';
+import { WaterPass, type Water } from './water';
 
 const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
@@ -377,6 +378,8 @@ export function createPost(
   sun: THREE.DirectionalLight,
   /** Drawn after the haze (unfogged), e.g. glowing motes; its materials test against `sceneDepth` themselves. */
   overlay?: THREE.Scene,
+  /** Translucent water, drawn over the opaque scene before AO and haze. */
+  water?: Water,
 ) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
@@ -390,6 +393,7 @@ export function createPost(
   composer.setSize(window.innerWidth, window.innerHeight);
 
   composer.addPass(new RenderPass(scene, camera));
+  if (water) composer.addPass(new WaterPass(water, camera));
   const ao = new AOPass(camera);
   composer.addPass(ao);
   const atmosphere = new DepthShaderPass(AtmosphereShader);

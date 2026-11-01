@@ -26,11 +26,13 @@ export interface QualityPreset {
   glow: boolean;
   /** Fraction of the floating motes and fireflies drawn. */
   motes: number;
+  /** Screen-space reflection steps on the water (0 = sky reflections only). */
+  waterReflectionSteps: number;
 }
 
 export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
   low: {
-    label: 'Low: 70% resolution, short grass reach, no AO or glow',
+    label: 'Low: 70% resolution, short grass reach, no AO, glow or land reflections',
     renderScale: 0.7,
     shadowMapSize: 1024,
     shadowExtent: 90,
@@ -42,6 +44,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     aoScale: 0,
     glow: false,
     motes: 0.3,
+    waterReflectionSteps: 0,
   },
   medium: {
     label: 'Medium: 85% resolution, thinner grass, half-res AO',
@@ -56,6 +59,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     aoScale: 0.5,
     glow: true,
     motes: 0.6,
+    waterReflectionSteps: 16,
   },
   high: {
     label: 'High: full resolution and detail (the default)',
@@ -70,6 +74,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     aoScale: 1,
     glow: true,
     motes: 1,
+    waterReflectionSteps: 32,
   },
   ultra: {
     label: 'Ultra: 125% supersampling, grass to 150 m, finer beams (slow)',
@@ -84,6 +89,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     aoScale: 1,
     glow: true,
     motes: 1,
+    waterReflectionSteps: 48,
   },
 };
 

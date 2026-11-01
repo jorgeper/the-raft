@@ -233,21 +233,3 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
   mesh.castShadow = true;
   return mesh;
 }
-
-/** Water depth (meters below sea level, clamped to 0..maxDepth) baked into a texture for the water shader. */
-export function createDepthTexture(height: HeightFn, resolution = 512, maxDepth = 10): THREE.DataTexture {
-  const data = new Uint8Array(resolution * resolution);
-  for (let j = 0; j < resolution; j++) {
-    for (let i = 0; i < resolution; i++) {
-      const x = (i / (resolution - 1) - 0.5) * TERRAIN_SIZE;
-      const z = (j / (resolution - 1) - 0.5) * TERRAIN_SIZE;
-      const depth = Math.min(Math.max(-height(x, z), 0), maxDepth);
-      data[j * resolution + i] = Math.round((depth / maxDepth) * 255);
-    }
-  }
-  const tex = new THREE.DataTexture(data, resolution, resolution, THREE.RedFormat, THREE.UnsignedByteType);
-  tex.magFilter = THREE.LinearFilter;
-  tex.minFilter = THREE.LinearFilter;
-  tex.needsUpdate = true;
-  return tex;
-}
