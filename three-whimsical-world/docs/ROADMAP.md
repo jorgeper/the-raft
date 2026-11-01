@@ -18,6 +18,14 @@ In priority order: the first items are the user's requests for the next sessions
    8. ~~Concave rocks and cliff strata~~ (done, see Done).
    9. ~~Snow~~ (done, see Done).
    10. ~~Deer grazing steps and ear flicks~~ (done, see Done).
+   11. Cloud follow-ups, reviewed 2026-11-01 and deferred: the clouds come out smooth with the TAA off (no march
+       noise; `.playwright-mcp/wild/cl0.png`) and meadows hold 60 fps, so temporal reprojection would only buy speed
+       not needed yet. The haze, reflection and lighting probes draw the painted clouds, which share the volumetric
+       ones' cover field, so they already line up; cloud-to-cloud shadowing there would be subtle for its cost.
+   12. Look-pass candidates, reviewed: bluer shadows are the "teal shade" (done in the first queue), cloud shapes
+       came with the volumetric clouds, and the sun already sits in a large warm glow with a pink halo
+       (`.playwright-mcp/wild/sun0.jpg`); a bigger bloom would veil the frame. Left for the user's verdict.
+   13. Next: the soundscape.
 
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
@@ -93,9 +101,8 @@ In priority order: the first items are the user's requests for the next sessions
 7. (Done, see below: fractured procedural rocks; concave fused shapes and cliff strata since, see Done.)
 8. (Done, see below: two-cascade sun shadows.) Possible follow-up: three 0.187's `SunLight` addon (native CSM in
    the WebGL renderer) if more cascades are ever needed; it would mean porting the volumetrics' shadow lookups.
-9. (Done, see below: wind motion for the TAA; the TAA is off by default since 2026-11-01, see Done.) Possible
-   follow-up, needed before turning it back on: motion for deer, birds and
-   butterflies (they move whole, so a per-object velocity would do).
+9. (Done, see below: wind motion for the TAA, and `MotionPass` in `src/motion.ts` for the character, deer, frogs,
+   fish, birds, butterflies and leaves. The TAA is off by default since 2026-11-01, see Done.)
 10. (Done, see below: volumetric clouds.) Follow-ups: temporal reprojection so the march can run at quarter
     resolution, cloud-to-cloud shadowing in the haze probe, and the lighting probe seeing the volumetric clouds.
 11. Small: (Done: grass blade detail per fragment (pale midrib, veins, darker edges, ~18% of blades with sun-dried
