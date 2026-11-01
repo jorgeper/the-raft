@@ -112,9 +112,13 @@ export class DofPass extends Pass {
         float tot = 1.0;
         // Golden-angle spiral, denser near the middle; each sample counts if its own blur reaches this pixel. A
         // sharp foreground keeps the blurred background behind it from bleeding over its edges.
+        // How far to gather: this pixel's own blur, or the background's if larger (a sharp edge in front of a soft
+        // distance still takes in the soft light round it). Only a blurred foreground spilling over a sharp pixel is
+        // cut short, and that spill is only a few pixels wide; the rest of the frame stops far sooner than the cap.
+        float reach = min(uMaxBlur, max(centerSize, blurAt(uFar * 10.0)) + 2.0 * uRadScale);
         float radius = uRadScale;
         for (int i = 0; i < 220; i++) {
-          if (radius >= uMaxBlur) break;
+          if (radius >= reach) break;
           float ang = float(i) * 2.39996323;
           vec2 tc = vUv + vec2(cos(ang), sin(ang)) * radius / res;
           vec3 sampleColor = texture2D(tDiffuse, tc).rgb;

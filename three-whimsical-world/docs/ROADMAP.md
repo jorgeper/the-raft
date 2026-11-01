@@ -137,6 +137,11 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Real lens while playing (user, 2026-11-01): the panel's "🔭 Lens" folder (or `?lens=48,1.2`) runs photo mode's
+  depth of field all the time, with a chosen focal length (14–200 mm, which sets the field of view unless "focal
+  length sets the view" is off), f-stop and extra dreaminess. Focus follows the character in third person, whose
+  camera steps back as the lens narrows so the framing holds, and the middle of the frame in first person. The
+  gather now stops at each pixel's own blur (or the background's), which brought the cost from about 6 fps to none.
 - Spray rainbows (user, 2026-11-01): each waterfall's plunge carries a soft cloud of spray (an ellipsoid drawn
   out downstream), and each pixel adds up the spray its view ray crosses, stopping at the scene's depth, then takes
   the bow's color from its angle off the antisolar point (`RAINBOW` in `weather.ts`, 42° primary, faint 51°

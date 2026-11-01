@@ -14,9 +14,63 @@ export const photoSettings = {
   freeze: false,
 };
 
+/**
+ * The lens while you play (outside photo mode): a real focal length and f-stop, focus following your character in
+ * third person or the middle of the frame in first. `setsFov` lets the focal length set the field of view (a 48 mm
+ * lens sees what a 48 mm lens sees); off, the view keeps the panel's field of view and the blur is scaled to it.
+ */
+export const lensSettings = {
+  on: false,
+  /** Focal length (mm). */
+  focal: 48,
+  fStop: 1.2,
+  dreamy: 1,
+  setsFov: true,
+};
+
 /** Full-frame sensor height (m): sets the focal length for a field of view. */
 const SENSOR = 0.024;
-const fovFor = (focal: number) => THREE.MathUtils.radToDeg(2 * Math.atan(SENSOR / 2 / focal));
+export const fovFor = (focal: number) => THREE.MathUtils.radToDeg(2 * Math.atan(SENSOR / 2 / focal));
+
+type LensUniforms = { uFocus: { value: number }; uFocal: { value: number }; uAperture: { value: number }; uPxPerM: { value: number }; uMaxBlur: { value: number }; uRadScale: { value: number }; uFar: { value: number } };
+
+/**
+ * Fills the depth-of-field uniforms for a lens (focal in m). The image on the sensor fills the frame's height
+ * whatever the field of view: at the lens's own field of view that's the 24 mm sensor, at another it's a sensor
+ * cropped (or enlarged) to match, so the blur keeps its size relative to the frame.
+ */
+function fillLens(uniforms: LensUniforms, focal: number, fStop: number, dreamy: number, focus: number, fovDeg: number, heightPx: number, far: number) {
+  const sensor = 2 * focal * Math.tan(THREE.MathUtils.degToRad(fovDeg) / 2);
+  const scale = heightPx / 720;
+  uniforms.uFocus.value = focus;
+  uniforms.uFocal.value = focal;
+  uniforms.uAperture.value = (focal / fStop) * dreamy;
+  uniforms.uPxPerM.value = heightPx / sensor;
+  uniforms.uMaxBlur.value = 22 * scale;
+  uniforms.uRadScale.value = 0.9 * scale;
+  uniforms.uFar.value = far;
+}
+
+/** Eases a focus distance toward a target in log distance, like a focus ring pulled by a motor. */
+const easeFocus = (focus: number, target: number, dt: number) => Math.exp(Math.log(focus) + (Math.log(target) - Math.log(focus)) * Math.min(dt * 5, 1));
+
+/** The lens while playing: autofocus on the character (a distance given each frame) or on the middle of the frame. */
+export class PlayLens {
+  focus = 5;
+  private target = 5;
+  private frame = 0;
+
+  /** `subject`: the character's distance along the view, or null to focus on whatever is in the middle. */
+  update(dt: number, subject: number | null, distanceAt: (u: number, v: number) => number, far: number, fovDeg: number, heightPx: number, uniforms: LensUniforms) {
+    if (subject !== null) this.target = Math.max(subject, 0.3);
+    else if (this.frame++ % 6 === 0) {
+      const d = distanceAt(0.5, 0.5);
+      if (Number.isFinite(d) && d > 0) this.target = Math.min(d, far);
+    }
+    this.focus = easeFocus(this.focus, this.target, dt);
+    fillLens(uniforms, lensSettings.focal / 1000, lensSettings.fStop, lensSettings.dreamy, this.focus, fovDeg, heightPx, far);
+  }
+}
 
 export class PhotoMode {
   active = false;
@@ -84,24 +138,15 @@ export class PhotoMode {
     distanceAt: (u: number, v: number) => number,
     far: number,
     heightPx: number,
-    uniforms: { uFocus: { value: number }; uFocal: { value: number }; uAperture: { value: number }; uPxPerM: { value: number }; uMaxBlur: { value: number }; uRadScale: { value: number }; uFar: { value: number } },
+    uniforms: LensUniforms,
   ) {
     const at = this.lockAt ?? { u: 0.5, v: 0.5 };
     if (this.frame++ % 4 === 0) {
       const d = distanceAt(at.u, at.v);
       if (Number.isFinite(d) && d > 0) this.target = Math.min(d, far);
     }
-    // Ease in log distance, like a focus ring pulled by a motor.
-    const k = Math.min(dt * 5, 1);
-    this.focus = Math.exp(Math.log(this.focus) + (Math.log(this.target) - Math.log(this.focus)) * k);
-    const scale = heightPx / 720;
-    uniforms.uFocus.value = this.focus;
-    uniforms.uFocal.value = this.focal;
-    uniforms.uAperture.value = (this.focal / photoSettings.fStop) * photoSettings.dreamy;
-    uniforms.uPxPerM.value = heightPx / SENSOR;
-    uniforms.uMaxBlur.value = 22 * scale;
-    uniforms.uRadScale.value = 0.9 * scale;
-    uniforms.uFar.value = far;
+    this.focus = easeFocus(this.focus, this.target, dt);
+    fillLens(uniforms, this.focal, photoSettings.fStop, photoSettings.dreamy, this.focus, this.fov, heightPx, far);
 
     this.reticle.style.left = `${at.u * 100}%`;
     this.reticle.style.top = `${(1 - at.v) * 100}%`;

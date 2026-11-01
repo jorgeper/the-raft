@@ -5,7 +5,7 @@ import { createWater, addRipple } from './water';
 import { wind, sunLight, windControl, WindDrift } from './wind';
 import { VIBES, type VibeName } from './vibes';
 import { Tour } from './tour';
-import { PhotoMode, photoSettings, savePhoto } from './photo';
+import { PhotoMode, PlayLens, fovFor, lensSettings, photoSettings, savePhoto } from './photo';
 import { createPost } from './post';
 import { World } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
@@ -346,6 +346,7 @@ const applyHueSplit = () => {
 };
 persist.bind('cloudShadow', post.atmosphere.uCloudShadow, ['value']);
 persist.bind('wind', windControl, ['value', 'changing']);
+persist.bind('lens', lensSettings, ['on', 'focal', 'fStop', 'dreamy', 'setsFov']);
 const windDrift = new WindDrift();
 persist.bind('torch', torch, ['on', 'brightness', 'embersOn', 'smokeOn']);
 persist.bind('volumetric', volumetric, ['value']);
@@ -481,13 +482,18 @@ controlsGui.add(movement, 'flyBoost', 1, 10, 0.5).name('fly Shift boost ×');
 controlsGui.add(movement, 'sensitivity', 0.1, 3, 0.05).name('mouse sensitivity').onChange((v: number) => (controls.pointerSpeed = v));
 controlsGui.close();
 
+/** The field of view while playing: the panel's, or the real lens's when it sets the view. */
+function playFov() {
+  return lensSettings.on && lensSettings.setsFov ? fovFor(lensSettings.focal / 1000) : display.fov;
+}
+
 function applyDisplay() {
   const { width, height } = viewSize();
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * display.renderScale);
   renderer.setSize(width, height);
   post.setSize(width, height);
   camera.aspect = width / height;
-  camera.fov = display.fov;
+  camera.fov = playFov(); // (photo mode sets its own each frame)
   camera.updateProjectionMatrix();
   minimap.setSize(display.minimapSize);
   minimap.setVisible(display.showMinimap);
@@ -736,7 +742,7 @@ function enterPhoto() {
 }
 function exitPhoto() {
   photo.exit();
-  post.dof.setEnabled(false);
+  post.dof.setEnabled(lensSettings.on);
   timer.setTimescale(1);
   document.body.classList.remove('cinema', 'photo');
   if (beforePhoto) {
@@ -744,7 +750,7 @@ function exitPhoto() {
     movement.view = beforePhoto.view;
     beforePhoto = null;
   }
-  camera.fov = display.fov;
+  camera.fov = playFov();
   camera.updateProjectionMatrix();
 }
 const togglePhoto = () => (photo.active ? exitPhoto() : enterPhoto());
@@ -776,6 +782,30 @@ photoGui.add(photoSettings, 'fStop', 1.2, 22, 0.1).name('f-stop (lower = more bl
 photoGui.add(photoSettings, 'dreamy', 1, 8, 0.1).name('extra dreaminess ×');
 photoGui.add(photoSettings, 'freeze').name('freeze time').onChange((v: boolean) => photo.active && timer.setTimescale(v ? 0 : 1));
 photoGui.add({ save: () => (photoPending = true) }, 'save').name('💾 save photo (Enter)');
+
+// --- The lens while playing: the photo mode's depth of field, with a lens of your choosing (?lens=48,1.2).
+const playLens = new PlayLens();
+const lensHead = new THREE.Vector3();
+function applyLens() {
+  if (photo.active) return;
+  post.dof.setEnabled(lensSettings.on);
+  camera.fov = playFov();
+  camera.updateProjectionMatrix();
+}
+const lensQuery = new URLSearchParams(location.search).get('lens')?.split(',').map(Number);
+if (lensQuery) {
+  lensSettings.on = true;
+  if (lensQuery[0] > 0) lensSettings.focal = lensQuery[0];
+  if (lensQuery[1] > 0) lensSettings.fStop = lensQuery[1];
+}
+applyLens();
+const lensGui = gui.addFolder('🔭 Lens (bokeh while playing)');
+lensGui.add(lensSettings, 'on').name('real lens').onChange(applyLens);
+lensGui.add(lensSettings, 'focal', 14, 200, 1).name('focal length (mm)').onChange(applyLens);
+lensGui.add(lensSettings, 'fStop', 1, 22, 0.1).name('f-stop (lower = more blur)');
+lensGui.add(lensSettings, 'dreamy', 1, 8, 0.1).name('extra dreaminess ×');
+lensGui.add(lensSettings, 'setsFov').name('focal length sets the view').onChange(applyLens);
+lensGui.close();
 
 // --- Camera controls
 const controls = new PointerLockControls(player as unknown as THREE.Camera, renderer.domElement);
@@ -922,14 +952,17 @@ function updateView(dt: number, snap = false) {
   } else {
     // Orbit a point just above the shoulders, so looking around swings the camera around the character.
     pivot.copy(player.position).y -= EYE_HEIGHT - 1.6;
-    armDir.set(SHOULDER.x, SHOULDER.y, 1).applyQuaternion(player.quaternion);
+    // A long lens narrows the view: step back (and tuck the shoulder offset in) so the character keeps its framing.
+    const tele = Math.tan(THREE.MathUtils.degToRad(playFov()) / 2) / Math.tan(THREE.MathUtils.degToRad(display.fov) / 2);
+    const reach = movement.distance / tele;
+    armDir.set(SHOULDER.x * tele, SHOULDER.y * tele, 1).applyQuaternion(player.quaternion);
     // Shorten the arm where the terrain would come between the camera and the character.
-    let length = movement.distance;
+    let length = reach;
     for (let i = 1; i <= 8; i++) {
-      const t = (i / 8) * movement.distance;
+      const t = (i / 8) * reach;
       probe.copy(pivot).addScaledVector(armDir, t);
       if (probe.y < Math.max(world.height(probe.x, probe.z), 0) + 0.35) {
-        length = Math.max(((i - 1) / 8) * movement.distance, 0.6);
+        length = Math.max(((i - 1) / 8) * reach, 0.6);
         break;
       }
     }
@@ -990,6 +1023,7 @@ function resetToDefaults() {
   verticalSpeed = 0;
   updateSun();
   applyDisplay();
+  applyLens();
   gui.controllersRecursive().forEach((c) => c.updateDisplay());
   if (JSON.stringify(params) !== builtParams) regenerate();
 }
@@ -1050,6 +1084,16 @@ renderer.setAnimationLoop((now) => {
     }
   } else motion = updateCamera(photo.active ? realDt : dt);
   updateView(photo.active ? realDt : dt);
+  if (lensSettings.on && !photo.active) {
+    // Third person focuses on the character; first person on whatever is in the middle of the frame.
+    let subject: number | null = null;
+    if (movement.view === 'third' && character && !touring) {
+      camera.updateMatrixWorld();
+      lensHead.copy(character.root.position).y += 1.5;
+      subject = -lensHead.applyMatrix4(camera.matrixWorldInverse).z;
+    }
+    playLens.update(dt, subject, post.dof.distanceAt, camera.far, camera.fov, renderer.domElement.height, post.dof.uniforms);
+  }
   const torchAim = updateCharacter(dt, motion);
 
   // Advance the clock; re-lighting rebuilds the sky probes, so do it a few times a second, not every frame.
