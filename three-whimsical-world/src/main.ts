@@ -193,6 +193,8 @@ const settings = {
   fogDensity: 0.00045,
   /** Valheim's dreamy side: two-tone haze, stronger beams, lens flares, soft glow, floating motes and fireflies. */
   whimsy: 0.6,
+  /** Pollen and dust motes by day, and seed fluff on the wind (fireflies at night stay). */
+  pollen: true,
   /** Mist lying on the ground: amount, layer height (m), and how broken into banks it is. */
   groundFog: 0.22,
   groundFogHeight: 3,
@@ -304,7 +306,7 @@ function updateSun() {
   scene.environmentIntensity = 0.34 * (1 + 0.6 * overcast);
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
-persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'nightVisionOn', 'fogDensity', 'whimsy', 'groundFog', 'groundFogHeight', 'groundFogPatchy', 'weather', 'aurora', 'moonPhase']);
+persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'nightVisionOn', 'fogDensity', 'whimsy', 'pollen', 'groundFog', 'groundFogHeight', 'groundFogPatchy', 'weather', 'aurora', 'moonPhase']);
 weather.mode = settings.weather;
 applyNightVision();
 post.setWhimsy(settings.whimsy);
@@ -338,6 +340,7 @@ updateSun();
 // --- Controls panel
 const gui = new GUI({ title: 'Meadows' });
 gui.add(settings, 'whimsy', 0, 1.5, 0.01).name('✨ whimsy').onChange((v: number) => post.setWhimsy(v));
+gui.add(settings, 'pollen').name('pollen & seed fluff');
 
 const worldGui = gui.addFolder('World');
 worldGui.add(params, 'seed', 0, 999999, 1);
@@ -943,9 +946,10 @@ renderer.setAnimationLoop((now) => {
 
   const pixelsPerMeter = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
   torch.update(camera, timer.getElapsed(), dt, pixelsPerMeter, torchAim);
-  motes.update(timer.getElapsed(), camera, lightDir, daylight, Math.min(settings.whimsy, 1.2), pixelsPerMeter);
+  // Without pollen the motes fade out by day; the fireflies still come out at night.
+  motes.update(timer.getElapsed(), camera, lightDir, daylight, Math.min(settings.whimsy, 1.2) * (settings.pollen ? 1 : 1 - daylight), pixelsPerMeter);
   fluff.update(timer.getElapsed() % 10000, dt, camera, lightDir, scatterSun, sky.uniforms.uHorizon.value, daylight,
-    1 - world.fns.forest(camera.position.x, camera.position.z), (1 - weather.rain) * (1 - 0.6 * weather.overcast),
+    1 - world.fns.forest(camera.position.x, camera.position.z), (1 - weather.rain) * (1 - 0.6 * weather.overcast) * (settings.pollen ? 1 : 0),
     wind.uWindStrength.value, pixelsPerMeter);
   splashes.update(timer.getElapsed() % 10000, camera, weather.rain, perf.rain, sky.uniforms.uHorizon.value, pixelsPerMeter);
   minimap.update(camera, camera.getWorldDirection(lookDir));

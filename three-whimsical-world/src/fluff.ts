@@ -137,7 +137,8 @@ export class SeedFluff {
   update(time: number, dt: number, camera: THREE.Camera, sunDir: THREE.Vector3, sunColor: THREE.Color, sky: THREE.Color,
     day: number, meadow: number, fine: number, wind: number, pixelsPerMeter: number) {
     const target = THREE.MathUtils.smoothstep(day, 0.3, 0.7) * meadow * fine;
-    this.amount += (target - this.amount) * Math.min(dt / 3, 1);
+    // Drifts in over a few seconds; goes quickly (switched off, or rain starting).
+    this.amount += (target - this.amount) * Math.min(dt / (target < this.amount ? 0.6 : 3), 1);
     const u = this.uniforms;
     u.uTime.value = time;
     u.uCam.value.copy(camera.position);
