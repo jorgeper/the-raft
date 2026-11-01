@@ -25,6 +25,10 @@ In priority order: the first items are the user's requests for the next sessions
      "color richness" grade (cyan shade, rosy mids, gold light). Side-on beams are still faint: try a dedicated
      beam pass at half resolution with more steps, and denser canopy shadow casters.
 6. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
+   - First pass landed: mushrooms (fly agaric, boletes) on damp forest floor, reeds and cattails on riverbanks,
+     berry shrubs at forest edges (`src/undergrowth.ts`); butterflies over the meadows, birds wheeling overhead,
+     leaves falling under the trees (`src/life.ts`). Shots: `.playwright-mcp/life/`. Still open below: clover,
+     dandelions, tall tufts, moss and leaf litter, mist over rivers, deer, wet-rock glints.
    - Undergrowth variety: berry bushes (raspberry, blueberry), thistles, mushrooms, dandelions and clover, tall
      grass tufts, reeds by rivers, fallen leaves and needle litter, moss carpets on forest floors.
    - Atmosphere: morning mist pooling in hollows and over rivers, drifting dust and pollen motes in sunbeams,

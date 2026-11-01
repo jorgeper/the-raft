@@ -5,6 +5,7 @@ import { mulberry32, smoothstep, type WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
 import { plants } from './plants';
 import { quality } from './quality';
+import { createMushroomGeometry, createReedGeometry, createShrubGeometry, createShrubLeafTexture, headColored } from './undergrowth';
 
 const CHUNK = 24;
 const GRID = 4;
@@ -350,10 +351,93 @@ export class GroundCover {
         2,
       ),
     );
+    this.addUndergrowth(world, patchNoise);
     for (const layer of this.layers) this.group.add(layer.group);
     this.disposables.push(flowerGeo, flowerMat);
 
     this.addLogsAndStumps(world);
+  }
+
+  /** Mushrooms on the forest floor, reeds along the rivers, and berry shrubs at the forest edge. */
+  private addUndergrowth(world: WorldFns, patchNoise: (x: number, y: number) => number) {
+    // Mushrooms: fly agaric red, brown boletes and pale clusters, in damp patches under the trees.
+    const mushroomGeo = createMushroomGeometry();
+    const mushroomMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 });
+    headColored(mushroomMat, true);
+    const caps = ['#c8281c', '#d23a1e', '#8a5a32', '#a87444', '#e8d8b8', '#6e4a2a'].map((c) => new THREE.Color(c));
+    this.layers.push(
+      new ScatterLayer(
+        world,
+        {
+          radius: 45,
+          perChunk: 90,
+          geometry: mushroomGeo,
+          material: mushroomMat,
+          place: (x, z, h, forest, rand, color) => {
+            const damp = smoothstep(0.2, 0.7, patchNoise(x * 0.09 + 31, z * 0.09));
+            if (h < 3 || rand() > smoothstep(0.3, 0.8, forest) * damp) return 0;
+            // A patch tends to be one kind.
+            const kind = rand() < 0.8 ? Math.floor((patchNoise(x * 0.03, z * 0.03 - 17) * 0.5 + 0.5) * caps.length) % caps.length : Math.floor(rand() * caps.length);
+            color.copy(caps[kind]);
+            return 1.3 + rand() * 1.1;
+          },
+        },
+        21,
+      ),
+    );
+
+    // Reeds and cattails crowd the riverbanks, standing in the shallows.
+    const reedGeo = createReedGeometry();
+    const reedMat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.7 });
+    addWind(reedMat, `p += windOffset(root, max(p.y - root.y, 0.0) * 0.9) * 0.5;`);
+    headColored(reedMat);
+    this.layers.push(
+      new ScatterLayer(
+        world,
+        {
+          radius: 90,
+          perChunk: 260,
+          geometry: reedGeo,
+          material: reedMat,
+          place: (x, z, h, _forest, rand, color) => {
+            if (h < -0.7 || h > 1.6) return 0;
+            const river = world.river(x, z);
+            if (rand() > smoothstep(0.25, 0.6, river) * (0.4 + 0.6 * smoothstep(-0.2, 0.6, patchNoise(x * 0.07, z * 0.07 + 5)))) return 0;
+            color.setRGB(1, 1, 1).multiplyScalar(0.85 + rand() * 0.3);
+            return 0.7 + rand() * 0.6;
+          },
+        },
+        22,
+      ),
+    );
+
+    // Berry shrubs: raspberry red, blueberry blue, lingonberry scarlet, along the forest edges and in groves.
+    const shrubGeo = createShrubGeometry();
+    const shrubTex = createShrubLeafTexture();
+    const shrubMat = new THREE.MeshStandardMaterial({ vertexColors: true, map: shrubTex, alphaTest: 0.5, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.75 });
+    addWind(shrubMat, `p += windOffset(root, max(p.y - root.y, 0.0) * 0.4) * 0.3;`);
+    headColored(shrubMat);
+    const berries = ['#c4162a', '#2a3a8c', '#e02a20', '#3b2f6e'].map((c) => new THREE.Color(c));
+    this.layers.push(
+      new ScatterLayer(
+        world,
+        {
+          radius: 60,
+          perChunk: 70,
+          geometry: shrubGeo,
+          material: shrubMat,
+          place: (x, z, h, forest, rand, color) => {
+            const edge = smoothstep(0.1, 0.35, forest) * (1 - smoothstep(0.6, 0.9, forest));
+            if (h < 3 || rand() > edge * (0.5 + 0.5 * patchNoise(x * 0.04 - 9, z * 0.04))) return 0;
+            color.copy(berries[Math.floor((patchNoise(x * 0.02 + 3, z * 0.02) * 0.5 + 0.5) * berries.length) % berries.length]);
+            // Knee- to thigh-high, like Valheim's raspberry and blueberry bushes.
+            return 1.7 + rand() * 0.9;
+          },
+        },
+        23,
+      ),
+    );
+    this.disposables.push(mushroomGeo, mushroomMat, reedGeo, reedMat, shrubGeo, shrubMat, shrubTex);
   }
 
   private addLogsAndStumps(world: WorldFns) {

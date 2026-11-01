@@ -8,6 +8,7 @@ import { Trees } from './trees';
 import { Grass } from './grass';
 import { quality } from './quality';
 import { GroundCover } from './cover';
+import { Life } from './life';
 
 /** Everything generated from a seed and params. Dispose it and build a new one to regenerate. */
 export class World {
@@ -17,6 +18,8 @@ export class World {
   private grass: Grass;
   private cover: GroundCover;
   private rocks: Rocks;
+  /** Butterflies, birds and falling leaves; main.ts drives it with the clock and light. */
+  readonly life: Life;
 
   constructor(params: WorldParams, renderer: THREE.WebGLRenderer, scannedRocks: ScannedRock[] = []) {
     this.fns = createWorld({ ...params });
@@ -28,7 +31,8 @@ export class World {
     this.trees = new Trees(this.fns, renderer);
     this.grass = new Grass(this.fns);
     this.cover = new GroundCover(this.fns);
-    this.group.add(this.trees.group, this.grass.group, this.cover.group);
+    this.life = new Life(this.fns);
+    this.group.add(this.trees.group, this.grass.group, this.cover.group, this.life.group);
   }
 
   get height() {
@@ -48,6 +52,7 @@ export class World {
     this.trees.dispose();
     this.grass.dispose();
     this.cover.dispose();
+    this.life.dispose();
     // Free everything generated for this world; scanned-rock geometry and materials are shared, so they stay.
     this.group.traverse((o) => {
       const mesh = o as THREE.Mesh;
