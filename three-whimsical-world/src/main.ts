@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import GUI from 'lil-gui';
-import { createMeadowHeight, createTerrainMesh, createDepthTexture } from './terrain';
+import { createMeadowHeight, createTerrainMesh, createDepthTexture, terrainUniforms } from './terrain';
 import { createWater } from './water';
-import { Grass } from './grass';
+import { Grass, GRASS_RADIUS } from './grass';
 import { Trees } from './trees';
 import { wind, sunLight } from './wind';
 import { createPost } from './post';
+import { createFarLand } from './far';
+import { createRocks } from './rocks';
 
 const MAX_WATER_DEPTH = 10;
 
@@ -56,10 +58,14 @@ scene.add(terrain);
 const water = createWater(cubeTarget.texture, createDepthTexture(height, 512, MAX_WATER_DEPTH), MAX_WATER_DEPTH);
 scene.add(water.mesh);
 
+scene.add(createFarLand(height));
+scene.add(createRocks(height));
+
 const trees = new Trees(height);
 scene.add(trees.group);
 
 const grass = new Grass(height);
+terrainUniforms.uGrassRadius.value = GRASS_RADIUS;
 scene.add(grass.group);
 
 const post = createPost(renderer, scene, camera, cubeTarget.texture);
@@ -68,10 +74,10 @@ const post = createPost(renderer, scene, camera, cubeTarget.texture);
 const settings = {
   elevation: 24,
   azimuth: 200,
-  turbidity: 2,
+  turbidity: 1.5,
   rayleigh: 3,
   exposure: renderer.toneMappingExposure,
-  fogDensity: 0.0011,
+  fogDensity: 0.0006,
 };
 const sunDir = new THREE.Vector3();
 
@@ -81,8 +87,10 @@ function updateSun() {
   u.sunPosition.value.copy(sunDir);
   u.turbidity.value = settings.turbidity;
   u.rayleigh.value = settings.rayleigh;
-  u.mieCoefficient.value = 0.003;
+  u.mieCoefficient.value = 0.0015;
   u.mieDirectionalG.value = 0.8;
+  u.cloudCoverage.value = 0.38;
+  u.cloudDensity.value = 0.55;
 
   water.uniforms.uSunDir.value.copy(sunDir);
   // Lower sun = warmer light.
@@ -108,6 +116,9 @@ gui.add(settings, 'fogDensity', 0, 0.005, 0.0001).onChange((v: number) => (post.
 gui.add(wind.uWindStrength, 'value', 0, 3, 0.01).name('wind');
 const postGui = gui.addFolder('Post');
 postGui.add(post.atmosphere.uShaftStrength, 'value', 0, 3, 0.01).name('light shafts');
+postGui.add(post.atmosphere.uAOStrength, 'value', 0, 1, 0.01).name('ambient occlusion');
+postGui.add(post.ao.uRadius, 'value', 0.2, 5, 0.05).name('AO radius');
+postGui.add(post.ao.uIntensity, 'value', 0, 4, 0.05).name('AO intensity');
 postGui.add(post.bloom, 'strength', 0, 2, 0.01).name('bloom');
 postGui.add(post.bloom, 'threshold', 0, 8, 0.05).name('bloom threshold');
 postGui.add(post.grade.uSaturation, 'value', 0, 2, 0.01).name('saturation');

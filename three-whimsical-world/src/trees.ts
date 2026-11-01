@@ -3,13 +3,17 @@ import { Tree } from '@dgreenheck/ez-tree';
 import { createNoise2D } from 'simplex-noise';
 import type { HeightFn } from './terrain';
 import { TERRAIN_SIZE } from './terrain';
-import { addWind } from './wind';
+import { addWind, sunLight } from './wind';
+
+type TreeOptions = Tree['options'];
 
 interface Variant {
   preset: string;
   seed: number;
   /** Target height in meters before per-instance scale jitter. */
   height: number;
+  /** Edits applied on top of the preset to get a Valheim-like silhouette. */
+  tweak?: (o: TreeOptions) => void;
 }
 
 interface BuiltVariant {
@@ -19,33 +23,63 @@ interface BuiltVariant {
   leafMaterial: THREE.MeshPhysicalMaterial;
 }
 
-// Meadow trees are broadleaf; the inland hills get a pine forest, like Valheim's Black Forest edge.
+// Valheim meadow trees: tall beech with dense rounded crowns, broad oaks, and birch.
+const beech = (o: TreeOptions) => {
+  o.branch.gnarliness = { 0: 0, 1: 0.08, 2: 0.06, 3: 0.08 };
+  o.branch.children = { 0: 11, 1: 5, 2: 4 };
+  o.branch.angle = { 1: 42, 2: 40, 3: 34 };
+  o.branch.start = { 1: 0.42, 2: 0.1, 3: 0 };
+  o.leaves.count = 26;
+  o.leaves.size = 5.2;
+  o.leaves.start = 0;
+  o.leaves.angle = 30;
+};
+const oak = (o: TreeOptions) => {
+  o.branch.children = { 0: 10, 1: 5, 2: 4 };
+  o.branch.angle = { 1: 62, 2: 45, 3: 35 };
+  o.branch.start = { 1: 0.3, 2: 0.08, 3: 0 };
+  o.leaves.count = 24;
+  o.leaves.size = 6;
+  o.leaves.start = 0;
+};
+const birch = (o: TreeOptions) => {
+  o.bark.type = 'birch';
+  o.leaves.count = Math.round(o.leaves.count * 2.2);
+  o.leaves.size *= 1.25;
+  o.leaves.start = 0;
+};
 const MEADOW: Variant[] = [
-  { preset: 'Oak Medium', seed: 101, height: 13 },
-  { preset: 'Oak Large', seed: 202, height: 17 },
-  { preset: 'Ash Medium', seed: 303, height: 14 },
-  { preset: 'Aspen Medium', seed: 404, height: 15 },
+  { preset: 'Ash Large', seed: 101, height: 22, tweak: beech },
+  { preset: 'Ash Large', seed: 131, height: 19, tweak: beech },
+  { preset: 'Oak Large', seed: 202, height: 16, tweak: oak },
+  { preset: 'Aspen Large', seed: 404, height: 17, tweak: birch },
 ];
 const BUSHES: Variant[] = [
   { preset: 'Bush 1', seed: 505, height: 1.8 },
   { preset: 'Bush 2', seed: 606, height: 2.2 },
 ];
+// Inland: dense spruce like Valheim's Black Forest edge.
+const spruce = (o: TreeOptions) => {
+  o.leaves.count = Math.round(o.leaves.count * 1.6);
+  o.leaves.size *= 1.2;
+};
 const FOREST: Variant[] = [
-  { preset: 'Pine Medium', seed: 707, height: 18 },
-  { preset: 'Pine Large', seed: 808, height: 24 },
+  { preset: 'Pine Medium', seed: 707, height: 20, tweak: spruce },
+  { preset: 'Pine Large', seed: 808, height: 27, tweak: spruce },
 ];
 
 /** Detail levels: fewer, larger leaves and coarser branches further away keep the silhouette but cut triangles. */
 const LODS = [
-  { maxDist: 140, leafCount: 1.4, leafSize: 1.15, geo: 1 },
-  { maxDist: 420, leafCount: 0.45, leafSize: 1.7, geo: 0.5 },
-  { maxDist: Infinity, leafCount: 0.16, leafSize: 2.6, geo: 0.25 },
+  { maxDist: 140, leafCount: 1, leafSize: 1, geo: 1 },
+  { maxDist: 420, leafCount: 0.35, leafSize: 1.6, geo: 0.5 },
+  { maxDist: Infinity, leafCount: 0.12, leafSize: 2.5, geo: 0.25 },
 ];
 
 function buildVariant(v: Variant, lod: number): BuiltVariant {
   const tree = new Tree();
   tree.loadPreset(v.preset);
   tree.options.seed = v.seed;
+  v.tweak?.(tree.options);
   const o = tree.options, l = LODS[lod];
   o.leaves.count = Math.max(1, Math.round(o.leaves.count * l.leafCount));
   o.leaves.size *= l.leafSize;
@@ -64,18 +98,27 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
   branches.scale(scale, scale, scale);
   leaves.scale(scale, scale, scale);
 
-  // Point leaf normals away from the crown center so the canopy shades like a volume, not flat cards.
+  // Point leaf normals away from the crown center so the canopy shades like a volume, not flat cards,
+  // and darken leaves deep inside and low in the crown (cheap ambient occlusion).
   leaves.computeBoundingBox();
-  const center = leaves.boundingBox!.getCenter(new THREE.Vector3());
+  const box = leaves.boundingBox!;
+  const center = box.getCenter(new THREE.Vector3());
+  const halfSize = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
   const pos = leaves.attributes.position as THREE.BufferAttribute;
   const nrm = leaves.attributes.normal as THREE.BufferAttribute;
+  const colors = new Float32Array(pos.count * 3);
   const n = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     n.fromBufferAttribute(pos, i).sub(center);
+    const shell = Math.min(Math.hypot(n.x / halfSize.x, n.y / halfSize.y, n.z / halfSize.z), 1);
+    const heightFrac = (pos.getY(i) - box.min.y) / (2 * halfSize.y);
+    const ao = (0.3 + 0.7 * THREE.MathUtils.smoothstep(shell, 0.25, 0.95)) * (0.7 + 0.3 * heightFrac);
+    colors.set([ao, ao, ao], i * 3);
     n.y = n.y * 0.6 + Math.abs(n.length()) * 0.25;
     n.normalize();
     nrm.setXYZ(i, n.x, n.y, n.z);
   }
+  leaves.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
   const srcBark = tree.branchesMesh.material as THREE.MeshPhongMaterial;
   const barkMaterial = new THREE.MeshStandardMaterial({
@@ -91,6 +134,7 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
     map: srcLeaf.map,
     // The presets' pale tint washes leaves out under sky light; pull toward a deeper summer green.
     color: srcLeaf.color.clone().multiply(new THREE.Color(0.62, 0.72, 0.5)),
+    vertexColors: true,
     alphaTest: srcLeaf.alphaTest,
     alphaToCoverage: true,
     side: THREE.DoubleSide,
@@ -105,6 +149,26 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
       p += windOffset(root, flex) + flutter * min(h * 0.2, 1.0) * uWindStrength;
     `,
   );
+  // Leaves glow when backlit, but only on the sunlit outer shell (vertex AO stands in for depth in the crown).
+  const patchVertex = leafMaterial.onBeforeCompile;
+  leafMaterial.onBeforeCompile = (shader, renderer) => {
+    patchVertex.call(leafMaterial, shader, renderer);
+    Object.assign(shader.uniforms, sunLight);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;')
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        float backlit = pow(max(dot(normalize(-vViewPosition), uSunDirView), 0.0), 4.0);
+        float shellLight = smoothstep(0.55, 1.0, vColor.r);
+        totalEmissiveRadiance += uSunColor * diffuseColor.rgb * vec3(1.0, 1.2, 0.55) * backlit * shellLight * 0.9;`,
+      )
+      // Vertex AO only darkens diffuse; occlude reflections too, or the crown interior glows grey with sky light.
+      .replace(
+        '#include <aomap_fragment>',
+        '#include <aomap_fragment>\nreflectedLight.indirectSpecular *= vColor.r * vColor.r;\nreflectedLight.directSpecular *= vColor.r;',
+      );
+  };
 
   return { branches, leaves, barkMaterial, leafMaterial };
 }
@@ -114,6 +178,8 @@ interface Placement {
   matrix: THREE.Matrix4;
   center: THREE.Vector3;
   radius: number;
+  /** Per-tree leaf tint so neighbors aren't identical. */
+  color: THREE.Color;
 }
 
 export class Trees {
@@ -151,6 +217,7 @@ export class Trees {
         matrix: new THREE.Matrix4().compose(p.set(x, y - 0.3, z), q, sc.set(k, k, k)),
         center: new THREE.Vector3(x, y + all[variant].height * k * 0.5, z),
         radius: all[variant].height * k * 0.6,
+        color: new THREE.Color().setRGB(0.85 + rand() * 0.25, 0.88 + rand() * 0.22, 0.8 + rand() * 0.2),
       });
     };
 
@@ -171,7 +238,7 @@ export class Trees {
 
         const r = rand();
         if (r < forest * 0.08) add(pick(forestIdx), x, z, y, 0.5);
-        else if (r < forest * 0.08 + grove * 0.22 + 0.0025) add(pick(meadowIdx), x, z, y, 0.45);
+        else if (r < forest * 0.08 + grove * 0.2 + 0.0025) add(pick(meadowIdx), x, z, y, 0.7);
         else if (r < forest * 0.08 + grove * 0.32 + 0.004) add(pick(bushIdx), x, z, y, 0.6);
       }
     }
@@ -215,6 +282,7 @@ export class Trees {
       const [branches, leaves] = this.meshes[pl.variant][lod];
       branches.setMatrixAt(branches.count, pl.matrix);
       leaves.setMatrixAt(leaves.count, pl.matrix);
+      leaves.setColorAt(leaves.count, pl.color);
       branches.count++;
       leaves.count++;
     }
@@ -226,6 +294,11 @@ export class Trees {
       leaves.instanceMatrix.clearUpdateRanges();
       leaves.instanceMatrix.addUpdateRange(0, leaves.count * 16);
       leaves.instanceMatrix.needsUpdate = true;
+      if (leaves.instanceColor) {
+        leaves.instanceColor.clearUpdateRanges();
+        leaves.instanceColor.addUpdateRange(0, leaves.count * 3);
+        leaves.instanceColor.needsUpdate = true;
+      }
     }
   }
 }

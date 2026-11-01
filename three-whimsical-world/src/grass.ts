@@ -1,30 +1,42 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
-import type { HeightFn } from './terrain';
+import { grassCoverage, type HeightFn } from './terrain';
 import { addWind, sunLight } from './wind';
 
 const CHUNK = 24;
-const RADIUS = 120;
-const BLADES_PER_CHUNK = 12000;
-const FULL_DENSITY_DIST = 30;
+export const GRASS_RADIUS = 120;
+const BLADES_PER_CHUNK = 24000;
+const FULL_DENSITY_DIST = 22;
 const GRID = 2; // height sampling step inside a chunk, meters
+const CLUMP_SIZE = 0.9; // meters between clump centers
 
-/** A single tapered, slightly curved blade, 1 unit tall. Normals point up so blades shade like the ground. */
+/**
+ * A single tapered blade, 1 unit tall, leaning toward +z (instance scale.z sets how far).
+ * Normals curve across the width so the blade shades like a rounded leaf, not a flat card.
+ */
 function createBladeGeometry() {
-  const segments = 4;
+  const segments = 5;
   const positions: number[] = [];
+  const normals: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
+  const base = new THREE.Color(0.16, 0.2, 0.1);
+  const tip = new THREE.Color(1.05, 1.04, 0.86);
+  const c = new THREE.Color();
   for (let i = 0; i < segments; i++) {
     const t = i / segments;
-    const halfWidth = 0.032 * (1 - 0.8 * t);
-    const lean = 0.22 * t * t;
+    const halfWidth = 0.03 * (1 - 0.75 * t ** 1.4);
+    const lean = 0.35 * t * t;
     positions.push(-halfWidth, t, lean, halfWidth, t, lean);
-    const shade = 0.3 + 0.7 * t;
-    colors.push(shade, shade, shade, shade, shade, shade);
+    // Face direction tilts back as the blade leans forward.
+    const fz = 1, fy = 0.7 * t;
+    normals.push(-0.5, fy, fz, 0.5, fy, fz);
+    c.copy(base).lerp(tip, Math.pow(t, 0.8));
+    colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
   }
-  positions.push(0, 1, 0.22);
-  colors.push(1.05, 1.05, 1);
+  positions.push(0, 1, 0.35);
+  normals.push(0, 0.7, 1);
+  colors.push(tip.r, tip.g, tip.b);
   for (let i = 0; i < segments - 1; i++) {
     const a = i * 2;
     indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
@@ -34,9 +46,10 @@ function createBladeGeometry() {
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(positions.length / 3).fill([0, 1, 0]).flat(), 3));
   geo.setIndex(indices);
+  geo.normalizeNormals();
   return geo;
 }
 
@@ -51,18 +64,56 @@ function hashSeed(x: number, z: number) {
   };
 }
 
+/** Stateless hash of an integer cell to [0, 1). */
+function cellHash(ix: number, iz: number, k: number) {
+  let h = Math.imul(ix, 73856093) ^ Math.imul(iz, 19349663) ^ Math.imul(k, 83492791);
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+interface Clump { x: number; z: number; height: number; tint: number; lean: number }
+
+/** Nearest jittered clump center (cellular noise), with the clump's shared traits. */
+function clumpAt(x: number, z: number, out: Clump) {
+  const gx = Math.floor(x / CLUMP_SIZE), gz = Math.floor(z / CLUMP_SIZE);
+  let best = Infinity;
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const ix = gx + dx, iz = gz + dz;
+      const cx = (ix + cellHash(ix, iz, 1)) * CLUMP_SIZE;
+      const cz = (iz + cellHash(ix, iz, 2)) * CLUMP_SIZE;
+      const d = (cx - x) ** 2 + (cz - z) ** 2;
+      if (d < best) {
+        best = d;
+        out.x = cx;
+        out.z = cz;
+        out.height = 0.7 + 0.6 * cellHash(ix, iz, 3);
+        out.tint = cellHash(ix, iz, 4);
+        out.lean = 0.5 + cellHash(ix, iz, 5);
+      }
+    }
+  }
+  return Math.sqrt(best);
+}
+
 export class Grass {
   readonly group = new THREE.Group();
   private chunks = new Map<string, THREE.InstancedMesh>();
   private geometry = createBladeGeometry();
   private material: THREE.MeshPhysicalMaterial;
   private colorNoise = createNoise2D(hashSeed(11, 5));
-  private lush = new THREE.Color('#355a14');
-  private dry = new THREE.Color('#7d8a32');
+  private lush = new THREE.Color('#3d6a12');
+  private deep = new THREE.Color('#2a5014');
+  private dry = new THREE.Color('#8c9435');
 
   constructor(private height: HeightFn) {
-    // No specular: blade normals point up, so grazing views would otherwise mirror the sky as a blue sheen.
-    this.material = new THREE.MeshPhysicalMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9, specularIntensity: 0 });
+    this.material = new THREE.MeshPhysicalMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      roughness: 0.55,
+      specularIntensity: 0.25,
+    });
     addWind(
       this.material,
       /* glsl */ `
@@ -71,42 +122,48 @@ export class Grass {
         vec3 local = p - root;
         // Shrink into the ground at the edge of the grass radius, and widen distant blades to make up for thinning.
         local.y *= fade;
-        local.xz *= 1.0 + camDist / 30.0;
+        local.xz *= 1.0 + camDist / 25.0;
         float bladeHeight = length(instanceMatrix[1].xyz);
         float flex = position.y * position.y * bladeHeight;
-        p = root + local + windOffset(root, flex * 0.55) * fade;
+        p = root + local + windOffset(root, flex * 0.6) * fade;
         vTip = position.y;
       `,
-      { uFadeStart: { value: RADIUS * 0.65 }, uFadeEnd: { value: RADIUS } },
+      { uFadeStart: { value: GRASS_RADIUS * 0.6 }, uFadeEnd: { value: GRASS_RADIUS } },
     );
 
-    // Translucency: blades glow warm yellow-green when the sun is behind them, strongest at the tips.
     const patchVertex = this.material.onBeforeCompile;
     this.material.onBeforeCompile = (shader, renderer) => {
       patchVertex.call(this.material, shader, renderer);
       Object.assign(shader.uniforms, sunLight);
-      shader.vertexShader = 'varying float vTip;\n' + shader.vertexShader;
+      shader.vertexShader = ('varying float vTip;\n' + shader.vertexShader).replace(
+        '#include <beginnormal_vertex>',
+        // Bias normals upward so the field reads as one soft surface while blades keep some individual shading.
+        '#include <beginnormal_vertex>\nobjectNormal = normalize(mix(objectNormal, vec3(0.0, 1.0, 0.0), 0.45));',
+      );
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying float vTip;\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;')
         .replace(
           '#include <emissivemap_fragment>',
+          // Translucency: blades glow warm yellow-green when the sun is behind them, strongest at the tips.
           `#include <emissivemap_fragment>
           float backlit = pow(max(dot(normalize(-vViewPosition), uSunDirView), 0.0), 3.0);
-          totalEmissiveRadiance += uSunColor * diffuseColor.rgb * vec3(1.1, 1.25, 0.6) * backlit * vTip * vTip * 0.9;`,
-        );
+          totalEmissiveRadiance += uSunColor * diffuseColor.rgb * vec3(1.1, 1.25, 0.6) * backlit * vTip * vTip * 0.8;`,
+        )
+        // Blade bases sit in the field's shade; keep sky reflections off them.
+        .replace('#include <aomap_fragment>', '#include <aomap_fragment>\nreflectedLight.indirectSpecular *= vTip * vTip;');
     };
   }
 
   /** Builds or drops chunks around the viewer. `budget` caps new chunks per call to avoid frame hitches. */
   update(viewer: THREE.Vector3, budget = 3) {
     const cx0 = Math.floor(viewer.x / CHUNK), cz0 = Math.floor(viewer.z / CHUNK);
-    const span = Math.ceil(RADIUS / CHUNK);
+    const span = Math.ceil(GRASS_RADIUS / CHUNK);
     const wanted: { key: string; cx: number; cz: number; d: number }[] = [];
 
     for (let cz = cz0 - span; cz <= cz0 + span; cz++) {
       for (let cx = cx0 - span; cx <= cx0 + span; cx++) {
         const d = Math.hypot((cx + 0.5) * CHUNK - viewer.x, (cz + 0.5) * CHUNK - viewer.z);
-        if (d < RADIUS + CHUNK * 0.71) wanted.push({ key: `${cx},${cz}`, cx, cz, d });
+        if (d < GRASS_RADIUS + CHUNK * 0.71) wanted.push({ key: `${cx},${cz}`, cx, cz, d });
       }
     }
     wanted.sort((a, b) => a.d - b.d);
@@ -129,8 +186,10 @@ export class Grass {
         this.group.add(mesh);
       }
       // Blades are stored in random order, so drawing a prefix thins the chunk evenly.
-      const t = THREE.MathUtils.clamp((w.d - FULL_DENSITY_DIST) / (RADIUS - FULL_DENSITY_DIST), 0, 1);
-      mesh.count = Math.floor(mesh.userData.total * Math.max(0.12, (1 - t) ** 1.6));
+      // Distance to the chunk's nearest point, so the chunk you stand in is always full.
+      const near = Math.max(0, w.d - CHUNK * 0.71);
+      const t = THREE.MathUtils.clamp((near - FULL_DENSITY_DIST) / (GRASS_RADIUS - FULL_DENSITY_DIST), 0, 1);
+      mesh.count = Math.floor(mesh.userData.total * Math.max(0.06, (1 - t) ** 2.2));
     }
   }
 
@@ -144,6 +203,7 @@ export class Grass {
     const mesh = new THREE.InstancedMesh(this.geometry, this.material, BLADES_PER_CHUNK);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
+    const clump: Clump = { x: 0, z: 0, height: 1, tint: 0, lean: 1 };
     let placed = 0;
 
     for (let k = 0; k < BLADES_PER_CHUNK; k++) {
@@ -156,19 +216,22 @@ export class Grass {
       const slope = Math.hypot(h10 - h00, h01 - h00) / GRID;
 
       const x = x0 + lx, z = z0 + lz;
+      if (rand() > grassCoverage(h, slope)) continue;
       const dry = 0.5 + 0.5 * this.colorNoise(x * 0.012, z * 0.012);
-      // No grass on sand, steep slopes, or in sparse dry patches.
-      if (h < 2.4 + rand() * 1.2 || slope > 0.55 + rand() * 0.2) continue;
-      if (dry > 0.8 && rand() < (dry - 0.8) * 3) continue;
+      // Sparse, short patches where it's dry.
+      if (dry > 0.78 && rand() < (dry - 0.78) * 2.5) continue;
 
-      const bladeHeight = (0.5 + rand() * 0.65) * (1.15 - 0.35 * dry);
-      q.setFromAxisAngle(up, rand() * Math.PI * 2);
-      s.set(0.8 + rand() * 0.6, bladeHeight, 1);
-      p.set(x, h - 0.06, z);
+      const fromCenter = clumpAt(x, z, clump);
+      // Blades fan outward from their clump center and are tallest in the middle.
+      const outward = Math.atan2(x - clump.x, z - clump.z);
+      const bladeHeight = (0.45 + rand() * 0.45) * clump.height * (1.2 - 0.45 * fromCenter / CLUMP_SIZE) * (1.15 - 0.4 * dry);
+      q.setFromAxisAngle(up, outward + (rand() - 0.5) * 1.2);
+      s.set(0.75 + rand() * 0.6, bladeHeight, clump.lean * (0.6 + rand() * 0.8));
+      p.set(x, h - 0.05, z);
       mesh.setMatrixAt(placed, m.compose(p, q, s));
 
-      c.copy(this.lush).lerp(this.dry, Math.min(dry * dry * 0.8 + rand() * 0.2, 1));
-      c.multiplyScalar(0.85 + rand() * 0.3);
+      c.copy(this.deep).lerp(this.lush, clump.tint).lerp(this.dry, Math.min(dry * dry * 0.85 + rand() * 0.15, 1));
+      c.multiplyScalar(0.8 + rand() * 0.35);
       mesh.setColorAt(placed, c);
       placed++;
     }
@@ -180,7 +243,7 @@ export class Grass {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
     // Bounding sphere ignores wind and widening; pad it so chunks aren't culled early.
-    mesh.boundingSphere!.radius += 2;
+    mesh.boundingSphere!.radius += 3;
     return mesh;
   }
 }

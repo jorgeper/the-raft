@@ -89,6 +89,14 @@ const COLORS = {
   seabed: new THREE.Color('#6f6448'),
 };
 
+/** How likely grass grows here (0..1), from height above sea and slope (rise over run). Shared by grass and terrain shading. */
+export function grassCoverage(h: number, slope: number): number {
+  return smoothstep(2.4, 3.6, h) * (1 - smoothstep(0.5, 0.8, slope));
+}
+
+/** Distance (m) within which the ground is covered by grass blades; set by the grass system. */
+export const terrainUniforms = { uGrassRadius: { value: 120 } };
+
 export function createTerrainMesh(height: HeightFn): THREE.Mesh {
   const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, SEGMENTS, SEGMENTS);
   geo.rotateX(-Math.PI / 2);
@@ -101,12 +109,15 @@ export function createTerrainMesh(height: HeightFn): THREE.Mesh {
 
   const normals = geo.attributes.normal as THREE.BufferAttribute;
   const colors = new Float32Array(pos.count * 3);
+  const grass = new Float32Array(pos.count);
   const variation = createNoise2D(mulberry32(7));
   const c = new THREE.Color();
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const slope = 1 - normals.getY(i);
+    const ny = normals.getY(i);
+    const slope = 1 - ny;
+    grass[i] = grassCoverage(y, Math.sqrt(Math.max(1 - ny * ny, 0)) / ny);
     const v = 0.5 + 0.5 * variation(x * 0.012, z * 0.012);
     const fine = 0.5 + 0.5 * variation(x * 0.09 + 50, z * 0.09);
 
@@ -125,8 +136,40 @@ export function createTerrainMesh(height: HeightFn): THREE.Mesh {
     c.toArray(colors, i * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('aGrass', new THREE.BufferAttribute(grass, 1));
 
   const mat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.95, specularIntensity: 0.15 });
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, terrainUniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float aGrass;\nvarying float vGrass;\nvarying vec3 vWorld;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGrass = aGrass;\nvWorld = (modelMatrix * vec4(position, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        varying float vGrass;
+        varying vec3 vWorld;
+        uniform float uGrassRadius;
+        float tHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float tNoise(vec2 p) {
+          vec2 i = floor(p), f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(tHash(i), tHash(i + vec2(1, 0)), u.x), mix(tHash(i + vec2(0, 1)), tHash(i + vec2(1, 1)), u.x), u.y);
+        }`,
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        float camDist = distance(vWorld.xz, cameraPosition.xz);
+        // Under the blades the ground is in the grass's own shade; past the grass radius it stands in for the grass tops.
+        float under = vGrass * (1.0 - smoothstep(uGrassRadius * 0.5, uGrassRadius * 0.95, camDist));
+        diffuseColor.rgb *= mix(1.0, 0.3, under);
+        // Mottling so distant meadow and sand don't read as flat paint.
+        float mottle = tNoise(vWorld.xz * 0.35) * 0.6 + tNoise(vWorld.xz * 1.9) * 0.4;
+        diffuseColor.rgb *= 0.82 + 0.36 * mottle;`,
+      );
+  };
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   mesh.castShadow = true;

@@ -5,6 +5,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { WebGLRenderTarget } from 'three';
+import { AOPass } from './ao';
 
 const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
@@ -25,13 +26,15 @@ const AtmosphereShader = {
     tDiffuse: { value: null as THREE.Texture | null },
     tDepth: { value: null as THREE.Texture | null },
     tSky: { value: null as THREE.Texture | null },
+    tAO: { value: null as THREE.Texture | null },
+    uAOStrength: { value: 1 },
     uProjInv: { value: new THREE.Matrix4() },
     uViewInv: { value: new THREE.Matrix4() },
     uSunDir: { value: new THREE.Vector3(0, 1, 0) },
     uSunUv: { value: new THREE.Vector2() },
     uSunFacing: { value: 0 },
     uSunColor: { value: new THREE.Color(1, 0.9, 0.75) },
-    uFogDensity: { value: 0.0011 },
+    uFogDensity: { value: 0.0006 },
     uFogHeightFalloff: { value: 0.012 },
     uShaftStrength: { value: 0.5 },
   },
@@ -40,6 +43,8 @@ const AtmosphereShader = {
     uniform sampler2D tDiffuse;
     uniform sampler2D tDepth;
     uniform samplerCube tSky;
+    uniform sampler2D tAO;
+    uniform float uAOStrength;
     uniform mat4 uProjInv;
     uniform mat4 uViewInv;
     uniform vec3 uSunDir;
@@ -57,10 +62,12 @@ const AtmosphereShader = {
       return (uViewInv * vec4(view.xyz / view.w, 1.0)).xyz;
     }
 
-    // Brightness of open sky near the sun at a screen position; geometry blocks it.
+    // Open sky near the sun at a screen position; geometry blocks it. Only sky close to the sun
+    // emits, so shafts radiate from the sun rather than washing the whole view.
     float skyLight(vec2 uv) {
       if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
-      return texture2D(tDepth, uv).x >= 0.99999 ? 1.0 : 0.0;
+      float nearSun = 1.0 - smoothstep(0.0, 0.35, length((uv - uSunUv) * vec2(1.0, 0.6)));
+      return texture2D(tDepth, uv).x >= 0.99999 ? nearSun : 0.0;
     }
 
     void main() {
@@ -73,6 +80,7 @@ const AtmosphereShader = {
       ray /= dist;
 
       if (depth < 0.99999) {
+        color *= mix(1.0, texture2D(tAO, vUv).r, uAOStrength);
         // Exponential haze, thinner higher up (integrated along the ray).
         float h = max(camPos.y, 0.0);
         float dy = ray.y * dist;
@@ -102,7 +110,9 @@ const AtmosphereShader = {
         color += uSunColor * shaft * sunAlign * uSunFacing * uShaftStrength;
       }
 
-      gl_FragColor = vec4(color, 1.0);
+      // The sky's sun disc is orders of magnitude brighter than anything else; cap it so bloom
+      // stays a glow instead of a full-screen veil. Tone mapping saturates these values anyway.
+      gl_FragColor = vec4(min(color, vec3(12.0)), 1.0);
     }
   `,
 };
@@ -161,11 +171,15 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   composer.setSize(window.innerWidth, window.innerHeight);
 
   composer.addPass(new RenderPass(scene, camera));
+  const ao = new AOPass(camera);
+  composer.addPass(ao);
   const atmosphere = new DepthShaderPass(AtmosphereShader);
   atmosphere.uniforms.tSky.value = sky;
+  atmosphere.uniforms.tAO.value = ao.texture;
   composer.addPass(atmosphere);
-  // High threshold: only the sun and sky glimpsed through leaves should bloom, not the whole sky.
-  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.4, 0.7, 4);
+  // Small, tight bloom on the brightest highlights only; a wide radius lets the sky near the sun
+  // spill a milky veil over the whole frame.
+  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.2, 0.35, 6);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GradeShader);
@@ -177,6 +191,7 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   return {
     composer,
     atmosphere: atmosphere.uniforms,
+    ao: ao.uniforms,
     bloom,
     grade: grade.uniforms,
     setSize(width: number, height: number) {
