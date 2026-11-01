@@ -220,6 +220,10 @@ const fragmentShader = /* glsl */ `
     // Light travels down to the bottom and back up along the view ray.
     float path = max(rBottom - dist, 0.0) + depthV;
     vec3 seabed = texture2D(tSceneColor, ruv).rgb;
+    // The scene copy holds the wet sand's glint toward a low sun (or moon), far brighter than lit sand. Under water
+    // that glint doesn't exist, and absorbing the red out of it tone-mapped to a cyan blob at the waterline.
+    float seabedLuma = dot(seabed, vec3(0.2126, 0.7152, 0.0722));
+    seabed *= min(1.0, 2.2 / max(seabedLuma, 1e-4));
 
     float sunUp = smoothstep(-0.02, 0.15, uSunDir.y);
     float light = clamp(dot(uSunColor, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);

@@ -4,6 +4,11 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Next
 
+0. **User's third queue (2026-11-01):** every open item below, except buildings: the world should feel virgin
+   wilderness for now (no longhouses, towers, campfires or other built things; buildings come later). Then a
+   **soundscape** (wind, birds, crickets and owls, frogs, surf, rain, torch crackle, footsteps by surface).
+   1. ~~Moonlit nights~~ (done, see Done).
+
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
    2. ~~A **Performance** panel section~~ (done: `perf` in main.ts; switches fold into the preset in `applyPerf`).
@@ -114,6 +119,25 @@ In priority order: the first items are the user's requests for the next sessions
 - Nights are very dark without the torch, by design.
 
 ## Done
+
+- Moonlit nights, and the black holes in the night sky (user, 2026-11-01):
+  - **Black cloud-shaped holes at night** (older bug): in a dark navy sky the grade's teal shadow tint and saturation
+    push drove red below zero, the luminance went <= 0 and the S-curve's ratio multiplied the pixel to black. Clouds
+    and a far island at night, slightly darker than the open sky, turned into black cut-outs that hid the stars.
+    The grade now clamps channels at zero after contrast.
+  - **Moonlit clouds**: the moon lights them at night (`uMoonLight`, from night × phase × overcast): silver tops,
+    blue-grey bellies, a silver lining toward the moon; the volumetric march self-shadows toward the moon.
+  - **Silver-blue moonlight**: color (0.62, 0.73, 1) scaled by phase (full 1.15×, new 0.4×); a wide glow around a
+    bright moon in the sky; the haze toward the moon is silver instead of sunset orange, with no violet hue split.
+  - **Rod vision** (`uScotopic` in the atmosphere pass): dim surfaces at night lose color toward silver-blue (60%),
+    bright ones and the torch's pool of light stay in color. The grade eases its saturation push and teal shadow at
+    night, so the sky reads deep navy instead of neon royal blue.
+  - The sea glowed brighter at night than at noon: the water's light carried the light's color but not its
+    strength while night exposure is ~7×. Now scaled by the light's intensity.
+  - Lens-flare ghosts no longer follow the moon (`uFlareOn`). Aurora layers are dithered per pixel, so they blend
+    into one curtain instead of horizontal bands. A cyan blob at the waterline under a low sun is gone: the
+    refracted seabed (the wet sand's glint) is capped before the water absorbs its red.
+  - Shots: `.playwright-mcp/wild/` (`base-*`, `b-*` before; `n5-*`, `n6-torch.jpg` after).
 
 - Dreamier defaults, TAA off (user, 2026-11-01): whimsy 0.6 → 0.9, teal shade 0.6, hue split 1 → 1.4, cyan/gold
   tint 0.55 → 0.75 (a more violet sky, rosier haze toward the sun, teal shade, richer golden sunsets; shots

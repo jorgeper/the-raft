@@ -250,6 +250,7 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uMoonDir;
   /** 0 = new, 0.5 = full, 1 = new again. */
   uniform float uMoonPhase;
+  uniform float uMoonLight;
   uniform float uAurora;
   uniform float uMilkyWay;
   varying vec3 vWorldPosition;
@@ -281,8 +282,11 @@ const fragmentShader = /* glsl */ `
       // Rays run straight up the curtains: keyed to the compass bearing, so they keep their size down to the horizon
       // (keyed to the projected position they aliased into wavy bands there).
       float bearing = atan(d.x, d.z);
+      // Each pixel shifts the ten layers by its own fraction of a step, so they blend into one curtain instead of
+      // stacking into horizontal bands across the sky.
+      float layerJitter = starHash(floor(d * 1400.0) + 0.37);
       for (int i = 0; i < 10; i++) {
-        float h = float(i) / 10.0;
+        float h = (float(i) + layerJitter) / 10.0;
         // Where this view ray crosses a layer of the curtain (higher layers are further out at a given angle).
         vec2 pp = d.xz / (y + 0.05) * (0.35 + h * 0.5);
         float fold = noise(vec2(pp.x * 0.35 + uTime * 0.015, pp.y * 0.12)) * 1.8;
@@ -315,6 +319,8 @@ const fragmentShader = /* glsl */ `
     }
     float full = 1.0 - abs(uMoonPhase * 2.0 - 1.0);
     c += vec3(0.6, 0.7, 1.0) * (pow(max(cm, 0.0), 300.0) * 0.06 + pow(max(cm, 0.0), 30.0) * 0.008) * full * step(-0.05, uMoonDir.y);
+    // Moonlit air: a wide silver-blue glow around a bright moon, so its side of the sky is the luminous one.
+    c += vec3(0.5, 0.62, 0.95) * (pow(max(cm, 0.0), 4.0) * 0.012 + pow(max(cm, 0.0), 40.0) * 0.012) * uMoonLight;
 
     // A shooting star every few seconds, somewhere up high.
     float slot = floor(uTime / 5.0), tl = fract(uTime / 5.0) * 5.0;
@@ -410,6 +416,9 @@ const fragmentShader = /* glsl */ `
       // Bright rims toward the sun.
       float edge = mask * (1.0 - mask) * 4.0;
       cloud += uGlow * (pow(fwd, 6.0) * 0.8 + pow(fwd, 60.0) * 1.2) * (0.4 + edge);
+      // Silver linings toward the moon.
+      float fwdMoon = max(dot(d, uMoonDir), 0.0) * step(-0.05, uMoonDir.y);
+      cloud += vec3(0.7, 0.8, 1.0) * uMoonLight * 0.08 * (pow(fwdMoon, 6.0) * 0.8 + pow(fwdMoon, 60.0) * 1.2) * (0.4 + edge);
       // Distant clouds sink into the horizon haze.
       float fade = smoothstep(0.0, 0.18, y);
       cloud = mix(horizon, cloud, fade);
@@ -475,6 +484,8 @@ export function createSky() {
     uNight: { value: 0 },
     uMoonDir: { value: new THREE.Vector3(0, 1, 0) },
     uMoonPhase: { value: 0.5 },
+    /** How much moonlight the clouds and the sky around the moon catch (0 = none; main.ts: night, phase, overcast). */
+    uMoonLight: { value: 0 },
     uAurora: { value: 0 },
     uMilkyWay: { value: 1 },
   };
@@ -526,6 +537,14 @@ export function createSky() {
       sample(stops, elevation, 'cloudLit', u.uCloudLit.value);
       sample(stops, elevation, 'cloudShade', u.uCloudShade.value);
       sample(stops, elevation, 'wisp', u.uWisp.value);
+      // Moonlit clouds: silver tops and blue-grey bellies, brighter than the night sky behind them instead of black
+      // cut-outs against the stars.
+      const moon = u.uMoonLight.value;
+      if (moon > 0) {
+        u.uCloudLit.value.r += 0.034 * moon; u.uCloudLit.value.g += 0.04 * moon; u.uCloudLit.value.b += 0.054 * moon;
+        u.uCloudShade.value.r += 0.008 * moon; u.uCloudShade.value.g += 0.011 * moon; u.uCloudShade.value.b += 0.02 * moon;
+        u.uWisp.value.r += 0.014 * moon; u.uWisp.value.g += 0.017 * moon; u.uWisp.value.b += 0.025 * moon;
+      }
       if (overcast > 0) {
         // Overcast: the dome flattens into a soft grey-violet, a little warmer under the hidden sun, the glow gone.
         const level = (u.uHorizon.value.r * 0.2126 + u.uHorizon.value.g * 0.7152 + u.uHorizon.value.b * 0.0722) * 0.55;

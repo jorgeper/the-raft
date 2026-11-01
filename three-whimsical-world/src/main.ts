@@ -252,6 +252,11 @@ function updateSun() {
 
   // Rose-gold palette before noon, magenta-violet after.
   const overcast = weather.overcast;
+  // Moonlight, by phase: a full moon lights the night silver-blue, a thin crescent barely at all.
+  const moonFull = 1 - Math.abs(settings.moonPhase * 2 - 1);
+  const moonBright = 0.4 + 0.75 * moonFull;
+  const nightK = 1 - THREE.MathUtils.smoothstep(elevation, -9, -1);
+  sky.uniforms.uMoonLight.value = nightK * moonBright * (1 - 0.6 * overcast);
   sky.update(sunDir, elevation, settings.time >= 13 || settings.time < 1, weather.clouds, overcast);
   sky.uniforms.uSunDisc.value = 12 * (1 - overcast);
 
@@ -261,7 +266,8 @@ function updateSun() {
   const warmth = THREE.MathUtils.smoothstep(elevation, 2, 30);
   // Valheim's sunlight stays golden even at noon.
   const sunColor = new THREE.Color(1, 0.62 + 0.3 * warmth, 0.38 + 0.42 * warmth);
-  const moonColor = new THREE.Color(0.55, 0.65, 1);
+  // Silver-blue moonlight.
+  const moonColor = new THREE.Color(0.62, 0.73, 1).multiplyScalar(moonBright);
   lightDir.copy(daylight > 0.05 ? sunDir : moonDir);
   lightColor.copy(moonColor).multiplyScalar((0.6 + 0.25 * Math.min(nightVision(), 1)) * night).lerp(sunColor, daylight);
   sun.color.copy(lightColor);
@@ -282,17 +288,21 @@ function updateSun() {
   water.uniforms.uSunDir.value.copy(lightDir);
   const luma = lightColor.r * 0.2126 + lightColor.g * 0.7152 + lightColor.b * 0.0722;
   scatterSun.copy(lightColor).lerp(new THREE.Color(luma, luma, luma), overcast).multiplyScalar(1 - 0.75 * overcast);
-  water.uniforms.uSunColor.value.copy(scatterSun);
+  // The water's light carries the light's strength as well as its color: at night the moon is ~4x dimmer than the
+  // sun while exposure is ~7x higher, so a color-only light made the shallows glow brighter than at noon.
+  water.uniforms.uSunColor.value.copy(scatterSun).multiplyScalar(Math.min(1, sun.intensity / 8 + 0.15 * daylight));
   // The haze's violet seam and orange scatter fade with the sun under overcast, like the sky's.
-  post.atmosphere.uHueSplit.value = sky.uniforms.uHueSplit.value * (1 - 0.85 * overcast);
+  post.atmosphere.uHueSplit.value = sky.uniforms.uHueSplit.value * (1 - 0.85 * overcast) * (1 - nightK);
   post.atmosphere.uShaftStrength.value = shaftStrength.value * daylight * (1 - overcast);
   post.atmosphere.uVolumetric.value = volumetric.value * daylight * (1 - 0.85 * overcast);
+  post.atmosphere.uFlareOn.value = daylight;
+  post.atmosphere.uScotopic.value = nightK;
+  post.grade.uNight.value = nightK;
   // Night sky: moon and Milky Way (washed out by a bright moon), aurora on clear nights.
   const nightSky = 1 - THREE.MathUtils.smoothstep(elevation, -10, -2);
   sky.uniforms.uNight.value = nightSky;
   sky.uniforms.uMoonDir.value.copy(moonDir);
   sky.uniforms.uMoonPhase.value = settings.moonPhase;
-  const moonFull = 1 - Math.abs(settings.moonPhase * 2 - 1);
   sky.uniforms.uMilkyWay.value = (1 - 0.6 * moonFull) * (1 - overcast);
   sky.uniforms.uAurora.value = settings.aurora * (1 - THREE.MathUtils.smoothstep(overcast, 0.2, 0.6));
 

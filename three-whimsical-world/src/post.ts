@@ -44,6 +44,10 @@ const AtmosphereShader = {
     uSunDir: { value: new THREE.Vector3(0, 1, 0) },
     uSunUv: { value: new THREE.Vector2() },
     uSunFacing: { value: 0 },
+    /** 1 by day; the flare ghosts belong to the sun, not the moon (the light direction at night). */
+    uFlareOn: { value: 1 },
+    /** Night vision through the rods: dim surfaces lose their color and turn silver-blue (main.ts: 0 by day). */
+    uScotopic: { value: 0 },
     uSunColor: { value: new THREE.Color(1, 0.9, 0.75) },
     /** 0..1 how strong a rainbow stands opposite the sun (weather.ts). */
     uRainbow: { value: 0 },
@@ -108,6 +112,8 @@ const AtmosphereShader = {
     uniform vec3 uSunDir;
     uniform vec2 uSunUv;
     uniform float uSunFacing;
+    uniform float uFlareOn;
+    uniform float uScotopic;
     uniform vec3 uSunColor;
     uniform float uRainbow;
     ${RAINBOW}
@@ -195,7 +201,7 @@ const AtmosphereShader = {
       float sunUpV = smoothstep(-0.05, 0.08, uSunDir.y);
       // Sunlight scattered by the haze has come a long way through it, so it reaches the eye orange rather than
       // white-gold: a saturated version of the sun's color (luma kept), deeper in forests' thick air.
-      vec3 scatterColor = uSunColor * mix(vec3(1.0), vec3(1.3, 0.86, 0.5), uHueSplit * mix(0.6, 1.0, uForest));
+      vec3 scatterColor = uSunColor * mix(vec3(1.0), vec3(1.3, 0.86, 0.5), uHueSplit * mix(0.6, 1.0, uForest) * (1.0 - uScotopic));
 
       if (isSky && uCloudsOn > 0.5) {
         // A small tent filter over the half-res march: its per-pixel jitter reads as stripes when sampled raw.
@@ -218,6 +224,15 @@ const AtmosphereShader = {
       if (!isSky) {
         color *= mix(1.0, texture2D(tAO, vUv).r, uAOStrength * uAOOn);
         color *= shade;
+        // Moonlit night: under dim light the eye sees with its rods, so color drains away and what's left reads
+        // silver-blue (the Purkinje shift). Bright light (the torch, a lit window of sky) stays in color.
+        if (uScotopic > 0.0) {
+          float lum = dot(color, vec3(0.2126, 0.7152, 0.0722));
+          float rod = uScotopic * (1.0 - smoothstep(0.015, 0.2, lum));
+          // Firelight keeps its warmth: the torch's pool of light is seen in color.
+          if (dot(uTorchColor, uTorchColor) > 0.0) rod *= smoothstep(5.0, 16.0, distance(world, uTorchPos));
+          color = mix(color, lum * vec3(0.82, 0.95, 1.16), rod * 0.6);
+        }
         // Valheim's shade is blue-teal: what the sun doesn't reach is lit by the sky alone. Shift its hue (luma
         // kept) toward teal, more under a forest canopy. Cloud shadow counts as shade too.
         float inShade = (1.0 - visPair.y * shade) * sunUpV;
@@ -258,6 +273,8 @@ const AtmosphereShader = {
         vec3 warm = mix(uFogWarm, vec3(1.75, 0.82, 0.62), clamp(uWhimsy, 0.0, 1.0));
         float warmW = pow(toSun, mix(2.0, 1.4, clamp(uWhimsy, 0.0, 1.0)));
         vec3 tint = mix(cool, warm, warmW);
+        // At night the light is the moon's: the haze toward it is silver, not sunset orange.
+        tint = mix(tint, vec3(0.78, 0.92, 1.2), uScotopic * 0.85);
         // A lilac-pink stop between teal and gold (an RGB blend of the two is grey), so the haze runs
         // blue -> violet-pink -> orange around the view, as Valheim's does.
         tint *= mix(vec3(1.0), vec3(1.2, 0.84, 1.02), uHueSplit * 4.0 * warmW * (1.0 - warmW));
@@ -381,7 +398,7 @@ const AtmosphereShader = {
       }
 
       // Lens flare ghosts strung along the line from the sun through the screen center, when the sun is visible.
-      if (uWhimsy > 0.0 && uSunFacing > 0.0) {
+      if (uWhimsy > 0.0 && uSunFacing > 0.0 && uFlareOn > 0.0) {
         float seen = 0.0;
         for (int k = 0; k < 5; k++) {
           vec2 o = vec2(cos(float(k) * 1.256), sin(float(k) * 1.256)) * 0.012;
@@ -401,7 +418,7 @@ const AtmosphereShader = {
             float disc = smoothstep(rs[k], rs[k] * 0.7, d) * (0.6 + 0.4 * smoothstep(rs[k] * 0.5, rs[k], d));
             flare += cs[k] * disc;
           }
-          color += flare * uSunColor * seen * uSunFacing * uWhimsy * 0.18;
+          color += flare * uSunColor * seen * uSunFacing * uWhimsy * 0.18 * uFlareOn;
         }
       }
 
@@ -437,6 +454,8 @@ const GradeShader = {
     uColorRichness: { value: 0.5 },
     /** Lifts the deepest shade so dark scenes stay readable (main.ts sets it from "see in the dark"). */
     uShadowLift: { value: 0.45 },
+    /** 1 at night: the saturation push and teal shadow tint ease off, so the night sky reads deep navy, not neon. */
+    uNight: { value: 0 },
   },
   vertexShader: fullscreenVertex,
   fragmentShader: /* glsl */ `
@@ -449,6 +468,7 @@ const GradeShader = {
     uniform float uWarmth;
     uniform float uVignette;
     uniform float uWhimsy;
+    uniform float uNight;
     varying vec2 vUv;
     void main() {
       vec3 c = texture2D(tDiffuse, vUv).rgb;
@@ -456,9 +476,13 @@ const GradeShader = {
       // Split toning: gold highlights, teal shadows (pushed further by whimsy).
       float warmth = uWarmth + 0.06 * uWhimsy;
       c += warmth * vec3(0.9, 0.45, -0.3) * smoothstep(0.45, 1.0, l);
-      c += (warmth + 0.05 * uWhimsy) * vec3(-0.35, 0.1, 0.25) * (1.0 - smoothstep(0.0, 0.4, l));
-      c = mix(vec3(l), c, uSaturation + 0.18 * uWhimsy);
+      c += (warmth + 0.05 * uWhimsy) * vec3(-0.35, 0.1, 0.25) * (1.0 - smoothstep(0.0, 0.4, l)) * (1.0 - 0.7 * uNight);
+      c = mix(vec3(l), c, mix(uSaturation + 0.18 * uWhimsy, 0.9, uNight));
       c = (c - 0.5) * uContrast + 0.5;
+      // The teal shadow tint and the saturation push can drive a channel below zero in very dark blues (night sky,
+      // a far island at night). Left negative, the luminance below came out <= 0 and the S-curve's ratio then
+      // multiplied the pixel to black: cloud-shaped black holes in the night sky.
+      c = max(c, vec3(0.0));
       // S-curve on luminance (hue and saturation kept), so shade gets richer and highlights glow.
       float lc = clamp(dot(c, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
       // Full strength in the shade, half in the highlights, so bright skies don't lift toward white.

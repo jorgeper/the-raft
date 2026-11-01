@@ -44,6 +44,9 @@ function createMaterial(sky: SkyUniforms) {
       uSunHorizon: sky.uSunHorizon,
       uClouds: sky.uClouds,
       uTime: sky.uTime,
+      uNight: sky.uNight,
+      uMoonDir: sky.uMoonDir,
+      uMoonLight: sky.uMoonLight,
     },
     vertexShader,
     fragmentShader: /* glsl */ `
@@ -59,6 +62,9 @@ function createMaterial(sky: SkyUniforms) {
       uniform vec3 uSunHorizon;
       uniform float uClouds;
       uniform float uTime;
+      uniform float uNight;
+      uniform vec3 uMoonDir;
+      uniform float uMoonLight;
       varying vec2 vUv;
 
       ${CLOUD_NOISE}
@@ -107,14 +113,18 @@ function createMaterial(sky: SkyUniforms) {
         float stepLen = (t1 - t0) / float(STEPS);
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + uNoiseOffset);
 
-        float cosT = dot(dir, uSunDir);
+        // At night the moon lights them: its direction for the self-shadowing and the silver lining.
+        bool moonLit = uNight > 0.5;
+        vec3 Ldir = moonLit ? uMoonDir : uSunDir;
+        float cosT = dot(dir, Ldir);
         // Henyey-Greenstein, forward lobe plus a little back-scatter: silver linings toward the sun.
         float g = 0.55;
         float hg = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cosT, 1.5) * 0.25;
         // A low (or just-set) sun lights the clouds from below and the side: shorter shadowing paths, so they
         // glow in the afterglow instead of going dark. The table dims cloudLit itself as the sun goes down.
-        float lowSun = 1.0 - smoothstep(0.05, 0.35, uSunDir.y);
-        vec3 lightDir = normalize(vec3(uSunDir.x, max(uSunDir.y, 0.08), uSunDir.z));
+        float lowSun = moonLit ? 0.0 : 1.0 - smoothstep(0.05, 0.35, uSunDir.y);
+        vec3 lightDir = normalize(vec3(Ldir.x, max(Ldir.y, 0.08), Ldir.z));
+        vec3 glow = uGlow + vec3(0.7, 0.8, 1.0) * uMoonLight * 0.05;
 
         const float SIGMA = 0.007;
         float T = 1.0;
@@ -131,7 +141,7 @@ function createMaterial(sky: SkyUniforms) {
           float powder = 1.0 - exp(-d * 6.0);
           float h = clamp((p.y - BASE) / (TOP - BASE), 0.0, 1.0);
           vec3 ambient = uCloudShade * (0.3 + 0.8 * h);
-          vec3 direct = (uCloudLit * 0.75 + uGlow * hg * 1.5) * sunT * mix(0.45, 1.0, powder);
+          vec3 direct = (uCloudLit * 0.75 + glow * hg * 1.5) * sunT * mix(0.45, 1.0, powder);
           vec3 col = ambient + direct;
           float a = 1.0 - exp(-SIGMA * d * stepLen);
           S += T * a * col;
