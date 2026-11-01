@@ -4,21 +4,6 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Next
 
-2. **Less fog and sun glare** (user request: "looking at the sun blinds too much, seems way bright", then
-   "just feels maybe too foggy?"):
-   - The whole scene may be too hazy, and the glare is partly haze lit by the sun. Haze density is the "haze"
-     slider (0.0008), ×7 in forests and ×(1 + 0.9·whimsy), so ×1.54 at the default whimsy; on top sit the
-     ground fog (0.35) and the volumetric in-scatter. Find a clearer default: distant hills and tree lines
-     should read with depth, not a milky veil, while forests keep their beams.
-   - Looking toward the sun should feel warm and luminous, not white-out. Several effects stack in that direction:
-     the sky's sun disc (`uSunDisc` 12 in `src/sky.ts`) and its glow lobes, the haze's forward glow toward the
-     sun and the volumetric phase lobe (`src/post.ts`), bloom (threshold 6 against the 6.6 HDR cap), the whimsy
-     glow pass and flare ghosts, and the grade's S-curve lifting the highlights.
-   - Bisect first: shoot the same sun-facing frames (meadow and forest, low sun and noon, whimsy 0 and default)
-     and switch each effect off through `__app.post` to see which ones make up the white-out.
-   - Likely fixes: a smaller, dimmer disc with a soft falloff, a tighter forward-haze lobe, a lower HDR cap near
-     the sun, and less highlight lift in the grade; maybe soft eye adaptation (exposure drops a little while
-     the sun fills the view). Keep the beams and the golden glow around the sun that the user likes.
 3. **Valheim look pass**: match the user's reference shots in `reference/`, not just generic realism.
    - First pass landed: painted sky (`src/sky.ts`), Neutral tone mapping, luminous sun-glowing haze, lime grass,
      golden light. Side-by-side grid: `.playwright-mcp/look/compare2.jpg` (regenerate with `.playwright-mcp/compare.js`).
@@ -89,6 +74,11 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Less fog and sun glare. A bisect showed ground fog lit by the bright haze toward the sun made most of the
+  white-out, not the disc or bloom. Ground fog is now 0.22 and burns off as the sun climbs, its mist is capped in
+  brightness, haze is 0.0006 with half the whimsy boost, the forward-scatter lobe is tighter and capped, the sky's
+  middle glow is dimmer, the grade lifts highlights half as much, and the eye adapts (up to −22% exposure) while
+  looking into the sun. Before/after grid: `.playwright-mcp/glare/g3.jpg`.
 - Graphics quality presets (Display → graphics quality: Low / Medium / High / Ultra, `src/quality.ts`) scale
   render scale, sun shadow map and reach, grass and fern density and reach, volumetric steps, AO resolution,
   glow pass and motes together; FPS counter bottom-left (P toggles). At 1280×720 in the headless browser, back to

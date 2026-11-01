@@ -163,11 +163,11 @@ const settings = {
   daySpeed: 0,
   clouds: 0.38,
   exposure: renderer.toneMappingExposure,
-  fogDensity: 0.0008,
+  fogDensity: 0.0006,
   /** Valheim's dreamy side: two-tone haze, stronger beams, lens flares, soft glow, floating motes and fireflies. */
   whimsy: 0.6,
   /** Mist lying on the ground: amount, layer height (m), and how broken into banks it is. */
-  groundFog: 0.35,
+  groundFog: 0.22,
   groundFogHeight: 3,
   groundFogPatchy: 0.6,
 };
@@ -176,6 +176,8 @@ const moonDir = new THREE.Vector3();
 const lightDir = new THREE.Vector3();
 const lightColor = new THREE.Color();
 let daylight = 1;
+/** Exposure before eye adaptation, and the adaptation factor (dips a little while you look into the sun). */
+let baseExposure = 0.65, eyeAdapt = 1;
 
 /** A long Nordic summer day: sunrise ~05:00 behind the land, sunset ~21:00 over the sea, a short dip at night. */
 function sunPath(hours: number) {
@@ -212,7 +214,8 @@ function updateSun() {
   sun.intensity = daylight > 0.05 ? 8 * daylight : 2.2;
   nightFill.intensity = 1.4 * night;
   (stars.material as THREE.PointsMaterial).opacity = night;
-  renderer.toneMappingExposure = settings.exposure * (1 + 1.6 * night);
+  baseExposure = settings.exposure * (1 + 1.6 * night);
+  renderer.toneMappingExposure = baseExposure * eyeAdapt;
 
   water.uniforms.uSunDir.value.copy(lightDir);
   water.uniforms.uSunColor.value.copy(lightColor);
@@ -657,6 +660,13 @@ renderer.setAnimationLoop((now) => {
   const altitude = camera.position.y - world.height(camera.position.x, camera.position.z);
   const forestHere = world.fns.forest(camera.position.x, camera.position.z) * (1 - THREE.MathUtils.smoothstep(altitude, 5, 40));
   post.atmosphere.uForest.value += (forestHere - post.atmosphere.uForest.value) * Math.min(dt * 1.5, 1);
+
+  // Eye adaptation: looking into the sun stops the view down a little, so it glows instead of blinding;
+  // under a canopy most of it is hidden, so adapt less there.
+  const intoSun = THREE.MathUtils.smoothstep(camera.getWorldDirection(lookDir).dot(lightDir), 0.7, 0.97) * daylight;
+  const adaptTarget = 1 - 0.22 * intoSun * (1 - 0.6 * post.atmosphere.uForest.value);
+  eyeAdapt += (adaptTarget - eyeAdapt) * Math.min(dt * 1.5, 1);
+  renderer.toneMappingExposure = baseExposure * eyeAdapt;
 
   // Keep the shadow frustum centered on the viewer.
   sun.target.position.copy(camera.position);

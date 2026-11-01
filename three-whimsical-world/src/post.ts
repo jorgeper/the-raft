@@ -36,13 +36,15 @@ const AtmosphereShader = {
     uSunUv: { value: new THREE.Vector2() },
     uSunFacing: { value: 0 },
     uSunColor: { value: new THREE.Color(1, 0.9, 0.75) },
-    uFogDensity: { value: 0.0008 },
+    uFogDensity: { value: 0.0006 },
     uFogHeightFalloff: { value: 0.012 },
     uShaftStrength: { value: 0.5 },
     // Valheim's split light: haze turns cyan away from the sun and gold toward it.
     uFogCool: { value: new THREE.Color(0.7, 1.0, 1.18) },
     uFogWarm: { value: new THREE.Color(1.4, 1.0, 0.55) },
     uTintStrength: { value: 0.55 },
+    /** Gold glow of the haze between you and the sun. */
+    uForwardGlow: { value: 1 },
     /** 0 in the open, 1 deep in a forest: thicker, more strongly tinted haze and stronger shafts. */
     uForest: { value: 0 },
     // Volumetric sunlight: march each view ray through the sun's shadow map.
@@ -55,7 +57,7 @@ const AtmosphereShader = {
     /** 0 = natural; up to 1 (or beyond) = Valheim's dreamy look: thicker two-tone haze, stronger beams, flares. */
     uWhimsy: { value: 0 },
     // Ground fog: a layer hugging the terrain, thickest in hollows, broken into drifting patches.
-    uGroundFog: { value: 0.35 },
+    uGroundFog: { value: 0.22 },
     uGroundFogHeight: { value: 3 },
     uGroundFogPatchy: { value: 0.6 },
     /** Terrain height under the camera: the fog layer's base. */
@@ -84,6 +86,7 @@ const AtmosphereShader = {
     uniform vec3 uFogCool;
     uniform vec3 uFogWarm;
     uniform float uTintStrength;
+    uniform float uForwardGlow;
     uniform float uForest;
     uniform sampler2DShadow tShadow;
     uniform mat4 uShadowMatrix;
@@ -169,7 +172,7 @@ const AtmosphereShader = {
           : 1.0;
         // Forests hold a thick haze near the ground (it doesn't thin with height inside the canopy).
         // Whimsy thickens the air, so tree rows behind each other fade into flat colored layers.
-        float density = uFogDensity * mix(1.0, 7.0, uForest) * (1.0 + 0.9 * uWhimsy);
+        float density = uFogDensity * mix(1.0, 7.0, uForest) * (1.0 + 0.5 * uWhimsy);
         float optical = density * dist * mix(exp(-uFogHeightFalloff * h) * heightTerm, 1.0, uForest);
         float fog = 1.0 - exp(-optical);
         vec3 horizonDir = normalize(vec3(ray.x, 0.04 + max(ray.y, 0.0) * 0.5, ray.z));
@@ -188,8 +191,12 @@ const AtmosphereShader = {
         fogColor *= mix(vec3(1.0), tint, clamp(uTintStrength + 0.5 * uForest + 0.45 * uWhimsy, 0.0, 1.0));
         // Forward scattering: haze between you and a low sun glows gold (and orange under the canopy).
         float sunLow = 1.0 - smoothstep(0.1, 0.7, uSunDir.y);
-        float forward = pow(max(dot(ray, uSunDir), 0.0), 5.0) * (0.6 + 1.6 * sunLow) * (1.0 + uForest);
-        fogColor += uSunColor * forward * smoothstep(-0.06, 0.04, uSunDir.y) * 1.6;
+        // A tight lobe: a warm glow around the sun, not a white-out across half the view.
+        float forward = pow(max(dot(ray, uSunDir), 0.0), 9.0) * (0.5 + 1.2 * sunLow) * (1.0 + 0.6 * uForest);
+        fogColor += uSunColor * forward * smoothstep(-0.06, 0.04, uSunDir.y) * 1.3 * uForwardGlow;
+        // Even toward the sun the haze stays a colored glow rather than clipping to white.
+        float fogPeak = dot(fogColor, vec3(0.2126, 0.7152, 0.0722));
+        fogColor *= min(1.0, 3.2 / max(fogPeak, 1e-4));
         // Haze in the canopy's shadow is darker than haze in the sun (strongest in forests, a hint elsewhere).
         fogColor *= mix(1.0, 0.3 + 0.7 * vis, (0.25 + 0.65 * uForest) * sunUpV * min(uVolumetric, 1.0));
         color = mix(color, fogColor, fog);
@@ -209,9 +216,14 @@ const AtmosphereShader = {
             n += gNoise(q.xz * 0.03 + uTime * vec2(0.025, 0.01)) * 0.65 + gNoise(q.xz * 0.11 - uTime * vec2(0.01, 0.03)) * 0.35;
           }
           float patches = mix(1.0, smoothstep(0.3, 0.75, n / 3.0) * 2.0, uGroundFogPatchy);
-          float g = 1.0 - exp(-uGroundFog * 0.012 * integral * patches * (1.0 + 0.8 * uWhimsy));
-          // Low mist is lit like the haze but a little brighter and milkier.
-          vec3 mist = mix(fogColor, vec3(dot(fogColor, vec3(0.333))), 0.25) * 1.12;
+          // Mist lies thick at dawn and dusk and burns off as the sun climbs.
+          float burnOff = mix(1.0, 0.3, smoothstep(0.12, 0.55, uSunDir.y));
+          float g = 1.0 - exp(-uGroundFog * 0.012 * integral * patches * (1.0 + 0.5 * uWhimsy) * burnOff);
+          // Low mist is lit like the haze but milkier, and dimmer than the bright haze toward the sun, so a meadow
+          // looking into a low sun keeps its shapes.
+          vec3 mist = mix(fogColor, vec3(dot(fogColor, vec3(0.333))), 0.25);
+          float mistLuma = dot(mist, vec3(0.2126, 0.7152, 0.0722));
+          mist *= min(1.0, 1.6 / max(mistLuma, 1e-4));
           color = mix(color, mist, g);
         }
       }
@@ -329,7 +341,8 @@ const GradeShader = {
       c = (c - 0.5) * uContrast + 0.5;
       // S-curve on luminance (hue and saturation kept), so shade gets richer and highlights glow.
       float lc = clamp(dot(c, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
-      float ls = mix(lc, lc * lc * (3.0 - 2.0 * lc), uDepth);
+      // Full strength in the shade, half in the highlights, so bright skies don't lift toward white.
+      float ls = mix(lc, lc * lc * (3.0 - 2.0 * lc), uDepth * (lc < 0.5 ? 1.0 : 0.5));
       c *= ls / max(lc, 1e-4);
       // Three-way grade, weighted by luminance band so every frame holds cool shade, rosy mids and warm light.
       float k = uColorRichness * (1.0 + 0.5 * uWhimsy);

@@ -225,7 +225,7 @@ const fragmentShader = /* glsl */ `
     vec3 col = mix(horizon, uZenith, smoothstep(0.0, 1.0, pow(up, mix(0.6, 0.45, lowSun))));
     // Warm glow around the sun: a wide soft halo plus a tighter bright one.
     float fwd = max(cosT, 0.0);
-    col += uGlow * (mix(0.12, 0.3, lowSun) * pow(fwd, 5.0) + 0.5 * pow(fwd, 40.0) + 0.6 * pow(fwd, 600.0));
+    col += uGlow * (mix(0.12, 0.3, lowSun) * pow(fwd, 5.0) + 0.35 * pow(fwd, 40.0) + 0.6 * pow(fwd, 600.0));
     // Below the horizon (seen in reflections and the lighting probe): the horizon haze darkening downward.
     if (y < 0.0) col = mix(col, horizon * 0.55 + uZenith * 0.08, smoothstep(0.0, -0.35, y));
 
