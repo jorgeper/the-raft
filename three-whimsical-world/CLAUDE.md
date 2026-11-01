@@ -21,7 +21,9 @@ Visual work is done when a screenshot shows it, not when it type-checks. The loo
 5. Measure fps with a `requestAnimationFrame` counter for 2 s; meadows should hold 60 at 1280×720.
 
 `window.__app` exposes the camera, world, settings, post-processing uniforms, `display`/`applyDisplay`,
-`movement`, `torch` and `regenerate()` so shots and A/B toggles can be scripted with `browser_evaluate`.
+`movement`, `torch`, `character` and `regenerate()` so shots and A/B toggles can be scripted with `browser_evaluate`.
+The camera follows `__app.player` (the eye; mouse look and WASD move it): to frame a shot from script, move and
+rotate `player`, then call `snapView()`. Third person is the default view; add `&view=first` for scenery shots.
 When something looks wrong, bisect by switching effects off one at a time through `__app.post` (bloom,
 volumetric, shafts, fog, AO) before changing code.
 
@@ -45,5 +47,6 @@ volumetric, shafts, fog, AO) before changing code.
 - Third-party assets must allow redistribution on the web: CC0 first (Poly Haven, ambientCG). Downloaded
   assets live under `public/assets/` (gitignored) and are fetched by `scripts/fetch-assets.mjs`, so the repo
   stays small and `npm run assets` restores them.
+- The Viking (`public/models/`, CC0 Quaternius, committed) is rebuilt as described in `docs/CHARACTER.md`.
 - Blender MCP ("MCP for Blender" add-on) is connected for this project: use it to author or clean up meshes
   and export glTF. Its Tripo integration needs the paid Premium tier.

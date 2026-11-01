@@ -11,6 +11,7 @@ import { Minimap } from './minimap';
 import { loadScannedRocks, rockMoss } from './scanned-rocks';
 import { Persist } from './persist';
 import { createSky } from './sky';
+import { Character, type MotionState } from './character';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
 const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
@@ -92,6 +93,7 @@ const params: WorldParams = { ...DEFAULT_PARAMS };
 persist.bind('world', params, Object.keys(DEFAULT_PARAMS) as (keyof WorldParams)[]);
 persist.bind('moss', rockMoss.uMossAmount, ['value']);
 // Photoscanned rocks are fetched by `npm run assets`; without them the world uses procedural rocks.
+const characterLoad = Character.load();
 const scannedRocks = await loadScannedRocks();
 let world = new World(params, renderer, scannedRocks);
 /** The world settings the current world was built from, to tell whether a reset needs a regenerate. */
@@ -101,7 +103,14 @@ water.uniforms.uDepth.value = world.depthTexture;
 
 const post = createPost(renderer, scene, camera, cubeTarget.texture, sun);
 
-// Torch (T): the flame model rides on the camera, its lights live in the world.
+// The player's eye: mouse look and WASD move this; the camera follows it in first person, or orbits behind the
+// character in third person.
+const player = new THREE.Object3D();
+// The Viking (missing model files just mean no body).
+const character = await characterLoad;
+if (character) scene.add(character.root);
+
+// Torch (T): the flame model rides on the camera (or in the character's hand), its lights live in the world.
 const torch = new Torch();
 scene.add(camera);
 camera.add(torch.object);
@@ -260,10 +269,16 @@ const movement = {
   flySpeed: 18,
   flyBoost: 5,
   sensitivity: 1,
+  /** First person, or third person over the character's shoulder (V toggles). */
+  view: 'third' as 'first' | 'third',
+  /** Third-person camera distance (mouse wheel). */
+  distance: 3.6,
 };
-persist.bind('movement', movement, ['mode', 'walkSpeed', 'runSpeed', 'flySpeed', 'flyBoost', 'sensitivity']);
+persist.bind('movement', movement, ['mode', 'walkSpeed', 'runSpeed', 'flySpeed', 'flyBoost', 'sensitivity', 'view', 'distance']);
 const controlsGui = gui.addFolder('Controls');
 controlsGui.add(movement, 'mode', ['walk', 'fly']).name('mode (F)').listen().onChange(() => (verticalSpeed = 0));
+controlsGui.add(movement, 'view', ['first', 'third']).name('view (V)').listen();
+controlsGui.add(movement, 'distance', 1.5, 10, 0.1).name('camera distance').listen();
 controlsGui.add(movement, 'walkSpeed', 1, 15, 0.1).name('walk speed (m/s)');
 controlsGui.add(movement, 'runSpeed', 2, 30, 0.1).name('run speed (m/s)');
 controlsGui.add(movement, 'flySpeed', 2, 100, 1).name('fly speed (m/s)');
@@ -297,10 +312,10 @@ stage.appendChild(minimap.element);
 minimap.setWorld(world.fns);
 minimap.onNavigate = (x, z) => {
   const ground = Math.max(world.height(x, z), 0);
-  const altitude = camera.position.y - Math.max(world.height(camera.position.x, camera.position.z), 0);
-  camera.position.set(x, ground + (movement.mode === 'fly' ? Math.max(altitude, 10) : EYE_HEIGHT), z);
+  const altitude = player.position.y - Math.max(world.height(player.position.x, player.position.z), 0);
+  player.position.set(x, ground + (movement.mode === 'fly' ? Math.max(altitude, 10) : EYE_HEIGHT), z);
   verticalSpeed = 0;
-  camera.updateMatrixWorld();
+  snapView();
   world.update(camera, true);
 };
 window.addEventListener('keydown', (e) => {
@@ -322,7 +337,8 @@ function regenerate() {
       builtParams = JSON.stringify(params);
       scene.add(world.group);
       water.uniforms.uDepth.value = world.depthTexture;
-      camera.position.y = Math.max(world.height(camera.position.x, camera.position.z), 0) + (movement.mode === 'fly' ? 20 : EYE_HEIGHT);
+      player.position.y = Math.max(world.height(player.position.x, player.position.z), 0) + (movement.mode === 'fly' ? 20 : EYE_HEIGHT);
+      snapView();
       world.update(camera, true);
       minimap.setWorld(world.fns);
       busy.style.display = 'none';
@@ -331,7 +347,7 @@ function regenerate() {
 }
 
 // --- Camera controls
-const controls = new PointerLockControls(camera, renderer.domElement);
+const controls = new PointerLockControls(player as unknown as THREE.Camera, renderer.domElement);
 controls.pointerSpeed = movement.sensitivity;
 const hint = document.getElementById('hint')!;
 renderer.domElement.addEventListener('click', () => controls.lock());
@@ -356,11 +372,19 @@ if (query.has('time')) {
 if (camParam?.length === 6 && camParam.every(Number.isFinite)) {
   // y is height above the ground here, so shots can't end up underground.
   const [x, y, z] = camParam;
-  camera.position.set(x, Math.max(world.height(x, z), 0) + Math.max(y, 1.7), z);
-  camera.lookAt(camParam[3], camParam[4], camParam[5]);
+  player.position.set(x, Math.max(world.height(x, z), 0) + Math.max(y, 1.7), z);
+  lookAt(player, camParam[3], camParam[4], camParam[5]);
 } else {
-  camera.position.set(-30, world.height(-30, 0) + EYE_HEIGHT, 0);
-  camera.lookAt(400, 4, -60);
+  player.position.set(-30, world.height(-30, 0) + EYE_HEIGHT, 0);
+  lookAt(player, 400, 4, -60);
+}
+// ?view=first|third picks the view for a shot.
+if (query.get('view') === 'first' || query.get('view') === 'third') movement.view = query.get('view') as 'first' | 'third';
+
+/** Aims an object the way a camera looks (down its -Z), unlike Object3D.lookAt which points +Z at the target. */
+function lookAt(o: THREE.Object3D, x: number, y: number, z: number) {
+  const m = new THREE.Matrix4().lookAt(o.position, new THREE.Vector3(x, y, z), new THREE.Vector3(0, 1, 0));
+  o.quaternion.setFromRotationMatrix(m);
 }
 
 // Walk (default) or fly; F toggles. Walking follows the ground with gravity and jumping.
@@ -372,33 +396,122 @@ window.addEventListener('keydown', (e) => {
     movement.mode = movement.mode === 'fly' ? 'walk' : 'fly';
     verticalSpeed = 0;
   }
+  if (e.code === 'KeyV') movement.view = movement.view === 'first' ? 'third' : 'first';
 });
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (movement.view !== 'third') return;
+  movement.distance = THREE.MathUtils.clamp(movement.distance * Math.exp(e.deltaY * 0.001), 1.5, 10);
+}, { passive: true });
 
 const move = new THREE.Vector3();
+/** Moves the player's eye; returns whether it stands on the ground and whether a jump started this frame. */
 function updateCamera(dt: number) {
+  let jumped = false;
   const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
   const flying = movement.mode === 'fly';
   const speed = flying ? movement.flySpeed * (sprint ? movement.flyBoost : 1) : sprint ? movement.runSpeed : movement.walkSpeed;
   move.set(Number(keys.has('KeyD')) - Number(keys.has('KeyA')), 0, Number(keys.has('KeyW')) - Number(keys.has('KeyS')));
   if (move.lengthSq() > 0) {
+    // The controls move along the player's matrix, which nothing else updates (the player isn't in the scene).
+    player.updateMatrix();
     move.normalize().multiplyScalar(speed * dt);
     controls.moveRight(move.x);
     controls.moveForward(move.z);
   }
 
-  const ground = Math.max(world.height(camera.position.x, camera.position.z), 0) + EYE_HEIGHT;
+  const ground = Math.max(world.height(player.position.x, player.position.z), 0) + EYE_HEIGHT;
   if (flying) {
-    camera.position.y += (Number(keys.has('Space')) - Number(keys.has('KeyC'))) * speed * dt;
+    player.position.y += (Number(keys.has('Space')) - Number(keys.has('KeyC'))) * speed * dt;
   } else {
-    const onGround = camera.position.y <= ground + 0.05;
-    if (onGround && keys.has('Space')) verticalSpeed = 6;
+    const onGround = player.position.y <= ground + 0.05;
+    if (onGround && keys.has('Space')) {
+      verticalSpeed = 6;
+      jumped = true;
+    }
     verticalSpeed -= 20 * dt;
-    camera.position.y += verticalSpeed * dt;
+    player.position.y += verticalSpeed * dt;
   }
-  if (camera.position.y < ground) {
-    camera.position.y = ground;
+  if (player.position.y < ground) {
+    player.position.y = ground;
     verticalSpeed = 0;
   }
+  return { grounded: player.position.y <= ground + 0.05, jumped };
+}
+
+// --- View: first person puts the camera at the eye; third person hangs it on a smoothed spring arm over the right
+// shoulder that shortens rather than dip into a hill.
+const SHOULDER = new THREE.Vector3(0.4, 0.12, 0);
+/** The third-person camera looks a little below the player's aim, so the whole character stays in frame. */
+const TILT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.17);
+const pivot = new THREE.Vector3();
+const desired = new THREE.Vector3();
+const armDir = new THREE.Vector3();
+const probe = new THREE.Vector3();
+const tilted = new THREE.Quaternion();
+const feet = new THREE.Vector3();
+const lastFeet = new THREE.Vector3();
+const travel = new THREE.Vector3();
+const facing = new THREE.Vector3();
+let viewBlend = movement.view === 'third' ? 1 : 0;
+let smoothArm = movement.distance;
+
+function thirdPerson() {
+  return movement.view === 'third' && movement.mode === 'walk' && character !== null;
+}
+
+/** Places the camera for the current view; `snap` skips the smoothing (after teleports and on load). */
+function updateView(dt: number, snap = false) {
+  const third = thirdPerson();
+  viewBlend = snap ? Number(third) : THREE.MathUtils.clamp(viewBlend + (third ? dt : -dt) * 4, 0, 1);
+  camera.quaternion.copy(player.quaternion);
+  if (viewBlend <= 0) {
+    camera.position.copy(player.position);
+  } else {
+    // Orbit a point just above the shoulders, so looking around swings the camera around the character.
+    pivot.copy(player.position).y -= EYE_HEIGHT - 1.6;
+    armDir.set(SHOULDER.x, SHOULDER.y, 1).applyQuaternion(player.quaternion);
+    // Shorten the arm where the terrain would come between the camera and the character.
+    let length = movement.distance;
+    for (let i = 1; i <= 8; i++) {
+      const t = (i / 8) * movement.distance;
+      probe.copy(pivot).addScaledVector(armDir, t);
+      if (probe.y < Math.max(world.height(probe.x, probe.z), 0) + 0.35) {
+        length = Math.max(((i - 1) / 8) * movement.distance, 0.6);
+        break;
+      }
+    }
+    smoothArm = snap ? length : length < smoothArm ? length : smoothArm + (length - smoothArm) * Math.min(dt * 3, 1);
+    desired.copy(pivot).addScaledVector(armDir, smoothArm * viewBlend);
+    camera.quaternion.slerp(tilted.copy(player.quaternion).multiply(TILT), viewBlend);
+    camera.position.lerpVectors(player.position, desired, viewBlend);
+    const floor = Math.max(world.height(camera.position.x, camera.position.z), 0) + 0.35;
+    if (camera.position.y < floor) camera.position.y = floor;
+  }
+  camera.updateMatrixWorld();
+}
+function snapView() {
+  lastFeet.copy(player.position).y -= EYE_HEIGHT;
+  character?.face(player.getWorldDirection(facing).negate().setY(0));
+  updateView(0, true);
+}
+
+/** Moves the character to the player and picks its animation; hands the torch to it in third person. */
+function updateCharacter(dt: number, motion: { grounded: boolean; jumped: boolean }) {
+  feet.copy(player.position).y -= EYE_HEIGHT;
+  travel.subVectors(feet, lastFeet).setY(0);
+  lastFeet.copy(feet);
+  const third = thirdPerson();
+  if (character) {
+    const speed = dt > 0 ? travel.length() / dt : 0;
+    const state: MotionState = { speed: speed < 60 ? speed : 0, grounded: motion.grounded, jumped: motion.jumped, torch: torch.on };
+    character.update(dt, feet, travel, state);
+    // Shown once the camera has pulled back far enough not to clip into the head.
+    character.visible = third && viewBlend > 0.35;
+    character.root.updateMatrixWorld(true);
+  }
+  if (third && character && viewBlend > 0.35) torch.attach(character.handBone, 'hand');
+  else torch.attach(camera, 'view');
+  return third && character ? character.root.getWorldDirection(facing) : undefined;
 }
 
 window.addEventListener('resize', applyDisplay);
@@ -408,7 +521,7 @@ applyDisplay();
 // (which also catches the clock moving on its own).
 gui.onFinishChange(() => persist.save());
 window.addEventListener('keyup', (e) => {
-  if (['KeyT', 'KeyF', 'KeyM'].includes(e.code)) persist.save();
+  if (['KeyT', 'KeyF', 'KeyM', 'KeyV'].includes(e.code)) persist.save();
 });
 window.addEventListener('pagehide', () => persist.save());
 document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && persist.save());
@@ -431,7 +544,9 @@ let sinceSunUpdate = 0;
 renderer.setAnimationLoop(() => {
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.1);
-  updateCamera(dt);
+  const motion = updateCamera(dt);
+  updateView(dt);
+  const torchAim = updateCharacter(dt, motion);
 
   // Advance the clock; re-lighting rebuilds the sky probes, so do it a few times a second, not every frame.
   if (settings.daySpeed > 0) {
@@ -461,7 +576,7 @@ renderer.setAnimationLoop(() => {
   stars.position.copy(camera.position);
 
   const pixelsPerMeter = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
-  torch.update(camera, timer.getElapsed(), dt, pixelsPerMeter);
+  torch.update(camera, timer.getElapsed(), dt, pixelsPerMeter, torchAim);
   minimap.update(camera, camera.getWorldDirection(lookDir));
   post.atmosphere.uTorchPos.value.copy(torch.flameWorld);
   post.atmosphere.uTorchColor.value.copy(torch.flameColor);
@@ -472,10 +587,10 @@ renderer.setAnimationLoop(() => {
 });
 
 // Fill grass and ground cover before the first frame so the opening view isn't bare.
-camera.updateMatrixWorld();
+snapView();
 world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, sky, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, resetToDefaults, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, sky, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, resetToDefaults, get world() { return world; } },
 });

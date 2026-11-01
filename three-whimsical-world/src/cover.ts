@@ -236,7 +236,7 @@ export class GroundCover {
           place: (x, z, h, forest, rand, color) => {
             if (h < 3 || rand() > forest * 0.85 * (0.5 + 0.5 * patchNoise(x * 0.05, z * 0.05) + 0.4)) return 0;
             color.copy(fernTints[Math.floor(rand() * fernTints.length)]);
-            return 0.7 + rand() * 0.9;
+            return 0.65 + rand() * 0.7;
           },
         },
         1,

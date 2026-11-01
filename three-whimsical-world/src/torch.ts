@@ -317,8 +317,39 @@ export class Torch {
     this.on = !this.on;
   }
 
-  /** Call each frame after the camera moves. `pixelsPerMeter` is the viewport height in pixels over 2·tan(fov/2). */
-  update(camera: THREE.Camera, time: number, dt: number, pixelsPerMeter: number) {
+  /** Where the torch is held: in front of the camera (first person) or in the character's hand bone. */
+  private mode: 'view' | 'hand' = 'view';
+  attach(parent: THREE.Object3D, mode: 'view' | 'hand') {
+    if (this.mode === mode && this.object.parent === parent) return;
+    this.mode = mode;
+    parent.add(this.object);
+    if (mode === 'view') {
+      this.object.scale.setScalar(1);
+      this.stick.rotation.set(-0.35, 0, -0.25);
+      this.stick.position.set(0.42, -0.55, -0.85);
+    } else {
+      // Bones carry the rig's centimetre-scale transforms; cancel them so the torch keeps its metric size.
+      parent.updateWorldMatrix(true, false);
+      const s = new THREE.Vector3();
+      parent.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), s);
+      this.object.scale.setScalar(1 / s.x);
+      this.stick.position.copy(this.handOffset);
+      this.stick.rotation.copy(this.handRotation);
+    }
+    this.lastPos.copy(this.flameWorld);
+  }
+  /** Grip transform in the hand bone's space (tuned by eye against the Idle_Torch_Loop pose). */
+  readonly handOffset = new THREE.Vector3(0, -0.1, 0.0);
+  // The hand's -Y points up in the torch pose; the stick runs along its own +Y.
+  readonly handRotation = new THREE.Euler(Math.PI, 0, 0);
+  private camQuat = new THREE.Quaternion();
+  private parentQuat = new THREE.Quaternion();
+
+  /**
+   * Call each frame after the camera moves. `pixelsPerMeter` is the viewport height in pixels over 2·tan(fov/2).
+   * `aim` is the direction the torch lights (defaults to the view direction).
+   */
+  update(camera: THREE.Camera, time: number, dt: number, pixelsPerMeter: number, aim?: THREE.Vector3) {
     // Ease in/out so lighting it feels like it catches.
     this.level += ((this.on ? 1 : 0) - this.level) * Math.min(dt * 5, 1);
     const visible = this.level > 0.01;
@@ -342,8 +373,15 @@ export class Torch {
     this.flicker += (this.flickerTarget - this.flicker) * Math.min(dt * 14, 1);
     const shimmer = this.flicker * (0.96 + 0.04 * Math.sin(time * 47));
 
-    // Flames always face the camera: undo the stick's tilt.
-    this.flame.quaternion.copy(this.quat.copy(this.stick.quaternion).invert());
+    // Flames always face the camera and stand upright, whatever the stick is doing.
+    if (this.mode === 'view') this.flame.quaternion.copy(this.quat.copy(this.stick.quaternion).invert());
+    else {
+      camera.getWorldQuaternion(this.camQuat);
+      const yaw = Math.atan2(camera.position.x - this.flameWorld.x, camera.position.z - this.flameWorld.z);
+      this.quat.setFromAxisAngle(this.tmp.set(0, 1, 0), yaw);
+      this.stick.getWorldQuaternion(this.parentQuat);
+      this.flame.quaternion.copy(this.parentQuat.invert().multiply(this.quat));
+    }
     // Moving drags the flame backward; sideways motion shows as a lean.
     if (dt > 0) this.velocity.subVectors(this.flameWorld, this.lastPos).divideScalar(dt);
     this.lastPos.copy(this.flameWorld);
@@ -361,8 +399,11 @@ export class Torch {
     // Lights wobble a couple of centimetres so shadows dance with the flame.
     const jitter = this.tmp.set(Math.sin(time * 13.7), Math.sin(time * 9.1) * 0.5, Math.cos(time * 11.3)).multiplyScalar(0.02);
     this.spot.position.copy(this.flameWorld).add(jitter);
+    if (aim) this.forward.copy(aim);
+    else camera.getWorldDirection(this.forward);
     this.glow.position.copy(this.flameWorld).add(jitter);
-    camera.getWorldDirection(this.forward);
+    // The fill light casts no shadows; in the hand it would light the cloak through the body, so it leads the way.
+    if (this.mode === 'hand') this.glow.position.addScaledVector(this.forward, 0.6);
     this.forward.y -= 0.25;
     this.spot.target.position.copy(this.flameWorld).addScaledVector(this.forward.normalize(), 10);
     this.spot.target.updateMatrixWorld();

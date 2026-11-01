@@ -26,7 +26,7 @@ function createBladeGeometry() {
   const c = new THREE.Color();
   for (let i = 0; i < segments; i++) {
     const t = i / segments;
-    const halfWidth = 0.03 * (1 - 0.75 * t ** 1.4);
+    const halfWidth = 0.025 * (1 - 0.75 * t ** 1.4);
     const lean = 0.35 * t * t;
     positions.push(-halfWidth, t, lean, halfWidth, t, lean);
     // Face direction tilts back as the blade leans forward.
@@ -247,7 +247,8 @@ export class Grass {
       const fromCenter = clumpAt(x, z, clump);
       // Blades fan outward from their clump center and are tallest in the middle.
       const outward = Math.atan2(x - clump.x, z - clump.z);
-      const bladeHeight = (0.45 + rand() * 0.45) * clump.height * (1.2 - 0.45 * fromCenter / CLUMP_SIZE) * (1.15 - 0.4 * dry) * (1 - 0.35 * forest);
+      // Knee-high on the character (Valheim's meadow grass), not waist-high.
+      const bladeHeight = 0.6 * (0.45 + rand() * 0.45) * clump.height * (1.2 - 0.45 * fromCenter / CLUMP_SIZE) * (1.15 - 0.4 * dry) * (1 - 0.35 * forest);
       q.setFromAxisAngle(up, outward + (rand() - 0.5) * 1.2);
       s.set(0.75 + rand() * 0.6, bladeHeight, clump.lean * (0.6 + rand() * 0.8));
       p.set(x, h - 0.05, z);

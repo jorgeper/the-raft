@@ -1,0 +1,4 @@
+viking.glb and viking-anims.glb are derived from Quaternius' packs "Universal Base Characters",
+"Modular Character Outfits - Fantasy" and "Universal Animation Library", all CC0 1.0 Universal
+(https://creativecommons.org/publicdomain/zero/1.0/). Models by @Quaternius (https://quaternius.com).
+Modifications (assembly, recolors, cloak) are likewise dedicated to the public domain. See docs/CHARACTER.md.
