@@ -14,6 +14,7 @@ import { createSky } from './sky';
 import { Character, type MotionState } from './character';
 import { loadGroundTextures, groundUniforms } from './ground';
 import { Motes } from './motes';
+import { loadPlants } from './plants';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
 const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
@@ -99,8 +100,9 @@ persist.bind('moss', rockMoss.uMossAmount, ['value']);
 // Photoscanned rocks are fetched by `npm run assets`; without them the world uses procedural rocks.
 const characterLoad = Character.load();
 const groundLoad = loadGroundTextures();
+const plantsLoad = loadPlants();
 const scannedRocks = await loadScannedRocks();
-await groundLoad;
+await Promise.all([groundLoad, plantsLoad]);
 let world = new World(params, renderer, scannedRocks);
 /** The world settings the current world was built from, to tell whether a reset needs a regenerate. */
 let builtParams = JSON.stringify(params);

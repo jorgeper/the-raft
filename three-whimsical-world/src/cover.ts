@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
 import { TERRAIN_SIZE } from './terrain';
 import { mulberry32, smoothstep, type WorldFns } from './worldgen';
-import { addWind } from './wind';
+import { addWind, sunLight } from './wind';
+import { plants } from './plants';
 
 const CHUNK = 24;
 const GRID = 4;
@@ -211,37 +212,96 @@ export class GroundCover {
     const { params } = world;
     const patchNoise = createNoise2D(mulberry32(params.seed * 17 + 3));
 
-    // Ferns carpet the forest floor and spill a little into the meadow edges.
-    const fernGeo = createFernGeometry();
-    const frondTexture = createFrondTexture();
-    const fernMat = new THREE.MeshPhysicalMaterial({
-      map: frondTexture,
-      vertexColors: true,
-      alphaTest: 0.5,
-      alphaToCoverage: true,
-      side: THREE.DoubleSide,
-      roughness: 0.75,
-      specularIntensity: 0.15,
-    });
-    addWind(fernMat, `p += windOffset(root, position.y * 0.25) * 0.5;`);
-    const fernTints = ['#c8e0b0', '#b0d090', '#a8c890', '#d8e8a8'].map((c) => new THREE.Color(c));
-    this.layers.push(
-      new ScatterLayer(
-        world,
-        {
-          radius: 80,
-          perChunk: 1100,
-          geometry: fernGeo,
-          material: fernMat,
-          place: (x, z, h, forest, rand, color) => {
-            if (h < 3 || rand() > forest * 0.85 * (0.5 + 0.5 * patchNoise(x * 0.05, z * 0.05) + 0.4)) return 0;
-            color.copy(fernTints[Math.floor(rand() * fernTints.length)]);
-            return 0.65 + rand() * 0.7;
+    // Ferns carpet the forest floor and spill a little into the meadow edges: photoscanned ones when
+    // `npm run assets` has fetched them (four variants, one layer each), else the procedural frond.
+    const scanned = plants.fern;
+    if (scanned) {
+      const fernMat = new THREE.MeshStandardMaterial({
+        map: scanned.material.map,
+        normalMap: scanned.material.normalMap,
+        alphaTest: 0.45,
+        alphaToCoverage: true,
+        side: THREE.DoubleSide,
+        roughness: 0.8,
+      });
+      // Fronds sway more toward their tips.
+      addWind(fernMat, `p += windOffset(root, max(p.y - root.y, 0.0) * 0.7) * 0.35;`);
+      const windCompile = fernMat.onBeforeCompile;
+      fernMat.onBeforeCompile = (shader, renderer) => {
+        windCompile.call(fernMat, shader, renderer);
+        Object.assign(shader.uniforms, sunLight);
+        shader.vertexShader = shader.vertexShader.replace(
+          '#include <beginnormal_vertex>',
+          // Bend normals toward up so the clump shades as one soft mass instead of dark, edge-on cards.
+          '#include <beginnormal_vertex>\nobjectNormal = normalize(mix(objectNormal, vec3(0.0, 1.0, 0.0), 0.5));',
+        );
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;')
+          .replace(
+            '#include <emissivemap_fragment>',
+            // Thin fronds glow when the sun is behind them, and pass some light through even in shade.
+            `#include <emissivemap_fragment>
+            float backlit = pow(max(dot(normalize(-vViewPosition), uSunDirView), 0.0), 2.0);
+            totalEmissiveRadiance += uSunColor * diffuseColor.rgb * vec3(1.0, 1.2, 0.55) * (0.08 + 0.7 * backlit);`,
+          );
+      };
+      // Brighter than the bare scan: it was shot in overcast light, the game's forest floor is sunnier.
+      const fernTints = ['#ffffff', '#eef4dc', '#f4f0d8', '#dfe9cc', '#e6eed2'].map((c) => new THREE.Color(c).multiplyScalar(1.45));
+      scanned.geometries.forEach((geometry, v) => {
+        this.layers.push(
+          new ScatterLayer(
+            world,
+            {
+              radius: 80,
+              perChunk: 300,
+              geometry,
+              material: fernMat,
+              place: (x, z, h, forest, rand, color) => {
+                const patch = 0.5 + 0.5 * patchNoise(x * 0.05, z * 0.05);
+                if (h < 3 || rand() > smoothstep(0.15, 0.6, forest) * (0.6 + 0.4 * patch)) return 0;
+                color.copy(fernTints[Math.floor(rand() * fernTints.length)]);
+                // The scans are ~1 m across and 0.4 m tall; Valheim's are waist-high on the bigger plants.
+                return 1.2 + rand() * rand() * 1.4;
+              },
+            },
+            11 + v,
+          ),
+        );
+      });
+      this.disposables.push(fernMat);
+    } else {
+      const fernGeo = createFernGeometry();
+      const frondTexture = createFrondTexture();
+      const fernMat = new THREE.MeshPhysicalMaterial({
+        map: frondTexture,
+        vertexColors: true,
+        alphaTest: 0.5,
+        alphaToCoverage: true,
+        side: THREE.DoubleSide,
+        roughness: 0.75,
+        specularIntensity: 0.15,
+      });
+      addWind(fernMat, `p += windOffset(root, position.y * 0.25) * 0.5;`);
+      const fernTints = ['#c8e0b0', '#b0d090', '#a8c890', '#d8e8a8'].map((c) => new THREE.Color(c));
+      this.layers.push(
+        new ScatterLayer(
+          world,
+          {
+            radius: 80,
+            perChunk: 1100,
+            geometry: fernGeo,
+            material: fernMat,
+            place: (x, z, h, forest, rand, color) => {
+              if (h < 3 || rand() > forest * 0.85 * (0.5 + 0.5 * patchNoise(x * 0.05, z * 0.05) + 0.4)) return 0;
+              color.copy(fernTints[Math.floor(rand() * fernTints.length)]);
+              return 0.65 + rand() * 0.7;
+            },
           },
-        },
-        1,
-      ),
-    );
+          1,
+        ),
+      );
+      this.disposables.push(fernGeo, fernMat, frondTexture);
+    }
 
     // Meadow flowers in drifts: dandelion yellow, white, and thistle purple.
     const flowerGeo = createFlowerGeometry();
@@ -290,7 +350,7 @@ export class GroundCover {
       ),
     );
     for (const layer of this.layers) this.group.add(layer.group);
-    this.disposables.push(fernGeo, fernMat, frondTexture, flowerGeo, flowerMat);
+    this.disposables.push(flowerGeo, flowerMat);
 
     this.addLogsAndStumps(world);
   }

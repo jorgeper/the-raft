@@ -1,5 +1,5 @@
 // Downloads CC0 photoscanned rocks from Poly Haven and builds two detail levels of each for the scene, plus
-// the CC0 ground textures the terrain splats (public/assets/ground/).
+// the CC0 ground textures the terrain splats (public/assets/ground/) and scanned plants (public/assets/plants/).
 // Usage: npm run assets            (skips assets already built)
 //        npm run assets -- --force (rebuilds the models; downloads stay cached)
 //
@@ -8,7 +8,7 @@
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { NodeIO } from '@gltf-transform/core';
-import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import { ALL_EXTENSIONS, EXTTextureWebP } from '@gltf-transform/extensions';
 import { weld, simplify, prune, dedup } from '@gltf-transform/functions';
 import { MeshoptSimplifier } from 'meshoptimizer';
 
@@ -99,6 +99,53 @@ async function main() {
   await writeFile(join(OUT, 'manifest.json'), JSON.stringify({ rocks: manifest, lods: LODS.map((l) => l.name) }, null, 2));
   console.log(`Wrote ${manifest.length} rocks to ${OUT}`);
   await fetchGround();
+  await buildPlants(io);
+}
+
+/** Scanned plants: [Poly Haven id, target triangles per variant]. */
+const PLANTS = [['fern_02', 900]];
+const PLANTS_OUT = join(ROOT, 'public/assets/plants');
+
+/**
+ * Plants come as alpha-masked cards whose glTF points at a JPEG diffuse without alpha; the cutout is a separate
+ * Alpha map. Merge the two into one WebP with alpha, simplify each variant, and drop the unused AO/roughness map.
+ */
+async function buildPlants(io) {
+  const sharp = (await import('sharp')).default;
+  await mkdir(PLANTS_OUT, { recursive: true });
+  for (const [id, triangles] of PLANTS) {
+    const out = join(PLANTS_OUT, `${id}.glb`);
+    if (!force && (await exists(out))) {
+      console.log(`✓ ${id} (already built)`);
+      continue;
+    }
+    const gltfPath = await fetchModel(id);
+    const files = await (await fetch(`https://api.polyhaven.com/files/${id}`, { headers: { 'User-Agent': '3d-tests asset fetcher' } })).json();
+    const alphaPath = join(CACHE, id, `${id}_alpha.jpg`);
+    await download(files.Alpha[RESOLUTION].jpg.url, alphaPath);
+
+    const doc = await io.read(gltfPath);
+    const material = doc.getRoot().listMaterials()[0];
+    const base = material.getBaseColorTexture();
+    const alpha = await sharp(alphaPath).extractChannel(0).raw().toBuffer({ resolveWithObject: true });
+    const rgba = await sharp(Buffer.from(base.getImage()))
+      .resize(alpha.info.width, alpha.info.height)
+      // (No removeAlpha here: sharp applies it after joinChannel, which would strip the new alpha again.)
+      .joinChannel(alpha.data, { raw: { width: alpha.info.width, height: alpha.info.height, channels: 1 } })
+      .webp({ quality: 88, alphaQuality: 100 })
+      .toBuffer();
+    base.setImage(rgba).setMimeType('image/webp');
+    material.getMetallicRoughnessTexture()?.dispose();
+    const normal = material.getNormalTexture();
+    if (normal) normal.setImage(await sharp(Buffer.from(normal.getImage())).webp({ quality: 85 }).toBuffer()).setMimeType('image/webp');
+
+    const before = countTriangles(doc);
+    const meshes = doc.getRoot().listMeshes().length;
+    await doc.transform(dedup(), weld(), simplify({ simplifier: MeshoptSimplifier, ratio: Math.min(1, (triangles * meshes) / before), error: 0.02 }), prune());
+    doc.createExtension(EXTTextureWebP).setRequired(true);
+    await io.write(out, doc);
+    console.log(`✓ ${id} ${Math.round(before)}→${Math.round(countTriangles(doc))} tris (${meshes} variants)`);
+  }
 }
 
 /** Ground texture layers for the terrain, in the order src/ground.ts samples them. */
