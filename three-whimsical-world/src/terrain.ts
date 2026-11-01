@@ -1,0 +1,152 @@
+import * as THREE from 'three';
+import { createNoise2D } from 'simplex-noise';
+
+export const TERRAIN_SIZE = 2000;
+const SEGMENTS = 800;
+
+/** Returns terrain height in meters at world (x, z). Sea level is y = 0. */
+export type HeightFn = (x: number, z: number) => number;
+
+function mulberry32(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+  return t * t * (3 - 2 * t);
+};
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+/**
+ * Procedural meadows: rolling hills inland (-x), a beach, and open sea toward +x.
+ * This is the swappable height source; a Valheim seed-based generator can replace it later.
+ */
+export function createMeadowHeight(seed = 1337): HeightFn {
+  const noise = createNoise2D(mulberry32(seed));
+
+  const fbm = (x: number, z: number, octaves: number) => {
+    let sum = 0, amp = 1, freq = 1, norm = 0;
+    for (let i = 0; i < octaves; i++) {
+      sum += amp * noise(x * freq, z * freq);
+      norm += amp;
+      amp *= 0.5;
+      freq *= 2.03;
+    }
+    return sum / norm;
+  };
+
+  const ridged = (x: number, z: number, octaves: number) => {
+    let sum = 0, amp = 1, freq = 1, norm = 0;
+    for (let i = 0; i < octaves; i++) {
+      sum += amp * (1 - Math.abs(noise(x * freq + 91, z * freq - 37)));
+      norm += amp;
+      amp *= 0.5;
+      freq *= 2.1;
+    }
+    return sum / norm;
+  };
+
+  return (x, z) => {
+    // Domain warp keeps hills from looking like uniform noise blobs.
+    const wx = x + 60 * noise(x * 0.0015, z * 0.0015);
+    const wz = z + 60 * noise(x * 0.0015 + 31.7, z * 0.0015 - 17.3);
+
+    const hills = fbm(wx * 0.0028, wz * 0.0028, 6);
+    let meadow = 9 + hills * 11 + 1.2 * fbm(x * 0.03, z * 0.03, 3);
+
+    // Darker, higher hills far inland, as a backdrop.
+    const backdrop = smoothstep(-250, -800, x);
+    meadow += backdrop * 70 * ridged(wx * 0.002, wz * 0.002, 5);
+
+    // Wavy coastline running roughly north-south at x ≈ 220.
+    const coastX = 220 + 110 * fbm(z * 0.0018, 4.2, 4);
+    const inland = coastX - x;
+
+    const seabed = -22 + 5 * fbm(x * 0.004, z * 0.004, 3);
+    const land = smoothstep(-70, 150, inland);
+    let h = lerp(seabed, meadow, land);
+
+    // Flatten a gentle beach shelf right at the shoreline.
+    const beach = smoothstep(-35, 0, inland) * (1 - smoothstep(10, 55, inland));
+    h = lerp(h, 0.8 + 0.6 * (inland / 50), beach * 0.75);
+
+    return h;
+  };
+}
+
+const COLORS = {
+  grassLush: new THREE.Color('#4f6f28'),
+  grassDry: new THREE.Color('#7c8a38'),
+  dirt: new THREE.Color('#6a573a'),
+  rock: new THREE.Color('#6c6862'),
+  sand: new THREE.Color('#cbb98a'),
+  wetSand: new THREE.Color('#8b7a57'),
+  seabed: new THREE.Color('#6f6448'),
+};
+
+export function createTerrainMesh(height: HeightFn): THREE.Mesh {
+  const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, SEGMENTS, SEGMENTS);
+  geo.rotateX(-Math.PI / 2);
+
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    pos.setY(i, height(pos.getX(i), pos.getZ(i)));
+  }
+  geo.computeVertexNormals();
+
+  const normals = geo.attributes.normal as THREE.BufferAttribute;
+  const colors = new Float32Array(pos.count * 3);
+  const variation = createNoise2D(mulberry32(7));
+  const c = new THREE.Color();
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const slope = 1 - normals.getY(i);
+    const v = 0.5 + 0.5 * variation(x * 0.012, z * 0.012);
+    const fine = 0.5 + 0.5 * variation(x * 0.09 + 50, z * 0.09);
+
+    c.copy(COLORS.grassLush).lerp(COLORS.grassDry, v * 0.8);
+    c.lerp(COLORS.dirt, smoothstep(0.12, 0.3, slope) * 0.85);
+    c.lerp(COLORS.rock, smoothstep(0.3, 0.5, slope));
+
+    // Beach and seabed by height.
+    const sandAmt = 1 - smoothstep(1.6, 3.2 + fine * 1.5, y);
+    c.lerp(COLORS.sand, sandAmt);
+    c.lerp(COLORS.wetSand, 1 - smoothstep(-0.3, 0.7, y));
+    c.lerp(COLORS.seabed, 1 - smoothstep(-6, -1, y));
+
+    // Subtle brightness jitter so flat areas aren't one tone.
+    c.multiplyScalar(0.9 + 0.2 * fine);
+    c.toArray(colors, i * 3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  mesh.castShadow = true;
+  return mesh;
+}
+
+/** Water depth (meters below sea level, clamped to 0..maxDepth) baked into a texture for the water shader. */
+export function createDepthTexture(height: HeightFn, resolution = 512, maxDepth = 10): THREE.DataTexture {
+  const data = new Uint8Array(resolution * resolution);
+  for (let j = 0; j < resolution; j++) {
+    for (let i = 0; i < resolution; i++) {
+      const x = (i / (resolution - 1) - 0.5) * TERRAIN_SIZE;
+      const z = (j / (resolution - 1) - 0.5) * TERRAIN_SIZE;
+      const depth = Math.min(Math.max(-height(x, z), 0), maxDepth);
+      data[j * resolution + i] = Math.round((depth / maxDepth) * 255);
+    }
+  }
+  const tex = new THREE.DataTexture(data, resolution, resolution, THREE.RedFormat, THREE.UnsignedByteType);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}

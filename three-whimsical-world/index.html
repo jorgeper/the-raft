@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meadows</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+      canvas { display: block; }
+      #hint {
+        position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+        font: 13px/1.4 system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.45);
+        padding: 8px 14px; border-radius: 6px; pointer-events: none; transition: opacity .3s;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hint">Click to look around · WASD move · Space / C up / down · Shift fast · Esc release</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

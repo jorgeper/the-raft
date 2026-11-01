@@ -1,0 +1,34 @@
+{
+  "name": "3d-tests",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jorgeper/3d-tests.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jorgeper/3d-tests/issues"
+  },
+  "homepage": "https://github.com/jorgeper/3d-tests#readme",
+  "type": "module",
+  "dependencies": {
+    "lil-gui": "^0.21.0",
+    "simplex-noise": "^4.0.3",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

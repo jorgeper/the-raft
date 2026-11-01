@@ -1,0 +1,13 @@
+.env*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_*
+credentials*
+secrets*
+.DS_Store
+node_modules/
+.playwright-mcp/
+dist/
