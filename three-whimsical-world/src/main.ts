@@ -5,6 +5,7 @@ import { createWater, addRipple } from './water';
 import { wind, sunLight, windControl, WindDrift } from './wind';
 import { VIBES, type VibeName } from './vibes';
 import { Tour } from './tour';
+import { PhotoMode, photoSettings, savePhoto } from './photo';
 import { createPost } from './post';
 import { World } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
@@ -714,6 +715,63 @@ const cinemaGui = gui.addFolder('Cinematic');
 cinemaGui.add({ go: toggleTour }, 'go').name('🎬 flythrough (K)');
 cinemaGui.add(cinema, 'letterbox').name('cinema bars');
 
+// --- Photo mode (O): a free, slow camera with a lens (zoom, f-stop, focus), time optionally frozen, Enter saves.
+const photo = new PhotoMode(stage);
+let beforePhoto: { mode: typeof movement.mode; view: typeof movement.view } | null = null;
+let photoPending = false;
+function enterPhoto() {
+  if (tour?.active) endTour();
+  beforePhoto = { mode: movement.mode, view: movement.view };
+  movement.mode = 'fly';
+  movement.view = 'first';
+  verticalSpeed = 0;
+  photo.enter();
+  post.dof.setEnabled(true);
+  document.body.classList.add('cinema', 'photo');
+}
+function exitPhoto() {
+  photo.exit();
+  post.dof.setEnabled(false);
+  timer.setTimescale(1);
+  document.body.classList.remove('cinema', 'photo');
+  if (beforePhoto) {
+    movement.mode = beforePhoto.mode;
+    movement.view = beforePhoto.view;
+    beforePhoto = null;
+  }
+  camera.fov = display.fov;
+  camera.updateProjectionMatrix();
+}
+const togglePhoto = () => (photo.active ? exitPhoto() : enterPhoto());
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyO' && !e.repeat) togglePhoto();
+  if (e.code === 'Enter' && photo.active) photoPending = true;
+});
+renderer.domElement.addEventListener('contextmenu', (e) => {
+  if (!photo.active) return;
+  e.preventDefault();
+  const rect = renderer.domElement.getBoundingClientRect();
+  // With the pointer locked, the middle of the frame; otherwise where the click was.
+  const locked = document.pointerLockElement === renderer.domElement;
+  const u = locked ? 0.5 : (e.clientX - rect.left) / rect.width;
+  const v = locked ? 0.5 : 1 - (e.clientY - rect.top) / rect.height;
+  photo.focusOn(u, v, post.dof.distanceAt(u, v), camera.far);
+});
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (photo.active) photo.zoom(e.deltaY);
+}, { passive: true });
+// Leaving the page mid-tour or mid-shot shouldn't save the tour's or photo mode's fly / first-person settings.
+window.addEventListener('pagehide', () => {
+  if (photo.active) exitPhoto();
+  if (tour?.active) endTour();
+});
+const photoGui = gui.addFolder('Photo mode');
+photoGui.add({ go: togglePhoto }, 'go').name('📷 photo mode (O)');
+photoGui.add(photoSettings, 'fStop', 1.2, 22, 0.1).name('f-stop (lower = more blur)');
+photoGui.add(photoSettings, 'dreamy', 1, 8, 0.1).name('extra dreaminess ×');
+photoGui.add(photoSettings, 'freeze').name('freeze time').onChange((v: boolean) => photo.active && timer.setTimescale(v ? 0 : 1));
+photoGui.add({ save: () => (photoPending = true) }, 'save').name('💾 save photo (Enter)');
+
 // --- Camera controls
 const controls = new PointerLockControls(player as unknown as THREE.Camera, renderer.domElement);
 controls.pointerSpeed = movement.sensitivity;
@@ -787,7 +845,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyV') movement.view = movement.view === 'first' ? 'third' : 'first';
 });
 renderer.domElement.addEventListener('wheel', (e) => {
-  if (movement.view !== 'third') return;
+  if (movement.view !== 'third' || photo.active) return;
   movement.distance = THREE.MathUtils.clamp(movement.distance * Math.exp(e.deltaY * 0.001), 1.5, 10);
 }, { passive: true });
 
@@ -798,7 +856,8 @@ function updateCamera(dt: number) {
   let jumped = false;
   const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
   const flying = movement.mode === 'fly';
-  const speed = flying ? movement.flySpeed * (sprint ? movement.flyBoost : 1) : sprint ? movement.runSpeed : movement.walkSpeed;
+  // Photo mode creeps, for framing.
+  const speed = (flying ? movement.flySpeed * (sprint ? movement.flyBoost : 1) : sprint ? movement.runSpeed : movement.walkSpeed) * (photo.active ? 0.25 : 1);
   move.set(Number(keys.has('KeyD')) - Number(keys.has('KeyA')), 0, Number(keys.has('KeyW')) - Number(keys.has('KeyS')));
   if (move.lengthSq() > 0) {
     // The controls move along the player's matrix, which nothing else updates (the player isn't in the scene).
@@ -954,10 +1013,22 @@ let sinceSunUpdate = 0;
 let weatherDrift = 0, sinceWeatherLight = 0, sinceAuroraCube = 0;
 /** Seconds of cloud travel: faster in a gale, slower in a calm. */
 let cloudDrift = 0;
+let lastFrame = 0;
 renderer.setAnimationLoop((now) => {
   fps.frame(now);
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.1);
+  // The camera moves in real time even while photo mode has frozen the world's clock.
+  const realDt = Math.min(lastFrame ? (now - lastFrame) / 1000 : 0, 0.1);
+  lastFrame = now;
+  if (photo.active) {
+    timer.setTimescale(photoSettings.freeze ? 0 : 1);
+    if (camera.fov !== photo.fov) {
+      camera.fov = photo.fov;
+      camera.updateProjectionMatrix();
+    }
+    photo.update(realDt, post.dof.distanceAt, camera.far, renderer.domElement.height, post.dof.uniforms);
+  }
   // The flythrough flies the eye and runs the clock; re-light a few times a second as the sun moves.
   const touring = tour?.active ?? false;
   let motion = { grounded: false, jumped: false };
@@ -972,8 +1043,8 @@ renderer.setAnimationLoop((now) => {
         updateSun();
       }
     }
-  } else motion = updateCamera(dt);
-  updateView(dt);
+  } else motion = updateCamera(photo.active ? realDt : dt);
+  updateView(photo.active ? realDt : dt);
   const torchAim = updateCharacter(dt, motion);
 
   // Advance the clock; re-lighting rebuilds the sky probes, so do it a few times a second, not every frame.
@@ -1096,6 +1167,10 @@ renderer.setAnimationLoop((now) => {
   // (a scene sweep costs ~0.05 ms).
   if (display.taa) useCoverage(false);
   post.render(lightDir, scatterSun);
+  if (photoPending) {
+    photoPending = false;
+    savePhoto(renderer.domElement);
+  }
 });
 
 // Apply the preset with the performance switches, then fill grass and ground cover before the first frame so the
@@ -1106,5 +1181,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { sound, windControl, windDrift, applyVibe, startTour, endTour, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
+  __app: { sound, windControl, windDrift, applyVibe, startTour, endTour, photo, enterPhoto, exitPhoto, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
 });

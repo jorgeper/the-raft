@@ -137,6 +137,15 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Photo mode (user, 2026-11-01): O or the panel's "📷 photo mode". A slow free camera (fly, first person, a
+  quarter speed) with a real lens: the wheel zooms 14-200 mm (starts at 50 mm), the f-stop and an "extra
+  dreaminess" multiplier (default 3×: true depth of field is very deep on landscapes) set the blur, focus follows
+  the middle of the frame with an eased autofocus or holds wherever you right-click (the sky returns to auto).
+  `src/dof.ts`: `DepthCopyPass` keeps linear distance (water included) from before the haze pass, and `DofPass`
+  gathers a thin-lens circle of confusion on a golden-angle spiral over the HDR frame before the bloom, so bright
+  spots open into bokeh. Viewfinder overlay instead of the HUD; "freeze time" stops the world's clock while the
+  camera still moves; Enter saves a PNG. Both passes are off outside photo mode. ~50 fps at the stone circle.
+
 - Cinematic flythrough (user, 2026-11-01): K, the "🎬 flythrough" button, or `?tour` (starts after 1.5 s, for
   recording). `src/tour.ts` builds a 152 s path from the world itself: in low over the sea at dawn with the sun
   rising behind the land, over the surf and beach, skimming the meadow (the clock jumps to the afternoon), a slow

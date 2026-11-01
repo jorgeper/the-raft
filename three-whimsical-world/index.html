@@ -35,6 +35,18 @@
       .bar { position: absolute; left: 0; right: 0; height: 0; background: #000; pointer-events: none; transition: height 1.2s ease; }
       .bar.top { top: 0; } .bar.bottom { bottom: 0; }
       body.letterbox .bar { height: 12.8%; }
+      /* Photo mode's viewfinder. */
+      #photo { position: absolute; inset: 0; pointer-events: none; display: none; line-height: 1.2; }
+      body.photo #photo { display: block; }
+      #photo .corner { position: absolute; width: 34px; height: 34px; border: 0 solid rgba(255,255,255,.75); }
+      #photo .tl { left: 22px; top: 22px; border-left-width: 2px; border-top-width: 2px; }
+      #photo .tr { right: 22px; top: 22px; border-right-width: 2px; border-top-width: 2px; }
+      #photo .bl { left: 22px; bottom: 22px; border-left-width: 2px; border-bottom-width: 2px; }
+      #photo .br { right: 22px; bottom: 22px; border-right-width: 2px; border-bottom-width: 2px; }
+      #photo .reticle { position: absolute; width: 26px; height: 18px; transform: translate(-50%, -50%); border: 1.5px solid rgba(255,255,255,.8); border-radius: 2px; }
+      #photo .reticle.locked { border-color: rgba(130, 255, 160, .95); }
+      #photo .info { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); white-space: nowrap; font: 12px/1 ui-monospace, Menlo, monospace; color: rgba(255,255,255,.9); text-shadow: 0 1px 2px #000; }
+      body.photo.clean #photo { display: none; }
       #busy {
         position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
         background: rgba(10, 14, 12, .45); color: #fff; font: 600 18px/1 system-ui, sans-serif; letter-spacing: .02em;

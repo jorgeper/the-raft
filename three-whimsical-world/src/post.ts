@@ -16,6 +16,7 @@ import { VolumetricPass, VIS_UPSAMPLE } from './volumetric';
 import type { CloudPass } from './clouds';
 import { LuminancePass } from './exposure';
 import { MotionPass } from './motion';
+import { DepthCopyPass, DofPass } from './dof';
 
 const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
@@ -584,6 +585,9 @@ export function createPost(
     atmosphere.uniforms.uCloudsOn.value = clouds?.enabled ? 1 : 0;
   };
   if (clouds) atmosphere.uniforms.tClouds.value = clouds.texture;
+  // Photo mode's depth of field needs the scene's distance, water included, which only lasts until the haze pass.
+  const depthCopy = new DepthCopyPass(camera);
+  composer.addPass(depthCopy);
   composer.addPass(atmosphere);
   const taa = new TAAPass(camera, target.depthTexture!);
   // Drawn after the scene (it needs the frame's bone poses) and before the TAA that reads it.
@@ -602,6 +606,9 @@ export function createPost(
   // Small, tight bloom on the brightest highlights only; a wide radius lets the sky near the sun
   // spill a milky veil over the whole frame.
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.06, 0.35, 6);
+  // Depth of field on the HDR frame, so bright spots open into bokeh that the bloom then lights up.
+  const dof = new DofPass(depthCopy);
+  composer.addPass(dof);
   composer.addPass(bloom);
   // Whimsy's dreamy diffusion: a wide, soft glow from everything bright, not just the sun.
   // Thresholded above the sky's own brightness, so the sun doesn't balloon; lit foliage and haze glow.
@@ -633,6 +640,15 @@ export function createPost(
     sceneDepth: waterPass ? waterPass.depth : target.depthTexture!,
     grade: grade.uniforms,
     vibe: vibe.uniforms,
+    /** Photo mode's depth of field (off outside it). */
+    dof: {
+      uniforms: dof.uniforms,
+      setEnabled(on: boolean) {
+        dof.enabled = depthCopy.enabled = on;
+      },
+      /** Distance (m) at a screen point (uv 0..1), from the last frame. */
+      distanceAt: (u: number, v: number) => depthCopy.readDistance(renderer, u, v),
+    },
     /** Switches to a precanned color mood (vibes.ts); 'whimsical' is the tuned look with the vibe pass off. */
     setVibe(name: VibeName) {
       vibe.enabled = applyVibe(vibe.uniforms as typeof VibeShader.uniforms, name);
