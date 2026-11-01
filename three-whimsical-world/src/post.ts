@@ -8,6 +8,7 @@ import type { WebGLRenderTarget } from 'three';
 import { AOPass } from './ao';
 import { CLOUD_NOISE, CLOUD_HEIGHT } from './sky';
 import { WaterPass, type Water } from './water';
+import { RAINBOW } from './weather';
 import { TAAPass } from './taa';
 import type { SunShadows } from './cascades';
 import { VolumetricPass, VIS_UPSAMPLE } from './volumetric';
@@ -44,6 +45,8 @@ const AtmosphereShader = {
     uSunUv: { value: new THREE.Vector2() },
     uSunFacing: { value: 0 },
     uSunColor: { value: new THREE.Color(1, 0.9, 0.75) },
+    /** 0..1 how strong a rainbow stands opposite the sun (weather.ts). */
+    uRainbow: { value: 0 },
     uFogDensity: { value: 0.00045 },
     uFogHeightFalloff: { value: 0.012 },
     uShaftStrength: { value: 0.5 },
@@ -106,6 +109,8 @@ const AtmosphereShader = {
     uniform vec2 uSunUv;
     uniform float uSunFacing;
     uniform vec3 uSunColor;
+    uniform float uRainbow;
+    ${RAINBOW}
     uniform float uFogDensity;
     uniform float uFogHeightFalloff;
     uniform float uShaftStrength;
@@ -199,6 +204,12 @@ const AtmosphereShader = {
           + (texture2D(tClouds, vUv + vec2(ct.x, ct.y)) + texture2D(tClouds, vUv + vec2(-ct.x, ct.y))
           + texture2D(tClouds, vUv + vec2(ct.x, -ct.y)) + texture2D(tClouds, vUv - ct)) * 0.15;
         color = color * cl.a + cl.rgb;
+      }
+      // The rainbow hangs in the rain between you and the far land, in front of the clouds; drawn here, after them.
+      if (uRainbow > 0.0 && ray.y > -0.1) {
+        float reach = isSky ? 1.0 : smoothstep(120.0, 400.0, dist);
+        float sunLuma = dot(uSunColor, vec3(0.2126, 0.7152, 0.0722));
+        color += rainbow(ray, uSunDir) * uRainbow * reach * sunLuma * 1.3 * smoothstep(-0.1, 0.03, ray.y);
       }
       // The sky as drawn (and capped in sky.ts); the sun disc is the only part far above the cap.
       float skyPeak = max(max(color.r, color.g), color.b);
@@ -508,7 +519,8 @@ export function createPost(
   composer.setSize(window.innerWidth, window.innerHeight);
 
   composer.addPass(new RenderPass(scene, camera));
-  if (water) composer.addPass(new WaterPass(water, camera));
+  const waterPass = water ? new WaterPass(water, camera) : null;
+  if (waterPass) composer.addPass(waterPass);
   const ao = new AOPass(camera);
   composer.addPass(ao);
   const volumetric = new VolumetricPass(camera, sun);
@@ -565,8 +577,8 @@ export function createPost(
     atmosphere: atmosphere.uniforms,
     ao: ao.uniforms,
     bloom,
-    /** The scene's depth buffer, for overlay materials that must hide behind geometry. */
-    sceneDepth: target.depthTexture!,
+    /** The scene's depth (land, trees, grass; not the water), for overlay materials that must hide behind geometry. */
+    sceneDepth: waterPass ? waterPass.depth : target.depthTexture!,
     grade: grade.uniforms,
     taa,
     motion,

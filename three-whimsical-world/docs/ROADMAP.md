@@ -9,9 +9,8 @@ In priority order: the first items are the user's requests for the next sessions
    2. ~~A **Performance** panel section~~ (done: `perf` in main.ts; switches fold into the preset in `applyPerf`).
    3. ~~Realism and polish~~ (surf, flowing rivers, drifting dapples, longer golden hour: see Done; caustics were
       already there).
-   4. Weather: rain (streaks, splashes and rings, wet ground, puddles, grey-violet sky, a rainbow after), morning
-      mist that burns off, dew sparkle, weather that changes by itself, and a night sky (Milky Way, moon phases,
-      shooting stars, aurora).
+   4. ~~Weather and night sky~~ (done, see Done). Not yet: splashes where drops hit the ground, rocks and trunks
+      darkening when wet, snow.
    The user wants it all to feel cozy and gorgeous.
 
 0. **User's queue (2026-11-01), in this order:**
@@ -116,6 +115,28 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Weather and the night sky (user, 2026-11-01):
+  - **Weather that changes by itself** (`src/weather.ts`): clear → fair → cloudy → overcast → rain and back, a few
+    minutes per state, on a Markov chain. Cloud cover and greyness drift over ~40 s, rain starts once the sky has
+    greyed. Panel: Time & weather → weather (auto, a fixed state, or manual = the old cloud slider); `?weather=rain`.
+  - **Overcast**: the sky blends toward grey-violet; the sun's direct light drops to 18%, the ambient rises,
+    beams fade, and the haze, water glitter and grass translucency lose the sun's warmth and the violet hue split
+    (they had tinted rainy haze pink). The horizon under the deck stays only a little brighter than the clouds.
+  - **Rain** (`src/rain.ts`): 12k streaks in a box that wraps around the camera, drawn after the TAA, hidden behind
+    land and trees by testing a clean copy of the scene depth (`WaterPass.depth`, the overlay bug below).
+    Rings on the sea, ponds and rivers; ground darkens; bare flat ground gathers puddles with real reflections and
+    rings (not under the meadow: a glossy floor there reflected the sky up between the blades). Under 0.3 ms.
+  - **Rainbow** after a shower when the sun is out and below 40°: primary with red outside, a fainter reversed
+    secondary, brighter sky inside the bow. Drawn in the atmosphere pass after the clouds (in the sky dome the
+    clouds hid it), over the sky and far land.
+  - **Morning mist** that lies thick at dawn (heavier after rain) and burns off by 10:00; **dew** glints on the blades.
+  - **Night sky**: Milky Way with dust lanes, a moon disc with phases (advancing a day each night) and seas, shooting
+    stars, and aurora curtains over the north (green foot, violet top, rays keyed to the compass bearing so they
+    don't alias near the horizon). Panel sliders: northern lights, moon phase.
+  - Bugs found on the way: the overlay (motes, rain) sampled `target.depthTexture` while drawing into that same
+    target (with the TAA on the swap parity puts the overlay there), so the depth test read garbage; and a local
+    named `flat` (a GLSL ES 3 keyword) failed the terrain shader, which showed the sea plane through the ground.
+  - All shots 60 fps at medium (`.playwright-mcp/polish/w-*.png`).
 - Drifting sun flecks and a longer golden hour (user, 2026-11-01):
   - Tree leaves cast their shadows through a wind-aware depth material (`leafDepth` in `trees.ts`): the dapples on
     the forest floor drift with the crowns' sway (not the leaf flutter, so they don't shimmer). Forest +0.4 ms.

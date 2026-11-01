@@ -38,6 +38,11 @@ volumetric, shafts, fog, AO) before changing code.
   frame whenever the sun is in view.
 - A `sampler2DShadow` can't be bound before the shadow map exists: `VolumetricPass` (`src/volumetric.ts`) skips
   its march until the sun's map is there, and the atmosphere pass treats visibility as 1 until then (`uVisOn`).
+- A shader that fails to compile draws nothing and the frame still looks plausible (a broken terrain showed the sea
+  plane underneath). After any GLSL edit, check the console for `Shader Error`; avoid GLSL ES 3 keywords as names
+  (`flat`, `smooth`, `sample`, `patch`, `filter`...).
+- Overlays (motes, rain) must depth-test against `post.sceneDepth` (a copy taken before the full-screen passes), not
+  the composer target's depth: with the TAA on, the overlay draws into that very target.
 - Hot reload can interrupt Playwright navigation (`ERR_ABORTED`); just navigate again.
 - lil-gui 0.21 uses different DOM class names than older docs show; drive settings through `__app` instead.
 - The scene target's alpha carries wind motion to the TAA (`addWind` in `src/wind.ts`): opaque materials must

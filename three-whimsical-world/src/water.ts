@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { TERRAIN_SIZE } from './terrain';
+import { weatherUniforms, RAIN_RIPPLES } from './weather';
 
 /** Resolution of the river flow map over the terrain (TERRAIN_SIZE / FLOW_RES ≈ 4 m a texel). */
 const FLOW_RES = 512;
@@ -44,7 +45,9 @@ const fragmentShader = /* glsl */ `
   uniform mat4 uProj;
   // River flow map over the terrain: rg = flow direction (0.5 + 0.5 d), b = how much this is river water.
   uniform sampler2D tFlow;
+  uniform float uRain;
   varying vec3 vWorld;
+  ${RAIN_RIPPLES}
   varying vec3 vView;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -174,6 +177,8 @@ const fragmentShader = /* glsl */ `
       vec2 gr = mix(ga, gb, abs(p0 * 2.0 - 1.0)) * 0.09 * fade;
       g = mix(g, gr, river);
     }
+    // Rain: rings spreading where the drops land (close by; further out they're too fine to see).
+    if (uRain > 0.01) g += rainRipples(vWorld.xz, uTime) * uRain * 0.35 * (1.0 - smoothstep(10.0, 40.0, dist));
     vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
 
     // --- Refraction: shift the lookup by the wave normal, more where the water is deeper.
@@ -375,6 +380,7 @@ export function createWater(env: THREE.Texture) {
     uGlitter: { value: 1 },
     uProj: { value: new THREE.Matrix4() },
     tFlow: { value: emptyFlow },
+    uRain: weatherUniforms.uRain,
   };
   const material = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader, defines: { SSR_STEPS: 32 } });
   const geo = new THREE.PlaneGeometry(20000, 20000, 1, 1);
@@ -418,6 +424,14 @@ export type Water = ReturnType<typeof createWater>;
 export class WaterPass extends Pass {
   private copy: THREE.WebGLRenderTarget;
   private quad = new FullScreenQuad(copyMaterial);
+  /**
+   * The scene's depth as it stood before the water and the full-screen passes. Overlays (motes, rain) must test
+   * against this, not the composer's own depth: with the TAA on, the overlay draws into the very target whose depth
+   * texture it would sample, and the TAA's copy has wiped that depth by then.
+   */
+  get depth() {
+    return this.copy.depthTexture!;
+  }
   private scene = new THREE.Scene();
 
   constructor(private water: Water, private camera: THREE.PerspectiveCamera) {

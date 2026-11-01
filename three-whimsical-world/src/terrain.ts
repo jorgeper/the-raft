@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
 import { mulberry32, smoothstep, type HeightFn, type WorldFns } from './worldgen';
 import { groundUniforms } from './ground';
+import { weatherUniforms, RAIN_RIPPLES } from './weather';
 
 export type { HeightFn } from './worldgen';
 
@@ -136,7 +137,7 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
   // Scanned ground textures, when `npm run assets` has fetched them (loaded before the world is built).
   if (groundUniforms.tGroundDiff.value) mat.defines = { USE_GROUND: '' };
   mat.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, terrainUniforms, groundUniforms);
+    Object.assign(shader.uniforms, terrainUniforms, groundUniforms, weatherUniforms);
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -155,7 +156,12 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         varying vec4 vSplat;
         varying vec3 vWorldNormal;
         uniform float uGrassRadius;
+        uniform float uWet;
+        uniform float uRain;
+        uniform float uWeatherTime;
         float wetSand = 0.0;
+        float puddle = 0.0;
+        ${RAIN_RIPPLES}
         vec3 groundN = vec3(0.0, 1.0, 0.0);
         float groundFade = 0.0;
         #ifdef USE_GROUND
@@ -243,15 +249,41 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         float grain = tNoise(vWorld.xz * 23.0);
         diffuseColor.rgb *= mix(1.0, 0.84 + 0.18 * ripple + 0.12 * (grain - 0.5), sand);
         wetSand = 1.0 - smoothstep(0.2, 1.1, vWorld.y + 0.3 * tNoise(vWorld.xz * 0.5));
-        diffuseColor.rgb *= mix(1.0, 0.62, wetSand);`,
+        diffuseColor.rgb *= mix(1.0, 0.62, wetSand);
+        // Rain: soaked ground darkens, and water gathers in puddles on flat open ground (not under the meadow).
+        if (uWet > 0.0) {
+          float level = smoothstep(0.96, 0.995, normalize(vWorldNormal).y);
+          float hollow = tNoise(vWorld.xz * 0.11 + 3.0) * 0.65 + tNoise(vWorld.xz * 0.43) * 0.35;
+          // Only bare ground (paths, dirt, forest floor, beach) shines; under the meadow the wet soil is hidden by
+          // the blades, and a glossy floor there reflected the bright sky up between them as a white sheet.
+          float open = 1.0 - smoothstep(0.1, 0.4, vGrass);
+          puddle = smoothstep(0.62, 0.68, hollow + 0.12 * uWet - 0.12) * level * smoothstep(0.3, 0.8, uWet)
+            * open * smoothstep(0.6, 1.2, vWorld.y) * (1.0 - smoothstep(80.0, 160.0, camDist));
+          diffuseColor.rgb *= mix(1.0, 0.6, uWet * (1.0 - wetSand));
+          diffuseColor.rgb *= mix(1.0, 0.35, puddle);
+          wetSand = max(wetSand, uWet * 0.6 * open);
+        }`,
       )
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.35, wetSand);')
+      .replace(
+        '#include <roughnessmap_fragment>',
+        '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.35, wetSand);\nroughnessFactor = mix(roughnessFactor, 0.03, puddle);',
+      )
+      // Puddles reflect like water: a real F0 and a mirror-flat surface (rings while it rains).
+      .replace(
+        '#include <lights_physical_fragment>',
+        '#include <lights_physical_fragment>\nmaterial.specularColor = mix(material.specularColor, vec3(0.02), puddle);\nmaterial.specularF90 = mix(material.specularF90, 1.0, puddle);',
+      )
       .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
         #ifdef USE_GROUND
           normal = normalize(mix(normal, normalize((viewMatrix * vec4(groundN, 0.0)).xyz), groundFade));
-        #endif`,
+        #endif
+        if (puddle > 0.0) {
+          vec2 rr = rainRipples(vWorld.xz, uWeatherTime) * uRain * 0.25;
+          vec3 pn = normalize(vec3(-rr.x, 1.0, -rr.y));
+          normal = normalize(mix(normal, normalize((viewMatrix * vec4(pn, 0.0)).xyz), puddle));
+        }`,
       );
   };
   const mesh = new THREE.Mesh(geo, mat);

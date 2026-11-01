@@ -19,6 +19,8 @@ import { loadPlants } from './plants';
 import { QUALITY_PRESETS, quality, setQuality, type QualityLevel } from './quality';
 import { FpsMeter } from './fps';
 import { SunShadows, seeFarCasters } from './cascades';
+import { Weather, weatherUniforms, type WeatherMode } from './weather';
+import { Rain } from './rain';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
 const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
@@ -147,6 +149,10 @@ characterRoot = character?.root ?? null;
 const motes = new Motes();
 motes.setSceneDepth(post.sceneDepth);
 overlay.add(motes.points);
+const rain = new Rain();
+rain.setSceneDepth(post.sceneDepth);
+overlay.add(rain.lines);
+const weather = new Weather();
 
 // Torch (T): the flame model rides on the camera (or in the character's hand), its lights live in the world.
 const torch = new Torch();
@@ -182,11 +188,22 @@ const settings = {
   groundFog: 0.22,
   groundFogHeight: 3,
   groundFogPatchy: 0.6,
+  /** 'auto' drifts between clear, fair, cloudy, overcast and rain by itself; 'manual' uses the cloud slider. */
+  weather: 'auto' as WeatherMode,
+  /** Northern lights on clear nights (0 = never). */
+  aurora: 0.7,
+  /** 0 = new moon, 0.5 = full; advances a little each night. */
+  moonPhase: 0.42,
 };
 const sunDir = new THREE.Vector3();
 const moonDir = new THREE.Vector3();
 const lightDir = new THREE.Vector3();
 const lightColor = new THREE.Color();
+/**
+ * The sun as the air, water and blades see it: under overcast the light is diffuse, so the haze's sunward glow, the
+ * glitter on water and the grass's translucency fade and lose their warmth (they had tinted rainy haze pink).
+ */
+const scatterSun = new THREE.Color();
 let daylight = 1;
 /** Exposure before eye adaptation, and the adaptation factor (dips a little while you look into the sun). */
 let baseExposure = 0.65, eyeAdapt = 1;
@@ -222,7 +239,9 @@ function updateSun() {
   moonDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - Math.max(-elevation, 20)), THREE.MathUtils.degToRad(azimuth + 180));
 
   // Rose-gold palette before noon, magenta-violet after.
-  sky.update(sunDir, elevation, settings.time >= 13 || settings.time < 1, settings.clouds);
+  const overcast = weather.overcast;
+  sky.update(sunDir, elevation, settings.time >= 13 || settings.time < 1, weather.clouds, overcast);
+  sky.uniforms.uSunDisc.value = 12 * (1 - overcast);
 
   daylight = THREE.MathUtils.smoothstep(elevation, -4, 6);
   const night = 1 - THREE.MathUtils.smoothstep(elevation, -9, -1);
@@ -235,7 +254,8 @@ function updateSun() {
   lightColor.copy(moonColor).multiplyScalar((0.6 + 0.25 * Math.min(nightVision(), 1)) * night).lerp(sunColor, daylight);
   sun.color.copy(lightColor);
   // Strong sun against modest sky fill, so shadows and light beams have real contrast.
-  sun.intensity = daylight > 0.05 ? 8 * daylight : 2.2;
+  // Under overcast the sun is a bright patch in the grey: little direct light, flatter shade.
+  sun.intensity = (daylight > 0.05 ? 8 * daylight : 2.2) * (1 - 0.82 * overcast);
   // The blue fill also covers twilight: after sunset neither sun nor moon lights the shade, and under a canopy the
   // ground went black (exposure can't lift black).
   const twilight = 1 - THREE.MathUtils.smoothstep(elevation, -6, 3);
@@ -248,9 +268,21 @@ function updateSun() {
   renderer.toneMappingExposure = baseExposure * eyeAdapt;
 
   water.uniforms.uSunDir.value.copy(lightDir);
-  water.uniforms.uSunColor.value.copy(lightColor);
-  post.atmosphere.uShaftStrength.value = shaftStrength.value * daylight;
-  post.atmosphere.uVolumetric.value = volumetric.value * daylight;
+  const luma = lightColor.r * 0.2126 + lightColor.g * 0.7152 + lightColor.b * 0.0722;
+  scatterSun.copy(lightColor).lerp(new THREE.Color(luma, luma, luma), overcast).multiplyScalar(1 - 0.75 * overcast);
+  water.uniforms.uSunColor.value.copy(scatterSun);
+  // The haze's violet seam and orange scatter fade with the sun under overcast, like the sky's.
+  post.atmosphere.uHueSplit.value = sky.uniforms.uHueSplit.value * (1 - 0.85 * overcast);
+  post.atmosphere.uShaftStrength.value = shaftStrength.value * daylight * (1 - overcast);
+  post.atmosphere.uVolumetric.value = volumetric.value * daylight * (1 - 0.85 * overcast);
+  // Night sky: moon and Milky Way (washed out by a bright moon), aurora on clear nights.
+  const nightSky = 1 - THREE.MathUtils.smoothstep(elevation, -10, -2);
+  sky.uniforms.uNight.value = nightSky;
+  sky.uniforms.uMoonDir.value.copy(moonDir);
+  sky.uniforms.uMoonPhase.value = settings.moonPhase;
+  const moonFull = 1 - Math.abs(settings.moonPhase * 2 - 1);
+  sky.uniforms.uMilkyWay.value = (1 - 0.6 * moonFull) * (1 - overcast);
+  sky.uniforms.uAurora.value = settings.aurora * (1 - THREE.MathUtils.smoothstep(overcast, 0.2, 0.6));
 
   cubeCamera.update(renderer, skyScene);
   envTarget?.dispose();
@@ -260,10 +292,11 @@ function updateSun() {
   sky.probeMesh.material = sky.probeMaterial;
   scene.environment = envTarget.texture;
   // Modest sky fill: shadows stay deep enough for light and shade to model the scene.
-  scene.environmentIntensity = 0.34;
+  scene.environmentIntensity = 0.34 * (1 + 0.6 * overcast);
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
-persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'nightVisionOn', 'fogDensity', 'whimsy', 'groundFog', 'groundFogHeight', 'groundFogPatchy']);
+persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'nightVisionOn', 'fogDensity', 'whimsy', 'groundFog', 'groundFogHeight', 'groundFogPatchy', 'weather', 'aurora', 'moonPhase']);
+weather.mode = settings.weather;
 applyNightVision();
 post.setWhimsy(settings.whimsy);
 persist.bind('tint', post.atmosphere.uTintStrength, ['value']);
@@ -272,7 +305,7 @@ const hueSplit = { value: 1 };
 persist.bind('hueSplit', hueSplit, ['value']);
 persist.bind('shadeTint', post.atmosphere.uShadeTint, ['value']);
 const applyHueSplit = () => {
-  sky.uniforms.uHueSplit.value = post.atmosphere.uHueSplit.value = hueSplit.value;
+  sky.uniforms.uHueSplit.value = hueSplit.value;
   updateSun();
 };
 persist.bind('cloudShadow', post.atmosphere.uCloudShadow, ['value']);
@@ -325,12 +358,19 @@ const timeGui = gui.addFolder('Time & weather');
 const timeCtrl = timeGui.add(settings, 'time', 0, 24, 0.05).name('time of day').onChange(updateSun);
 timeGui.add(settings, 'daySpeed', 0, 60, 0.5).name('day speed (h/min)');
 timeGui.add(settings, 'sunRotation', -180, 180, 1).name('sun direction').onChange(updateSun);
-timeGui.add(settings, 'clouds', 0, 1, 0.01).onChange(updateSun);
+timeGui
+  .add(settings, 'weather', { 'Auto (changes by itself)': 'auto', Clear: 'clear', Fair: 'fair', Cloudy: 'cloudy', Overcast: 'overcast', Rain: 'rain', 'Manual (cloud slider)': 'manual' })
+  .name('weather')
+  .onChange((m: WeatherMode) => (weather.mode = m));
+timeGui.add(settings, 'clouds', 0, 1, 0.01).name('clouds (manual weather)').onChange(updateSun);
+timeGui.add(settings, 'aurora', 0, 1.5, 0.01).name('northern lights').onChange(updateSun);
+timeGui.add(settings, 'moonPhase', 0, 1, 0.01).name('moon phase (0.5 full)').onChange(updateSun);
 timeGui.add(post.atmosphere.uCloudShadow, 'value', 0, 1, 0.01).name('cloud shadows');
 timeGui.add(settings, 'fogDensity', 0, 0.003, 0.0001).name('haze').onChange((v: number) => (post.atmosphere.uFogDensity.value = v));
+/** Ground fog from the panel, plus the weather's morning mist and the murk of rain. */
 const applyGroundFog = () => {
-  post.atmosphere.uGroundFog.value = settings.groundFog;
-  post.atmosphere.uGroundFogHeight.value = settings.groundFogHeight;
+  post.atmosphere.uGroundFog.value = settings.groundFog + weather.mist * 0.9;
+  post.atmosphere.uGroundFogHeight.value = settings.groundFogHeight + weather.mist * 5;
   post.atmosphere.uGroundFogPatchy.value = settings.groundFogPatchy;
 };
 applyGroundFog();
@@ -445,6 +485,7 @@ const perf = {
   grass: 1,
   grassReach: 1,
   cover: 1,
+  rain: 1,
 };
 persist.bind('perf', perf, Object.keys(perf) as (keyof typeof perf)[]);
 /** Folds the performance switches into the active preset's values (which the scene modules read live). */
@@ -507,6 +548,7 @@ perfGui.add(perf, 'treeDetail', 0.4, 1.5, 0.05).name('tree detail (trees 6-8 ms)
 perfGui.add(perf, 'grass', 0.2, 1.5, 0.05).name('grass density (1.5-3 ms)').onChange(perfChange);
 perfGui.add(perf, 'grassReach', 0.4, 1.5, 0.05).name('grass reach').onChange(perfChange);
 perfGui.add(perf, 'cover', 0.2, 1.5, 0.05).name('ferns & flowers (0.4-2.5 ms)').onChange(perfChange);
+perfGui.add(perf, 'rain', 0, 1, 0.05).name('raindrops (under 0.3 ms, in rain)');
 perfGui.close();
 
 // --- Minimap: click to travel there.
@@ -582,6 +624,15 @@ const EYE_HEIGHT = 1.7;
 // and ?time=hours sets the time of day.
 const query = new URLSearchParams(location.search);
 const camParam = query.get('cam')?.split(',').map(Number);
+if (query.has('weather')) {
+  weather.mode = query.get('weather') as WeatherMode;
+  // Jump straight to it (no minute-long build-up), for screenshots.
+  const q = weather.mode === 'auto' || weather.mode === 'manual' ? 'fair' : weather.mode;
+  weather.clouds = { clear: 0.12, fair: 0.38, cloudy: 0.62, overcast: 0.85, rain: 0.95 }[q];
+  weather.overcast = { clear: 0, fair: 0, cloudy: 0.25, overcast: 0.7, rain: 1 }[q];
+  weather.rain = weather.wetness = q === 'rain' ? 1 : 0;
+  updateSun();
+}
 if (query.has('time')) {
   settings.time = Number(query.get('time'));
   timeCtrl.updateDisplay();
@@ -779,6 +830,7 @@ function canopyAround(x: number, z: number) {
 const lookDir = new THREE.Vector3();
 const timer = new THREE.Timer();
 let sinceSunUpdate = 0;
+let weatherDrift = 0, sinceWeatherLight = 0, sinceAuroraCube = 0;
 renderer.setAnimationLoop((now) => {
   fps.frame(now);
   timer.update();
@@ -793,7 +845,10 @@ renderer.setAnimationLoop((now) => {
     // full speed through midday and the night.
     const elevation = sunPath(settings.time).elevation;
     const pace = 0.42 + 0.58 * Math.max(THREE.MathUtils.smoothstep(elevation, 14, 26), 1 - THREE.MathUtils.smoothstep(elevation, -8, -3));
+    const before = settings.time;
     settings.time = (settings.time + (settings.daySpeed / 60) * dt * pace) % 24;
+    // A new night: the moon moves on through its phases.
+    if (settings.time < before) settings.moonPhase = (settings.moonPhase + 1 / 29.5) % 1;
     sinceSunUpdate += dt;
     if (sinceSunUpdate > 0.2) {
       sinceSunUpdate = 0;
@@ -802,17 +857,44 @@ renderer.setAnimationLoop((now) => {
     }
   }
 
+  // Weather: the sky, light and haze follow it; re-light a couple of times a second while it changes.
+  const elevationNow = sunPath(settings.time).elevation;
+  const prevOvercast = weather.overcast, prevClouds = weather.clouds;
+  weather.update(dt, settings.clouds, settings.time, elevationNow);
+  weatherDrift += Math.abs(weather.overcast - prevOvercast) + Math.abs(weather.clouds - prevClouds);
+  sinceWeatherLight += dt;
+  if (weatherDrift > 0.01 && sinceWeatherLight > 0.5) {
+    weatherDrift = 0;
+    sinceWeatherLight = 0;
+    updateSun();
+  }
+  post.atmosphere.uRainbow.value = weather.rainbow;
+  weatherUniforms.uWeatherTime.value = timer.getElapsed() % 1000;
+  // Rain thickens the air; overcast a little.
+  const fog = settings.fogDensity * (1 + 0.5 * weather.overcast) + weather.rain * 0.0011;
+  post.atmosphere.uFogDensity.value = fog;
+  applyGroundFog();
+  rain.update(timer.getElapsed() % 10000, camera, weather.rain, perf.rain, sky.uniforms.uHorizon.value, lightDir, scatterSun);
+  // The aurora moves; refresh the reflection cube now and then so the sea mirrors it.
+  if (sky.uniforms.uNight.value > 0 && sky.uniforms.uAurora.value > 0) {
+    sinceAuroraCube += dt;
+    if (sinceAuroraCube > 0.3) {
+      sinceAuroraCube = 0;
+      cubeCamera.update(renderer, skyScene);
+    }
+  }
+
   water.uniforms.uTime.value = timer.getElapsed();
-  water.uniforms.uHaze.value = settings.fogDensity;
+  water.uniforms.uHaze.value = fog;
   water.uniforms.uGlitter.value = 0.5 + settings.whimsy;
   sky.uniforms.uTime.value = timer.getElapsed();
   // High cirrus: more with whimsy, none when the clouds slider clears the sky.
-  sky.uniforms.uWisps.value = (0.5 + settings.whimsy * 0.6) * THREE.MathUtils.smoothstep(settings.clouds, 0, 0.2);
+  sky.uniforms.uWisps.value = (0.5 + settings.whimsy * 0.6) * THREE.MathUtils.smoothstep(weather.clouds, 0, 0.2) * (1 - weather.overcast);
   // Clouds drift with the wind and stay put over the land as you move, so their shadows line up with them.
   const t = timer.getElapsed();
   sky.uniforms.uCloudOffset.value.set(t * 0.004 + (camera.position.x * 0.9) / CLOUD_HEIGHT, t * 0.0015 + (camera.position.z * 0.9) / CLOUD_HEIGHT);
   post.atmosphere.uCloudOffset.value.copy(sky.uniforms.uCloudOffset.value);
-  post.atmosphere.uClouds.value = settings.clouds;
+  post.atmosphere.uClouds.value = weather.clouds;
   post.atmosphere.uTime.value = timer.getElapsed();
   post.atmosphere.uGroundY.value = Math.max(world.height(camera.position.x, camera.position.z), 0);
   wind.uPrevTime.value = wind.uTime.value;
@@ -858,11 +940,11 @@ renderer.setAnimationLoop((now) => {
   post.atmosphere.uTorchColor.value.copy(torch.flameColor);
 
   sunLight.uSunDirView.value.copy(lightDir).transformDirection(camera.matrixWorldInverse);
-  sunLight.uSunColor.value.copy(lightColor);
+  sunLight.uSunColor.value.copy(scatterSun);
   // Chunks streamed in since last frame bring fresh alpha-to-coverage materials; switch them before they draw
   // (a scene sweep costs ~0.05 ms).
   if (display.taa) useCoverage(false);
-  post.render(lightDir, lightColor);
+  post.render(lightDir, scatterSun);
 });
 
 // Apply the preset with the performance switches, then fill grass and ground cover before the first frame so the
@@ -873,5 +955,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, fps, sunShadows, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, fps, sunShadows, get world() { return world; } },
 });

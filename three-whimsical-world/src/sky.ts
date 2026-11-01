@@ -237,6 +237,7 @@ const fragmentShader = /* glsl */ `
   uniform float uWisps;
   /** Valheim's hue split: a lilac-pink stop between the cool sky and the warm sun, instead of a grey RGB blend. */
   uniform float uHueSplit;
+  uniform float uOvercast;
   uniform float uSunDisc;
   uniform float uSkyKnee;
   uniform float uSkyCeil;
@@ -244,9 +245,92 @@ const fragmentShader = /* glsl */ `
   uniform float uTime;
   /** Cloud drift plus the camera's position over the cloud layer, so clouds are anchored to the world. */
   uniform vec2 uCloudOffset;
+  /** Weather and night sky (see weather.ts and main.ts). */
+  uniform float uNight;
+  uniform vec3 uMoonDir;
+  /** 0 = new, 0.5 = full, 1 = new again. */
+  uniform float uMoonPhase;
+  uniform float uAurora;
+  uniform float uMilkyWay;
   varying vec3 vWorldPosition;
 
   ${CLOUD_NOISE}
+
+  float starHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+
+  // The night sky behind the clouds: the Milky Way, aurora curtains, the moon, and now and then a shooting star.
+  vec3 nightSky(vec3 d, float y) {
+    vec3 c = vec3(0.0);
+    // Milky Way: a band of faint light along a great circle tilted across the sky, split by dark dust lanes, with
+    // a dense dusting of faint stars in it.
+    vec3 gN = normalize(vec3(0.42, 0.5, 0.76));
+    vec3 g1 = normalize(cross(gN, vec3(0.0, 1.0, 0.0))), g2 = cross(gN, g1);
+    float b = dot(d, gN);
+    vec2 gp = vec2(dot(d, g1), dot(d, g2)) * 3.0;
+    float band = exp(-b * b * 22.0) * (0.55 + 0.6 * (fbm(gp * 1.3 + 2.0) * 0.5 + 0.5));
+    float lanes = smoothstep(0.0, 0.5, fbm(gp * 2.6 + vec2(b * 9.0, 0.0) - 5.0)) * exp(-b * b * 160.0);
+    float mw = band * (1.0 - 0.75 * lanes);
+    float dense = step(0.9965 - 0.004 * band, starHash(floor(d * 900.0)));
+    c += (vec3(0.5, 0.56, 0.85) * mw * 0.035 + vec3(0.9, 0.92, 1.0) * dense * (0.015 + 0.06 * band)) * uMilkyWay;
+
+    // Aurora: curtains hanging over the north, green at the foot fading to violet-pink at the top, slowly folding.
+    if (uAurora > 0.0 && y > 0.02) {
+      vec2 flatD = normalize(d.xz + 1e-5);
+      float north = smoothstep(-0.3, 0.5, dot(flatD, vec2(-0.2, -1.0)));
+      vec3 aur = vec3(0.0);
+      // Rays run straight up the curtains: keyed to the compass bearing, so they keep their size down to the horizon
+      // (keyed to the projected position they aliased into wavy bands there).
+      float bearing = atan(d.x, d.z);
+      for (int i = 0; i < 10; i++) {
+        float h = float(i) / 10.0;
+        // Where this view ray crosses a layer of the curtain (higher layers are further out at a given angle).
+        vec2 pp = d.xz / (y + 0.05) * (0.35 + h * 0.5);
+        float fold = noise(vec2(pp.x * 0.35 + uTime * 0.015, pp.y * 0.12)) * 1.8;
+        float line = abs(noise(vec2(pp.x * 0.18 + fold, pp.y * 0.5 - uTime * 0.01)));
+        // A bright lower hem, and fine vertical rays shimmering along each fold.
+        float rays = smoothstep(-0.3, 0.7, noise(vec2(bearing * 70.0 + fold * 2.0, uTime * 0.25)));
+        float curtain = smoothstep(0.09, 0.0, line) * (0.4 + 0.6 * rays);
+        vec3 hue = mix(vec3(0.15, 1.0, 0.45), vec3(0.75, 0.25, 0.9), smoothstep(0.35, 0.95, h));
+        aur += hue * curtain * (1.0 - h * 0.6);
+      }
+      c += aur * 0.03 * north * smoothstep(0.07, 0.3, y) * uAurora;
+    }
+
+    // Moon: a lit sphere with darker seas; the phase sets which part is lit.
+    float cm = dot(d, uMoonDir);
+    if (cm > 0.999 && uMoonDir.y > -0.05) {
+      vec3 mr = normalize(cross(uMoonDir, vec3(0.0, 1.0, 0.0))), mu = cross(mr, uMoonDir);
+      const float R = 0.0105;
+      vec2 q = vec2(dot(d, mr), dot(d, mu)) / R;
+      float r2 = dot(q, q);
+      if (r2 < 1.0) {
+        vec3 n = vec3(q, sqrt(1.0 - r2));
+        float a = uMoonPhase * 6.2831853;
+        vec3 L = vec3(sin(a), 0.0, -cos(a));
+        float lit = smoothstep(-0.04, 0.08, dot(n, L));
+        float maria = smoothstep(0.1, 0.6, fbm(q * 1.6 + 4.0) * 0.5 + 0.5);
+        float edge = smoothstep(1.0, 0.92, r2);
+        c += (vec3(1.0, 0.97, 0.9) * 1.6 * lit * (1.0 - 0.35 * maria) + vec3(0.01, 0.012, 0.02)) * edge;
+      }
+    }
+    float full = 1.0 - abs(uMoonPhase * 2.0 - 1.0);
+    c += vec3(0.6, 0.7, 1.0) * (pow(max(cm, 0.0), 300.0) * 0.06 + pow(max(cm, 0.0), 30.0) * 0.008) * full * step(-0.05, uMoonDir.y);
+
+    // A shooting star every few seconds, somewhere up high.
+    float slot = floor(uTime / 5.0), tl = fract(uTime / 5.0) * 5.0;
+    vec3 hs = vec3(starHash(vec3(slot, 1.7, 3.1)), starHash(vec3(slot, 5.3, 0.7)), starHash(vec3(slot, 2.9, 8.3)));
+    if (hs.z < 0.6 && tl < 0.9) {
+      vec2 sp = vec2(-2.4 + hs.x * 4.8, 0.45 + hs.y * 0.6);
+      vec2 dir = normalize(vec2(hs.x - 0.5 + 0.1, -0.6 - hs.y * 0.4));
+      vec2 pd = vec2(atan(d.z, d.x), asin(clamp(d.y, -1.0, 1.0)));
+      vec2 head = sp + dir * tl * 0.6;
+      vec2 rel = pd - head;
+      float along = dot(rel, -dir), across = abs(dot(rel, vec2(-dir.y, dir.x)));
+      float trail = step(0.0, along) * (1.0 - smoothstep(0.0, 0.16, along)) * (1.0 - smoothstep(0.0, 0.0018 + along * 0.004, across));
+      c += vec3(0.85, 0.9, 1.0) * trail * sin(3.14159 * tl / 0.9) * 0.6;
+    }
+    return c * uNight;
+  }
 
   void main() {
     vec3 d = normalize(vWorldPosition - cameraPosition);
@@ -262,7 +346,8 @@ const fragmentShader = /* glsl */ `
     // Blending cyan into peach in RGB passes through grey; Valheim's sky goes blue -> violet-pink -> orange
     // instead. Push the middle of each blend toward magenta (green down, red and blue up), most at a low sun.
     vec3 violet = vec3(1.16, 0.8, 1.1);
-    float split = uHueSplit * mix(0.35, 1.0, lowSun);
+    // A grey sky has no violet seam between warm and cool (it showed as pink gaps between the trees in rain).
+    float split = uHueSplit * mix(0.35, 1.0, lowSun) * (1.0 - 0.85 * uOvercast);
     horizon *= mix(vec3(1.0), violet, split * 4.0 * warmW * (1.0 - warmW));
 
     float y = d.y;
@@ -277,6 +362,10 @@ const fragmentShader = /* glsl */ `
     col += uGlow * (mix(0.12, 0.3, lowSun) * pow(fwd, 5.0) + 0.35 * pow(fwd, 40.0) + 0.6 * pow(fwd, 600.0));
     // Below the horizon (seen in reflections and the lighting probe): the horizon haze darkening downward.
     if (y < 0.0) col = mix(col, horizon * 0.55 + uZenith * 0.08, smoothstep(0.0, -0.35, y));
+
+    #ifndef LIGHTING_PROBE
+      if (uNight > 0.0 && y > 0.0) col += nightSky(d, y) * (1.0 - uClouds * 0.6);
+    #endif
 
     // High cirrus: thin streaks combed out along the wind, far above the cumulus (so they parallax less and sit
     // behind them). Faint white by day; around sunset they catch the light from below and glow pink, and stay rosy
@@ -375,6 +464,7 @@ export function createSky() {
     uWisp: { value: new THREE.Color() },
     uWisps: { value: 0.8 },
     uHueSplit: { value: 1 },
+    uOvercast: { value: 0 },
     uSunDisc: { value: 12 },
     /** Soft ceiling on the visible sky's brightest channel (above the knee), so it never tone-maps to white. */
     uSkyKnee: { value: 1.0 },
@@ -382,6 +472,11 @@ export function createSky() {
     uClouds: { value: 0.38 },
     uTime: { value: 0 },
     uCloudOffset: { value: new THREE.Vector2() },
+    uNight: { value: 0 },
+    uMoonDir: { value: new THREE.Vector3(0, 1, 0) },
+    uMoonPhase: { value: 0.5 },
+    uAurora: { value: 0 },
+    uMilkyWay: { value: 1 },
   };
   const material = new THREE.ShaderMaterial({
     name: 'ValheimSky',
@@ -418,17 +513,33 @@ export function createSky() {
       viewMaterial.needsUpdate = true;
     },
     /** Sets the palette for a sun elevation (degrees); `evening` picks the dusk palette over the dawn one. */
-    update(sunDir: THREE.Vector3, elevation: number, evening: boolean, clouds: number) {
+    update(sunDir: THREE.Vector3, elevation: number, evening: boolean, clouds: number, overcast = 0) {
       uniforms.uSunDir.value.copy(sunDir);
       uniforms.uClouds.value = clouds;
+      uniforms.uOvercast.value = overcast;
       const stops = evening ? EVENING : MORNING;
-      sample(stops, elevation, 'zenith', uniforms.uZenith.value);
-      sample(stops, elevation, 'horizon', uniforms.uHorizon.value);
-      sample(stops, elevation, 'sunHorizon', uniforms.uSunHorizon.value);
-      sample(stops, elevation, 'glow', uniforms.uGlow.value);
-      sample(stops, elevation, 'cloudLit', uniforms.uCloudLit.value);
-      sample(stops, elevation, 'cloudShade', uniforms.uCloudShade.value);
-      sample(stops, elevation, 'wisp', uniforms.uWisp.value);
+      const u = uniforms;
+      sample(stops, elevation, 'zenith', u.uZenith.value);
+      sample(stops, elevation, 'horizon', u.uHorizon.value);
+      sample(stops, elevation, 'sunHorizon', u.uSunHorizon.value);
+      sample(stops, elevation, 'glow', u.uGlow.value);
+      sample(stops, elevation, 'cloudLit', u.uCloudLit.value);
+      sample(stops, elevation, 'cloudShade', u.uCloudShade.value);
+      sample(stops, elevation, 'wisp', u.uWisp.value);
+      if (overcast > 0) {
+        // Overcast: the dome flattens into a soft grey-violet, a little warmer under the hidden sun, the glow gone.
+        const level = (u.uHorizon.value.r * 0.2126 + u.uHorizon.value.g * 0.7152 + u.uHorizon.value.b * 0.0722) * 0.55;
+        const grey = (r: number, g: number, b: number, k: number) => new THREE.Color(r * level * k, g * level * k, b * level * k);
+        u.uZenith.value.lerp(grey(0.84, 0.86, 1.0, 0.8), overcast);
+        // The horizon only a little brighter than the deck above it: brighter, it showed as a white band under the
+        // cloud layer.
+        u.uHorizon.value.lerp(grey(0.9, 0.9, 1.0, 0.8), overcast);
+        u.uSunHorizon.value.lerp(grey(1.0, 0.94, 0.95, 0.88), overcast);
+        u.uGlow.value.multiplyScalar(1 - 0.85 * overcast);
+        u.uCloudLit.value.lerp(grey(0.92, 0.92, 1.0, 0.85), overcast);
+        u.uCloudShade.value.lerp(grey(0.62, 0.64, 0.76, 0.6), overcast);
+        u.uWisp.value.lerp(grey(0.9, 0.9, 1.0, 0.9), overcast);
+      }
     },
   };
 }

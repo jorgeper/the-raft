@@ -3,6 +3,7 @@ import { createNoise2D } from 'simplex-noise';
 import { coverageFrom } from './terrain';
 import type { WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
+import { weatherUniforms } from './weather';
 import { quality } from './quality';
 
 const CHUNK = 24;
@@ -148,7 +149,7 @@ export class Grass {
     const patchVertex = this.material.onBeforeCompile;
     this.material.onBeforeCompile = (shader, renderer) => {
       patchVertex.call(this.material, shader, renderer);
-      Object.assign(shader.uniforms, sunLight);
+      Object.assign(shader.uniforms, sunLight, weatherUniforms);
       shader.vertexShader = ('varying float vTip;\nattribute float aSide;\nvarying float vSide;\nvarying float vBlade;\n' + shader.vertexShader)
         .replace(
           '#include <beginnormal_vertex>',
@@ -160,7 +161,10 @@ export class Grass {
           '#include <begin_vertex>\nvSide = aSide;\nvBlade = fract(sin(float(gl_InstanceID) * 12.9898) * 43758.5453);',
         );
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying float vTip;\nvarying float vSide;\nvarying float vBlade;\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;')
+        .replace(
+          '#include <common>',
+          '#include <common>\nvarying float vTip;\nvarying float vSide;\nvarying float vBlade;\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;\nuniform float uDew;\nuniform float uWet;',
+        )
         .replace(
           '#include <color_fragment>',
           // Blade detail: a pale midrib, fine lengthwise veins, darker edges, and some blades with sun-dried tips.
@@ -171,14 +175,22 @@ export class Grass {
           diffuseColor.rgb *= (1.0 + 0.22 * rib) * (0.93 + 0.07 * cos(across * 15.7)) * (1.0 - 0.2 * smoothstep(0.65, 1.0, across));
           float dried = step(0.82, vBlade) * smoothstep(0.55 + 0.25 * fract(vBlade * 7.0), 0.95, vTip);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.48, 0.22) * (0.8 + 0.4 * fract(vBlade * 13.0)), dried * 0.85);
-          diffuseColor.rgb *= 0.9 + 0.2 * fract(vBlade * 3.7);`,
+          diffuseColor.rgb *= 0.9 + 0.2 * fract(vBlade * 3.7);
+          diffuseColor.rgb *= 1.0 - 0.22 * uWet;`,
         )
         .replace(
           '#include <emissivemap_fragment>',
           // Translucency: blades glow warm yellow-green when the sun is behind them, strongest at the tips.
           `#include <emissivemap_fragment>
           float backlit = pow(max(dot(normalize(-vViewPosition), uSunDirView), 0.0), 3.0);
-          totalEmissiveRadiance += uSunColor * diffuseColor.rgb * vec3(1.1, 1.25, 0.6) * backlit * vTip * vTip * 0.8;`,
+          totalEmissiveRadiance += uSunColor * diffuseColor.rgb * vec3(1.1, 1.25, 0.6) * backlit * vTip * vTip * 0.8;
+          // Dew: a few drops along each blade glint when they catch the sun just so (close by only).
+          if (uDew > 0.01) {
+            float drop = step(0.9, fract(sin(dot(vec2(floor(vTip * 16.0), vBlade * 97.0), vec2(12.9898, 78.233))) * 43758.5453));
+            vec3 Vd = normalize(-vViewPosition);
+            float glint = pow(max(dot(normal, normalize(Vd + uSunDirView)), 0.0), 60.0);
+            totalEmissiveRadiance += uSunColor * drop * glint * uDew * 6.0 * (1.0 - smoothstep(6.0, 18.0, -vViewPosition.z));
+          }`,
         )
         // Blade bases sit in the field's shade; keep sky reflections off them.
         .replace('#include <aomap_fragment>', '#include <aomap_fragment>\nreflectedLight.indirectSpecular *= vTip * vTip;');

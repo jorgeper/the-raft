@@ -100,8 +100,11 @@ hasn't touched that slider. Panel is lil-gui (folders: time/atmosphere, Effects,
   layer (trees, rocks), so A/B screenshots across such a change show different layouts.
 - TAA: the variance box is 1.5σ standing still (less grass shimmer) and 1.0σ once a pixel moves 3+ px/frame (less
   ghosting while running). Measure both cases with `ghost.js` and `walk.js` before retuning.
-- Moving objects (deer, frogs, fish, birds, butterflies) have no motion vectors; the TAA only knows camera motion
-  and wind sway.
+- Things that move on their own (character, deer, frogs, fish, birds, butterflies) get motion vectors from
+  `MotionPass` (`motion.ts`); add new animated groups to `movers` in main.ts.
+- A shader that fails to compile just draws nothing: check the console for `Shader Error` after GLSL edits, and
+  don't name locals with GLSL ES 3 keywords (`flat`, `smooth`, `sample`).
+- Overlay materials (motes, rain) depth-test against `post.sceneDepth`, a copy taken before the full-screen passes.
 - `VolumetricPass` skips its march until the shadow map exists (a `sampler2DShadow` can't be bound before).
 - Rock moss near ponds reads a `uPonds[16]` uniform array (`scanned-rocks.ts`); more than 16 ponds needs a bigger array.
 - Hot reload can abort Playwright navigation (`ERR_ABORTED`); navigate again.
@@ -116,12 +119,12 @@ hasn't touched that slider. Panel is lil-gui (folders: time/atmosphere, Effects,
 
 ## Where to push next (ranked)
 
-1. **Motion clarity.** Running (10 m/s) still shimmers more than standing. Ideas: per-object motion vectors for
-   animated life, a reactive mask for alpha-tested foliage, temporal accumulation for the half-res AO/volumetric
-   buffers themselves (they currently lean on the main TAA), a sharpening pass that doesn't re-amplify jitter.
+1. **Motion clarity.** Running (10 m/s) still shimmers more than standing. Ideas: a reactive mask for alpha-tested
+   foliage, temporal accumulation for the half-res AO/volumetric buffers themselves (they currently lean on the main
+   TAA), a sharpening pass that doesn't re-amplify jitter.
 2. **Performance**: 33-43 fps at 1280×720 headless; 60 is the goal. Profile the vertex-heavy cover layers and
    trees first, then the atmosphere pass (it does a lot per pixel).
 3. **Sunset glow over the sea** still reads pastel; the bright haze over land toward a low sun is the suspect.
 4. **Valheim look**: compare against `reference/` at matching times of day; clouds' shapes, sun bloom, shade color.
 5. Pond follow-ups (ripple rings where frogs dive or fish rise, dragonflies), landmarks (rune stones, a
-   longhouse), weather (rain, rainbows), aurora. More in the roadmap's "Ideas" list.
+   longhouse), rain splashes on the ground, wet rocks and trunks. More in the roadmap's "Ideas" list.
