@@ -634,6 +634,23 @@ function resetToDefaults() {
 }
 gui.add({ reset: resetToDefaults }, 'reset').name('↺ Reset to defaults');
 
+/**
+ * How much forest canopy surrounds a point (0..1): the forest mask averaged over a small patch, counting only ground
+ * trees grow on (the same height and river rules as `trees.ts`). The mask alone runs on over beaches and water next
+ * to a forest, where the air is open and sunlit; treating that as deep forest drowned the view in forest haze.
+ */
+function canopyAround(x: number, z: number) {
+  const f = world.fns;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 8) * Math.PI * 2, r = i === 8 ? 0 : 12;
+    const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+    const treeable = THREE.MathUtils.smoothstep(f.height(px, pz), 2.5, 4.5) * (1 - THREE.MathUtils.smoothstep(f.river(px, pz), 0.1, 0.3));
+    sum += f.forest(px, pz) * treeable;
+  }
+  return sum / 9;
+}
+
 const lookDir = new THREE.Vector3();
 const timer = new THREE.Timer();
 let sinceSunUpdate = 0;
@@ -675,7 +692,7 @@ renderer.setAnimationLoop((now) => {
 
   // Inside a forest the haze thickens; ease toward it so walking in and out doesn't pop.
   const altitude = camera.position.y - world.height(camera.position.x, camera.position.z);
-  const forestHere = world.fns.forest(camera.position.x, camera.position.z) * (1 - THREE.MathUtils.smoothstep(altitude, 5, 40));
+  const forestHere = canopyAround(camera.position.x, camera.position.z) * (1 - THREE.MathUtils.smoothstep(altitude, 5, 40));
   post.atmosphere.uForest.value += (forestHere - post.atmosphere.uForest.value) * Math.min(dt * 1.5, 1);
   world.life.update(timer.getElapsed(), camera, daylight, post.atmosphere.uForest.value);
   world.deer.update(timer.getElapsed(), player.position);

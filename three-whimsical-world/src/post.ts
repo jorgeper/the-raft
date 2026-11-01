@@ -278,7 +278,13 @@ const AtmosphereShader = {
         float scatter = (1.0 - exp(-density * marchLen)) * phase * mix(3.0, 5.5, uForest);
         // Beams read from the contrast between lit and shadowed air: pow() deepens the shadowed stretches.
         // (The half-res march is smooth enough to take a harder curve without breaking into noise.)
-        color += uSunColor * scatter * pow(vis, 2.0) * uVolumetric * sunUpV * (1.0 + 0.5 * uWhimsy) * cloudShade(camPos);
+        float beam = scatter * pow(vis, 2.0) * (1.0 + 0.5 * uWhimsy);
+        // Soft ceiling: a forest's strong scatter is tuned for air that is mostly shaded. In a sunlit clearing (or
+        // looking into a low sun) every step is lit, and uncapped it washed the whole frame out to white. The knee
+        // leaves the dim, shaded range nearly linear, so beams keep their contrast against it.
+        const float BEAM_MAX = 0.8;
+        beam = BEAM_MAX * (1.0 - exp(-beam / BEAM_MAX));
+        color += uSunColor * beam * uVolumetric * sunUpV * cloudShade(camPos);
         if (uDebugVolumetric > 0.5) { gl_FragColor = vec4(vec3(vis), 1.0); return; }
       }
 
