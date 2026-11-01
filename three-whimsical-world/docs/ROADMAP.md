@@ -10,7 +10,7 @@ In priority order: the first items are the user's requests for the next sessions
       brightness near the sun (compressing it above a luma knee changed nothing visible); the pale bright haze
       toward the sun is rendered pastel by tone mapping. Next try: hue-preserving shoulder for the haze, or a
       saturation-keeping tweak to the Neutral curve's desaturation for warm hues.
-   3. Flicker when moving, "specially in the grass" (suspect the TAA: jitter/reprojection on thin blades).
+   3. ~~Flicker~~ (TAA part done, see Done; waiting on the user's verdict in motion).
    4. Small ponds: mossy surroundings, rocks and moss patches, floating plants (lily pads, duckweed), frogs and
       fish peacefully hanging around.
 
@@ -137,6 +137,14 @@ In priority order: the first items are the user's requests for the next sessions
   visibility on two rings of taps around each pixel, and the beam scatter falls back to open air's thin glow as
   that turns lit. Washed views: 214 → 164-180; dark forests and the beam shots unchanged; same fps. Shots:
   `.playwright-mcp/bright2/` (`ab1.jpg`, `ab2.jpg`: before left, after right) and `.playwright-mcp/vol/g-nab.jpg`.
+- Less grass shimmer under TAA (user report: "weird almost flickering effect, specially in the grass" when
+  moving). Measured with `.playwright-mcp/flicker/` scripts: consecutive frames captured inside the composer's
+  render, flicker = mean |second temporal difference| of luma over a grass crop, 3 runs each. With the wind off
+  and the camera still, TAA alone changed the frame 1.40/frame vs 0.04 off: it was chasing the jitter. Causes: a
+  tight variance box (1 sigma, bounded by the neighborhood min/max) clamped the history to each jittered, swaying
+  frame, and the 0.18 sharpen amplified the residue. Now 1.5 sigma unbounded, sharpen off: in the wind, 6.1 -> 3.9
+  standing and 5.5 -> 4.1 walking (TAA off: 4.3 / 7.3). About 10% less edge energy; no sparkles back along crowns
+  against the sun. Knobs: `__app.post.taa.uniforms.uGamma / uMinMax`, `copyUniforms.uSharpen`.
 - Teal-blue shade (Valheim's shaded forest floor is a luminous teal; ours was near-black green). The volumetric
   march also records whether each visible surface sees the sun (one shadow lookup at the ray's end, carried
   through the blur in B). The atmosphere pass shifts shaded surfaces' hue toward teal (luma kept) and lifts them

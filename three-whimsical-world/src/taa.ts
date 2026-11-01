@@ -25,6 +25,15 @@ const resolveMaterial = new THREE.ShaderMaterial({
     uDebugMotion: { value: 0 },
     /** 0 ignores the wind motion (reprojects as if everything stood still), for A/B comparisons. */
     uWindMotion: { value: 1 },
+    /**
+     * Width of the variance box the history is clipped to, in standard deviations. A tight box (1, and bounded by
+     * the neighborhood's min/max) chased each frame's jittered, swaying grass, so the output shimmered: flicker
+     * 6.1 standing in the wind vs 3.5 with TAA off (`.playwright-mcp/flicker/`). 1.5 unbounded: 3.9 still, 4.1
+     * walking (from 5.5), with no sparkles back along crowns against the sun.
+     */
+    uGamma: { value: 1.5 },
+    /** 1 also bounds the box by the neighborhood's min/max (tighter; shimmers on grass). */
+    uMinMax: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -41,6 +50,8 @@ const resolveMaterial = new THREE.ShaderMaterial({
     uniform float uReset;
     uniform float uDebugMotion;
     uniform float uWindMotion;
+    uniform float uGamma;
+    uniform float uMinMax;
     varying vec2 vUv;
 
     vec3 toYCoCg(vec3 c) { return vec3(0.25 * c.r + 0.5 * c.g + 0.25 * c.b, 0.5 * c.r - 0.5 * c.b, -0.25 * c.r + 0.5 * c.g - 0.25 * c.b); }
@@ -106,10 +117,9 @@ const resolveMaterial = new THREE.ShaderMaterial({
       bool offscreen = any(lessThan(prevUv, vec2(0.0))) || any(greaterThan(prevUv, vec2(1.0))) || prev.w <= 0.0;
 
       vec3 history = toYCoCg(sampleHistory(prevUv));
-      // Variance clipping: pull the history into the box of colors around this pixel now. Kept inside the
-      // neighborhood's actual range too: where a few dark leaves sit in bright sky, mean + sigma overshoots the
-      // brightest pixel, and history from a shifted spot (wind) came through as sparkles along the crowns.
-      vec3 lo = max(m1 - sigma, mn), hi = min(m1 + sigma, mx);
+      // Variance clipping: pull the history into the box of colors around this pixel now (see uGamma).
+      vec3 lo = m1 - uGamma * sigma, hi = m1 + uGamma * sigma;
+      if (uMinMax > 0.5) { lo = max(lo, mn); hi = min(hi, mx); }
       vec3 c = clamp(history, lo, hi);
       // Fast motion (in pixels) trusts the new frame more; still views accumulate many frames.
       float pixels = length((prevUv - vUv) / uTexel);
@@ -127,9 +137,10 @@ const resolveMaterial = new THREE.ShaderMaterial({
   depthWrite: false,
 });
 
-/** Hands the resolved frame on, with a light sharpen to win back the crispness the blending costs. */
+/** Hands the resolved frame on, optionally sharpened (`uSharpen`) to win back the crispness the blending costs. */
 const copyMaterial = new THREE.ShaderMaterial({
-  uniforms: { tSource: { value: null as THREE.Texture | null }, uTexel: { value: new THREE.Vector2() }, uSharpen: { value: 0.18 } },
+  // Sharpen off by default: it amplified what's left of the jitter into shimmer on grass (it bought ~10% edge energy).
+  uniforms: { tSource: { value: null as THREE.Texture | null }, uTexel: { value: new THREE.Vector2() }, uSharpen: { value: 0 } },
   vertexShader: resolveMaterial.vertexShader,
   fragmentShader: /* glsl */ `
     uniform sampler2D tSource;
@@ -166,6 +177,7 @@ function halton(i: number, b: number) {
 export class TAAPass extends Pass {
   /** The resolve shader's uniforms (`uDebugMotion` shows the wind motion). */
   readonly uniforms = resolveMaterial.uniforms;
+  readonly copyUniforms = copyMaterial.uniforms;
   private history = [this.makeTarget(), this.makeTarget()];
   private current = 0;
   private quad = new FullScreenQuad();
