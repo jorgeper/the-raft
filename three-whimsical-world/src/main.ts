@@ -13,6 +13,7 @@ import { Persist } from './persist';
 import { createSky } from './sky';
 import { Character, type MotionState } from './character';
 import { loadGroundTextures, groundUniforms } from './ground';
+import { Motes } from './motes';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
 const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
@@ -106,7 +107,9 @@ let builtParams = JSON.stringify(params);
 scene.add(world.group);
 water.uniforms.uDepth.value = world.depthTexture;
 
-const post = createPost(renderer, scene, camera, cubeTarget.texture, sun);
+// Glowing motes draw over the haze so it doesn't fog them out.
+const overlay = new THREE.Scene();
+const post = createPost(renderer, scene, camera, cubeTarget.texture, sun, overlay);
 
 // The player's eye: mouse look and WASD move this; the camera follows it in first person, or orbits behind the
 // character in third person.
@@ -114,6 +117,11 @@ const player = new THREE.Object3D();
 // The Viking (missing model files just mean no body).
 const character = await characterLoad;
 if (character) scene.add(character.root);
+
+// Pollen and dust in the sunlight, fireflies at night (scaled by whimsy).
+const motes = new Motes();
+motes.setSceneDepth(post.sceneDepth);
+overlay.add(motes.points);
 
 // Torch (T): the flame model rides on the camera (or in the character's hand), its lights live in the world.
 const torch = new Torch();
@@ -136,6 +144,8 @@ const settings = {
   clouds: 0.38,
   exposure: renderer.toneMappingExposure,
   fogDensity: 0.0008,
+  /** Valheim's dreamy side: two-tone haze, stronger beams, lens flares, soft glow, floating motes and fireflies. */
+  whimsy: 0.6,
 };
 const sunDir = new THREE.Vector3();
 const moonDir = new THREE.Vector3();
@@ -192,7 +202,8 @@ function updateSun() {
   scene.environmentIntensity = 0.4;
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
-persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'fogDensity']);
+persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'fogDensity', 'whimsy']);
+post.setWhimsy(settings.whimsy);
 persist.bind('tint', post.atmosphere.uTintStrength, ['value']);
 persist.bind('wind', wind.uWindStrength, ['value']);
 persist.bind('torch', torch, ['on', 'brightness', 'embersOn', 'smokeOn']);
@@ -211,6 +222,7 @@ updateSun();
 
 // --- Controls panel
 const gui = new GUI({ title: 'Meadows' });
+gui.add(settings, 'whimsy', 0, 1.5, 0.01).name('✨ whimsy').onChange((v: number) => post.setWhimsy(v));
 
 const worldGui = gui.addFolder('World');
 worldGui.add(params, 'seed', 0, 999999, 1);
@@ -539,6 +551,7 @@ document.addEventListener('visibilitychange', () => document.visibilityState ===
 function resetToDefaults() {
   persist.reset();
   post.atmosphere.uFogDensity.value = settings.fogDensity;
+  post.setWhimsy(settings.whimsy);
   controls.pointerSpeed = movement.sensitivity;
   verticalSpeed = 0;
   updateSun();
@@ -587,6 +600,7 @@ renderer.setAnimationLoop(() => {
 
   const pixelsPerMeter = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
   torch.update(camera, timer.getElapsed(), dt, pixelsPerMeter, torchAim);
+  motes.update(timer.getElapsed(), camera, lightDir, daylight, Math.min(settings.whimsy, 1.2), pixelsPerMeter);
   minimap.update(camera, camera.getWorldDirection(lookDir));
   post.atmosphere.uTorchPos.value.copy(torch.flameWorld);
   post.atmosphere.uTorchColor.value.copy(torch.flameColor);

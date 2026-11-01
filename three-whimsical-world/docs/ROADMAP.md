@@ -17,6 +17,9 @@ In priority order: items 1–4 are the user's requests for the next sessions, th
 2. **Whimsical pass** (user request; examples v1–v6 in `~/Downloads`): Valheim's dreamy moments, with lots of
    volumetric light and fog and rich colors contrasting in the same frame. Analyze the examples, recreate the
    effects, and put them behind one "whimsical" slider in the panel that cranks them all up or down.
+   - First pass landed: "✨ whimsy" slider (default 0.6) drives a thicker teal/orange split haze, stronger beams,
+     lens-flare ghosts, a soft glow pass, a saturated split-tone grade and drifting motes/fireflies (`src/motes.ts`).
+     Next: sun glints on water, falling leaves, pink-lit cloud wisps, user's verdict.
 3. **Realistic water** (user request: more translucent, especially where it meets the ground):
    - Shallows you can see into: refraction of the seabed and riverbed through the surface, depth-tinted
      absorption (clear turquoise at the edge, deep blue offshore), sand and pebbles visible near the shore.

@@ -50,6 +50,8 @@ const AtmosphereShader = {
     // Torch glow scattered by the haze around the flame.
     uTorchPos: { value: new THREE.Vector3() },
     uTorchColor: { value: new THREE.Color(0, 0, 0) },
+    /** 0 = natural; up to 1 (or beyond) = Valheim's dreamy look: thicker two-tone haze, stronger beams, flares. */
+    uWhimsy: { value: 0 },
   },
   vertexShader: fullscreenVertex,
   fragmentShader: /* glsl */ `
@@ -76,6 +78,7 @@ const AtmosphereShader = {
     uniform float uVolumetric;
     uniform vec3 uTorchPos;
     uniform vec3 uTorchColor;
+    uniform float uWhimsy;
     varying vec2 vUv;
 
     // Fraction of the first stretch of the ray that sees the sun (1 = no shadow casters along it).
@@ -131,7 +134,8 @@ const AtmosphereShader = {
           ? (1.0 - exp(-uFogHeightFalloff * dy)) / (uFogHeightFalloff * dy)
           : 1.0;
         // Forests hold a thick haze near the ground (it doesn't thin with height inside the canopy).
-        float density = uFogDensity * mix(1.0, 7.0, uForest);
+        // Whimsy thickens the air, so tree rows behind each other fade into flat colored layers.
+        float density = uFogDensity * mix(1.0, 7.0, uForest) * (1.0 + 0.9 * uWhimsy);
         float optical = density * dist * mix(exp(-uFogHeightFalloff * h) * heightTerm, 1.0, uForest);
         float fog = 1.0 - exp(-optical);
         vec3 horizonDir = normalize(vec3(ray.x, 0.04 + max(ray.y, 0.0) * 0.5, ray.z));
@@ -143,12 +147,15 @@ const AtmosphereShader = {
         // Valheim's haze is luminous, close to the horizon sky's brightness, so distant land dissolves into light.
         fogColor *= 0.85 * min(1.0, 2.3 / max(fogLuma, 1e-4)) * mix(1.0, 0.5, uForest);
         float toSun = max(dot(normalize(vec3(ray.x, 0.0, ray.z)), normalize(vec3(uSunDir.x, 0.0, uSunDir.z))), 0.0);
-        vec3 tint = mix(uFogCool, uFogWarm, pow(toSun, 2.0));
-        fogColor *= mix(vec3(1.0), tint, clamp(uTintStrength + 0.5 * uForest, 0.0, 1.0));
+        // Whimsy splits the haze harder: saturated teal away from the sun, orange-pink toward it.
+        vec3 cool = mix(uFogCool, vec3(0.42, 0.98, 1.4), clamp(uWhimsy, 0.0, 1.0));
+        vec3 warm = mix(uFogWarm, vec3(1.75, 0.82, 0.62), clamp(uWhimsy, 0.0, 1.0));
+        vec3 tint = mix(cool, warm, pow(toSun, mix(2.0, 1.4, clamp(uWhimsy, 0.0, 1.0))));
+        fogColor *= mix(vec3(1.0), tint, clamp(uTintStrength + 0.5 * uForest + 0.45 * uWhimsy, 0.0, 1.0));
         // Forward scattering: haze between you and a low sun glows gold (and orange under the canopy).
         float sunLow = 1.0 - smoothstep(0.1, 0.7, uSunDir.y);
         float forward = pow(max(dot(ray, uSunDir), 0.0), 5.0) * (0.6 + 1.6 * sunLow) * (1.0 + uForest);
-        fogColor += uSunColor * forward * smoothstep(-0.06, 0.04, uSunDir.y) * 1.6;
+        fogColor += uSunColor * forward * smoothstep(-0.06, 0.04, uSunDir.y) * 1.6 * (1.0 + 0.35 * uWhimsy);
         color = mix(color, fogColor, fog);
       }
 
@@ -165,7 +172,7 @@ const AtmosphereShader = {
         float density = mix(0.0015, 0.01, uForest);
         float scatter = (1.0 - exp(-density * marchLen)) * phase * 3.0;
         // Only the contrast between lit and shadowed air reads as beams; cap the flat part so open meadows stay clear.
-        color += uSunColor * scatter * vis * uVolumetric;
+        color += uSunColor * scatter * vis * uVolumetric * (1.0 + 0.9 * uWhimsy);
       }
       #endif
 
@@ -192,7 +199,35 @@ const AtmosphereShader = {
         }
         shaft /= float(SAMPLES);
         float sunAlign = pow(max(dot(ray, uSunDir), 0.0), 3.0);
-        color += uSunColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest);
+        color += uSunColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest) * (1.0 + 0.8 * uWhimsy);
+      }
+
+      // Lens flare ghosts strung along the line from the sun through the screen center, when the sun is visible.
+      if (uWhimsy > 0.0 && uSunFacing > 0.0) {
+        float seen = 0.0;
+        for (int k = 0; k < 5; k++) {
+          vec2 o = vec2(cos(float(k) * 1.256), sin(float(k) * 1.256)) * 0.012;
+          seen += skyLight(uSunUv + o * float(k > 0));
+        }
+        seen /= 5.0;
+        if (seen > 0.0) {
+          vec3 flare = vec3(0.0);
+          // position along the axis (0 = sun, 1 = mirrored), radius, color
+          float ts[5] = float[5](0.55, 0.8, 1.15, 1.45, 1.8);
+          float rs[5] = float[5](0.035, 0.07, 0.025, 0.11, 0.05);
+          vec3 cs[5] = vec3[5](vec3(1.0, 0.6, 0.3), vec3(0.4, 0.9, 1.0), vec3(1.0, 0.45, 0.8), vec3(0.5, 1.0, 0.6), vec3(0.9, 0.7, 1.0));
+          for (int k = 0; k < 5; k++) {
+            vec2 c = mix(uSunUv, vec2(1.0) - uSunUv, ts[k]);
+            float d = length((vUv - c) * vec2(1.7778, 1.0));
+            // Soft discs with a slightly brighter rim, like aperture ghosts.
+            float disc = smoothstep(rs[k], rs[k] * 0.7, d) * (0.6 + 0.4 * smoothstep(rs[k] * 0.5, rs[k], d));
+            flare += cs[k] * disc;
+          }
+          // A soft halo hugging the sun.
+          float halo = exp(-length((vUv - uSunUv) * vec2(1.7778, 1.0)) * 5.0);
+          flare += vec3(1.0, 0.8, 0.55) * halo * 1.5;
+          color += flare * uSunColor * seen * uSunFacing * uWhimsy * 0.18;
+        }
       }
 
       // The sky's sun disc is orders of magnitude brighter than anything else; cap it so bloom
@@ -211,6 +246,7 @@ const GradeShader = {
     uContrast: { value: 1.14 },
     uWarmth: { value: 0.04 },
     uVignette: { value: 0.28 },
+    uWhimsy: { value: 0 },
   },
   vertexShader: fullscreenVertex,
   fragmentShader: /* glsl */ `
@@ -219,14 +255,16 @@ const GradeShader = {
     uniform float uContrast;
     uniform float uWarmth;
     uniform float uVignette;
+    uniform float uWhimsy;
     varying vec2 vUv;
     void main() {
       vec3 c = texture2D(tDiffuse, vUv).rgb;
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      // Split toning.
-      c += uWarmth * vec3(0.9, 0.45, -0.3) * smoothstep(0.45, 1.0, l);
-      c += uWarmth * vec3(-0.35, 0.1, 0.25) * (1.0 - smoothstep(0.0, 0.4, l));
-      c = mix(vec3(l), c, uSaturation);
+      // Split toning: gold highlights, teal shadows (pushed further by whimsy).
+      float warmth = uWarmth + 0.06 * uWhimsy;
+      c += warmth * vec3(0.9, 0.45, -0.3) * smoothstep(0.45, 1.0, l);
+      c += (warmth + 0.05 * uWhimsy) * vec3(-0.35, 0.1, 0.25) * (1.0 - smoothstep(0.0, 0.4, l));
+      c = mix(vec3(l), c, uSaturation + 0.18 * uWhimsy);
       c = (c - 0.5) * uContrast + 0.5;
       float v = smoothstep(0.95, 0.3, length((vUv - 0.5) * vec2(1.0, 0.8)));
       c *= mix(1.0 - uVignette, 1.0, v);
@@ -253,6 +291,8 @@ export function createPost(
   camera: THREE.PerspectiveCamera,
   sky: THREE.Texture,
   sun: THREE.DirectionalLight,
+  /** Drawn after the haze (unfogged), e.g. glowing motes; its materials test against `sceneDepth` themselves. */
+  overlay?: THREE.Scene,
 ) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
@@ -282,10 +322,19 @@ export function createPost(
     atmosphere.uniforms.uShadowMatrix.value.copy(sun.shadow.matrix);
   };
   composer.addPass(atmosphere);
+  if (overlay) {
+    const overlayPass = new RenderPass(overlay, camera);
+    overlayPass.clear = false;
+    composer.addPass(overlayPass);
+  }
   // Small, tight bloom on the brightest highlights only; a wide radius lets the sky near the sun
   // spill a milky veil over the whole frame.
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.06, 0.35, 6);
   composer.addPass(bloom);
+  // Whimsy's dreamy diffusion: a wide, soft glow from everything bright, not just the sun.
+  const glow = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0, 0.7, 2.6);
+  glow.enabled = false;
+  composer.addPass(glow);
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
@@ -298,7 +347,16 @@ export function createPost(
     atmosphere: atmosphere.uniforms,
     ao: ao.uniforms,
     bloom,
+    /** The scene's depth buffer, for overlay materials that must hide behind geometry. */
+    sceneDepth: target.depthTexture!,
     grade: grade.uniforms,
+    /** 0 = natural look; higher = dreamier (haze split, beams, flares, glow, grade). */
+    setWhimsy(w: number) {
+      atmosphere.uniforms.uWhimsy.value = w;
+      grade.uniforms.uWhimsy.value = w;
+      glow.enabled = w > 0.01;
+      glow.strength = 0.1 * w;
+    },
     setSize(width: number, height: number) {
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(width, height);
