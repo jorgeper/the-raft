@@ -137,6 +137,12 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Changing wind (user, 2026-11-01): with "wind changes by itself" on (the default), `WindDrift` in `src/wind.ts`
+  moves the wind through spells around the slider's strength: still (0.1-0.35×), breezy, blustery and now and then
+  a gale (2.5-3×), easing between them over 10-30 s, with rain bringing at least a fresh blow. Grass, trees, seed
+  fluff, the clouds' drift and the wind's sound all follow it; "wind now" in the panel shows what's blowing.
+  `?wind=2` holds it steady for screenshots. Sound volume defaults to 0.3.
+
 - Sound and sea fixes (user, 2026-11-01): the mix is half as loud; the waterfall roar now fades out by 200 m
   instead of hissing across the map; wind and leaves follow the gusts squared, so lulls go quiet; surf and rivers
   fall off with the square of distance. No cuckoo; birds call about four times a minute at midday (more at dawn).

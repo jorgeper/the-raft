@@ -8,6 +8,53 @@ export const wind = {
   uWindStrength: { value: 1 },
 };
 
+/**
+ * The panel's wind: `value` is the base strength (the slider), and with `changing` on the weather of the wind drifts
+ * by itself around it: still spells, steady breezes, blustery hours and now and then a gale, each easing into the
+ * next over half a minute or so. `now` is what's blowing (base × the drift), shown read-only in the panel.
+ */
+export const windControl = { value: 1, changing: true, now: 1 };
+
+/** Spells of wind as (chance, low, high) multipliers of the base strength. */
+const SPELLS: [number, number, number][] = [
+  [0.18, 0.1, 0.35], // still: the grass barely stirs
+  [0.4, 0.7, 1.2], // a breeze
+  [0.3, 1.5, 2.1], // blustery
+  [0.12, 2.5, 3.0], // a gale
+];
+
+export class WindDrift {
+  level = 1;
+  private target = 1;
+  private next = 20;
+  private time = 0;
+
+  /** Advances the drift and sets `wind.uWindStrength`. `storm` (0..1, the rain) pushes it toward the windy end. */
+  update(dt: number, storm: number) {
+    this.time += dt;
+    if (!windControl.changing) {
+      this.level = this.target = 1;
+      this.next = this.time + 20;
+    } else {
+      if (this.time > this.next) {
+        let r = Math.random();
+        const spell = SPELLS.find(([p]) => (r -= p) < 0) ?? SPELLS[1];
+        this.target = spell[1] + Math.random() * (spell[2] - spell[1]);
+        // Gales blow themselves out sooner than calms and breezes last.
+        this.next = this.time + (this.target > 2.4 ? 25 + Math.random() * 35 : 45 + Math.random() * 90);
+      }
+      // Rising to a gale is quicker than dying down; a slow swell on top keeps even a steady spell alive.
+      const rate = this.target > this.level ? 1 / 12 : 1 / 25;
+      this.level += (this.target - this.level) * Math.min(dt * rate, 1);
+    }
+    const swell = windControl.changing ? 1 + 0.12 * Math.sin(this.time * 0.11) * Math.sin(this.time * 0.037 + 1.3) : 1;
+    // Rain brings at least a fresh blow with it.
+    const stormy = windControl.changing ? Math.max(this.level, 1.8 * storm) : this.level;
+    windControl.now = Math.min(windControl.value * stormy * swell, 3.2);
+    wind.uWindStrength.value = windControl.now;
+  }
+}
+
 /** The wind blows along this world direction (x, z); `windOffset` displaces along it. */
 export const WIND_DIR = new THREE.Vector2(1, 0.35).normalize();
 

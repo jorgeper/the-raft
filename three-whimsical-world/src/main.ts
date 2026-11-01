@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import GUI from 'lil-gui';
 import { createWater, addRipple } from './water';
-import { wind, sunLight } from './wind';
+import { wind, sunLight, windControl, WindDrift } from './wind';
 import { createPost } from './post';
 import { World } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
@@ -335,7 +335,8 @@ const applyHueSplit = () => {
   updateSun();
 };
 persist.bind('cloudShadow', post.atmosphere.uCloudShadow, ['value']);
-persist.bind('wind', wind.uWindStrength, ['value']);
+persist.bind('wind', windControl, ['value', 'changing']);
+const windDrift = new WindDrift();
 persist.bind('torch', torch, ['on', 'brightness', 'embersOn', 'smokeOn']);
 persist.bind('volumetric', volumetric, ['value']);
 persist.bind('shafts', shaftStrength, ['value']);
@@ -408,7 +409,9 @@ timeGui.add(post.atmosphere.uTintStrength, 'value', 0, 1, 0.01).name('cyan / gol
 timeGui.add(hueSplit, 'value', 0, 2, 0.01).name('hue split (violet, orange)').onChange(applyHueSplit);
 applyHueSplit();
 timeGui.add(post.atmosphere.uShadeTint, 'value', 0, 1.5, 0.01).name('teal shade');
-timeGui.add(wind.uWindStrength, 'value', 0, 3, 0.01).name('wind');
+timeGui.add(windControl, 'value', 0, 3, 0.01).name('wind');
+timeGui.add(windControl, 'changing').name('wind changes by itself');
+timeGui.add(windControl, 'now', 0, 3.2, 0.01).name('wind now').listen().disable();
 
 const torchGui = gui.addFolder('Torch');
 torchGui.add(torch, 'on').name('lit (T)').listen();
@@ -673,6 +676,11 @@ if (query.has('weather')) {
   weather.snow = weather.snowCover = q === 'snow' ? 1 : 0;
   updateSun();
 }
+// ?wind=strength holds the wind steady at that strength (for screenshots).
+if (query.has('wind')) {
+  windControl.value = Number(query.get('wind'));
+  windControl.changing = false;
+}
 if (query.has('time')) {
   settings.time = Number(query.get('time'));
   timeCtrl.updateDisplay();
@@ -872,6 +880,8 @@ const lookDir = new THREE.Vector3();
 const timer = new THREE.Timer();
 let sinceSunUpdate = 0;
 let weatherDrift = 0, sinceWeatherLight = 0, sinceAuroraCube = 0;
+/** Seconds of cloud travel: faster in a gale, slower in a calm. */
+let cloudDrift = 0;
 renderer.setAnimationLoop((now) => {
   fps.frame(now);
   timer.update();
@@ -902,6 +912,8 @@ renderer.setAnimationLoop((now) => {
   const elevationNow = sunPath(settings.time).elevation;
   const prevOvercast = weather.overcast, prevClouds = weather.clouds;
   weather.update(dt, settings.clouds, settings.time, elevationNow);
+  windDrift.update(dt, weather.rain);
+  cloudDrift += dt * (0.4 + 0.6 * wind.uWindStrength.value);
   weatherDrift += Math.abs(weather.overcast - prevOvercast) + Math.abs(weather.clouds - prevClouds);
   sinceWeatherLight += dt;
   if (weatherDrift > 0.01 && sinceWeatherLight > 0.5) {
@@ -932,8 +944,7 @@ renderer.setAnimationLoop((now) => {
   // High cirrus: more with whimsy, none when the clouds slider clears the sky.
   sky.uniforms.uWisps.value = (0.5 + settings.whimsy * 0.6) * THREE.MathUtils.smoothstep(weather.clouds, 0, 0.2) * (1 - weather.overcast);
   // Clouds drift with the wind and stay put over the land as you move, so their shadows line up with them.
-  const t = timer.getElapsed();
-  sky.uniforms.uCloudOffset.value.set(t * 0.004 + (camera.position.x * 0.9) / CLOUD_HEIGHT, t * 0.0015 + (camera.position.z * 0.9) / CLOUD_HEIGHT);
+  sky.uniforms.uCloudOffset.value.set(cloudDrift * 0.004 + (camera.position.x * 0.9) / CLOUD_HEIGHT, cloudDrift * 0.0015 + (camera.position.z * 0.9) / CLOUD_HEIGHT);
   post.atmosphere.uCloudOffset.value.copy(sky.uniforms.uCloudOffset.value);
   post.atmosphere.uClouds.value = weather.clouds;
   post.atmosphere.uTime.value = timer.getElapsed();
@@ -1009,5 +1020,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { sound, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
+  __app: { sound, windControl, windDrift, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
 });

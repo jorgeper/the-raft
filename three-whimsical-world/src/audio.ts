@@ -102,7 +102,7 @@ interface Bed {
 }
 
 export class Soundscape {
-  readonly settings = { on: true, volume: 0.7 };
+  readonly settings = { on: true, volume: 0.3 };
   private ctx?: AudioContext;
   private master!: GainNode;
   /** Muffles the whole mix a little under a blanket of snow. */
