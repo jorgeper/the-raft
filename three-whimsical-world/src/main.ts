@@ -169,6 +169,9 @@ fluff.setSceneDepth(post.sceneDepth);
 overlay.add(fluff.points);
 splashes.setSceneDepth(post.sceneDepth);
 overlay.add(splashes.points);
+// Rainbows in the waterfalls' spray (rebuilt with each world).
+world.waterfalls.setSceneDepth(post.sceneDepth);
+overlay.add(world.waterfalls.overlay);
 const weather = new Weather();
 
 // Torch (T): the flame model rides on the camera (or in the character's hand), its lights live in the world.
@@ -647,6 +650,8 @@ function regenerate() {
       scene.remove(world.group);
       world.dispose();
       world = new World(params, renderer, scannedRocks);
+      world.waterfalls.setSceneDepth(post.sceneDepth);
+      overlay.add(world.waterfalls.overlay);
       sound.setWorld(world.fns);
       water.setPonds(world.fns.ponds);
       water.setRivers(world.fns.riverCenters);
@@ -1118,7 +1123,7 @@ renderer.setAnimationLoop((now) => {
   world.life.update(timer.getElapsed(), camera, daylight, post.atmosphere.uForest.value);
   world.deer.update(timer.getElapsed(), player.position);
   world.pondLife.update(timer.getElapsed(), player.position, daylight);
-  world.waterfalls.update(timer.getElapsed(), camera.position, daylight);
+  world.waterfalls.update(timer.getElapsed(), camera.position, daylight, lightDir, 1 - weather.overcast);
 
   // Eye adaptation: looking into the sun stops the view down a little, so it glows instead of blinding
   // (under a canopy most of it is hidden, so adapt less there).

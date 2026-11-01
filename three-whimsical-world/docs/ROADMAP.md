@@ -137,6 +137,12 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Spray rainbows (user, 2026-11-01): each waterfall's plunge carries a soft cloud of spray (an ellipsoid drawn
+  out downstream), and each pixel adds up the spray its view ray crosses, stopping at the scene's depth, then takes
+  the bow's color from its angle off the antisolar point (`RAINBOW` in `weather.ts`, 42° primary, faint 51°
+  secondary). So it shows only as it would in life: sun low behind you, the spray 42° from your shadow. Best from
+  the river below the falls in the early evening (around 18:00–18:30 at the default world's falls), which the
+  flythrough passes through. Drawn in the overlay after the haze, added to the frame (`src/waterfall.ts`).
 - Photo mode (user, 2026-11-01): O or the panel's "📷 photo mode". A slow free camera (fly, first person, a
   quarter speed) with a real lens: the wheel zooms 14-200 mm (starts at 50 mm), the f-stop and an "extra
   dreaminess" multiplier (default 3×: true depth of field is very deep on landscapes) set the blur, focus follows

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { WorldFns, Waterfall } from './worldgen';
 import { addRipple } from './water';
+import { RAINBOW } from './weather';
 
 /**
  * Waterfalls spilling off gorge rims into the rivers below (sites from worldgen). Each is a ribbon that leaves the
@@ -189,8 +190,100 @@ function mistPoints(base: THREE.Vector3, rand: () => number) {
   return pts;
 }
 
+const bowUniforms = {
+  uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+  uBow: { value: 0 },
+  /** The scene's depth: the bow draws after the haze (so it isn't fogged out) and stops each ray at the scene. */
+  tDepth: { value: null as THREE.Texture | null },
+};
+
+/**
+ * The rainbow in a fall's spray. The spray is a soft ellipsoid round the plunge, drawn out downstream (+x, where
+ * the rivers run) where the drift carries it. Each pixel takes how much spray its view ray passes through and,
+ * from the angle off the point opposite the sun, the bow's color there: so, as in life, the bow shows only with
+ * the sun at your back, on spray 42° from your shadow, and stands up around you when you're in the spray.
+ * Drawn on the ellipsoid's inside faces, so it works from within, in the overlay after the haze; each ray stops at
+ * the scene's depth, so the cliffs hide what's behind them. Added to the frame, leaving alpha alone.
+ */
+function sprayBow(base: THREE.Vector3) {
+  const center = base.clone().add(new THREE.Vector3(7, 4, 0));
+  const radii = new THREE.Vector3(18, 9, 13);
+  const m = new THREE.ShaderMaterial({
+    uniforms: { ...bowUniforms, uCenter: { value: center }, uRadii: { value: radii } },
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    side: THREE.BackSide,
+    blending: THREE.CustomBlending,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneFactor,
+    blendSrcAlpha: THREE.ZeroFactor,
+    blendDstAlpha: THREE.OneFactor,
+    vertexShader: /* glsl */ `
+      varying vec3 vWorld;
+      varying vec3 vView;
+      // The projection's depth terms, to turn the depth buffer back into distance.
+      varying vec2 vProj;
+      void main() {
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vWorld = w.xyz;
+        vec4 v = viewMatrix * w;
+        vView = v.xyz;
+        vProj = vec2(projectionMatrix[2][2], projectionMatrix[3][2]);
+        gl_Position = projectionMatrix * v;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uSunDir, uCenter, uRadii;
+      uniform float uBow;
+      uniform sampler2D tDepth;
+      varying vec3 vWorld;
+      varying vec3 vView;
+      varying vec2 vProj;
+      ${RAINBOW}
+      void main() {
+        vec3 d = normalize(vWorld - cameraPosition);
+        // How far the ray runs before it meets the scene.
+        float z = texelFetch(tDepth, ivec2(gl_FragCoord.xy), 0).x * 2.0 - 1.0;
+        float sceneZ = vProj.y / (z + vProj.x);
+        float reach = sceneZ * length(vView) / max(-vView.z, 1e-4);
+        // Spray along the ray, in the ellipsoid's own unit space: march from where the ray enters the cloud to
+        // where it leaves it (or meets the scene) and add up the mist, so a ray grazing the edge or stopped by a
+        // nearby rock gets little, and one crossing the plunge's heart gets the most.
+        vec3 o = (cameraPosition - uCenter) / uRadii;
+        vec3 dr = d / uRadii;
+        float a = dot(dr, dr), b = dot(o, dr), c = dot(o, o) - 2.56;
+        float h = b * b - a * c;
+        if (h <= 0.0) discard;
+        h = sqrt(h);
+        float t0 = max((-b - h) / a, 0.0);
+        float t1 = min((-b + h) / a, reach);
+        if (t1 <= t0) discard;
+        float dt = (t1 - t0) / 10.0;
+        float depth = 0.0;
+        for (int i = 0; i < 10; i++) {
+          vec3 p = o + dr * (t0 + (float(i) + 0.5) * dt);
+          depth += exp(-dot(p, p) * 3.0);
+        }
+        depth *= dt * sqrt(a);
+        float spray = 1.0 - exp(-1.4 * depth);
+        vec3 bow = rainbow(d, uSunDir);
+        gl_FragColor = vec4(bow * spray * uBow * 1.3, 0.0);
+      }
+    `,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), m);
+  mesh.position.copy(center);
+  mesh.scale.copy(radii).multiplyScalar(1.6);
+  mesh.renderOrder = 3;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
 export class Waterfalls {
   readonly group = new THREE.Group();
+  /** The spray rainbows, for the overlay scene (drawn after the haze); see `setSceneDepth`. */
+  readonly overlay = new THREE.Group();
   private bases: THREE.Vector3[] = [];
   private nextRipple = 0;
   private rand: () => number;
@@ -207,11 +300,20 @@ export class Waterfalls {
       const base = pts[pts.length - 1].clone().setY(WATER_Y);
       this.bases.push(base);
       this.group.add(mistPoints(base, this.rand));
+      this.overlay.add(sprayBow(base));
     }
   }
 
-  /** `light`: how bright the day is (0 at night), for the mist. */
-  update(time: number, camera: THREE.Vector3, light: number) {
+  setSceneDepth(depth: THREE.Texture) {
+    bowUniforms.tDepth.value = depth;
+  }
+
+  /** `light`: how bright the day is (0 at night), for the mist; `sunDir` (toward the sun) and `sunny` (0 under
+   * cloud) for the rainbow in the spray. */
+  update(time: number, camera: THREE.Vector3, light: number, sunDir: THREE.Vector3, sunny: number) {
+    bowUniforms.uSunDir.value.copy(sunDir);
+    // A bow needs direct sun: none at night, nor once the sun is down.
+    bowUniforms.uBow.value = light * sunny * THREE.MathUtils.smoothstep(sunDir.y, -0.02, 0.05);
     sheetUniforms.uTime.value = time;
     mistUniforms.uTime.value = time;
     mistUniforms.uLight.value = 0.15 + 1.6 * light;
@@ -227,9 +329,12 @@ export class Waterfalls {
   }
 
   dispose() {
-    this.group.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.geometry) m.geometry.dispose();
-    });
+    for (const g of [this.group, this.overlay]) {
+      g.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+      });
+    }
+    this.overlay.removeFromParent();
   }
 }
