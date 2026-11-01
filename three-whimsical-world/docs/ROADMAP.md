@@ -1,6 +1,6 @@
 # Roadmap
 
-In priority order: items 1–5 are the user's requests for the next sessions, the rest ranked by realism gained. Move items to "Done" with the commit hash when finished.
+In priority order: items 1–6 are the user's requests for the next sessions, the rest ranked by realism gained. Move items to "Done" with the commit hash when finished.
 
 ## Next
 
@@ -11,7 +11,17 @@ In priority order: items 1–5 are the user's requests for the next sessions, th
    - An always-visible FPS readout (corner overlay, smoothed over ~1 s, with frame time in ms), toggleable.
    - Measure each preset in a meadow and a forest at 1280×720 and note the numbers here; this browser has
      swung between ~60 and ~36 fps all session, so compare presets back to back, not against old numbers.
-2. **Valheim look pass**: match the user's reference shots in `reference/`, not just generic realism.
+2. **Tone down the sun glare** (user request: "looking at the sun blinds too much, seems way bright"):
+   - Looking toward the sun should feel warm and luminous, not white-out. Several effects stack in that direction:
+     the sky's sun disc (`uSunDisc` 12 in `src/sky.ts`) and its glow lobes, the haze's forward glow toward the
+     sun and the volumetric phase lobe (`src/post.ts`), bloom (threshold 6 against the 6.6 HDR cap), the whimsy
+     glow pass and flare ghosts, and the grade's S-curve lifting the highlights.
+   - Bisect first: shoot the same sun-facing frames (meadow and forest, low sun and noon, whimsy 0 and default)
+     and switch each effect off through `__app.post` to see which ones make up the white-out.
+   - Likely fixes: a smaller, dimmer disc with a soft falloff, a tighter forward-haze lobe, a lower HDR cap near
+     the sun, and less highlight lift in the grade; maybe soft eye adaptation (exposure drops a little while
+     the sun fills the view). Keep the beams and the golden glow around the sun that the user likes.
+3. **Valheim look pass**: match the user's reference shots in `reference/`, not just generic realism.
    - First pass landed: painted sky (`src/sky.ts`), Neutral tone mapping, luminous sun-glowing haze, lime grass,
      golden light. Side-by-side grid: `.playwright-mcp/look/compare2.jpg` (regenerate with `.playwright-mcp/compare.js`).
      Waiting on the user's verdict; next candidates: bigger sun bloom, cloud shapes, bluer shadows.
@@ -21,7 +31,7 @@ In priority order: items 1–5 are the user's requests for the next sessions, th
    - Strong cyan-shadow / gold-highlight split toning; haze that glows pink-orange toward a low sun.
    - Done when: for each reference image, a matching screenshot (same time of day, similar framing) sits beside it
      and the user agrees the palette reads as Valheim.
-3. **Whimsical pass** (user request; examples v1–v6 in `~/Downloads`): Valheim's dreamy moments, with lots of
+4. **Whimsical pass** (user request; examples v1–v6 in `~/Downloads`): Valheim's dreamy moments, with lots of
    volumetric light and fog and rich colors contrasting in the same frame. Analyze the examples, recreate the
    effects, and put them behind one "whimsical" slider in the panel that cranks them all up or down.
    - First pass landed: "✨ whimsy" slider (default 0.6) drives a thicker teal/orange split haze, stronger beams,
@@ -31,12 +41,12 @@ In priority order: items 1–5 are the user's requests for the next sessions, th
      ground fog (amount / height / patchiness controls) pools in hollows; S-curve "depth" and three-way
      "color richness" grade (cyan shade, rosy mids, gold light). Side-on beams are still faint: try a dedicated
      beam pass at half resolution with more steps, and denser canopy shadow casters.
-4. **Realistic water** (user request: more translucent, especially where it meets the ground):
+5. **Realistic water** (user request: more translucent, especially where it meets the ground):
    - Shallows you can see into: refraction of the seabed and riverbed through the surface, depth-tinted
      absorption (clear turquoise at the edge, deep blue offshore), sand and pebbles visible near the shore.
    - Soft shorelines: depth-faded edges instead of a hard line, wet darkening on the sand, foam lapping in and out.
    - Caustics shimmering on the shallow bottom; planar reflection of terrain, trees and islands.
-5. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
+6. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
    - Undergrowth variety: berry bushes (raspberry, blueberry), thistles, mushrooms, dandelions and clover, tall
      grass tufts, reeds by rivers, fallen leaves and needle litter, moss carpets on forest floors.
    - Atmosphere: morning mist pooling in hollows and over rivers, drifting dust and pollen motes in sunbeams,
@@ -45,13 +55,13 @@ In priority order: items 1–5 are the user's requests for the next sessions, th
    - Light: richer dappled light under canopies, sun glints on wet rocks after rain.
    - Done when: walking from beach through meadow into forest at three times of day looks dense and alive in
      screenshots, compared against the references, at a playable frame rate.
-6. **Procedural rocks with scanned textures** for outcrops, slabs and standing stones: sharp fracture-face
+7. **Procedural rocks with scanned textures** for outcrops, slabs and standing stones: sharp fracture-face
    geometry plus triplanar Poly Haven/ambientCG rock textures (the scans alone repeat after ~17 shapes).
    Through Blender MCP when it's connected.
-7. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
-8. **Temporal anti-aliasing**: grass and leaves shimmer in motion.
-9. **Volumetric clouds** with cloud shadows on the ground.
-10. Small: ferns read too neon next to the scanned rocks; grass blade textures, auto-exposure entering forests,
+8. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
+9. **Temporal anti-aliasing**: grass and leaves shimmer in motion.
+10. **Volumetric clouds** with cloud shadows on the ground.
+11. Small: ferns read too neon next to the scanned rocks; grass blade textures, auto-exposure entering forests,
    caustics, textured shore foam.
 
 ## Ideas for a gorgeous, rich land (suggested to the user, not yet prioritized)
