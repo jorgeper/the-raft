@@ -6,7 +6,7 @@ In priority order: the first items are the user's requests for the next sessions
 
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
-   2. A **Performance** panel section: every costly effect gets a switch, labeled with what it costs.
+   2. ~~A **Performance** panel section~~ (done: `perf` in main.ts; switches fold into the preset in `applyPerf`).
    3. Realism and polish: shore foam and breaking waves, caustics in shallows, rivers that visibly flow; dappled
       sun on the forest floor, light through thin leaves, a longer golden hour.
    4. Weather: rain (streaks, splashes and rings, wet ground, puddles, grey-violet sky, a rainbow after), morning

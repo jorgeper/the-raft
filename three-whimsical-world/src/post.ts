@@ -552,7 +552,7 @@ export function createPost(
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
 
-  let whimsy = 0, glowAllowed = true, noiseFrame = 0;
+  let whimsy = 0, glowAllowed = true, beamsAllowed = true, noiseFrame = 0;
   const applyGlow = () => {
     glow.enabled = glowAllowed && whimsy > 0.01;
     glow.strength = 0.07 * whimsy;
@@ -589,6 +589,13 @@ export function createPost(
       glowAllowed = glowOn;
       applyGlow();
     },
+    /** Performance switches: sunbeams (the shadow-map march), the bloom on highlights, and per-object motion vectors. */
+    setEffects(beams: boolean, bloomOn: boolean, motionOn: boolean) {
+      beamsAllowed = beams;
+      bloom.enabled = bloomOn;
+      motion.enabled = motionOn;
+      taa.motion = motionOn ? motion.target.texture : null;
+    },
     setSize(width: number, height: number) {
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(width, height);
@@ -603,7 +610,7 @@ export function createPost(
       if (clouds) clouds.noiseOffset = noise;
       volumetric.uniforms.uForest.value = u.uForest.value;
       // Nothing to march while the volumetric slider is off (or at night, when main sets it to 0).
-      volumetric.enabled = u.uVolumetric.value > 0;
+      volumetric.enabled = beamsAllowed && u.uVolumetric.value > 0;
       ao.uniforms.uFrame.value = noise;
       u.uProjInv.value.copy(camera.projectionMatrixInverse);
       u.uViewInv.value.copy(camera.matrixWorld);

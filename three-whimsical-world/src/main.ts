@@ -426,9 +426,45 @@ function useCoverage(on: boolean) {
     }
   });
 }
+/**
+ * Performance switches on top of the preset: each costly effect can be turned off or scaled. Costs in the labels are
+ * what each saved at 1280×720 on medium (`scripts/measure/perf.js`); they vary with the view.
+ */
+const perf = {
+  clouds: true,
+  beams: true,
+  ao: true,
+  bloom: true,
+  glow: true,
+  reflections: true,
+  farShadows: true,
+  motionVectors: true,
+  life: true,
+  treeDetail: 1,
+  grass: 1,
+  grassReach: 1,
+  cover: 1,
+};
+persist.bind('perf', perf, Object.keys(perf) as (keyof typeof perf)[]);
+/** Folds the performance switches into the active preset's values (which the scene modules read live). */
+function applyPerf() {
+  if (!perf.clouds) quality.cloudSteps = 0;
+  if (!perf.ao) quality.aoScale = 0;
+  if (!perf.glow) quality.glow = false;
+  if (!perf.reflections) quality.waterReflectionSteps = 0;
+  if (!perf.farShadows) quality.farShadowExtent = 0;
+  if (!perf.life) quality.motes = 0;
+  quality.treeDetail *= perf.treeDetail;
+  quality.grassDensity *= perf.grass;
+  quality.grassRadius *= perf.grassReach;
+  quality.coverDensity *= perf.cover;
+  post.setEffects(perf.beams, perf.bloom, perf.motionVectors);
+  for (const g of [world.life.group, world.deer.group, world.pondLife.group]) g.visible = perf.life;
+}
 /** Switches the graphics preset; `keepScale` leaves the render scale alone (on load, where it was persisted). */
 function applyQuality(keepScale = false) {
   setQuality(display.quality);
+  applyPerf();
   if (!keepScale) display.renderScale = quality.renderScale;
   sunShadows.applyQuality();
   post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow, quality.cloudSteps);
@@ -452,6 +488,25 @@ displayGui.add(display, 'fov', 30, 100, 1).name('field of view').onChange(applyD
 displayGui.add(display, 'showMinimap').name('minimap (M)').listen().onChange(applyDisplay);
 displayGui.add(display, 'minimapSize', 120, 480, 10).name('minimap size').onChange(applyDisplay);
 displayGui.close();
+
+const perfGui = gui.addFolder('Performance');
+const perfNote = { text: 'ms per frame (16.7 = 60 fps)' };
+perfGui.add(perfNote, 'text').name('note').disable();
+const perfChange = () => applyQuality(true);
+perfGui.add(perf, 'clouds').name('volumetric clouds (~1 ms)').onChange(perfChange);
+perfGui.add(perf, 'beams').name('sunbeams & god rays (~0.5 ms)').onChange(perfChange);
+perfGui.add(perf, 'ao').name('ambient occlusion (~0.4 ms)').onChange(perfChange);
+perfGui.add(perf, 'bloom').name('bloom (~0.4 ms)').onChange(perfChange);
+perfGui.add(perf, 'glow').name('whimsy glow (~0.5 ms)').onChange(perfChange);
+perfGui.add(perf, 'reflections').name('water reflections (~0.3 ms)').onChange(perfChange);
+perfGui.add(perf, 'farShadows').name('distant shadows (~1 ms)').onChange(perfChange);
+perfGui.add(perf, 'motionVectors').name('sharp movers in TAA (~0.1 ms)').onChange(perfChange);
+perfGui.add(perf, 'life').name('animals & motes (~0.4 ms)').onChange(perfChange);
+perfGui.add(perf, 'treeDetail', 0.4, 1.5, 0.05).name('tree detail (trees 6-8 ms)').onChange(perfChange);
+perfGui.add(perf, 'grass', 0.2, 1.5, 0.05).name('grass density (1.5-3 ms)').onChange(perfChange);
+perfGui.add(perf, 'grassReach', 0.4, 1.5, 0.05).name('grass reach').onChange(perfChange);
+perfGui.add(perf, 'cover', 0.2, 1.5, 0.05).name('ferns & flowers (0.4-2.5 ms)').onChange(perfChange);
+perfGui.close();
 
 // --- Minimap: click to travel there.
 const minimap = new Minimap(display.minimapSize);
@@ -497,6 +552,7 @@ function regenerate() {
       setRockPonds(world.fns.ponds);
       builtParams = JSON.stringify(params);
       scene.add(world.group);
+      for (const g of [world.life.group, world.deer.group, world.pondLife.group]) g.visible = perf.life;
       player.position.y = Math.max(world.height(player.position.x, player.position.z), 0) + (movement.mode === 'fly' ? 20 : EYE_HEIGHT);
       snapView();
       world.update(camera, true);
@@ -803,11 +859,13 @@ renderer.setAnimationLoop((now) => {
   post.render(lightDir, lightColor);
 });
 
-// Fill grass and ground cover before the first frame so the opening view isn't bare.
+// Apply the preset with the performance switches, then fill grass and ground cover before the first frame so the
+// opening view isn't bare.
+applyQuality(true);
 snapView();
 world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, fps, sunShadows, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, fps, sunShadows, get world() { return world; } },
 });
