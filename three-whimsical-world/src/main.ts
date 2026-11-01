@@ -21,6 +21,7 @@ import { FpsMeter } from './fps';
 import { SunShadows, seeFarCasters } from './cascades';
 import { Weather, weatherUniforms, type WeatherMode } from './weather';
 import { Rain, Splashes } from './rain';
+import { SeedFluff } from './fluff';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
 const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
@@ -154,6 +155,10 @@ rain.setSceneDepth(post.sceneDepth);
 overlay.add(rain.lines);
 // Splashes where the drops land (follows regenerate through the closure).
 const splashes = new Splashes((x, z) => world.height(x, z));
+// Dandelion and thistle down drifting over the meadows on fine days.
+const fluff = new SeedFluff();
+fluff.setSceneDepth(post.sceneDepth);
+overlay.add(fluff.points);
 splashes.setSceneDepth(post.sceneDepth);
 overlay.add(splashes.points);
 const weather = new Weather();
@@ -939,6 +944,9 @@ renderer.setAnimationLoop((now) => {
   const pixelsPerMeter = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
   torch.update(camera, timer.getElapsed(), dt, pixelsPerMeter, torchAim);
   motes.update(timer.getElapsed(), camera, lightDir, daylight, Math.min(settings.whimsy, 1.2), pixelsPerMeter);
+  fluff.update(timer.getElapsed() % 10000, dt, camera, lightDir, scatterSun, sky.uniforms.uHorizon.value, daylight,
+    1 - world.fns.forest(camera.position.x, camera.position.z), (1 - weather.rain) * (1 - 0.6 * weather.overcast),
+    wind.uWindStrength.value, pixelsPerMeter);
   splashes.update(timer.getElapsed() % 10000, camera, weather.rain, perf.rain, sky.uniforms.uHorizon.value, pixelsPerMeter);
   minimap.update(camera, camera.getWorldDirection(lookDir));
   post.atmosphere.uTorchPos.value.copy(torch.flameWorld);
@@ -960,5 +968,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fps, sunShadows, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
 });
