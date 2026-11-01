@@ -32,7 +32,8 @@ function refine(geometry: THREE.BufferGeometry) {
     }
     let c = 1.15;
     if (z < -1.0) c *= THREE.MathUtils.lerp(1, 0.55, THREE.MathUtils.smoothstep(-z, 1.0, 1.1));
-    col.setXYZ(i, r * c, g * c, b * c);
+    // The colors are normalized Uint16: above 1 they would wrap around to near black (blue blotches on the white rump).
+    col.setXYZ(i, Math.min(r * c, 1), Math.min(g * c, 1), Math.min(b * c, 1));
   }
   geometry.computeVertexNormals();
 }
@@ -77,6 +78,7 @@ export class DeerHerds {
   private template?: THREE.Object3D;
   private clips: THREE.AnimationClip[] = [];
   private material?: THREE.MeshStandardMaterial;
+  private fawnMaterial?: THREE.MeshStandardMaterial;
   private rand = Math.random;
   private lastTime = 0;
 
@@ -97,6 +99,46 @@ export class DeerHerds {
     };
     material.customProgramCacheKey = () => 'deer';
     this.material = material;
+    // Fawns wear white spots in rows along the back and upper flanks, placed in the rest pose so they move with
+    // the skin.
+    const fawn = material.clone();
+    fawn.onBeforeCompile = (shader, renderer) => {
+      material.onBeforeCompile(shader, renderer);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vRest;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRest = position;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+          varying vec3 vRest;
+          vec2 fawnHash(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }`,
+        )
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          {
+            // The model faces -z: the back runs along z at the top of the barrel. Spots in loose rows, lying along it.
+            float side = sign(vRest.x);
+            vec2 sp = vec2(vRest.z * 11.0, (vRest.y - abs(vRest.x) * 0.6) * 15.0 + side * 0.37);
+            vec2 cell = floor(sp), fc = fract(sp);
+            float d = 9.0;
+            for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+              vec2 o = vec2(i, j);
+              vec2 h = fawnHash(cell + o + side * 7.0);
+              d = min(d, length((o + 0.25 + h * 0.5 - fc) * vec2(0.85, 1.2)));
+            }
+            float region = smoothstep(0.86, 0.94, vRest.y) * smoothstep(-0.45, -0.3, vRest.z) * (1.0 - smoothstep(0.55, 0.68, vRest.z))
+              * (1.0 - smoothstep(1.2, 1.26, vRest.y));
+            // Only on the reddish coat, not the pale belly or dark nose.
+            float coat = smoothstep(1.2, 1.6, vColor.r / max(vColor.b, 1e-3));
+            float spot = (1.0 - smoothstep(0.17, 0.24, d)) * region * coat;
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.7, 0.58), spot * 0.85);
+          }`,
+        );
+    };
+    fawn.customProgramCacheKey = () => 'deer-fawn';
+    this.fawnMaterial = fawn;
     scene.traverse((o) => {
       const mesh = o as THREE.SkinnedMesh;
       if (!mesh.isSkinnedMesh) return;
@@ -115,6 +157,7 @@ export class DeerHerds {
     const root = cloneSkinned(this.template!);
     const keep = kind === 'stag' ? 'Stag' : 'Doe';
     for (const name of ['Doe', 'Stag']) if (name !== keep) root.getObjectByName(name)?.removeFromParent();
+    if (kind === 'fawn') root.traverse((o) => ((o as THREE.SkinnedMesh).isSkinnedMesh ? ((o as THREE.SkinnedMesh).material = this.fawnMaterial!) : 0));
     const mixer = new THREE.AnimationMixer(root);
     const actions = {} as Record<Clip, THREE.AnimationAction>;
     for (const clip of this.clips) actions[clip.name as Clip] = mixer.clipAction(clip);
@@ -304,5 +347,6 @@ export class DeerHerds {
     this.deer = [];
     this.template?.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     this.material?.dispose();
+    this.fawnMaterial?.dispose();
   }
 }
