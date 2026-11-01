@@ -11,6 +11,7 @@ import { GroundCover } from './cover';
 import { Life } from './life';
 import { DeerHerds } from './deer';
 import { PondLife } from './pond-life';
+import { CoastLife } from './coast';
 import { Waterfalls } from './waterfall';
 import { createLandmarks } from './landmarks';
 
@@ -28,6 +29,7 @@ export class World {
   readonly deer: DeerHerds;
   /** Lilies, frogs and fish in the ponds; main.ts drives it with the clock and the player's position. */
   readonly pondLife: PondLife;
+  readonly coast: CoastLife;
   readonly waterfalls: Waterfalls;
 
   constructor(params: WorldParams, renderer: THREE.WebGLRenderer, scannedRocks: ScannedRock[] = []) {
@@ -45,7 +47,8 @@ export class World {
     this.deer = new DeerHerds(this.fns);
     this.pondLife = new PondLife(this.fns);
     this.waterfalls = new Waterfalls(this.fns);
-    this.group.add(this.trees.group, this.grass.group, this.cover.group, this.life.group, this.deer.group, this.pondLife.group, this.waterfalls.group);
+    this.coast = new CoastLife(this.fns);
+    this.group.add(this.trees.group, this.grass.group, this.cover.group, this.life.group, this.deer.group, this.pondLife.group, this.waterfalls.group, this.coast.group);
   }
 
   get height() {
@@ -69,6 +72,7 @@ export class World {
     this.deer.dispose();
     this.pondLife.dispose();
     this.waterfalls.dispose();
+    this.coast.dispose();
     // Free everything generated for this world; scanned-rock geometry and materials are shared, so they stay.
     this.group.traverse((o) => {
       const mesh = o as THREE.Mesh;

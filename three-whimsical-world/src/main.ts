@@ -139,7 +139,7 @@ const overlay = new THREE.Scene();
 const clouds = new CloudPass(camera, sky.uniforms);
 // Things that move on their own get motion vectors for the TAA (the character joins once it has loaded).
 let characterRoot: THREE.Object3D | null = null;
-const movers = () => [characterRoot, world.deer.group, world.life.group, world.pondLife.group];
+const movers = () => [characterRoot, world.deer.group, world.life.group, world.pondLife.group, world.coast.group];
 const post = createPost(renderer, scene, camera, cubeTarget.texture, sunShadows, overlay, water, clouds, movers);
 post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow, quality.cloudSteps);
 sky.setVolumetricClouds(quality.cloudSteps > 0);
@@ -167,6 +167,7 @@ const splashes = new Splashes((x, z) => world.height(x, z));
 // Footprints in snow and sand, and grass bent aside where the player and the deer walk.
 const trample = new Trample();
 const walkers: Walker[] = [];
+const coastLight = new THREE.Color();
 // Dandelion and thistle down drifting over the meadows on fine days.
 const fluff = new SeedFluff();
 fluff.setSceneDepth(post.sceneDepth);
@@ -176,6 +177,9 @@ overlay.add(splashes.points);
 // Rainbows in the waterfalls' spray (rebuilt with each world).
 world.waterfalls.setSceneDepth(post.sceneDepth);
 overlay.add(world.waterfalls.overlay);
+// Spray from the whale, the gulls' dives and the surf of a breach.
+world.coast.setSceneDepth(post.sceneDepth);
+overlay.add(world.coast.overlay);
 const weather = new Weather();
 
 // Torch (T): the flame model rides on the camera (or in the character's hand), its lights live in the world.
@@ -559,7 +563,7 @@ function applyPerf() {
   quality.grassRadius *= perf.grassReach;
   quality.coverDensity *= perf.cover;
   post.setEffects(perf.beams, perf.bloom, perf.motionVectors);
-  for (const g of [world.life.group, world.deer.group, world.pondLife.group]) g.visible = perf.life;
+  for (const g of [world.life.group, world.deer.group, world.pondLife.group, world.coast.group]) g.visible = perf.life;
 }
 /** Switches the graphics preset; `keepScale` leaves the render scale alone (on load, where it was persisted). */
 function applyQuality(keepScale = false) {
@@ -662,13 +666,15 @@ function regenerate() {
       world = new World(params, renderer, scannedRocks);
       world.waterfalls.setSceneDepth(post.sceneDepth);
       overlay.add(world.waterfalls.overlay);
+      world.coast.setSceneDepth(post.sceneDepth);
+      overlay.add(world.coast.overlay);
       sound.setWorld(world.fns);
       water.setPonds(world.fns.ponds);
       water.setRivers(world.fns.riverCenters);
       setRockPonds(world.fns.ponds);
       builtParams = JSON.stringify(params);
       scene.add(world.group);
-      for (const g of [world.life.group, world.deer.group, world.pondLife.group]) g.visible = perf.life;
+      for (const g of [world.life.group, world.deer.group, world.pondLife.group, world.coast.group]) g.visible = perf.life;
       player.position.y = Math.max(world.height(player.position.x, player.position.z), 0) + (movement.mode === 'fly' ? 20 : EYE_HEIGHT);
       snapView();
       world.update(camera, true);
@@ -1171,6 +1177,8 @@ renderer.setAnimationLoop((now) => {
   world.life.update(timer.getElapsed(), camera, daylight, post.atmosphere.uForest.value);
   world.deer.update(timer.getElapsed(), player.position);
   world.pondLife.update(timer.getElapsed(), player.position, daylight);
+  coastLight.setRGB(0.85, 0.9, 0.95).multiplyScalar(0.15 + 1.6 * daylight);
+  world.coast.update(timer.getElapsed(), dt, camera, daylight, coastLight, renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)));
   world.waterfalls.update(timer.getElapsed(), camera.position, daylight, lightDir, 1 - weather.overcast);
 
   // Eye adaptation: looking into the sun stops the view down a little, so it glows instead of blinding

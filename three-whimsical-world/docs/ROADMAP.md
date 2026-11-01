@@ -137,6 +137,14 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Coastal life (user, 2026-11-01): `src/coast.ts`. A flock of gulls wheels over the shallows near the camera
+  (crooked "M" wings that beat, glide and fold); now and then one folds and plunges for a fish, splashes, rests on
+  the water and labours back up. Every minute or so a humpback surfaces a few hundred metres out: either three
+  blows (a spout of drifting mist) and a fluke-up dive with water streaming off the tail, or a full breach and a
+  crashing re-entry. Small colonies of harbour seals (mottled coats painted per pixel) lie at the waterline,
+  breathing, turning their heads and now and then lifting into the "banana". Spray is CPU-simulated points in the
+  overlay, depth-tested against the scene. Free at 60 fps. Seals can overlap a beach rock.
+
 - Footprints and trampled grass (user, 2026-11-01): `src/trample.ts` keeps two maps round the player, redrawn each
   frame. Prints (2048² over 48 m) take a boot print every stride (strides lengthen with speed) and a hoof print for
   walking deer; the terrain dents and shades them in snow (8 cm, blue), dry sand (4.5 cm, shaded walls, a lighter
