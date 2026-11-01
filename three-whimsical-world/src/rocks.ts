@@ -79,6 +79,8 @@ class ScannedRockField {
 
 export interface Rocks {
   group: THREE.Group;
+  /** Every placed rock, with its shape's name (for finding shots and debugging). */
+  placements: (RockPlacement & { name: string })[];
   /** Per-frame detail and culling. */
   update(camera: THREE.Camera): void;
 }
@@ -222,5 +224,9 @@ export function createRocks(world: WorldFns, scanned: ScannedRock[] = []): Rocks
 
   const field = new ScannedRockField(shapes, placements);
   group.add(field.group);
-  return { group, update: (camera) => field.update(camera) };
+  return {
+    group,
+    placements: placements.map((pl) => ({ ...pl, name: shapes[pl.shape].name })),
+    update: (camera) => field.update(camera),
+  };
 }

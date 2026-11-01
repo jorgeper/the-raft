@@ -242,6 +242,24 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         #else
           diffuseColor.rgb *= 0.82 + 0.36 * mottle;
         #endif
+        // Bedding on cliff faces: layers of warm ochre and cool grey stone a meter or two thick, gently warped and
+        // tilted, with dark seams where one bed overhangs the next. Reads from afar, where the scans have faded.
+        {
+          float faceY = normalize(vWorldNormal).y;
+          float cliff = smoothstep(0.3, 0.65, vSplat.z) * (1.0 - smoothstep(0.5, 0.8, faceY));
+          if (cliff > 0.0) {
+            float bedY = vWorld.y + (tNoise(vWorld.xz * 0.015) - 0.5) * 9.0 + (tNoise(vWorld.xz * 0.09) - 0.5) * 1.4
+              + dot(vWorld.xz, vec2(0.012, -0.008));
+            float bedA = tNoise(vec2(bedY * 0.45, 3.7));
+            float bedB = tNoise(vec2(bedY * 1.6, 9.1));
+            vec3 bed = mix(vec3(1.14, 0.98, 0.82), vec3(0.8, 0.86, 0.94), smoothstep(0.3, 0.7, bedA)) * (0.84 + 0.32 * bedB);
+            float seamK = bedY * 0.38 + bedA * 0.6, seamAt = fract(seamK);
+            // Some beds part with a deep shadowed seam, others barely show a line.
+            float seamDepth = 0.15 + 0.5 * smoothstep(0.3, 0.8, tNoise(vec2(floor(seamK) * 1.7, 5.3)));
+            float seam = 1.0 - seamDepth * smoothstep(0.86, 0.95, seamAt) * (1.0 - smoothstep(0.95, 1.0, seamAt));
+            diffuseColor.rgb *= mix(vec3(1.0), bed * seam, cliff * 0.85);
+          }
+        }
         // Beach: wind ripples and grain on dry sand (only where the splat says sand, not on river stones), and a
         // darker band where the water wets the shore.
         float sand = (1.0 - smoothstep(2.0, 3.6, vWorld.y)) * min(vSplat.w * 1.5, 1.0);

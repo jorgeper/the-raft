@@ -13,6 +13,9 @@ In priority order: the first items are the user's requests for the next sessions
    4. ~~Lone giant oak on a hill~~ (done, see Done).
    5. ~~Waterfalls off gorge cliffs~~ (done, see Done).
    6. ~~Wet-rock glints~~ (done, see Done).
+   7. ~~Denser canopy shadow casters~~ (checked 2026-11-01: leaf cards already cast solid shadows, and the forest
+      floor is shaded with beams through the gaps; `.playwright-mcp/wild/can0.jpg`. No change.)
+   8. ~~Concave rocks and cliff strata~~ (done, see Done).
 
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
@@ -59,7 +62,7 @@ In priority order: the first items are the user's requests for the next sessions
      dither speckle is gone and trunk edges stay crisp. Samples are weighted by the haze's transmittance (near shafts
      count more) and the broad scattering lobe is five times as strong in forests, so beams read side-on as well as into
      the sun. Same fps. Shots: `.playwright-mcp/vol/` (`g-v5.jpg` before/after, `g-crop.jpg` noise).
-     Still open: denser canopy shadow casters.
+     Denser canopy shadow casters: checked, not needed (see the third queue).
 6. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
    - First pass landed: mushrooms (fly agaric, boletes) on damp forest floor, reeds and cattails on riverbanks,
      berry shrubs at forest edges (`src/undergrowth.ts`); butterflies over the meadows, birds wheeling overhead,
@@ -85,8 +88,7 @@ In priority order: the first items are the user's requests for the next sessions
    - Light: richer dappled light under canopies, sun glints on wet rocks after rain.
    - Done when: walking from beach through meadow into forest at three times of day looks dense and alive in
      screenshots, compared against the references, at a playable frame rate.
-7. (Done, see below: fractured procedural rocks.) Follow-up: concave shapes (two hulls fused) and layered strata
-   for cliff bands.
+7. (Done, see below: fractured procedural rocks; concave fused shapes and cliff strata since, see Done.)
 8. (Done, see below: two-cascade sun shadows.) Possible follow-up: three 0.187's `SunLight` addon (native CSM in
    the WebGL renderer) if more cascades are ever needed; it would mean porting the volumetrics' shadow lookups.
 9. (Done, see below: wind motion for the TAA; the TAA is off by default since 2026-11-01, see Done.) Possible
@@ -126,6 +128,12 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Cliff strata and concave rocks (2026-11-01): steep rock in the terrain shader is bedded in warped, gently tilted
+  layers of warm ochre and cool grey a meter or two thick, with seams of varying depth between beds; it carries
+  the gorge walls from afar where the scans fade (`terrain.ts`). Two concave fractured kinds join the field
+  (`fused` in `fractured-rocks.ts`): `split`, a boulder cracked in two with the halves leaning apart, and `pair`,
+  a crag with a lower block shouldered against it. `world.rocks.placements` now lists every rock with its shape
+  name, for finding shots. Shots: `.playwright-mcp/wild/strata2.jpg`, `split0.jpg`, `split1.jpg`, `pair1.jpg`.
 - Wet-rock glints (2026-11-01): as rocks soak after rain, scattered beads of water (16 per meter, about half the
   cells, off the moss) get their own tilted normals and near-mirror roughness, so points flash as the sun or the
   eye moves; the soaked stone around them is glossier than before (roughness 0.4). Shots:

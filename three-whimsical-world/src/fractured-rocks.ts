@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
-import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise3D } from 'simplex-noise';
 import { groundUniforms } from './ground';
 import { patchMoss, type ScannedRock } from './scanned-rocks';
@@ -53,7 +53,8 @@ const KINDS: Record<string, Kind> = {
   standing: { stretch: [0.62, 2.5, 0.34], cuts: 7, lump: 0.07, vertical: 0.8, depth: 0.6, topSlope: 1.1, topDepth: 0.6 },
 };
 
-function fracture(seed: number, kind: Kind) {
+/** One convex fractured hull, unnormalized. `split` halves it along x: +1 keeps the -x half, -1 the +x half. */
+function hull(seed: number, kind: Kind, split = 0) {
   const rand = mulberry32(seed);
   const noise = createNoise3D(rand);
   const [sx, sy, sz] = kind.stretch;
@@ -91,9 +92,34 @@ function fracture(seed: number, kind: Kind) {
   cut(n, kind.topDepth + rand() * 0.1);
   cut(new THREE.Vector3(0, -1, 0), 0.7);
 
-  let geometry: THREE.BufferGeometry = new ConvexGeometry(pts);
+  if (split) cut(new THREE.Vector3(split, 0, 0), 0.04);
+
+  const geometry: THREE.BufferGeometry = new ConvexGeometry(pts);
   // Sharp edges between fracture faces, smooth shading across the gently curved weathered sides.
-  geometry = toCreasedNormals(geometry, THREE.MathUtils.degToRad(32));
+  return toCreasedNormals(geometry, THREE.MathUtils.degToRad(32));
+}
+
+/**
+ * Concave shapes, fused from two hulls: a boulder split in two with the halves leaning apart ('split'), or a crag
+ * with a lower block shouldered against it ('pair'), leaving a cleft or a notch no single hull can have.
+ */
+function fused(seed: number, kind: 'split' | 'pair') {
+  const m = new THREE.Matrix4();
+  if (kind === 'split') {
+    const a = hull(seed, KINDS.boulder, 1), b = hull(seed, KINDS.boulder, -1);
+    // Apart at the top more than the base: each half has rolled a little away from the crack.
+    a.applyMatrix4(m.makeRotationZ(0.1)).translate(-0.07, 0, 0);
+    b.applyMatrix4(m.makeRotationZ(-0.08)).translate(0.07, 0, 0);
+    return mergeGeometries([a, b])!;
+  }
+  const a = hull(seed, KINDS.crag), b = hull(seed + 17, KINDS.block);
+  b.scale(0.7, 0.6, 0.7).applyMatrix4(m.makeRotationY(0.7)).translate(0.48, -0.08, 0.12);
+  return mergeGeometries([a, b])!;
+}
+
+function fracture(seed: number, kind: Kind | 'split' | 'pair') {
+  const geometry = typeof kind === 'string' ? fused(seed, kind) : hull(seed, kind);
+  const noise = createNoise3D(mulberry32(seed + 5));
 
   // Normalize like the scans: footprint centered, base at y = 0, 1 unit across.
   geometry.computeBoundingBox();
@@ -183,10 +209,12 @@ export function createFracturedRockMaterial() {
 export function createFracturedRocks(seed: number) {
   const material = createFracturedRockMaterial();
   const make = (name: string, variant: number): ScannedRock => {
-    const { geometry, aspect } = fracture(seed * 31 + variant * 977 + name.length * 131, KINDS[name]);
+    const kind = name === 'split' || name === 'pair' ? name : KINDS[name];
+    const { geometry, aspect } = fracture(seed * 31 + variant * 977 + name.length * 131, kind);
+    geometry.name = `fractured_${name}_${variant}`;
     return { name: `fractured_${name}_${variant}`, lod0: geometry, lod1: geometry, material, aspect };
   };
-  const field = ['boulder', 'block', 'slab', 'crag'].flatMap((name) => [make(name, 0), make(name, 1)]);
+  const field = ['boulder', 'block', 'slab', 'crag', 'split', 'pair'].flatMap((name) => [make(name, 0), make(name, 1)]);
   const standing = [make('standing', 0), make('standing', 1)];
   return { field, standing, material };
 }
