@@ -5,7 +5,7 @@ import { mulberry32, smoothstep, type WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
 import { plants } from './plants';
 import { quality } from './quality';
-import { createMushroomGeometry, createReedGeometry, createShrubGeometry, createShrubLeafTexture, headColored } from './undergrowth';
+import { createMushroomGeometry, createSpikeFlowerGeometry, createUmbelGeometry, createSeedGrassGeometry, createDandelionClockGeometry, createFluffTexture, createReedGeometry, createShrubGeometry, createShrubLeafTexture, headColored } from './undergrowth';
 
 const CHUNK = 24;
 const GRID = 4;
@@ -346,7 +346,8 @@ export class GroundCover {
             // Each drift leans toward one species, with strays mixed in.
             const species = rand() < 0.75 ? Math.floor((patchNoise(x * 0.01, z * 0.01 + 9) * 0.5 + 0.5) * 4) % 4 : Math.floor(rand() * 4);
             color.copy(flowerColors[species]);
-            return 0.8 + rand() * 0.6;
+            // Tall enough for the heads to nod just above the grass.
+            return 1.3 + rand() * 0.8;
           },
         },
         2,
@@ -439,6 +440,101 @@ export class GroundCover {
       ),
     );
     this.disposables.push(mushroomGeo, mushroomMat, reedGeo, reedMat, shrubGeo, shrubMat, shrubTex);
+    this.addTallMeadow(world, patchNoise);
+  }
+
+  /**
+   * Plants that rise above the grass, so the meadow reads as drifts of color and seed heads instead of one green
+   * sea: fireweed spikes, yarrow umbels, seeding grass tufts and dandelion clocks.
+   */
+  private addTallMeadow(world: WorldFns, patchNoise: (x: number, y: number) => number) {
+    const meadow = (h: number, forest: number) => (h < 3 ? 0 : 1 - smoothstep(0.25, 0.55, forest));
+    const make = (geometry: THREE.BufferGeometry, sway: number, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => {
+      const material = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.75, ...extra });
+      addWind(material, `p += windOffset(root, max(p.y - root.y, 0.0) * ${sway.toFixed(2)}) * 0.5;`);
+      headColored(material);
+      this.disposables.push(geometry, material);
+      return material;
+    };
+    const layer = (spec: LayerSpec, salt: number) => this.layers.push(new ScatterLayer(world, spec, salt));
+
+    // Fireweed: magenta spikes in drifts, thickest in clearings at the forest edge.
+    const pinks = ['#f05aa8', '#e04a9c', '#f878b8', '#d23c90'].map((c) => new THREE.Color(c));
+    const spikeGeo = createSpikeFlowerGeometry();
+    layer(
+      {
+        radius: 110,
+        perChunk: 320,
+        geometry: spikeGeo,
+        material: make(spikeGeo, 1.0),
+        place: (x, z, h, forest, rand, color) => {
+          const drift = smoothstep(0.15, 0.6, patchNoise(x * 0.012 + 120, z * 0.012));
+          const edge = smoothstep(0.1, 0.3, forest) * (1 - smoothstep(0.45, 0.6, forest));
+          if (h < 3 || rand() > drift * (meadow(h, forest) * 0.8 + edge)) return 0;
+          color.copy(pinks[Math.floor(rand() * pinks.length)]);
+          return 0.85 + rand() * 0.45;
+        },
+      },
+      24,
+    );
+
+    // Yarrow and meadowsweet: flat white-to-pink heads scattered widely, in looser drifts.
+    const creams = ['#f6f2e4', '#fffaee', '#f2dce0', '#ece4c4'].map((c) => new THREE.Color(c));
+    const umbelGeo = createUmbelGeometry();
+    layer(
+      {
+        radius: 90,
+        perChunk: 170,
+        geometry: umbelGeo,
+        material: make(umbelGeo, 1.0),
+        place: (x, z, h, forest, rand, color) => {
+          const drift = 0.25 + 0.75 * smoothstep(0.1, 0.6, patchNoise(x * 0.018 - 40, z * 0.018 + 7));
+          if (rand() > drift * meadow(h, forest)) return 0;
+          color.copy(creams[Math.floor(rand() * creams.length)]);
+          return 0.9 + rand() * 0.4;
+        },
+      },
+      25,
+    );
+
+    // Tufts of seeding grass, golden to purplish heads, breaking up the even height of the lawn.
+    const heads = ['#dccb8e', '#c9b06c', '#a88a72', '#e2d6a2', '#9c7c6c'].map((c) => new THREE.Color(c));
+    const seedGeo = createSeedGrassGeometry();
+    layer(
+      {
+        radius: 100,
+        perChunk: 260,
+        geometry: seedGeo,
+        material: make(seedGeo, 0.9),
+        place: (x, z, h, forest, rand, color) => {
+          const patch = smoothstep(-0.3, 0.6, patchNoise(x * 0.03 + 77, z * 0.03 - 21));
+          if (rand() > patch * meadow(h, forest)) return 0;
+          color.copy(heads[Math.floor((patchNoise(x * 0.05, z * 0.05 + 300) * 0.5 + 0.5) * heads.length) % heads.length]);
+          return 0.8 + rand() * 0.5;
+        },
+      },
+      26,
+    );
+
+    // Dandelion clocks: a scatter of white puffs where the yellow dandelions grow.
+    const clockGeo = createDandelionClockGeometry();
+    const fluff = createFluffTexture();
+    this.disposables.push(fluff);
+    layer(
+      {
+        radius: 60,
+        perChunk: 70,
+        geometry: clockGeo,
+        material: make(clockGeo, 1.1, { map: fluff, alphaTest: 0.35, alphaToCoverage: true, roughness: 0.95 }),
+        place: (x, z, h, forest, rand, color) => {
+          const drift = smoothstep(0.0, 0.5, patchNoise(x * 0.02 + 50, z * 0.02));
+          if (rand() > drift * meadow(h, forest)) return 0;
+          color.setRGB(1, 1, 1);
+          return 0.9 + rand() * 0.3;
+        },
+      },
+      27,
+    );
   }
 
   private addLogsAndStumps(world: WorldFns) {

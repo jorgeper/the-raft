@@ -27,8 +27,11 @@ In priority order: the first items are the user's requests for the next sessions
 6. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
    - First pass landed: mushrooms (fly agaric, boletes) on damp forest floor, reeds and cattails on riverbanks,
      berry shrubs at forest edges (`src/undergrowth.ts`); butterflies over the meadows, birds wheeling overhead,
-     leaves falling under the trees (`src/life.ts`). Shots: `.playwright-mcp/life/`. Still open below: clover,
-     dandelions, tall tufts, moss and leaf litter, mist over rivers, deer, wet-rock glints.
+     leaves falling under the trees (`src/life.ts`). Shots: `.playwright-mcp/life/`.
+   - Tall meadow landed: magenta fireweed spikes in drifts (thickest at forest-edge clearings), white-to-pink yarrow
+     umbels, seeding grass tufts with golden to purplish heads, dandelion clocks, and the daisies/buttercups raised
+     so their heads nod above the grass (`addTallMeadow` in `src/cover.ts`). ~1–2 fps. Shots: `.playwright-mcp/b2/`.
+     Still open: moss cushions and leaf litter where the forest floor shows, mist over rivers, deer, wet-rock glints.
    - Undergrowth variety: berry bushes (raspberry, blueberry), thistles, mushrooms, dandelions and clover, tall
      grass tufts, reeds by rivers, fallen leaves and needle litter, moss carpets on forest floors.
    - Atmosphere: morning mist pooling in hollows and over rivers, drifting dust and pollen motes in sunbeams,

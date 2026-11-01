@@ -193,3 +193,212 @@ export function headColored(material: THREE.Material, spots = false) {
     }
   };
 }
+
+/** A seeded random generator for repeatable geometry. */
+function seeded(seed: number) {
+  let s = seed;
+  return () => ((s = (s * 16807) % 2147483647) / 2147483647);
+}
+
+/** Builds a non-indexed geometry from flat triangle lists (positions, colors, head flags); normals bend up. */
+function fromTriangles(positions: number[], colors: number[], heads: number[], upBend = 0.6) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('aHead', new THREE.Float32BufferAttribute(heads, 1));
+  geo.computeVertexNormals();
+  // Thin parts shade as a soft clump, not as edge-on cards.
+  const n = geo.attributes.normal as THREE.BufferAttribute;
+  for (let i = 0; i < n.count; i++) n.setXYZ(i, n.getX(i) * (1 - upBend), 1, n.getZ(i) * (1 - upBend));
+  geo.normalizeNormals();
+  return geo;
+}
+
+/** A tapering stalk as a crossed pair of thin strips from `base` up to `top`. */
+function stalk(out: { p: number[]; c: number[]; h: number[] }, base: THREE.Vector3, top: THREE.Vector3, width: number, color: THREE.Color) {
+  for (const [sx, sz] of [[1, 0], [0, 1]]) {
+    const a = [base.x - sx * width, base.y, base.z - sz * width], b = [base.x + sx * width, base.y, base.z + sz * width];
+    const t = [top.x, top.y, top.z];
+    out.p.push(...a, ...b, ...t);
+    for (let i = 0; i < 3; i++) out.c.push(color.r, color.g, color.b), out.h.push(0);
+  }
+}
+
+/**
+ * Tall meadow wildflowers on spikes (fireweed): a few stems about a meter tall, each topped by a tapering spike of
+ * florets that take the instance color, with leaves along the stem. They rise above the grass so drifts of
+ * color read from afar.
+ */
+export function createSpikeFlowerGeometry() {
+  const out = { p: [] as number[], c: [] as number[], h: [] as number[] };
+  const rand = seeded(5);
+  const stem = new THREE.Color('#4a6a26'), leaf = new THREE.Color('#3e5e20'), bud = new THREE.Color('#ffffff');
+  for (let k = 0; k < 4; k++) {
+    const a = rand() * Math.PI * 2, r = k === 0 ? 0 : 0.05 + rand() * 0.07;
+    const height = 0.75 + rand() * 0.45;
+    const base = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+    const top = base.clone().add(new THREE.Vector3((rand() - 0.5) * 0.08, height, (rand() - 0.5) * 0.08));
+    stalk(out, base, top, 0.006, stem);
+    // Narrow willow-like leaves angled up along the lower stem.
+    for (let i = 0; i < 6; i++) {
+      const t = 0.15 + i * 0.09, la = rand() * Math.PI * 2, len = 0.11 + rand() * 0.05;
+      const p0 = base.clone().lerp(top, t);
+      const dir = new THREE.Vector3(Math.cos(la), 0.7, Math.sin(la)).normalize();
+      const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(0.012);
+      const tip = p0.clone().addScaledVector(dir, len);
+      out.p.push(...p0.clone().add(side).toArray(), ...p0.clone().sub(side).toArray(), ...tip.toArray());
+      for (let j = 0; j < 3; j++) out.c.push(leaf.r, leaf.g, leaf.b), out.h.push(0);
+    }
+    // The spike: florets in a spiral, wider at the bottom, the top third still in bud.
+    const spikeLen = 0.22 + rand() * 0.1;
+    for (let i = 0; i < 26; i++) {
+      const t = i / 26;
+      const y = top.y - spikeLen + t * spikeLen;
+      const ring = 0.035 * (1 - t) + 0.006;
+      const fa = i * 2.4 + rand();
+      const center = new THREE.Vector3(top.x + Math.cos(fa) * ring, y, top.z + Math.sin(fa) * ring);
+      const s = 0.022 * (1 - 0.6 * t);
+      const out1 = new THREE.Vector3(Math.cos(fa), 0.3, Math.sin(fa)).normalize().multiplyScalar(s);
+      const up = new THREE.Vector3(0, s, 0);
+      // Two petals per floret, as a small open diamond facing out.
+      out.p.push(...center.toArray(), ...center.clone().add(out1).add(up).toArray(), ...center.clone().add(out1).sub(up.clone().multiplyScalar(0.3)).toArray());
+      const side = new THREE.Vector3(-out1.z, 0, out1.x);
+      out.p.push(...center.toArray(), ...center.clone().add(side).add(up.clone().multiplyScalar(0.6)).toArray(), ...center.clone().sub(side).add(up.clone().multiplyScalar(0.6)).toArray());
+      // Buds at the tip are darker.
+      const shade = t > 0.7 ? 0.6 : 1;
+      for (let j = 0; j < 6; j++) out.c.push(bud.r * shade, bud.g * shade, bud.b * shade), out.h.push(1);
+    }
+  }
+  return fromTriangles(out.p, out.c, out.h, 0.5);
+}
+
+/** Yarrow / meadowsweet: stems with flat umbrella heads of tiny florets (cream, white, pale pink). */
+export function createUmbelGeometry() {
+  const out = { p: [] as number[], c: [] as number[], h: [] as number[] };
+  const rand = seeded(9);
+  const stem = new THREE.Color('#56702e'), white = new THREE.Color('#ffffff');
+  for (let k = 0; k < 3; k++) {
+    const a = rand() * Math.PI * 2, r = k === 0 ? 0 : 0.06 + rand() * 0.06;
+    const base = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+    const top = base.clone().add(new THREE.Vector3((rand() - 0.5) * 0.1, 0.6 + rand() * 0.3, (rand() - 0.5) * 0.1));
+    stalk(out, base, top, 0.005, stem);
+    // A domed cluster of florets, each a tiny upward-facing triangle.
+    for (let i = 0; i < 40; i++) {
+      const fr = Math.sqrt(rand()) * 0.07, fa = rand() * Math.PI * 2;
+      const c = new THREE.Vector3(top.x + Math.cos(fa) * fr, top.y + 0.015 * (1 - (fr / 0.07) ** 2), top.z + Math.sin(fa) * fr);
+      const s = 0.012;
+      out.p.push(c.x - s, c.y, c.z - s * 0.6, c.x + s, c.y, c.z - s * 0.6, c.x, c.y + 0.003, c.z + s);
+      for (let j = 0; j < 3; j++) out.c.push(white.r, white.g, white.b), out.h.push(1);
+    }
+  }
+  return fromTriangles(out.p, out.c, out.h, 0.85);
+}
+
+/** A tuft of tall seeding grass: long arching blades and a few stalks with drooping oat-like seed heads. */
+export function createSeedGrassGeometry() {
+  const out = { p: [] as number[], c: [] as number[], h: [] as number[] };
+  const rand = seeded(13);
+  const green = new THREE.Color('#5a7a2c'), tip = new THREE.Color('#c8b864'), straw = new THREE.Color('#d8c27a');
+  const c = new THREE.Color();
+  // Blades: like the reeds but softer and more arched.
+  for (let i = 0; i < 16; i++) {
+    const angle = rand() * Math.PI * 2, height = 0.55 + rand() * 0.45, lean = 0.2 + rand() * 0.35, width = 0.008 + rand() * 0.006;
+    const dir = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle)), side = new THREE.Vector3(-dir.z, 0, dir.x);
+    const ring: THREE.Vector3[] = [];
+    for (let s = 0; s <= 4; s++) {
+      const t = s / 4;
+      const centre = dir.clone().multiplyScalar(lean * t * t).setY(height * t * (1 - 0.25 * t * t));
+      const w = width * (1 - t * 0.9);
+      ring.push(centre.clone().addScaledVector(side, -w), centre.clone().addScaledVector(side, w));
+    }
+    for (let s = 0; s < 4; s++) {
+      const quad = [ring[s * 2], ring[s * 2 + 1], ring[s * 2 + 2], ring[s * 2 + 1], ring[s * 2 + 3], ring[s * 2 + 2]];
+      for (const v of quad) {
+        out.p.push(v.x, v.y, v.z);
+        c.copy(green).lerp(tip, Math.pow(Math.max(v.y, 0) / height, 2));
+        out.c.push(c.r, c.g, c.b);
+        out.h.push(0);
+      }
+    }
+  }
+  // Seed stalks rising above the blades, each with a nodding panicle of spikelets.
+  for (let k = 0; k < 5; k++) {
+    const a = rand() * Math.PI * 2, r = 0.03 + rand() * 0.05;
+    const base = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+    const top = base.clone().add(new THREE.Vector3(Math.cos(a) * 0.12, 0.95 + rand() * 0.35, Math.sin(a) * 0.12));
+    stalk(out, base, top, 0.004, straw);
+    for (let i = 0; i < 10; i++) {
+      const t = i / 10;
+      const p0 = new THREE.Vector3(top.x, top.y - t * 0.18, top.z);
+      const sa = rand() * Math.PI * 2;
+      const tipP = p0.clone().add(new THREE.Vector3(Math.cos(sa) * 0.04, -0.05, Math.sin(sa) * 0.04));
+      const w = new THREE.Vector3(-Math.sin(sa), 0, Math.cos(sa)).multiplyScalar(0.006);
+      out.p.push(...p0.clone().add(w).toArray(), ...p0.clone().sub(w).toArray(), ...tipP.toArray());
+      for (let j = 0; j < 3; j++) out.c.push(1, 1, 1), out.h.push(1);
+    }
+  }
+  return fromTriangles(out.p, out.c, out.h, 0.6);
+}
+
+/** Dandelion seed clocks: thin stems with a fluffy white ball (three crossed cards with a radial fluff texture). */
+export function createDandelionClockGeometry() {
+  const parts: THREE.BufferGeometry[] = [];
+  const rand = seeded(17);
+  for (let k = 0; k < 3; k++) {
+    const a = rand() * Math.PI * 2, r = k === 0 ? 0 : 0.05 + rand() * 0.05;
+    const h = 0.55 + rand() * 0.3;
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const stem = new THREE.CylinderGeometry(0.003, 0.004, h, 4, 1, true);
+    stem.translate(x, h / 2, z);
+    paint(stem, '#6a8a3a', 0);
+    stem.setAttribute('uv', new THREE.Float32BufferAttribute(new Array(stem.attributes.position.count * 2).fill(0.5), 2));
+    parts.push(stem.toNonIndexed());
+    for (let i = 0; i < 3; i++) {
+      const card = new THREE.PlaneGeometry(0.075, 0.075);
+      if (i === 1) card.rotateY(Math.PI / 3);
+      if (i === 2) card.rotateY(-Math.PI / 3);
+      card.rotateX((rand() - 0.5) * 0.4);
+      card.translate(x, h + 0.02, z);
+      paint(card, '#ffffff', 1);
+      card.setAttribute('uv', new THREE.Float32BufferAttribute([0, 1, 1, 1, 0, 0, 1, 0], 2));
+      parts.push(card.toNonIndexed());
+    }
+  }
+  const geo = mergeGeometries(parts)!;
+  const n = geo.attributes.normal as THREE.BufferAttribute;
+  for (let i = 0; i < n.count; i++) n.setXYZ(i, n.getX(i) * 0.3, 1, n.getZ(i) * 0.3);
+  geo.normalizeNormals();
+  return geo;
+}
+
+/** The seed clock's fluff: fine radiating filaments with tufted tips, dense in the middle (white on transparent). */
+export function createFluffTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const rand = seeded(23);
+  g.translate(64, 64);
+  g.strokeStyle = 'rgba(255,255,255,0.85)';
+  g.lineWidth = 1;
+  for (let i = 0; i < 140; i++) {
+    const a = rand() * Math.PI * 2, len = 40 + rand() * 20;
+    g.beginPath();
+    g.moveTo(0, 0);
+    g.lineTo(Math.cos(a) * len, Math.sin(a) * len);
+    g.stroke();
+    // Each seed's parachute: a little starburst at the tip.
+    g.fillStyle = 'rgba(255,255,255,0.9)';
+    g.beginPath();
+    g.arc(Math.cos(a) * len, Math.sin(a) * len, 2 + rand() * 1.5, 0, Math.PI * 2);
+    g.fill();
+  }
+  // The seed head in the middle.
+  g.fillStyle = '#e8e2c8';
+  g.beginPath();
+  g.arc(0, 0, 7, 0, Math.PI * 2);
+  g.fill();
+  // The stems sample the opaque seed head at the center.
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
