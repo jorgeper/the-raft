@@ -33,7 +33,7 @@ In priority order: the first items are the user's requests for the next sessions
 4. **Whimsical pass** (user request; examples v1–v6 in `~/Downloads`): Valheim's dreamy moments, with lots of
    volumetric light and fog and rich colors contrasting in the same frame. Analyze the examples, recreate the
    effects, and put them behind one "whimsical" slider in the panel that cranks them all up or down.
-   - First pass landed: "✨ whimsy" slider (default 0.6) drives a thicker teal/orange split haze, stronger beams,
+   - First pass landed: "✨ whimsy" slider (default 0.9 since 2026-11-01) drives a thicker teal/orange split haze, stronger beams,
      lens-flare ghosts, a soft glow pass, a saturated split-tone grade and drifting motes/fireflies (`src/motes.ts`).
      Next: user's verdict. (Sun glitter on water and falling leaves landed with the water and life passes.)
    - Pink-lit cloud wisps landed: a layer of high cirrus above the cumulus (`src/sky.ts`), fibrous streaks combed
@@ -79,7 +79,8 @@ In priority order: the first items are the user's requests for the next sessions
    for cliff bands.
 8. (Done, see below: two-cascade sun shadows.) Possible follow-up: three 0.187's `SunLight` addon (native CSM in
    the WebGL renderer) if more cascades are ever needed; it would mean porting the volumetrics' shadow lookups.
-9. (Done, see below: wind motion for the TAA, now on by default.) Possible follow-up: motion for deer, birds and
+9. (Done, see below: wind motion for the TAA; the TAA is off by default since 2026-11-01, see Done.) Possible
+   follow-up, needed before turning it back on: motion for deer, birds and
    butterflies (they move whole, so a per-object velocity would do).
 10. (Done, see below: volumetric clouds.) Follow-ups: temporal reprojection so the march can run at quarter
     resolution, cloud-to-cloud shadowing in the haze probe, and the lighting probe seeing the volumetric clouds.
@@ -113,6 +114,12 @@ In priority order: the first items are the user's requests for the next sessions
 - Nights are very dark without the torch, by design.
 
 ## Done
+
+- Dreamier defaults, TAA off (user, 2026-11-01): whimsy 0.6 → 0.9, teal shade 0.6, hue split 1 → 1.4, cyan/gold
+  tint 0.55 → 0.75 (a more violet sky, rosier haze toward the sun, teal shade, richer golden sunsets; shots
+  `.playwright-mcp/polish/dr-*`). Temporal AA is off by default: in motion it still smeared and ghosted; grass edges
+  fall back to alpha-to-coverage MSAA. Stored panel settings only keep values the user changed, so these reach
+  everyone who hasn't touched those sliders. Also a "pollen & seed fluff" switch under whimsy.
 
 - The rest of the queue (user, 2026-11-01, after "fix the rest in the roadmap"):
   - **Weather fixes**: picking a weather in the panel now lands in seconds (`Weather.pick`; auto mode still drifts

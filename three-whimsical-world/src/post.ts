@@ -53,11 +53,11 @@ const AtmosphereShader = {
     // Valheim's split light: haze turns cyan away from the sun and gold toward it.
     uFogCool: { value: new THREE.Color(0.7, 1.0, 1.18) },
     uFogWarm: { value: new THREE.Color(1.4, 1.0, 0.55) },
-    uTintStrength: { value: 0.55 },
+    uTintStrength: { value: 0.75 },
     /** Valheim's hue split: lilac-pink between the cool and warm haze, and orange (not white-gold) scattered sun. */
     uHueSplit: { value: 1 },
     /** How far shade (out of the sun) shifts toward teal-blue. */
-    uShadeTint: { value: 0.3 },
+    uShadeTint: { value: 0.6 },
     /** Gold glow of the haze between you and the sun. */
     uForwardGlow: { value: 1 },
     /** Soft cap on the sky's brightest channel after the haze adds to it (matches sky.ts's uSkyKnee/uSkyCeil). */

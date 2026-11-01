@@ -43,8 +43,9 @@ const display = {
   /** Frame-rate readout in the corner (P toggles). */
   showFps: true,
   /** Temporal anti-aliasing: steadies shimmering grass, leaf edges and the noise of beams and AO. Swaying grass and
-   * leaves reproject with their wind motion, so they stay sharp. */
-  taa: true,
+   * leaves reproject with their wind motion, so they stay sharp. Off by default: in motion it still smears and
+   * ghosts (the user's call, 2026-11-01); grass edges fall back to alpha-to-coverage MSAA. */
+  taa: false,
 };
 persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize', 'showPanel', 'quality', 'showFps', 'taa']);
 if (!(display.quality in QUALITY_PRESETS)) display.quality = 'medium';
@@ -192,7 +193,7 @@ const settings = {
   nightVisionOn: true,
   fogDensity: 0.00045,
   /** Valheim's dreamy side: two-tone haze, stronger beams, lens flares, soft glow, floating motes and fireflies. */
-  whimsy: 0.6,
+  whimsy: 0.9,
   /** Pollen and dust motes by day, and seed fluff on the wind (fireflies at night stay). */
   pollen: true,
   /** Mist lying on the ground: amount, layer height (m), and how broken into banks it is. */
@@ -312,7 +313,7 @@ applyNightVision();
 post.setWhimsy(settings.whimsy);
 persist.bind('tint', post.atmosphere.uTintStrength, ['value']);
 // Valheim's hue split (blue -> violet-pink -> orange) in the sky, the haze and the scattered sunlight.
-const hueSplit = { value: 1 };
+const hueSplit = { value: 1.4 };
 persist.bind('hueSplit', hueSplit, ['value']);
 persist.bind('shadeTint', post.atmosphere.uShadeTint, ['value']);
 const applyHueSplit = () => {
