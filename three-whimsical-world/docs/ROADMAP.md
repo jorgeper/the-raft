@@ -7,8 +7,8 @@ In priority order: the first items are the user's requests for the next sessions
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
    2. ~~A **Performance** panel section~~ (done: `perf` in main.ts; switches fold into the preset in `applyPerf`).
-   3. Realism and polish: shore foam and breaking waves, caustics in shallows, rivers that visibly flow; dappled
-      sun on the forest floor, light through thin leaves, a longer golden hour.
+   3. ~~Realism and polish~~ (surf, flowing rivers, drifting dapples, longer golden hour: see Done; caustics were
+      already there).
    4. Weather: rain (streaks, splashes and rings, wet ground, puddles, grey-violet sky, a rainbow after), morning
       mist that burns off, dew sparkle, weather that changes by itself, and a night sky (Milky Way, moon phases,
       shooting stars, aurora).
@@ -116,6 +116,11 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Drifting sun flecks and a longer golden hour (user, 2026-11-01):
+  - Tree leaves cast their shadows through a wind-aware depth material (`leafDepth` in `trees.ts`): the dapples on
+    the forest floor drift with the crowns' sway (not the leaf flutter, so they don't shimmer). Forest +0.4 ms.
+  - With the clock running, it slows to 0.42× while the sun is below ~20° (and in the first dusk glow), so sunrise and
+    sunset light last about twice as long.
 - Surf and flowing rivers (user, 2026-11-01):
   - **Surf** (`water.ts`): lines of breaking waves roll up the beach. The bottom depth stands in for distance from the
     shore, so the crest phase follows depth and creeps into the shallows, a solid front tearing into lace behind it

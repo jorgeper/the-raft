@@ -26,6 +26,8 @@ interface BuiltVariant {
   leaves: THREE.BufferGeometry;
   barkMaterial: THREE.MeshStandardMaterial;
   leafMaterial: THREE.MeshPhysicalMaterial;
+  /** Casts the leaves' shadows with the crown's sway, so sun flecks drift on the ground beneath. */
+  leafDepth: THREE.MeshDepthMaterial;
 }
 
 // Valheim meadow trees: tall beech with dense rounded crowns, broad oaks, and birch.
@@ -204,6 +206,16 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
       p += windOffset(root, flex) + flutter * min(h * 0.2, 1.0) * uWindStrength;
     `,
   );
+  // The shadow follows the crown's slow sway, not the leaf flutter: dapples drift gently instead of shimmering.
+  const leafDepth = new THREE.MeshDepthMaterial();
+  addWind(
+    leafDepth,
+    /* glsl */ `
+      float h = max(p.y - root.y, 0.0);
+      p += windOffset(root, h * 0.012);
+    `,
+  );
+  leafDepth.customProgramCacheKey = () => 'tree-leaf-depth';
   // Leaves glow when backlit, but only on the sunlit outer shell (vertex AO stands in for depth in the crown).
   const patchVertex = leafMaterial.onBeforeCompile;
   leafMaterial.onBeforeCompile = (shader, renderer) => {
@@ -225,7 +237,7 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
       );
   };
 
-  return { branches, leaves, barkMaterial, leafMaterial };
+  return { branches, leaves, barkMaterial, leafMaterial, leafDepth };
 }
 
 interface Placement {
@@ -341,6 +353,7 @@ export class Trees {
           new THREE.InstancedMesh(b.branches, b.barkMaterial, Math.max(counts[vi], 1)),
           new THREE.InstancedMesh(b.leaves, b.leafMaterial, Math.max(counts[vi], 1)),
         ] as [THREE.InstancedMesh, THREE.InstancedMesh];
+        pair[1].customDepthMaterial = b.leafDepth;
         for (const mesh of pair) {
           mesh.count = 0;
           // Culling is done per instance in update(), so the whole-world bounds check is skipped.

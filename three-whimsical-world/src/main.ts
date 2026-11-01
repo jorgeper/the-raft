@@ -789,7 +789,11 @@ renderer.setAnimationLoop((now) => {
 
   // Advance the clock; re-lighting rebuilds the sky probes, so do it a few times a second, not every frame.
   if (settings.daySpeed > 0) {
-    settings.time = (settings.time + (settings.daySpeed / 60) * dt) % 24;
+    // Golden hours linger: the clock runs at under half speed while the sun is low (and in the first glow of dusk),
+    // full speed through midday and the night.
+    const elevation = sunPath(settings.time).elevation;
+    const pace = 0.42 + 0.58 * Math.max(THREE.MathUtils.smoothstep(elevation, 14, 26), 1 - THREE.MathUtils.smoothstep(elevation, -8, -3));
+    settings.time = (settings.time + (settings.daySpeed / 60) * dt * pace) % 24;
     sinceSunUpdate += dt;
     if (sinceSunUpdate > 0.2) {
       sinceSunUpdate = 0;
