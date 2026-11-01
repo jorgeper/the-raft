@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { weatherUniforms } from './weather';
 
 const TEXTURE_HEIGHT = 512;
 
@@ -103,15 +104,22 @@ export function createImpostorMesh(impostor: Impostor, capacity: number) {
     roughness: 0.9,
   });
   material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSnow = weatherUniforms.uSnow;
     // Autumn trees turn only their leaves: the green pixels of the bake, not the trunk.
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${AUTUMN_LEAVES}`)
+      .replace('#include <common>', `#include <common>\n${AUTUMN_LEAVES}\nuniform float uSnow;`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
+        float leafy = smoothstep(0.0, 0.04, diffuseColor.g - diffuseColor.r * 0.95);
         #ifdef USE_INSTANCING_COLOR
-          diffuseColor.rgb = autumnLeaves(diffuseColor.rgb, vColor, smoothstep(0.0, 0.04, diffuseColor.g - diffuseColor.r * 0.95));
-        #endif`,
+          diffuseColor.rgb = autumnLeaves(diffuseColor.rgb, vColor, leafy);
+        #endif
+        // Snow: far crowns speckled white, more toward their tops, like the near trees' outer shell.
+        if (uSnow > 0.0) {
+          float fleck = fract(sin(dot(floor(vMapUv * 96.0), vec2(12.9898, 78.233))) * 43758.5453);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.7, 0.73, 0.78), uSnow * leafy * (0.25 + 0.35 * fleck) * (0.6 + 0.4 * vMapUv.y));
+        }`,
       );
     shader.vertexShader = shader.vertexShader
       .replace(

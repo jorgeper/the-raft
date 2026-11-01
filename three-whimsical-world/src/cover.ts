@@ -5,6 +5,7 @@ import { mulberry32, smoothstep, type WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
 import { plants } from './plants';
 import { quality } from './quality';
+import { weatherUniforms } from './weather';
 import { createMossGeometry, createLitterGeometry, createLitterTexture, createMushroomGeometry, createSpikeFlowerGeometry, createHeatherGeometry, createUmbelGeometry, createSeedGrassGeometry, createDandelionClockGeometry, createFluffTexture, createReedGeometry, createShrubGeometry, createShrubLeafTexture, headColored } from './undergrowth';
 
 const CHUNK = 24;
@@ -488,6 +489,7 @@ export class GroundCover {
     const mossGeo = createMossGeometry();
     const mossMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
     mossMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uSnow = weatherUniforms.uSnow;
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vMossP;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvMossP = position;');
@@ -496,6 +498,7 @@ export class GroundCover {
           '#include <common>',
           `#include <common>
           varying vec3 vMossP;
+          uniform float uSnow;
           float mossHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
           float mossNoise(vec3 p) {
             vec3 i = floor(p), f = fract(p);
@@ -519,7 +522,10 @@ export class GroundCover {
           vec3 mp = vMossP * 90.0;
           float m0 = mossNoise(mp);
           vec3 mg = vec3(mossNoise(mp + vec3(0.3, 0, 0)), mossNoise(mp + vec3(0, 0.3, 0)), mossNoise(mp + vec3(0, 0, 0.3))) - m0;
-          normal = normalize(normal + (mat3(viewMatrix) * mg) * 2.5);`,
+          normal = normalize(normal + (mat3(viewMatrix) * mg) * 2.5);
+          // Snow lies on the cushions' tops; the sides stay green.
+          float mossUp = dot(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.88, 0.91, 0.96), smoothstep(0.3, 0.7, mossUp + (fine - 0.5) * 0.4) * min(uSnow * 1.5, 1.0));`,
         )
         .replace(
           '#include <emissivemap_fragment>',

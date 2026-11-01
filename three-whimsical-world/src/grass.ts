@@ -116,7 +116,7 @@ export class Grass {
   private chunks = new Map<string, THREE.InstancedMesh>();
   private geometry = createBladeGeometry();
   private material: THREE.MeshPhysicalMaterial;
-  private fade = { uFadeStart: { value: GRASS_RADIUS * 0.6 }, uFadeEnd: { value: GRASS_RADIUS }, uWiden: { value: 1 } };
+  private fade = { uFadeStart: { value: GRASS_RADIUS * 0.6 }, uFadeEnd: { value: GRASS_RADIUS }, uWiden: { value: 1 }, uSnow: weatherUniforms.uSnow };
   private colorNoise = createNoise2D(hashSeed(11, 5));
   private lush = new THREE.Color('#74a01e');
   private deep = new THREE.Color('#58861e');
@@ -138,7 +138,8 @@ export class Grass {
         float fade = 1.0 - smoothstep(uFadeStart, uFadeEnd, camDist);
         vec3 local = p - root;
         // Shrink into the ground at the edge of the grass radius, and widen distant blades to make up for thinning.
-        local.y *= fade;
+        // Under snow, most of each blade is buried: only the tips stand out of the blanket.
+        local.y *= fade * (1.0 - 0.6 * uSnow);
         // Lower quality presets draw fewer, wider blades so the field still reads as full.
         local.xz *= (1.0 + camDist / 25.0) * uWiden;
         float bladeHeight = length(instanceMatrix[1].xyz);
@@ -166,7 +167,7 @@ export class Grass {
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nvarying float vTip;\nvarying float vSide;\nvarying float vBlade;\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;\nuniform float uDew;\nuniform float uWet;',
+          '#include <common>\nvarying float vTip;\nvarying float vSide;\nvarying float vBlade;\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;\nuniform float uDew;\nuniform float uWet;\nuniform float uSnow;',
         )
         .replace(
           '#include <color_fragment>',
@@ -179,7 +180,9 @@ export class Grass {
           float dried = step(0.82, vBlade) * smoothstep(0.55 + 0.25 * fract(vBlade * 7.0), 0.95, vTip);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.48, 0.22) * (0.8 + 0.4 * fract(vBlade * 13.0)), dried * 0.85);
           diffuseColor.rgb *= 0.9 + 0.2 * fract(vBlade * 3.7);
-          diffuseColor.rgb *= 1.0 - 0.22 * uWet;`,
+          diffuseColor.rgb *= 1.0 - 0.22 * uWet;
+          // Snow: the blade low down is in the blanket, and what stands out is frosted and straw-pale.
+          diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.6, 0.62, 0.45), vec3(0.88, 0.91, 0.96), 1.0 - smoothstep(0.1, 0.7, vTip)), uSnow * 0.85);`
         )
         .replace(
           '#include <emissivemap_fragment>',

@@ -274,3 +274,108 @@ export class Splashes {
     }
   }
 }
+
+const FLAKES = 9000;
+const SNOW_BOX = 36;
+const SNOW_HEIGHT = 20;
+
+const snowVertex = /* glsl */ `
+  uniform float uTime;
+  uniform vec3 uCam;
+  uniform float uAmount;
+  uniform sampler2D tDepth;
+  uniform float uPixelsPerMeter;
+  attribute vec4 aSeed;
+  varying float vAlpha;
+  void main() {
+    // Slow and fluttering: each flake falls at its own pace, drifts with the wind and swings in small loops.
+    float speed = 0.8 + 0.7 * aSeed.w;
+    float t = uTime + aSeed.z * 50.0;
+    vec3 p = position + vec3(${f(WIND_DIR.x * 0.9)}, -speed, ${f(WIND_DIR.y * 0.9)}) * uTime;
+    p.x += sin(t * (0.9 + aSeed.y) + aSeed.x * 6.28) * 0.35;
+    p.z += cos(t * (0.7 + aSeed.x) + aSeed.y * 6.28) * 0.35;
+    p.xz = mod(p.xz - uCam.xz + ${f(SNOW_BOX / 2)}, ${f(SNOW_BOX)}) - ${f(SNOW_BOX / 2)} + uCam.xz;
+    p.y = mod(p.y - uCam.y + ${f(SNOW_HEIGHT * 0.35)}, ${f(SNOW_HEIGHT)}) - ${f(SNOW_HEIGHT * 0.35)} + uCam.y;
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    vec3 ndc = gl_Position.xyz / gl_Position.w;
+    float hidden = 0.0;
+    if (all(lessThan(abs(ndc.xy), vec2(1.0))) && gl_Position.w > 0.0) {
+      float scene = texture(tDepth, ndc.xy * 0.5 + 0.5).x;
+      hidden = step(scene, ndc.z * 0.5 + 0.5 - 1e-5);
+    }
+    float dist = -mv.z;
+    float keep = step(aSeed.x, uAmount) * step(0.0, p.y);
+    vAlpha = keep * (1.0 - hidden) * smoothstep(0.3, 1.2, dist) * (1.0 - smoothstep(${f(SNOW_BOX * 0.3)}, ${f(SNOW_BOX * 0.5)}, dist));
+    // A flake is ~1.5 cm, drawn at least a soft pixel or two across.
+    gl_PointSize = clamp((0.012 + 0.012 * aSeed.y) * uPixelsPerMeter / max(dist, 0.1), 1.5, 14.0);
+  }
+`;
+const snowFragment = /* glsl */ `
+  uniform vec3 uColor;
+  varying float vAlpha;
+  void main() {
+    if (vAlpha < 0.01) discard;
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    float a = (1.0 - smoothstep(0.35, 1.0, d)) * vAlpha;
+    if (a < 0.01) discard;
+    gl_FragColor = vec4(uColor, a * 0.85);
+  }
+`;
+
+/**
+ * Falling snow: soft flakes in a box that follows the camera like the rain, drifting down slowly in little loops.
+ * Lit a touch brighter than the sky's horizon color, so they read white against trees and grey against cloud.
+ */
+export class Snow {
+  readonly points: THREE.Points;
+  private uniforms = {
+    uTime: { value: 0 },
+    uCam: { value: new THREE.Vector3() },
+    uAmount: { value: 0 },
+    tDepth: { value: null as THREE.Texture | null },
+    uPixelsPerMeter: { value: 600 },
+    uColor: { value: new THREE.Color() },
+  };
+
+  constructor() {
+    const pos = new Float32Array(FLAKES * 3);
+    const seed = new Float32Array(FLAKES * 4);
+    for (let i = 0; i < FLAKES; i++) {
+      pos.set([Math.random() * SNOW_BOX, Math.random() * SNOW_HEIGHT, Math.random() * SNOW_BOX], i * 3);
+      seed.set([Math.random(), Math.random(), Math.random(), Math.random()], i * 4);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 4));
+    this.points = new THREE.Points(
+      geo,
+      new THREE.ShaderMaterial({
+        uniforms: this.uniforms,
+        vertexShader: snowVertex,
+        fragmentShader: snowFragment,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    );
+    this.points.frustumCulled = false;
+    this.points.renderOrder = 3;
+  }
+
+  setSceneDepth(depth: THREE.Texture) {
+    this.uniforms.tDepth.value = depth;
+  }
+
+  update(time: number, camera: THREE.Camera, amount: number, density: number, skyColor: THREE.Color, pixelsPerMeter: number) {
+    const u = this.uniforms;
+    u.uTime.value = time;
+    u.uCam.value.copy(camera.position);
+    u.uAmount.value = amount;
+    u.uPixelsPerMeter.value = pixelsPerMeter;
+    // Brighter than the sky behind, never past white.
+    u.uColor.value.copy(skyColor).multiplyScalar(1.6).lerp(new THREE.Color(1, 1, 1), 0.3);
+    this.points.visible = amount > 0.01 && density > 0;
+    this.points.geometry.setDrawRange(0, Math.round(FLAKES * Math.min(density, 1)));
+  }
+}

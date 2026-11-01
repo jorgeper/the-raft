@@ -16,14 +16,15 @@ In priority order: the first items are the user's requests for the next sessions
    7. ~~Denser canopy shadow casters~~ (checked 2026-11-01: leaf cards already cast solid shadows, and the forest
       floor is shaded with beams through the gaps; `.playwright-mcp/wild/can0.jpg`. No change.)
    8. ~~Concave rocks and cliff strata~~ (done, see Done).
+   9. ~~Snow~~ (done, see Done).
 
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
    2. ~~A **Performance** panel section~~ (done: `perf` in main.ts; switches fold into the preset in `applyPerf`).
    3. ~~Realism and polish~~ (surf, flowing rivers, drifting dapples, longer golden hour: see Done; caustics were
       already there).
-   4. ~~Weather and night sky~~ (done, see Done), and since then splashes, wet rocks and bark (see Done). Not yet:
-      snow.
+   4. ~~Weather and night sky~~ (done, see Done), and since then splashes, wet rocks and bark (see Done). Snow since
+      landed (see Done).
    The user wants it all to feel cozy and gorgeous.
 
 0. **User's queue (2026-11-01), in this order:**
@@ -128,6 +129,14 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Snow (2026-11-01): a "Snow" weather pick (panel, or `?weather=snow`; never chosen by the auto weather, which is
+  summer's). Soft flakes drift down in little loops in a box around the camera (`Snow` in `rain.ts`, scaled by the
+  raindrops perf slider); the air thickens. `weather.snowCover` builds over about a minute while it snows and
+  melts over a few minutes after (faster in sun), wetting the ground as it goes; `uSnow` whitens what faces up:
+  the terrain in drifts (thin on slopes, none on cliffs or the beach; puddles and wet hidden; normal map softened),
+  rock tops, the outer leaves and branch tops of every tree, far impostors speckled, moss cushion tops, and the
+  grass sinks into the blanket with frosted, straw-pale tips. 60 fps in the meadow. Shots:
+  `.playwright-mcp/wild/snow3.jpg` (meadow), `snow4.jpg` (forest), `snow5.jpg` (gorge).
 - Cliff strata and concave rocks (2026-11-01): steep rock in the terrain shader is bedded in warped, gently tilted
   layers of warm ochre and cool grey a meter or two thick, with seams of varying depth between beds; it carries
   the gorge walls from afar where the scans fade (`terrain.ts`). Two concave fractured kinds join the field

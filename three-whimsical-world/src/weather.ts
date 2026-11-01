@@ -9,7 +9,8 @@ import * as THREE from 'three';
  * `weatherUniforms` directly.
  */
 
-export type WeatherKind = 'clear' | 'fair' | 'cloudy' | 'overcast' | 'rain';
+/** 'snow' is only ever picked (the auto weather is summer's); it settles on the ground and melts away after. */
+export type WeatherKind = 'clear' | 'fair' | 'cloudy' | 'overcast' | 'rain' | 'snow';
 /** 'auto' changes by itself; 'manual' leaves the cloud slider alone and never rains. */
 export type WeatherMode = 'auto' | WeatherKind | 'manual';
 
@@ -18,6 +19,7 @@ interface Target {
   /** 0..1 how grey the whole sky is (the sun hidden, the light flat). */
   overcast: number;
   rain: number;
+  snow?: number;
 }
 const TARGETS: Record<WeatherKind, Target> = {
   clear: { clouds: 0.12, overcast: 0, rain: 0 },
@@ -25,6 +27,7 @@ const TARGETS: Record<WeatherKind, Target> = {
   cloudy: { clouds: 0.62, overcast: 0.25, rain: 0 },
   overcast: { clouds: 0.85, overcast: 0.7, rain: 0 },
   rain: { clouds: 0.95, overcast: 1, rain: 1 },
+  snow: { clouds: 0.9, overcast: 0.8, rain: 0, snow: 1 },
 };
 /** Auto weather: what can follow each state, and how long (real seconds) a state lasts. */
 const NEXT: Record<WeatherKind, [WeatherKind, number][]> = {
@@ -33,6 +36,7 @@ const NEXT: Record<WeatherKind, [WeatherKind, number][]> = {
   cloudy: [['fair', 0.45], ['overcast', 0.55]],
   overcast: [['rain', 0.7], ['cloudy', 0.3]],
   rain: [['cloudy', 0.75], ['overcast', 0.25]],
+  snow: [['overcast', 1]],
 };
 const DURATION: Record<WeatherKind, [number, number]> = {
   clear: [150, 300],
@@ -40,6 +44,7 @@ const DURATION: Record<WeatherKind, [number, number]> = {
   cloudy: [90, 200],
   overcast: [60, 140],
   rain: [70, 160],
+  snow: [120, 240],
 };
 
 /** Uniforms shared by every material that reacts to the weather (terrain, water, rocks, grass). */
@@ -50,6 +55,8 @@ export const weatherUniforms = {
   uRain: { value: 0 },
   /** Dew on the grass: sparkles toward the sun in the early morning. */
   uDew: { value: 0 },
+  /** 0 bare .. 1 a full cover of snow on upward faces. */
+  uSnow: { value: 0 },
   uWeatherTime: { value: 0 },
 };
 
@@ -101,6 +108,9 @@ export class Weather {
   overcast = 0;
   rain = 0;
   wetness = 0;
+  /** Snow falling now, and how much lies on the ground. */
+  snow = 0;
+  snowCover = 0;
   rainbow = 0;
   mist = 0;
   dew = 0;
@@ -159,6 +169,15 @@ export class Weather {
     const rainGoal = target.rain * THREE.MathUtils.smoothstep(this.overcast, 0.6, 0.9);
     this.rain += (rainGoal - this.rain) * Math.min(dt / (fast ? 1.2 : 12), 1);
 
+    // Snow sets in like rain, settles over a minute or so and melts over a few (faster in sun); meltwater wets.
+    this.snow += ((target.snow ?? 0) * THREE.MathUtils.smoothstep(this.overcast, 0.5, 0.75) - this.snow) * Math.min(dt / (fast ? 1.2 : 12), 1);
+    const melt = THREE.MathUtils.smoothstep(sunElevation, 0, 25) * (1 - this.overcast);
+    if (this.snow > 0.05) this.snowCover = Math.min(1, this.snowCover + this.snow * dt / 50);
+    else if (this.snowCover > 0) {
+      this.snowCover = Math.max(0, this.snowCover - dt / (420 - 300 * melt));
+      this.wetness = Math.max(this.wetness, Math.min(1, this.snowCover * 2));
+    }
+
     // The ground soaks up quickly in rain and dries over a few minutes (faster in sun).
     const sun = THREE.MathUtils.smoothstep(sunElevation, 0, 25) * (1 - this.overcast);
     if (this.rain > 0.05) this.wetness = Math.min(1, this.wetness + this.rain * dt / 25);
@@ -181,6 +200,7 @@ export class Weather {
 
     weatherUniforms.uWet.value = this.wetness;
     weatherUniforms.uRain.value = this.rain;
-    weatherUniforms.uDew.value = this.dew;
+    weatherUniforms.uDew.value = this.dew * (1 - this.snowCover);
+    weatherUniforms.uSnow.value = this.snowCover;
   }
 }

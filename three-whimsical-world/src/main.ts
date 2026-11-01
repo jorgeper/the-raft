@@ -20,7 +20,7 @@ import { QUALITY_PRESETS, quality, setQuality, type QualityLevel } from './quali
 import { FpsMeter } from './fps';
 import { SunShadows, seeFarCasters } from './cascades';
 import { Weather, weatherUniforms, type WeatherMode } from './weather';
-import { Rain, Splashes } from './rain';
+import { Rain, Snow, Splashes } from './rain';
 import { SeedFluff } from './fluff';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
@@ -154,6 +154,9 @@ overlay.add(motes.points);
 const rain = new Rain();
 rain.setSceneDepth(post.sceneDepth);
 overlay.add(rain.lines);
+const snow = new Snow();
+snow.setSceneDepth(post.sceneDepth);
+overlay.add(snow.points);
 // Splashes where the drops land (follows regenerate through the closure).
 const splashes = new Splashes((x, z) => world.height(x, z));
 // Dandelion and thistle down drifting over the meadows on fine days.
@@ -382,7 +385,7 @@ const timeCtrl = timeGui.add(settings, 'time', 0, 24, 0.05).name('time of day').
 timeGui.add(settings, 'daySpeed', 0, 60, 0.5).name('day speed (h/min)');
 timeGui.add(settings, 'sunRotation', -180, 180, 1).name('sun direction').onChange(updateSun);
 timeGui
-  .add(settings, 'weather', { 'Auto (changes by itself)': 'auto', Clear: 'clear', Fair: 'fair', Cloudy: 'cloudy', Overcast: 'overcast', Rain: 'rain', 'Manual (cloud slider)': 'manual' })
+  .add(settings, 'weather', { 'Auto (changes by itself)': 'auto', Clear: 'clear', Fair: 'fair', Cloudy: 'cloudy', Overcast: 'overcast', Rain: 'rain', Snow: 'snow', 'Manual (cloud slider)': 'manual' })
   .name('weather')
   .onChange((m: WeatherMode) => weather.pick(m));
 timeGui.add(settings, 'clouds', 0, 1, 0.01).name('clouds (manual weather)').onChange(updateSun);
@@ -651,9 +654,10 @@ if (query.has('weather')) {
   weather.mode = query.get('weather') as WeatherMode;
   // Jump straight to it (no minute-long build-up), for screenshots.
   const q = weather.mode === 'auto' || weather.mode === 'manual' ? 'fair' : weather.mode;
-  weather.clouds = { clear: 0.12, fair: 0.38, cloudy: 0.62, overcast: 0.85, rain: 0.95 }[q];
-  weather.overcast = { clear: 0, fair: 0, cloudy: 0.25, overcast: 0.7, rain: 1 }[q];
+  weather.clouds = { clear: 0.12, fair: 0.38, cloudy: 0.62, overcast: 0.85, rain: 0.95, snow: 0.9 }[q];
+  weather.overcast = { clear: 0, fair: 0, cloudy: 0.25, overcast: 0.7, rain: 1, snow: 0.8 }[q];
   weather.rain = weather.wetness = q === 'rain' ? 1 : 0;
+  weather.snow = weather.snowCover = q === 'snow' ? 1 : 0;
   updateSun();
 }
 if (query.has('time')) {
@@ -894,7 +898,7 @@ renderer.setAnimationLoop((now) => {
   post.atmosphere.uRainbow.value = weather.rainbow;
   weatherUniforms.uWeatherTime.value = timer.getElapsed() % 1000;
   // Rain thickens the air; overcast a little.
-  const fog = settings.fogDensity * (1 + 0.5 * weather.overcast) + weather.rain * 0.0011;
+  const fog = settings.fogDensity * (1 + 0.5 * weather.overcast) + weather.rain * 0.0011 + weather.snow * 0.0014;
   post.atmosphere.uFogDensity.value = fog;
   applyGroundFog();
   rain.update(timer.getElapsed() % 10000, camera, weather.rain, perf.rain, sky.uniforms.uHorizon.value, lightDir, scatterSun);
@@ -964,6 +968,7 @@ renderer.setAnimationLoop((now) => {
     1 - world.fns.forest(camera.position.x, camera.position.z), (1 - weather.rain) * (1 - 0.6 * weather.overcast) * (settings.pollen ? 1 : 0),
     wind.uWindStrength.value, pixelsPerMeter);
   splashes.update(timer.getElapsed() % 10000, camera, weather.rain, perf.rain, sky.uniforms.uHorizon.value, pixelsPerMeter);
+  snow.update(timer.getElapsed() % 10000, camera, weather.snow, perf.rain, sky.uniforms.uHorizon.value, pixelsPerMeter);
   minimap.update(camera, camera.getWorldDirection(lookDir));
   post.atmosphere.uTorchPos.value.copy(torch.flameWorld);
   post.atmosphere.uTorchColor.value.copy(torch.flameColor);

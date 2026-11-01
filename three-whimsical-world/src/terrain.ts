@@ -157,11 +157,13 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         varying vec3 vWorldNormal;
         uniform float uGrassRadius;
         uniform float uWet;
+        uniform float uSnow;
         uniform float uRain;
         uniform float uWeatherTime;
         float wetSand = 0.0;
         float puddle = 0.0;
         float rainSheen = 0.0;
+        float snowAmt = 0.0;
         ${RAIN_RIPPLES}
         vec3 groundN = vec3(0.0, 1.0, 0.0);
         float groundFade = 0.0;
@@ -285,11 +287,25 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
           // Only a whisper of sheen: the ground's strong normal map turned any real gloss (even roughness 0.6) into
           // sparkling white over whole hillsides under a bright evening sky. Darkening carries the wet look.
           rainSheen = uWet * open;
+        }
+        // Snow settles on whatever faces up: patchy drifts at first, a whole white blanket once it has snowed a while,
+        // thin on steep ground, none on cliffs or below the tide line. Snow hides the puddles and the wet.
+        if (uSnow > 0.0) {
+          float up = normalize(vWorldNormal).y;
+          float drift = tNoise(vWorld.xz * 0.21 + 7.0) * 0.6 + tNoise(vWorld.xz * 1.3) * 0.4;
+          snowAmt = clamp(uSnow * 1.7 - (1.0 - drift) * 0.7, 0.0, 1.0)
+            * smoothstep(0.55, 0.8, up + (drift - 0.5) * 0.25) * smoothstep(0.4, 1.4, vWorld.y);
+          // Bluish where the blanket is thin over dark ground, crisp white where it lies deep.
+          vec3 snowColor = mix(vec3(0.72, 0.8, 0.92), vec3(0.93, 0.95, 0.99), smoothstep(0.3, 0.9, snowAmt + 0.2 * drift));
+          diffuseColor.rgb = mix(diffuseColor.rgb, snowColor, snowAmt);
+          puddle *= 1.0 - snowAmt;
+          rainSheen *= 1.0 - snowAmt;
+          wetSand *= 1.0 - snowAmt;
         }`,
       )
       .replace(
         '#include <roughnessmap_fragment>',
-        '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.35, wetSand);\nroughnessFactor = mix(roughnessFactor, 0.85, rainSheen);\nroughnessFactor = mix(roughnessFactor, 0.03, puddle);',
+        '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.35, wetSand);\nroughnessFactor = mix(roughnessFactor, 0.85, rainSheen);\nroughnessFactor = mix(roughnessFactor, 0.03, puddle);\nroughnessFactor = mix(roughnessFactor, 0.8, snowAmt);',
       )
       // Puddles reflect like water: a real F0 and a mirror-flat surface (rings while it rains).
       .replace(
@@ -300,7 +316,8 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
         #ifdef USE_GROUND
-          normal = normalize(mix(normal, normalize((viewMatrix * vec4(groundN, 0.0)).xyz), groundFade));
+          // Under snow the ground's bumps soften to the blanket's gentle swell.
+          normal = normalize(mix(normal, normalize((viewMatrix * vec4(groundN, 0.0)).xyz), groundFade * (1.0 - 0.75 * snowAmt)));
         #endif
         if (puddle > 0.0) {
           vec2 rr = rainRipples(vWorld.xz, uWeatherTime) * uRain * 0.25;

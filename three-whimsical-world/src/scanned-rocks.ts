@@ -91,6 +91,7 @@ export function patchMoss(shader: THREE.WebGLProgramParametersWithUniforms) {
       uniform float uMossAmount;
       uniform vec4 uPonds[MAX_PONDS];
       uniform float uWet;
+      uniform float uSnow;
       float mHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float mNoise(vec3 p) {
         vec3 i = floor(p), f = fract(p);
@@ -146,6 +147,12 @@ export function patchMoss(shader: THREE.WebGLProgramParametersWithUniforms) {
             normal = normalize(normal + mat3(viewMatrix) * tilt * 0.55 * bead);
             roughnessFactor = mix(roughnessFactor, 0.04, bead);
           }
+        }
+        // Snow caps on the tops, creeping down the sides as it deepens.
+        if (uSnow > 0.0) {
+          float cap = smoothstep(0.75 - 0.45 * uSnow, 0.95 - 0.4 * uSnow, worldNormal.y + (n - 0.5) * 0.35) * min(uSnow * 1.5, 1.0);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.93, 0.98), cap);
+          roughnessFactor = mix(roughnessFactor, 0.8, cap);
         }
       }`,
     );

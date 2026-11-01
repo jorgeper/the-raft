@@ -216,13 +216,22 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
     color: srcBark.color,
     roughness: 0.95,
   });
-  // Rain soaks the bark: darker, with a dull sheen.
+  // Rain soaks the bark: darker, with a dull sheen. Snow lines the tops of the limbs.
   barkMaterial.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, { uWet: weatherUniforms.uWet });
+    Object.assign(shader.uniforms, { uWet: weatherUniforms.uWet, uSnow: weatherUniforms.uSnow });
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uWet;')
+      .replace('#include <common>', '#include <common>\nuniform float uWet;\nuniform float uSnow;')
       .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= 1.0 - 0.45 * uWet;')
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.45, uWet);');
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.45, uWet);')
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        if (uSnow > 0.0) {
+          float upB = dot(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
+          float lined = smoothstep(0.55, 0.85, upB) * min(uSnow * 1.5, 1.0);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.88, 0.91, 0.96), lined);
+        }`,
+      );
   };
   barkMaterial.customProgramCacheKey = () => 'tree-bark-wet';
 
@@ -261,9 +270,19 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
   const patchVertex = leafMaterial.onBeforeCompile;
   leafMaterial.onBeforeCompile = (shader, renderer) => {
     patchVertex.call(leafMaterial, shader, renderer);
-    Object.assign(shader.uniforms, sunLight);
+    Object.assign(shader.uniforms, sunLight, { uSnow: weatherUniforms.uSnow });
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;')
+      .replace('#include <common>', '#include <common>\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;\nuniform float uSnow;')
+      // Snow on the crown's outer shell, on leaves lying flat enough to hold it.
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        if (uSnow > 0.0) {
+          float upL = abs(dot(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz)));
+          float held = smoothstep(0.2, 0.6, upL) * smoothstep(0.25, 0.7, vColor.r) * min(uSnow * 1.4, 1.0);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.9, 0.96), held);
+        }`,
+      )
       .replace('#include <common>', `#include <common>\n${AUTUMN_LEAVES}`)
       .replace(
         '#include <color_fragment>',
