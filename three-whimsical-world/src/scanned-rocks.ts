@@ -136,7 +136,16 @@ export function patchMoss(shader: THREE.WebGLProgramParametersWithUniforms) {
         if (uWet > 0.0) {
           float soaked = uWet * smoothstep(-0.6, 0.3, worldNormal.y + (n - 0.5) * 0.6);
           diffuseColor.rgb *= mix(1.0, 0.68, soaked * (1.0 - 0.5 * moss));
-          roughnessFactor = mix(roughnessFactor, 0.55, soaked * (1.0 - moss));
+          roughnessFactor = mix(roughnessFactor, 0.4, soaked * (1.0 - moss));
+          // Beads and films of water in the pits, each tilted its own way and near mirror-smooth, so scattered
+          // points flash as the light or the eye moves.
+          vec3 cell = floor(vMossPos * 16.0);
+          float bead = step(0.55, mHash(cell)) * smoothstep(0.35, 0.8, soaked) * (1.0 - moss);
+          if (bead > 0.0) {
+            vec3 tilt = vec3(mHash(cell + 1.7), mHash(cell + 4.1), mHash(cell + 8.3)) - 0.5;
+            normal = normalize(normal + mat3(viewMatrix) * tilt * 0.55 * bead);
+            roughnessFactor = mix(roughnessFactor, 0.04, bead);
+          }
         }
       }`,
     );

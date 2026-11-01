@@ -12,6 +12,7 @@ In priority order: the first items are the user's requests for the next sessions
    3. ~~Rowans with red berries, lichen-orange rocks~~ (done, see Done).
    4. ~~Lone giant oak on a hill~~ (done, see Done).
    5. ~~Waterfalls off gorge cliffs~~ (done, see Done).
+   6. ~~Wet-rock glints~~ (done, see Done).
 
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
@@ -66,7 +67,7 @@ In priority order: the first items are the user's requests for the next sessions
    - Tall meadow landed: magenta fireweed spikes in drifts (thickest at forest-edge clearings), white-to-pink yarrow
      umbels, seeding grass tufts with golden to purplish heads, dandelion clocks, and the daisies/buttercups raised
      so their heads nod above the grass (`addTallMeadow` in `src/cover.ts`). ~1–2 fps. Shots: `.playwright-mcp/b2/`.
-     Still open: wet-rock glints.
+     Wet-rock glints since landed (see Done).
    - Deer landed (`src/deer.ts`, `public/models/deer.glb`): herds of a stag and a few does at forest edges that
      graze, look up, wander and bolt into the trees when you come within 26 m. The model was built in Blender from
      metaballs (no skeleton); the vertex shader swings the legs and lowers the neck from a per-instance pose, and
@@ -125,6 +126,10 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Wet-rock glints (2026-11-01): as rocks soak after rain, scattered beads of water (16 per meter, about half the
+  cells, off the moss) get their own tilted normals and near-mirror roughness, so points flash as the sun or the
+  eye moves; the soaked stone around them is glossier than before (roughness 0.4). Shots:
+  `.playwright-mcp/wild/wetA0.jpg` (dry), `wetB2.jpg` (wet, into the sun).
 - Waterfalls (user, 2026-11-01): worldgen (`waterfalls` in `worldgen.ts`) scans the gorge rims for the highest drops
   straight into a river (lip on land at least 10 m up, water within 12 m, drop over 11 m, sites 160 m apart, kept
   off the world's edge); the default world has two, at (-732, -576) and (-676, 640). `src/waterfall.ts` hangs a
