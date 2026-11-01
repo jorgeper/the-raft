@@ -20,6 +20,10 @@ In priority order: items 1–4 are the user's requests for the next sessions, th
    - First pass landed: "✨ whimsy" slider (default 0.6) drives a thicker teal/orange split haze, stronger beams,
      lens-flare ghosts, a soft glow pass, a saturated split-tone grade and drifting motes/fireflies (`src/motes.ts`).
      Next: sun glints on water, falling leaves, pink-lit cloud wisps, user's verdict.
+   - Light pass landed: haze darkens in canopy shadow and a broad scattering lobe makes sunbeams between trunks;
+     ground fog (amount / height / patchiness controls) pools in hollows; S-curve "depth" and three-way
+     "color richness" grade (cyan shade, rosy mids, gold light). Side-on beams are still faint: try a dedicated
+     beam pass at half resolution with more steps, and denser canopy shadow casters.
 3. **Realistic water** (user request: more translucent, especially where it meets the ground):
    - Shallows you can see into: refraction of the seabed and riverbed through the surface, depth-tinted
      absorption (clear turquoise at the edge, deep blue offshore), sand and pebbles visible near the shore.
@@ -42,6 +46,18 @@ In priority order: items 1–4 are the user's requests for the next sessions, th
 8. **Volumetric clouds** with cloud shadows on the ground.
 9. Small: ferns read too neon next to the scanned rocks; grass blade textures, auto-exposure entering forests,
    caustics, textured shore foam.
+
+## Ideas for a gorgeous, rich land (suggested to the user, not yet prioritized)
+
+- Color: wildflower meadows in drifts of purple heather, pink fireweed, yellow buttercups; autumn-tinted birches and
+  rowans with red berries among the greens; lichen-orange and moss-green rocks.
+- Light: god rays from clouds over the sea; pink-lit cloud wisps at dusk; aurora on clear nights; moonlit
+  silver-blue nights; sun glitter on water.
+- Life and motion: butterflies, birds, deer at forest edges, falling leaves, swaying reeds, drifting seed fluff.
+- Landmarks: standing stones and rune stones, ruined towers, a Viking longhouse with smoke curling from the roof,
+  a lone giant oak on a hill, waterfalls off mountain cliffs, burial mounds.
+- Water: translucent turquoise shallows, foam, caustics, reflections (roadmap item).
+- Weather: rolling morning mist, passing rain showers with wet sheen, rainbows after rain, wind gusts across grass.
 
 ## Later
 

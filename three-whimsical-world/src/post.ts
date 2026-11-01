@@ -52,6 +52,15 @@ const AtmosphereShader = {
     uTorchColor: { value: new THREE.Color(0, 0, 0) },
     /** 0 = natural; up to 1 (or beyond) = Valheim's dreamy look: thicker two-tone haze, stronger beams, flares. */
     uWhimsy: { value: 0 },
+    // Ground fog: a layer hugging the terrain, thickest in hollows, broken into drifting patches.
+    uGroundFog: { value: 0.35 },
+    uGroundFogHeight: { value: 3 },
+    uGroundFogPatchy: { value: 0.6 },
+    /** Terrain height under the camera: the fog layer's base. */
+    uGroundY: { value: 0 },
+    uTime: { value: 0 },
+    /** Debug: 1 shows the volumetric sun-visibility term in gray. */
+    uDebugVolumetric: { value: 0 },
   },
   vertexShader: fullscreenVertex,
   fragmentShader: /* glsl */ `
@@ -79,13 +88,26 @@ const AtmosphereShader = {
     uniform vec3 uTorchPos;
     uniform vec3 uTorchColor;
     uniform float uWhimsy;
+    uniform float uGroundFog;
+    uniform float uGroundFogHeight;
+    uniform float uGroundFogPatchy;
+    uniform float uGroundY;
+    uniform float uTime;
+    uniform float uDebugVolumetric;
     varying vec2 vUv;
+
+    float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float gNoise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(gHash(i), gHash(i + vec2(1, 0)), u.x), mix(gHash(i + vec2(0, 1)), gHash(i + vec2(1, 1)), u.x), u.y);
+    }
 
     // Fraction of the first stretch of the ray that sees the sun (1 = no shadow casters along it).
     // Compiled only once the sun's shadow map exists (a shadow sampler can't be bound to an empty texture).
     #ifdef HAS_SHADOW
     float sunVisibility(vec3 origin, vec3 dir, float len) {
-      const int STEPS = 28;
+      const int STEPS = 40;
       float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
       float stepLen = len / float(STEPS);
       float lit = 0.0;
@@ -125,6 +147,15 @@ const AtmosphereShader = {
       float dist = length(ray);
       ray /= dist;
 
+      // How much of the air along this ray sees the sun (1 without a shadow map). Used twice: shadowed air keeps
+      // the haze darker, and lit air adds in-scattered sunlight, so the gaps between crowns become beams.
+      float marchLen = min(isSky ? 160.0 : dist, mix(160.0, 70.0, uForest));
+      float vis = 1.0;
+      #ifdef HAS_SHADOW
+        if (uVolumetric > 0.0) vis = sunVisibility(camPos, ray, marchLen);
+      #endif
+      float sunUpV = smoothstep(-0.05, 0.08, uSunDir.y);
+
       if (!isSky) {
         color *= mix(1.0, texture2D(tAO, vUv).r, uAOStrength);
         // Exponential haze, thinner higher up (integrated along the ray).
@@ -155,24 +186,48 @@ const AtmosphereShader = {
         // Forward scattering: haze between you and a low sun glows gold (and orange under the canopy).
         float sunLow = 1.0 - smoothstep(0.1, 0.7, uSunDir.y);
         float forward = pow(max(dot(ray, uSunDir), 0.0), 5.0) * (0.6 + 1.6 * sunLow) * (1.0 + uForest);
-        fogColor += uSunColor * forward * smoothstep(-0.06, 0.04, uSunDir.y) * 1.6 * (1.0 + 0.35 * uWhimsy);
+        fogColor += uSunColor * forward * smoothstep(-0.06, 0.04, uSunDir.y) * 1.6;
+        // Haze in the canopy's shadow is darker than haze in the sun (strongest in forests, a hint elsewhere).
+        fogColor *= mix(1.0, 0.3 + 0.7 * vis, (0.25 + 0.65 * uForest) * sunUpV * min(uVolumetric, 1.0));
         color = mix(color, fogColor, fog);
+
+        // Ground fog: exponential in height above the ground under the camera, integrated along the ray, so it
+        // lies low over the land and pools in hollows; drifting noise along the ray breaks it into banks.
+        if (uGroundFog > 0.0) {
+          float H = uGroundFogHeight;
+          float L = min(dist, 500.0);
+          float y0 = max(camPos.y - uGroundY, -3.0 * H);
+          float y1 = max(camPos.y + ray.y * L - uGroundY, -3.0 * H);
+          float dy = y1 - y0;
+          float integral = abs(dy) > 0.01 ? L * H / dy * (exp(-y0 / H) - exp(-y1 / H)) : L * exp(-y0 / H);
+          float n = 0.0;
+          for (int k = 0; k < 3; k++) {
+            vec3 q = camPos + ray * L * (0.12 + 0.36 * float(k));
+            n += gNoise(q.xz * 0.03 + uTime * vec2(0.025, 0.01)) * 0.65 + gNoise(q.xz * 0.11 - uTime * vec2(0.01, 0.03)) * 0.35;
+          }
+          float patches = mix(1.0, smoothstep(0.3, 0.75, n / 3.0) * 2.0, uGroundFogPatchy);
+          float g = 1.0 - exp(-uGroundFog * 0.012 * integral * patches * (1.0 + 0.8 * uWhimsy));
+          // Low mist is lit like the haze but a little brighter and milkier.
+          vec3 mist = mix(fogColor, vec3(dot(fogColor, vec3(0.333))), 0.25) * 1.12;
+          color = mix(color, mist, g);
+        }
       }
 
       // Volumetric sunlight: haze in sunlit gaps between shadows glows, forming beams through the canopy.
       #ifdef HAS_SHADOW
       if (uVolumetric > 0.0) {
-        float marchLen = min(isSky ? 160.0 : dist, 160.0);
-        float vis = sunVisibility(camPos, ray, marchLen);
         float cosT = dot(ray, uSunDir);
-        // Henyey-Greenstein forward scattering: brightest looking toward the sun.
+        // Henyey-Greenstein forward scattering (brightest toward the sun) plus a broad lobe, so beams also show
+        // from the side, slanting between the trunks.
         float g = 0.65;
+        float hg = (1.0 - g * g) / (4.0 * 3.14159 * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
         // Capped so staring into the sun doesn't flood the frame; the sky already has its own glow there.
-        float phase = min((1.0 - g * g) / (4.0 * 3.14159 * pow(1.0 + g * g - 2.0 * g * cosT, 1.5)), 0.5);
-        float density = mix(0.0015, 0.01, uForest);
-        float scatter = (1.0 - exp(-density * marchLen)) * phase * 3.0;
-        // Only the contrast between lit and shadowed air reads as beams; cap the flat part so open meadows stay clear.
-        color += uSunColor * scatter * vis * uVolumetric * (1.0 + 0.9 * uWhimsy);
+        float phase = min(hg + 0.06 * uForest, mix(0.5, 0.75, uForest));
+        float density = mix(0.0015, 0.024, uForest) * (1.0 + 0.5 * uWhimsy);
+        float scatter = (1.0 - exp(-density * marchLen)) * phase * mix(3.0, 5.5, uForest);
+        // Beams read from the contrast between lit and shadowed air: pow() deepens the shadowed stretches.
+        color += uSunColor * scatter * pow(vis, 1.6) * uVolumetric * sunUpV * (1.0 + 0.5 * uWhimsy);
+        if (uDebugVolumetric > 0.5) { gl_FragColor = vec4(vec3(vis), 1.0); return; }
       }
       #endif
 
@@ -199,7 +254,7 @@ const AtmosphereShader = {
         }
         shaft /= float(SAMPLES);
         float sunAlign = pow(max(dot(ray, uSunDir), 0.0), 3.0);
-        color += uSunColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest) * (1.0 + 0.8 * uWhimsy);
+        color += uSunColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest) * (1.0 + 0.5 * uWhimsy);
       }
 
       // Lens flare ghosts strung along the line from the sun through the screen center, when the sun is visible.
@@ -223,9 +278,6 @@ const AtmosphereShader = {
             float disc = smoothstep(rs[k], rs[k] * 0.7, d) * (0.6 + 0.4 * smoothstep(rs[k] * 0.5, rs[k], d));
             flare += cs[k] * disc;
           }
-          // A soft halo hugging the sun.
-          float halo = exp(-length((vUv - uSunUv) * vec2(1.7778, 1.0)) * 5.0);
-          flare += vec3(1.0, 0.8, 0.55) * halo * 1.5;
           color += flare * uSunColor * seen * uSunFacing * uWhimsy * 0.18;
         }
       }
@@ -247,10 +299,16 @@ const GradeShader = {
     uWarmth: { value: 0.04 },
     uVignette: { value: 0.28 },
     uWhimsy: { value: 0 },
+    /** Filmic S-curve: deeper shadows and brighter lights without clipping either end. */
+    uDepth: { value: 0.35 },
+    /** Three-way color: blue-cyan shadows, a touch of pink in the mids, orange-gold highlights. */
+    uColorRichness: { value: 0.5 },
   },
   vertexShader: fullscreenVertex,
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
+    uniform float uDepth;
+    uniform float uColorRichness;
     uniform float uSaturation;
     uniform float uContrast;
     uniform float uWarmth;
@@ -266,6 +324,16 @@ const GradeShader = {
       c += (warmth + 0.05 * uWhimsy) * vec3(-0.35, 0.1, 0.25) * (1.0 - smoothstep(0.0, 0.4, l));
       c = mix(vec3(l), c, uSaturation + 0.18 * uWhimsy);
       c = (c - 0.5) * uContrast + 0.5;
+      // S-curve on luminance (hue and saturation kept), so shade gets richer and highlights glow.
+      float lc = clamp(dot(c, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+      float ls = mix(lc, lc * lc * (3.0 - 2.0 * lc), uDepth);
+      c *= ls / max(lc, 1e-4);
+      // Three-way grade, weighted by luminance band so every frame holds cool shade, rosy mids and warm light.
+      float k = uColorRichness * (1.0 + 0.5 * uWhimsy);
+      float shadowW = 1.0 - smoothstep(0.05, 0.4, ls);
+      float midW = smoothstep(0.15, 0.45, ls) * (1.0 - smoothstep(0.5, 0.85, ls));
+      float highW = smoothstep(0.55, 0.95, ls);
+      c += k * (shadowW * vec3(-0.035, 0.012, 0.06) + midW * vec3(0.03, -0.012, 0.018) + highW * vec3(0.05, 0.012, -0.045));
       float v = smoothstep(0.95, 0.3, length((vUv - 0.5) * vec2(1.0, 0.8)));
       c *= mix(1.0 - uVignette, 1.0, v);
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
@@ -332,7 +400,8 @@ export function createPost(
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.06, 0.35, 6);
   composer.addPass(bloom);
   // Whimsy's dreamy diffusion: a wide, soft glow from everything bright, not just the sun.
-  const glow = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0, 0.7, 2.6);
+  // Thresholded above the sky's own brightness, so the sun doesn't balloon; lit foliage and haze glow.
+  const glow = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0, 0.7, 4.2);
   glow.enabled = false;
   composer.addPass(glow);
   composer.addPass(new OutputPass());
@@ -355,7 +424,7 @@ export function createPost(
       atmosphere.uniforms.uWhimsy.value = w;
       grade.uniforms.uWhimsy.value = w;
       glow.enabled = w > 0.01;
-      glow.strength = 0.1 * w;
+      glow.strength = 0.07 * w;
     },
     setSize(width: number, height: number) {
       composer.setPixelRatio(renderer.getPixelRatio());

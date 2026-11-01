@@ -148,6 +148,10 @@ const settings = {
   fogDensity: 0.0008,
   /** Valheim's dreamy side: two-tone haze, stronger beams, lens flares, soft glow, floating motes and fireflies. */
   whimsy: 0.6,
+  /** Mist lying on the ground: amount, layer height (m), and how broken into banks it is. */
+  groundFog: 0.35,
+  groundFogHeight: 3,
+  groundFogPatchy: 0.6,
 };
 const sunDir = new THREE.Vector3();
 const moonDir = new THREE.Vector3();
@@ -187,7 +191,7 @@ function updateSun() {
   lightColor.copy(moonColor).multiplyScalar(0.6 * night).lerp(sunColor, daylight);
   sun.color.copy(lightColor);
   // Strong sun against modest sky fill, so shadows and light beams have real contrast.
-  sun.intensity = daylight > 0.05 ? 7.5 * daylight : 2.2;
+  sun.intensity = daylight > 0.05 ? 8 * daylight : 2.2;
   nightFill.intensity = 1.4 * night;
   (stars.material as THREE.PointsMaterial).opacity = night;
   renderer.toneMappingExposure = settings.exposure * (1 + 1.6 * night);
@@ -201,10 +205,11 @@ function updateSun() {
   envTarget?.dispose();
   envTarget = pmrem.fromScene(skyScene);
   scene.environment = envTarget.texture;
-  scene.environmentIntensity = 0.4;
+  // Modest sky fill: shadows stay deep enough for light and shade to model the scene.
+  scene.environmentIntensity = 0.34;
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
-persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'fogDensity', 'whimsy']);
+persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'fogDensity', 'whimsy', 'groundFog', 'groundFogHeight', 'groundFogPatchy']);
 post.setWhimsy(settings.whimsy);
 persist.bind('tint', post.atmosphere.uTintStrength, ['value']);
 persist.bind('wind', wind.uWindStrength, ['value']);
@@ -217,6 +222,8 @@ persist.bind('aoIntensity', post.ao.uIntensity, ['value']);
 persist.bind('bloom', post.bloom, ['strength', 'threshold']);
 persist.bind('saturation', post.grade.uSaturation, ['value']);
 persist.bind('contrast', post.grade.uContrast, ['value']);
+persist.bind('depth', post.grade.uDepth, ['value']);
+persist.bind('colorRichness', post.grade.uColorRichness, ['value']);
 persist.bind('warmth', post.grade.uWarmth, ['value']);
 persist.bind('vignette', post.grade.uVignette, ['value']);
 post.atmosphere.uFogDensity.value = settings.fogDensity;
@@ -256,6 +263,15 @@ timeGui.add(settings, 'daySpeed', 0, 60, 0.5).name('day speed (h/min)');
 timeGui.add(settings, 'sunRotation', -180, 180, 1).name('sun direction').onChange(updateSun);
 timeGui.add(settings, 'clouds', 0, 1, 0.01).onChange(updateSun);
 timeGui.add(settings, 'fogDensity', 0, 0.003, 0.0001).name('haze').onChange((v: number) => (post.atmosphere.uFogDensity.value = v));
+const applyGroundFog = () => {
+  post.atmosphere.uGroundFog.value = settings.groundFog;
+  post.atmosphere.uGroundFogHeight.value = settings.groundFogHeight;
+  post.atmosphere.uGroundFogPatchy.value = settings.groundFogPatchy;
+};
+applyGroundFog();
+timeGui.add(settings, 'groundFog', 0, 2, 0.01).name('ground fog').onChange(applyGroundFog);
+timeGui.add(settings, 'groundFogHeight', 0.5, 20, 0.1).name('ground fog height (m)').onChange(applyGroundFog);
+timeGui.add(settings, 'groundFogPatchy', 0, 1, 0.01).name('ground fog patchiness').onChange(applyGroundFog);
 timeGui.add(post.atmosphere.uTintStrength, 'value', 0, 1, 0.01).name('cyan / gold tint');
 timeGui.add(wind.uWindStrength, 'value', 0, 3, 0.01).name('wind');
 
@@ -277,6 +293,8 @@ postGui.add(post.bloom, 'strength', 0, 2, 0.01).name('bloom');
 postGui.add(post.bloom, 'threshold', 0, 8, 0.05).name('bloom threshold');
 postGui.add(post.grade.uSaturation, 'value', 0, 2, 0.01).name('saturation');
 postGui.add(post.grade.uContrast, 'value', 0.5, 1.5, 0.01).name('contrast');
+postGui.add(post.grade.uDepth, 'value', 0, 1, 0.01).name('depth (light/shade curve)');
+postGui.add(post.grade.uColorRichness, 'value', 0, 2, 0.01).name('color richness');
 postGui.add(post.grade.uWarmth, 'value', 0, 0.3, 0.005).name('warmth');
 postGui.add(post.grade.uVignette, 'value', 0, 0.8, 0.01).name('vignette');
 postGui.close();
@@ -554,6 +572,7 @@ function resetToDefaults() {
   persist.reset();
   post.atmosphere.uFogDensity.value = settings.fogDensity;
   post.setWhimsy(settings.whimsy);
+  applyGroundFog();
   controls.pointerSpeed = movement.sensitivity;
   verticalSpeed = 0;
   updateSun();
@@ -586,6 +605,8 @@ renderer.setAnimationLoop(() => {
 
   water.uniforms.uTime.value = timer.getElapsed();
   sky.uniforms.uTime.value = timer.getElapsed();
+  post.atmosphere.uTime.value = timer.getElapsed();
+  post.atmosphere.uGroundY.value = Math.max(world.height(camera.position.x, camera.position.z), 0);
   wind.uTime.value = timer.getElapsed();
   camera.updateMatrixWorld();
   world.update(camera);
