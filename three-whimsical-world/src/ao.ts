@@ -38,6 +38,7 @@ const aoMaterial = new THREE.ShaderMaterial({
     uniform vec2 uProjScale;
     uniform float uRadius;
     uniform float uIntensity;
+    uniform float uFrame;
     varying vec2 vUv;
     const int SAMPLES = 14;
 
@@ -50,7 +51,7 @@ const aoMaterial = new THREE.ShaderMaterial({
 
       // Sample disk sized to the world radius at this depth, rotated per pixel to trade banding for noise.
       vec2 diskUv = uRadius * uProjScale / -P.z * 0.5;
-      float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+      float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + uFrame);
       float occlusion = 0.0;
       for (int i = 0; i < SAMPLES; i++) {
         float t = (float(i) + 0.5) / float(SAMPLES);

@@ -37,8 +37,10 @@ const display = {
   quality: 'high' as QualityLevel,
   /** Frame-rate readout in the corner (P toggles). */
   showFps: true,
+  /** Temporal anti-aliasing: steadies shimmering grass and edges, but softens grass swaying in the wind. */
+  taa: false,
 };
-persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize', 'showPanel', 'quality', 'showFps']);
+persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize', 'showPanel', 'quality', 'showFps', 'taa']);
 if (!(display.quality in QUALITY_PRESETS)) display.quality = 'high';
 setQuality(display.quality);
 const stage = document.getElementById('stage')!;
@@ -358,6 +360,8 @@ function applyDisplay() {
   minimap.setVisible(display.showMinimap);
   gui.show(display.showPanel);
   fps.setVisible(display.showFps);
+  if (post.taa.enabled !== display.taa) post.taa.reset();
+  post.taa.enabled = display.taa;
 }
 /** Switches the graphics preset; `keepScale` leaves the render scale alone (on load, where it was persisted). */
 function applyQuality(keepScale = false) {
@@ -376,6 +380,7 @@ const qualityInfo = { text: QUALITY_PRESETS[display.quality].label };
 displayGui.add(display, 'quality', { Low: 'low', Medium: 'medium', High: 'high', Ultra: 'ultra' }).name('graphics quality').onChange(() => applyQuality());
 displayGui.add(qualityInfo, 'text').name('trade-off').disable();
 displayGui.add(display, 'showFps').name('FPS counter (P)').listen().onChange(applyDisplay);
+displayGui.add(display, 'taa').name('temporal AA (softer grass)').onChange(applyDisplay);
 displayGui.add(display, 'maxWidth', 640, 3840, 10).name('max width (px)').onChange(applyDisplay);
 displayGui.add(display, 'maxHeight', 360, 2160, 10).name('max height (px)').onChange(applyDisplay);
 displayGui.add(display, 'renderScale', 0.25, 1.5, 0.05).name('render scale').onChange(applyDisplay);
@@ -397,6 +402,7 @@ minimap.onNavigate = (x, z) => {
   verticalSpeed = 0;
   snapView();
   world.update(camera, true);
+  post.taa.reset();
 };
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') {

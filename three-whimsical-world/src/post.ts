@@ -8,6 +8,7 @@ import type { WebGLRenderTarget } from 'three';
 import { AOPass } from './ao';
 import { CLOUD_NOISE, CLOUD_HEIGHT } from './sky';
 import { WaterPass, type Water } from './water';
+import { TAAPass } from './taa';
 
 const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
@@ -66,6 +67,8 @@ const AtmosphereShader = {
     uGroundY: { value: 0 },
     uTime: { value: 0 },
     // Cloud shadows: the sky's cloud field projected down the sun direction onto the land.
+    /** Shifts the per-pixel noise every frame so TAA averages it away (0 without TAA). */
+    uNoiseOffset: { value: 0 },
     uClouds: { value: 0.38 },
     uCloudOffset: { value: new THREE.Vector2() },
     uCloudShadow: { value: 0.5 },
@@ -106,6 +109,7 @@ const AtmosphereShader = {
     uniform float uGroundY;
     uniform float uTime;
     uniform float uDebugVolumetric;
+    uniform float uNoiseOffset;
     uniform float uClouds;
     uniform vec2 uCloudOffset;
     uniform float uCloudShadow;
@@ -134,7 +138,7 @@ const AtmosphereShader = {
     #ifdef HAS_SHADOW
     float sunVisibility(vec3 origin, vec3 dir, float len) {
       const int STEPS = VOL_STEPS;
-      float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+      float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + uNoiseOffset);
       float stepLen = len / float(STEPS);
       float lit = 0.0;
       for (int i = 0; i < STEPS; i++) {
@@ -432,6 +436,8 @@ export function createPost(
     atmosphere.uniforms.uShadowMatrix.value.copy(sun.shadow.matrix);
   };
   composer.addPass(atmosphere);
+  const taa = new TAAPass(camera, target.depthTexture!);
+  composer.addPass(taa);
   if (overlay) {
     const overlayPass = new RenderPass(overlay, camera);
     overlayPass.clear = false;
@@ -450,7 +456,7 @@ export function createPost(
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
 
-  let whimsy = 0, glowAllowed = true;
+  let whimsy = 0, glowAllowed = true, noiseFrame = 0;
   const applyGlow = () => {
     glow.enabled = glowAllowed && whimsy > 0.01;
     glow.strength = 0.07 * whimsy;
@@ -466,6 +472,7 @@ export function createPost(
     /** The scene's depth buffer, for overlay materials that must hide behind geometry. */
     sceneDepth: target.depthTexture!,
     grade: grade.uniforms,
+    taa,
     /** 0 = natural look; higher = dreamier (haze split, beams, flares, glow, grade). */
     setWhimsy(w: number) {
       atmosphere.uniforms.uWhimsy.value = w;
@@ -490,7 +497,12 @@ export function createPost(
       composer.setSize(width, height);
     },
     render(sunDir: THREE.Vector3, sunColor: THREE.Color) {
+      taa.jitter();
       const u = atmosphere.uniforms;
+      noiseFrame = (noiseFrame + 1) % 64;
+      const noise = taa.enabled ? (noiseFrame * 0.618034) % 1 : 0;
+      u.uNoiseOffset.value = noise;
+      ao.uniforms.uFrame.value = noise;
       u.uProjInv.value.copy(camera.projectionMatrixInverse);
       u.uViewInv.value.copy(camera.matrixWorld);
       u.uSunDir.value.copy(sunDir);
@@ -501,6 +513,7 @@ export function createPost(
       // Fade shafts out as the sun leaves the view instead of popping.
       u.uSunFacing.value = THREE.MathUtils.smoothstep(camDir.dot(sunDir), 0.0, 0.5);
       composer.render();
+      taa.endFrame();
     },
   };
 }

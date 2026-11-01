@@ -41,7 +41,11 @@ In priority order: the first items are the user's requests for the next sessions
    geometry plus triplanar Poly Haven/ambientCG rock textures (the scans alone repeat after ~17 shapes).
    Through Blender MCP when it's connected.
 8. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
-9. **Temporal anti-aliasing**: grass and leaves shimmer in motion.
+9. **Temporal anti-aliasing**: landed as an opt-in (Display → "temporal AA", `src/taa.ts`): Halton jitter,
+   depth reprojection, variance clipping, Catmull-Rom history and a light sharpen; it also averages away the
+   volumetric and AO noise. Static views are clean; grass swaying in the wind still softens a little because only
+   camera motion is reprojected. Next: per-vertex wind velocity from the grass/fern shaders into a motion buffer,
+   then turn it on by default.
 10. **Volumetric clouds**. Cloud shadows landed: the sky's clouds are anchored to the world (layer at
     `CLOUD_HEIGHT` 900 m) and the haze pass casts the same field down the sun ray onto land and sea ("cloud
     shadows" slider). Still open: raymarched volumetric cloud shapes.
