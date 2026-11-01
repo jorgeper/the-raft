@@ -29,14 +29,14 @@ const display = {
   maxWidth: 2560,
   maxHeight: 1440,
   /** Multiplier on the screen's pixel density (capped at 2); lower is faster, higher is sharper. */
-  renderScale: 1,
+  renderScale: 0.85,
   fov: 60,
   showMinimap: true,
   minimapSize: 220,
   /** The settings panel (H toggles). */
   showPanel: true,
   /** Graphics preset: scales resolution, shadows, grass, ferns, beams, AO, glow and motes together. */
-  quality: 'high' as QualityLevel,
+  quality: 'medium' as QualityLevel,
   /** Frame-rate readout in the corner (P toggles). */
   showFps: true,
   /** Temporal anti-aliasing: steadies shimmering grass, leaf edges and the noise of beams and AO. Swaying grass and
@@ -44,7 +44,7 @@ const display = {
   taa: true,
 };
 persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize', 'showPanel', 'quality', 'showFps', 'taa']);
-if (!(display.quality in QUALITY_PRESETS)) display.quality = 'high';
+if (!(display.quality in QUALITY_PRESETS)) display.quality = 'medium';
 setQuality(display.quality);
 const stage = document.getElementById('stage')!;
 const viewSize = () => ({ width: Math.min(window.innerWidth, display.maxWidth), height: Math.min(window.innerHeight, display.maxHeight) });
@@ -156,7 +156,7 @@ const volumetric = { value: 1 };
 // --- Time of day and atmosphere
 const settings = {
   /** Hours, 0-24. The sun rises behind the land and sets over the sea. */
-  time: 17.5,
+  time: 8,
   /** Turns the whole sun path around the island. */
   sunRotation: 0,
   /** In-game hours per real minute; 0 = time stands still. */
