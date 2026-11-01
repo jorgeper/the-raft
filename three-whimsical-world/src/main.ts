@@ -168,7 +168,9 @@ const settings = {
    * and the grade lifts the deepest shade. 0 = off, 1 = default, 2 = strong.
    */
   nightVision: 1,
-  fogDensity: 0.0006,
+  /** Master switch for seeing in the dark: off restores plain night (no eye adaptation, shadow lift or extra moonlight). */
+  nightVisionOn: true,
+  fogDensity: 0.00045,
   /** Valheim's dreamy side: two-tone haze, stronger beams, lens flares, soft glow, floating motes and fireflies. */
   whimsy: 0.6,
   /** Mist lying on the ground: amount, layer height (m), and how broken into banks it is. */
@@ -195,9 +197,16 @@ function sunPath(hours: number) {
   return { elevation: -28 * Math.sin(Math.PI * phase), azimuth: 90 - phase * 180 };
 }
 
+/** How much seeing in the dark applies (0 when switched off). */
+const nightVision = () => (settings.nightVisionOn ? settings.nightVision : 0);
+/** 0 by day, 1 at night and in twilight: the eye only adapts to the dark when it's actually dark out. */
+let darkHours = 0;
+/** Smoothed log2 of the metered frame brightness (NaN until the meter has a reading). */
+let meteredLog = NaN;
 /** The grade's share of seeing in the dark: lifts the deepest shade (the exposure share is in the frame loop). */
 function applyNightVision() {
-  post.grade.uShadowLift.value = 0.45 * settings.nightVision;
+  // Mostly at night: by day a strong toe amplified the dark gaps between grass blades into shimmer.
+  post.grade.uShadowLift.value = 0.45 * nightVision() * (0.25 + 0.75 * darkHours);
 }
 
 function updateSun() {
@@ -218,14 +227,17 @@ function updateSun() {
   const sunColor = new THREE.Color(1, 0.62 + 0.3 * warmth, 0.38 + 0.42 * warmth);
   const moonColor = new THREE.Color(0.55, 0.65, 1);
   lightDir.copy(daylight > 0.05 ? sunDir : moonDir);
-  lightColor.copy(moonColor).multiplyScalar(0.85 * night).lerp(sunColor, daylight);
+  lightColor.copy(moonColor).multiplyScalar((0.6 + 0.25 * Math.min(nightVision(), 1)) * night).lerp(sunColor, daylight);
   sun.color.copy(lightColor);
   // Strong sun against modest sky fill, so shadows and light beams have real contrast.
   sun.intensity = daylight > 0.05 ? 8 * daylight : 2.2;
   // The blue fill also covers twilight: after sunset neither sun nor moon lights the shade, and under a canopy the
   // ground went black (exposure can't lift black).
   const twilight = 1 - THREE.MathUtils.smoothstep(elevation, -6, 3);
-  nightFill.intensity = 2.2 * Math.max(night, twilight);
+  darkHours = Math.max(night, twilight);
+  const nv = Math.min(nightVision(), 1);
+  nightFill.intensity = 1.4 * night + nv * (2.2 * darkHours - 1.4 * night);
+  applyNightVision();
   (stars.material as THREE.PointsMaterial).opacity = night;
   baseExposure = settings.exposure * (1 + 1.6 * night);
   renderer.toneMappingExposure = baseExposure * eyeAdapt;
@@ -246,7 +258,7 @@ function updateSun() {
   scene.environmentIntensity = 0.34;
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
-persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'fogDensity', 'whimsy', 'groundFog', 'groundFogHeight', 'groundFogPatchy']);
+persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'nightVisionOn', 'fogDensity', 'whimsy', 'groundFog', 'groundFogHeight', 'groundFogPatchy']);
 applyNightVision();
 post.setWhimsy(settings.whimsy);
 persist.bind('tint', post.atmosphere.uTintStrength, ['value']);
@@ -335,7 +347,8 @@ torchGui.close();
 
 const postGui = gui.addFolder('Effects');
 postGui.add(settings, 'exposure', 0.1, 2, 0.01).onChange(updateSun);
-postGui.add(settings, 'nightVision', 0, 2, 0.05).name('see in the dark').onChange(applyNightVision);
+postGui.add(settings, 'nightVisionOn').name('see in the dark').onChange(updateSun);
+postGui.add(settings, 'nightVision', 0, 2, 0.05).name('see in the dark: strength').onChange(updateSun);
 postGui.add(volumetric, 'value', 0, 3, 0.01).name('volumetric light').onChange(updateSun);
 postGui.add(shaftStrength, 'value', 0, 3, 0.01).name('sun glare shafts').onChange(updateSun);
 postGui.add(post.atmosphere.uAOStrength, 'value', 0, 1, 0.01).name('ambient occlusion');
@@ -753,13 +766,15 @@ renderer.setAnimationLoop((now) => {
   // (under a canopy most of it is hidden, so adapt less there).
   const intoSun = THREE.MathUtils.smoothstep(camera.getWorldDirection(lookDir).dot(lightDir), 0.7, 0.97) * daylight;
   // Under a dense canopy the eye opens up, so forests read as shaded rather than murky.
-  const forestOpen = 1 + 0.3 * post.atmosphere.uForest.value * daylight;
+  const forestOpen = 1 + 0.55 * post.atmosphere.uForest.value * daylight;
   // Dark views open up: the metered mid-tone (at the base exposure, so this doesn't chase its own output) is pulled
   // toward a floor, partly (a night should still look like night), up to a limit set by `nightVision`.
-  const metered = post.luminance.average * baseExposure;
-  const darkLift = Number.isFinite(metered) && metered > 0
-    ? THREE.MathUtils.clamp(Math.pow(0.05 / metered, 0.6), 1, 1 + 3.5 * settings.nightVision)
-    : 1;
+  // The meter is smoothed over ~1.5 s, so glancing at a bright gap or a dark trunk doesn't pump the exposure.
+  const reading = Math.log2(post.luminance.average);
+  if (Number.isFinite(reading)) meteredLog = Number.isFinite(meteredLog) ? meteredLog + (reading - meteredLog) * Math.min(dt / 1.5, 1) : reading;
+  const metered = 2 ** meteredLog * baseExposure;
+  const maxLift = 1 + 3.5 * nightVision() * darkHours;
+  const darkLift = Number.isFinite(metered) && metered > 0 ? THREE.MathUtils.clamp(Math.pow(0.05 / metered, 0.6), 1, maxLift) : 1;
   const adaptTarget = (1 - 0.22 * intoSun * (1 - 0.6 * post.atmosphere.uForest.value)) * forestOpen * darkLift;
   // Stopping down is quick; opening up in the dark takes a couple of seconds, like an eye.
   eyeAdapt += (adaptTarget - eyeAdapt) * Math.min(dt * (adaptTarget < eyeAdapt ? 1.5 : 0.8), 1);

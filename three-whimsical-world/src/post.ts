@@ -43,7 +43,7 @@ const AtmosphereShader = {
     uSunUv: { value: new THREE.Vector2() },
     uSunFacing: { value: 0 },
     uSunColor: { value: new THREE.Color(1, 0.9, 0.75) },
-    uFogDensity: { value: 0.0006 },
+    uFogDensity: { value: 0.00045 },
     uFogHeightFalloff: { value: 0.012 },
     uShaftStrength: { value: 0.5 },
     // Valheim's split light: haze turns cyan away from the sun and gold toward it.
@@ -53,7 +53,7 @@ const AtmosphereShader = {
     /** Valheim's hue split: lilac-pink between the cool and warm haze, and orange (not white-gold) scattered sun. */
     uHueSplit: { value: 1 },
     /** How far shade (out of the sun) shifts toward teal-blue. */
-    uShadeTint: { value: 0.6 },
+    uShadeTint: { value: 0.3 },
     /** Gold glow of the haze between you and the sun. */
     uForwardGlow: { value: 1 },
     /** Soft cap on the sky's brightest channel after the haze adds to it (matches sky.ts's uSkyKnee/uSkyCeil). */
@@ -205,7 +205,9 @@ const AtmosphereShader = {
         // Valheim's shade is blue-teal: what the sun doesn't reach is lit by the sky alone. Shift its hue (luma
         // kept) toward teal, more under a forest canopy. Cloud shadow counts as shade too.
         float inShade = (1.0 - visPair.y * shade) * sunUpV;
-        float shadeK = uShadeTint * inShade * mix(1.0, 1.35, uForest);
+        // Kept moderate (and no stronger under trees): forests are nearly all shade, and a strong tint there read as
+        // a blue fog the haze sliders couldn't clear.
+        float shadeK = uShadeTint * inShade;
         color *= mix(vec3(1.0), vec3(0.74, 1.0, 1.45), clamp(shadeK, 0.0, 1.0));
         // Our shade is close to black, where a hue shift barely shows; Valheim's is a luminous teal. Lift it with a
         // little teal skylight, scaled by how bright the sky overhead is (so dusk shade stays dark).
@@ -318,7 +320,11 @@ const AtmosphereShader = {
         // So the beams fall back to open air's thin glow as the air around this pixel turns lit.
         float beamForest = uForest * (1.0 - smoothstep(0.4, 0.85, litAround(vUv)));
         float phase = min(hg + mix(0.03, 0.3, beamForest) * (1.0 + 0.6 * uWhimsy), mix(0.5, 0.75, beamForest));
-        float density = mix(0.0015, 0.024, beamForest) * (1.0 + 0.5 * uWhimsy);
+        // Beams are sunlight scattered by the haze, so they follow the haze slider: no haze, clear air, no veil.
+        // (At the default haze, 0.00045, the factor is 1.) Open air's share is thin, so the view toward a low sun
+        // isn't veiled; the forest's thick air keeps its strong beams.
+        float hazeK = clamp(uFogDensity / 0.00045, 0.0, 3.0);
+        float density = mix(0.001, 0.024, beamForest) * (1.0 + 0.5 * uWhimsy) * hazeK;
         float scatter = (1.0 - exp(-density * marchLen)) * phase * mix(3.0, 5.5, beamForest);
         // Beams read from the contrast between lit and shadowed air: pow() deepens the shadowed stretches.
         // (The half-res march is smooth enough to take a harder curve without breaking into noise.)
@@ -354,7 +360,8 @@ const AtmosphereShader = {
         }
         shaft /= float(SAMPLES);
         float sunAlign = pow(max(dot(ray, uSunDir), 0.0), 3.0);
-        color += scatterColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest) * (1.0 + 0.5 * uWhimsy);
+        color += scatterColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest) * (1.0 + 0.5 * uWhimsy)
+          * clamp(uFogDensity / 0.00045, 0.0, 3.0);
       }
 
       // Lens flare ghosts strung along the line from the sun through the screen center, when the sun is visible.

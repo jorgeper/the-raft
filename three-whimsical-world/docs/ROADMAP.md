@@ -106,6 +106,21 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Motion flicker, the fog that wouldn't clear, and a switch for seeing in the dark (user, 2026-11-01):
+  - **TAA while moving** (`uGammaMoving`/`uMinMaxMoving` in `taa.ts`): the variance box widened against still-view
+    shimmer (048c990) let running smear grass into streaks with ghost flowers. The box now narrows to 1.0 σ once a
+    pixel moves 3+ px/frame. Against a no-TAA reference with deterministic frames (`.playwright-mcp/move/ghost.js`):
+    ghosting −25 %, flicker −12 % at walk and run speed; the still view is unchanged. Wind tracking was ruled out (on
+    or off within 2 %). So were heavier new-frame weights and smaller jitter while moving (no gain, softer).
+  - **Exposure pumping**: the see-in-the-dark meter swung a daytime forest's exposure ±6 % as you turned. Now
+    the meter is smoothed over 1.5 s, eye adaptation only acts at night and in twilight, and forests by day open up
+    through the eased canopy factor instead (1.3× → 1.55×). Daytime forest turning: 0.92-1.00, ≤0.65 %/frame.
+  - **Fog that never cleared**: the open-air beam scatter and the light shafts ignored the haze slider, so haze 0
+    still left a sunlit veil. Both now scale with haze (haze 0 = clear air). Default haze 0.0006 → 0.00045, the
+    open-air beam density is a third lower, and forest beams are unchanged at default haze. The teal shade (0.6 →
+    0.3, no forest boost) read as a blue fog under canopies.
+  - **"See in the dark" on/off** in the post panel (plus a strength slider): off restores plain night, with no
+    adaptation, no shadow toe and the old moonlight and fill.
 - Sky no longer washes out, and dark places stay readable (user, 2026-11-01: "the sky still feels a bit washed
   out", "during the night i can't see anything in forest areas"):
   - The visible sky's brightest channel is soft-capped (knee 1.0, ceiling 1.6, `uSkyKnee`/`uSkyCeil` in `sky.ts` and

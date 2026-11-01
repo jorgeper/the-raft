@@ -34,6 +34,16 @@ const resolveMaterial = new THREE.ShaderMaterial({
     uGamma: { value: 1.5 },
     /** 1 also bounds the box by the neighborhood's min/max (tighter; shimmers on grass). */
     uMinMax: { value: 0 },
+    /**
+     * Box width and min/max bounding once a pixel moves (3+ px/frame): tighter, so the history can't trail. The wide
+     * still box let running smear grass into streaks with ghost flowers; 1.0 while moving cut ghosting ~25% and
+     * flicker ~12% against a no-TAA reference (`.playwright-mcp/move/ghost.js`), with the still view unchanged.
+     */
+    uGammaMoving: { value: 1.0 },
+    uMinMaxMoving: { value: 0 },
+    /** Weight of the new frame standing still, and at 6+ px/frame of motion. */
+    uBlendStill: { value: 0.1 },
+    uBlendMoving: { value: 0.3 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -52,6 +62,10 @@ const resolveMaterial = new THREE.ShaderMaterial({
     uniform float uWindMotion;
     uniform float uGamma;
     uniform float uMinMax;
+    uniform float uGammaMoving;
+    uniform float uMinMaxMoving;
+    uniform float uBlendStill;
+    uniform float uBlendMoving;
     varying vec2 vUv;
 
     vec3 toYCoCg(vec3 c) { return vec3(0.25 * c.r + 0.5 * c.g + 0.25 * c.b, 0.5 * c.r - 0.5 * c.b, -0.25 * c.r + 0.5 * c.g - 0.25 * c.b); }
@@ -117,13 +131,17 @@ const resolveMaterial = new THREE.ShaderMaterial({
       bool offscreen = any(lessThan(prevUv, vec2(0.0))) || any(greaterThan(prevUv, vec2(1.0))) || prev.w <= 0.0;
 
       vec3 history = toYCoCg(sampleHistory(prevUv));
+      float pixels = length((prevUv - vUv) / uTexel);
+      float moving = clamp(pixels / 3.0, 0.0, 1.0);
       // Variance clipping: pull the history into the box of colors around this pixel now (see uGamma).
-      vec3 lo = m1 - uGamma * sigma, hi = m1 + uGamma * sigma;
-      if (uMinMax > 0.5) { lo = max(lo, mn); hi = min(hi, mx); }
+      float gamma = mix(uGamma, uGammaMoving, moving);
+      vec3 lo = m1 - gamma * sigma, hi = m1 + gamma * sigma;
+      float minMax = max(uMinMax, uMinMaxMoving * moving);
+      lo = mix(lo, max(lo, mn), minMax);
+      hi = mix(hi, min(hi, mx), minMax);
       vec3 c = clamp(history, lo, hi);
       // Fast motion (in pixels) trusts the new frame more; still views accumulate many frames.
-      float pixels = length((prevUv - vUv) / uTexel);
-      float blend = mix(0.1, 0.3, clamp(pixels / 6.0, 0.0, 1.0));
+      float blend = mix(uBlendStill, uBlendMoving, clamp(pixels / 6.0, 0.0, 1.0));
       if (offscreen || uReset > 0.5) blend = 1.0;
       vec3 result = mix(fromYCoCg(c), current, blend);
       // Clipping in YCoCg can push a channel past anything in the frame, and unsquashing values near 1 explodes
@@ -188,6 +206,9 @@ export class TAAPass extends Pass {
   private height = 1;
   private jittered = false;
   private resetNext = true;
+  /** Jitter size standing still (1 = ±½ px) and how much of it is left at full speed (for experiments). */
+  jitterScale = 1;
+  jitterMoving = 1;
   /** The projection without this frame's jitter: reprojection must not chase the jitter. */
   private unjitteredProjInv = new THREE.Matrix4();
 
@@ -210,7 +231,10 @@ export class TAAPass extends Pass {
   jitter() {
     if (!this.enabled) return;
     this.frame = (this.frame + 1) % 16;
-    const jx = halton(this.frame + 1, 2) - 0.5, jy = halton(this.frame + 1, 3) - 0.5;
+    // Camera speed in m/frame (the camera has already moved this frame); 0.25 is a run.
+    const moving = Math.min(this.camera.position.distanceTo(this.prevCamPos) / 0.25, 1);
+    const k = this.jitterScale * (1 + (this.jitterMoving - 1) * moving);
+    const jx = (halton(this.frame + 1, 2) - 0.5) * k, jy = (halton(this.frame + 1, 3) - 0.5) * k;
     this.unjitteredProjInv.copy(this.camera.projectionMatrixInverse);
     const p = this.camera.projectionMatrix.elements;
     p[8] += (jx * 2) / this.width;
