@@ -116,6 +116,14 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Surf and flowing rivers (user, 2026-11-01):
+  - **Surf** (`water.ts`): lines of breaking waves roll up the beach. The bottom depth stands in for distance from the
+    shore, so the crest phase follows depth and creeps into the shallows, a solid front tearing into lace behind it
+    and broken into sets along the shore (`.playwright-mcp/polish/v3-shore.png`).
+  - **Rivers flow**: rivers were filled by the sea plane, so their ripples rolled ashore like the sea's. A flow map
+    (`bakeFlow`, from the river centerlines `worldgen.riverCenters`) carries each river's downstream direction; ripples
+    drift along it (two cross-faded flow-map phases) and white-water streaks thicken over the shallows at the banks.
+  - Medium still holds 60 fps at the river and the beach.
 - TAA artifacts in motion, cloud stripes, and tree cost (user, 2026-11-01):
   - **Motion vectors for things that move on their own** (`src/motion.ts`): the TAA reprojected the character
     (who moves with the camera) as if it stood still in the world, so running smeared the legs and cape into the

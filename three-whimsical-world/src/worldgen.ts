@@ -54,6 +54,8 @@ export interface WorldFns {
   river: FieldFn;
   /** Signed distance (m) from the river's water edge: negative in the channel, growing up the bank. */
   riverEdge: FieldFn;
+  /** Each river's centerline z and half-width at a given x (rivers run toward the sea, +x). */
+  riverCenters: (x: number) => { z: number; width: number }[];
   /** Small ponds in the meadows and forest edges, each with its own water level. */
   ponds: Pond[];
   /** Signed distance (m) from the nearest pond's waterline: negative in the water (large far from any pond). */
@@ -127,12 +129,12 @@ export function createWorld(params: WorldParams): WorldFns {
   }));
   // Signed distance from the nearest river's water edge (negative in the channel). The edge wanders in and out
   // at two scales, so the banks are bays and points instead of a ruled line.
+  const riverCenter = (rv: (typeof rivers)[number], x: number) =>
+    rv.z0 + 170 * fbm(x * 0.0016 + rv.phase, rv.phase, 3) + 30 * noise(x * 0.008, rv.phase);
+  const riverCenters = (x: number) => rivers.map((rv) => ({ z: riverCenter(rv, x), width: rv.width }));
   const riverEdge = (x: number, z: number) => {
     let d = Infinity;
-    for (const rv of rivers) {
-      const center = rv.z0 + 170 * fbm(x * 0.0016 + rv.phase, rv.phase, 3) + 30 * noise(x * 0.008, rv.phase);
-      d = Math.min(d, Math.abs(z - center) - rv.width);
-    }
+    for (const rv of rivers) d = Math.min(d, Math.abs(z - riverCenter(rv, x)) - rv.width);
     return d + 4 * noise(x * 0.03 + 11, z * 0.03) + 1.5 * noise(x * 0.11, z * 0.11 - 5);
   };
   const riverField = (x: number, z: number) => 1 - smoothstep(0, 45, riverEdge(x, z));
@@ -255,5 +257,5 @@ export function createWorld(params: WorldParams): WorldFns {
     return smoothstep(0.42, 0.62, n);
   };
 
-  return { params, height, forest, dirt, river: riverField, riverEdge, ponds, pondEdge };
+  return { params, height, forest, dirt, river: riverField, riverEdge, riverCenters, ponds, pondEdge };
 }

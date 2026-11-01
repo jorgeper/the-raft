@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { TERRAIN_SIZE } from './terrain';
+
+/** Resolution of the river flow map over the terrain (TERRAIN_SIZE / FLOW_RES ≈ 4 m a texel). */
+const FLOW_RES = 512;
 
 /**
  * Translucent water, drawn in its own pass right after the opaque scene so it can see what lies beneath it.
@@ -38,6 +42,8 @@ const fragmentShader = /* glsl */ `
   uniform float uHaze;
   uniform float uGlitter;
   uniform mat4 uProj;
+  // River flow map over the terrain: rg = flow direction (0.5 + 0.5 d), b = how much this is river water.
+  uniform sampler2D tFlow;
   varying vec3 vWorld;
   varying vec3 vView;
 
@@ -63,6 +69,13 @@ const fragmentShader = /* glsl */ `
       g += amp * k * cos(phase) * dir;
     }
     return g;
+  }
+
+  // Gradient of a small two-octave height field: the ripples a current drags along.
+  float rippleH(vec2 p) { return vnoise(p) + 0.45 * vnoise(p * 2.7 + 5.1); }
+  vec2 rippleGrad(vec2 p) {
+    float h = rippleH(p);
+    return vec2(rippleH(p + vec2(0.12, 0.0)) - h, rippleH(p + vec2(0.0, 0.12)) - h) / 0.12;
   }
 
   float viewZAt(vec2 uv) {
@@ -145,6 +158,22 @@ const fragmentShader = /* glsl */ `
     float fade = mix(0.35, 1.0, 1.0 - smoothstep(40.0, 600.0, dist));
     float calm = smoothstep(0.0, 3.0, depthHere);
     vec2 g = waveGradient(vWorld.xz, uTime, fade, mix(0.25, 1.0, calm) * (1.0 - pond)) * mix(1.0, 0.18, pond);
+
+    // Rivers flow: their ripples drift downstream (two flow-map phases, cross-faded so the drift never snaps back)
+    // instead of rolling ashore like the sea's.
+    vec4 flowTex = texture2D(tFlow, vWorld.xz / ${TERRAIN_SIZE.toFixed(1)} + 0.5);
+    float river = flowTex.b * (1.0 - pond);
+    vec2 flowDir = flowTex.rg * 2.0 - 1.0;
+    if (river > 0.01) {
+      const float PERIOD = 2.5;
+      float p0 = fract(uTime / PERIOD), p1 = fract(uTime / PERIOD + 0.5);
+      vec2 drift = flowDir * 1.6 * PERIOD;
+      vec2 q = vWorld.xz * vec2(0.8, 1.6);
+      vec2 ga = rippleGrad(q - drift * p0 * vec2(0.8, 1.6));
+      vec2 gb = rippleGrad(q - drift * p1 * vec2(0.8, 1.6) + 7.3);
+      vec2 gr = mix(ga, gb, abs(p0 * 2.0 - 1.0)) * 0.09 * fade;
+      g = mix(g, gr, river);
+    }
     vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
 
     // --- Refraction: shift the lookup by the wave normal, more where the water is deeper.
@@ -224,7 +253,33 @@ const fragmentShader = /* glsl */ `
     float foam = smoothstep(0.03, 0.12, depthV) * (1.0 - smoothstep(0.2, 0.45, depthV)) * smoothstep(0.55, 0.85, bands) * lace;
     // The lapping line: a thin edge of foam riding in and out, clear film behind it.
     float lap = (1.0 - smoothstep(0.0, 0.035, abs(depthV - swash))) * (0.35 + 0.65 * lace);
-    foam = max(foam, lap) * smoothstep(0.0, 0.015, depthV) * (1.0 - pond);
+    foam = max(foam, lap) * smoothstep(0.0, 0.015, depthV) * (1.0 - pond) * (1.0 - river);
+
+    // Surf: lines of breaking waves rolling up the beach. The bottom slope stands in for distance from the shore:
+    // the phase follows depth, so crests creep into shallower water and break there, trailing foam seaward.
+    float sea = (1.0 - pond) * (1.0 - river);
+    float surfPhase = fract(depthV * 1.1 + uTime * 0.13 + n * 0.3);
+    float surfZone = smoothstep(0.1, 0.3, depthV) * (1.0 - smoothstep(0.8, 1.7, depthV)) * sea;
+    // Broken into sets along the shore, so it isn't one ruled line.
+    float sets = smoothstep(0.2, 0.55, vnoise(vWorld.xz * 0.035 + vec2(uTime * 0.02, 0.0)));
+    float crest = pow(surfPhase, 6.0) * surfZone * sets;
+    // A bright, fairly solid line at the breaking front, tearing into lace behind it.
+    float surf = smoothstep(0.82, 0.97, surfPhase) * surfZone * sets * (0.7 + 0.3 * lace) + crest * lace * 0.6;
+    // The steep face just ahead of the crest is thin and lit through: a brighter turquoise lip.
+    float lip = smoothstep(0.75, 0.97, surfPhase) * (1.0 - smoothstep(0.97, 1.0, surfPhase)) * surfZone * sets;
+    col += scatter * vec3(1.5, 2.2, 1.8) * lip * sunUp * (1.0 - crest) * 0.9;
+    foam = max(foam, surf);
+
+    // White water in the river: streaks dragged along the current, thickest over the shallows at its edges.
+    if (river > 0.01) {
+      vec2 fd = normalize(flowDir + 1e-4), fp = vec2(-fd.y, fd.x);
+      float along = dot(vWorld.xz, fd), across = dot(vWorld.xz, fp);
+      float streak = vnoise(vec2(along * 0.2 - uTime * 0.35, across * 1.6)) * 0.6
+        + vnoise(vec2(along * 0.7 - uTime * 1.1, across * 4.5)) * 0.4;
+      float shallow = 1.0 - smoothstep(0.1, 0.7, depthV);
+      float white = smoothstep(0.58 - 0.3 * shallow, 0.8, streak) * (0.3 + 0.7 * shallow) * smoothstep(0.02, 0.08, depthV);
+      foam = max(foam, white * (0.5 + 0.5 * lace) * river);
+    }
     vec3 foamColor = vec3(0.85, 0.88, 0.88) * (0.5 + 0.5 * max(uSunDir.y, 0.2)) * (0.08 + 0.92 * light) * 1.6;
     col = mix(col, foamColor, foam * 0.8);
 
@@ -264,6 +319,45 @@ const copyMaterial = new THREE.ShaderMaterial({
   depthFunc: THREE.AlwaysDepth,
 });
 
+const emptyFlow = new THREE.DataTexture(new Uint8Array([128, 128, 0, 255]), 1, 1);
+emptyFlow.needsUpdate = true;
+
+/**
+ * Bakes the rivers into a flow map: for every texel near a river, the downstream direction of the nearest river's
+ * centerline (they all run toward the sea, +x) and how far inside its channel this is.
+ */
+function bakeFlow(riverCenters: (x: number) => { z: number; width: number }[]) {
+  const data = new Uint8Array(FLOW_RES * FLOW_RES * 4);
+  const texel = TERRAIN_SIZE / FLOW_RES;
+  for (let i = 0; i < FLOW_RES; i++) {
+    const x = (i + 0.5) * texel - TERRAIN_SIZE / 2;
+    const here = riverCenters(x), ahead = riverCenters(x + 2);
+    for (let j = 0; j < FLOW_RES; j++) {
+      const z = (j + 0.5) * texel - TERRAIN_SIZE / 2;
+      let best = Infinity, k = -1;
+      here.forEach((c, n) => {
+        const d = Math.abs(z - c.z) - c.width;
+        if (d < best) (best = d), (k = n);
+      });
+      const o = (j * FLOW_RES + i) * 4;
+      // Water reaches a few meters past the nominal width where the banks wander out.
+      const mask = k < 0 ? 0 : 1 - THREE.MathUtils.smoothstep(best, 2, 12);
+      let dx = 2, dz = k < 0 ? 0 : ahead[k].z - here[k].z;
+      const len = Math.hypot(dx, dz);
+      dx /= len;
+      dz /= len;
+      data[o] = Math.round((0.5 + 0.5 * dx) * 255);
+      data[o + 1] = Math.round((0.5 + 0.5 * dz) * 255);
+      data[o + 2] = Math.round(mask * 255);
+      data[o + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, FLOW_RES, FLOW_RES);
+  tex.magFilter = tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export function createWater(env: THREE.Texture) {
   const uniforms = {
     uTime: { value: 0 },
@@ -280,6 +374,7 @@ export function createWater(env: THREE.Texture) {
     /** Sparkle of the sun on the waves (whimsy raises it). */
     uGlitter: { value: 1 },
     uProj: { value: new THREE.Matrix4() },
+    tFlow: { value: emptyFlow },
   };
   const material = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader, defines: { SSR_STEPS: 32 } });
   const geo = new THREE.PlaneGeometry(20000, 20000, 1, 1);
@@ -302,6 +397,11 @@ export function createWater(env: THREE.Texture) {
         m.position.set(p.x, p.level, p.z);
         ponds.add(m);
       }
+    },
+    /** Rebuilds the river flow map for a new world. */
+    setRivers(riverCenters: (x: number) => { z: number; width: number }[]) {
+      if (uniforms.tFlow.value !== emptyFlow) uniforms.tFlow.value.dispose();
+      uniforms.tFlow.value = bakeFlow(riverCenters);
     },
     /** Reflection march steps (0 = sky reflections only). */
     setReflectionSteps(steps: number) {
