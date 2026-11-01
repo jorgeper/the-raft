@@ -54,7 +54,8 @@ const fragmentShader = /* glsl */ `
     vec3 V = toCam / dist;
 
     // Fade small waves with distance to avoid aliasing shimmer.
-    float fade = 1.0 - smoothstep(40.0, 600.0, dist);
+    // Keep some small-wave roughness far out, or the distant sea becomes a mirror of the white horizon.
+    float fade = mix(0.35, 1.0, 1.0 - smoothstep(40.0, 600.0, dist));
     vec2 g = waveGradient(vWorld.xz, uTime, fade);
     vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
 
@@ -64,11 +65,12 @@ const fragmentShader = /* glsl */ `
 
     vec3 R = reflect(-V, N);
     R.y = abs(R.y);
-    vec3 refl = textureCube(uEnv, R).rgb * 0.8;
-    float fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
+    vec3 refl = textureCube(uEnv, R).rgb * 0.6;
+    // Capped: real sea surfaces rarely reflect the full sky even at grazing angles because of microfacets.
+    float fresnel = min(0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0), 0.75);
 
-    vec3 deepColor = vec3(0.004, 0.035, 0.06);
-    vec3 shallowColor = vec3(0.03, 0.22, 0.22);
+    vec3 deepColor = vec3(0.012, 0.075, 0.14);
+    vec3 shallowColor = vec3(0.04, 0.24, 0.24);
     vec3 body = mix(shallowColor, deepColor, 1.0 - exp(-depth * 0.3));
     body *= 0.35 + 0.65 * max(uSunDir.y, 0.0);
 

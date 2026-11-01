@@ -4,6 +4,7 @@ import { createNoise2D } from 'simplex-noise';
 import type { HeightFn } from './terrain';
 import { TERRAIN_SIZE } from './terrain';
 import { addWind, sunLight } from './wind';
+import { bakeImpostor, createImpostorMesh, textureReady } from './impostor';
 
 type TreeOptions = Tree['options'];
 
@@ -68,11 +69,13 @@ const FOREST: Variant[] = [
   { preset: 'Pine Large', seed: 808, height: 27, tweak: spruce },
 ];
 
-/** Detail levels: fewer, larger leaves and coarser branches further away keep the silhouette but cut triangles. */
+/**
+ * Geometry detail levels: fewer, larger leaves and coarser branches further away keep the silhouette but cut
+ * triangles. Past the last one, trees are drawn as baked impostor quads.
+ */
 const LODS = [
   { maxDist: 140, leafCount: 1, leafSize: 1, geo: 1 },
-  { maxDist: 420, leafCount: 0.35, leafSize: 1.6, geo: 0.5 },
-  { maxDist: Infinity, leafCount: 0.12, leafSize: 2.5, geo: 0.25 },
+  { maxDist: 280, leafCount: 0.5, leafSize: 1.6, geo: 0.5 },
 ];
 
 function buildVariant(v: Variant, lod: number): BuiltVariant {
@@ -188,11 +191,14 @@ export class Trees {
   private placements: Placement[] = [];
   /** meshes[variant][lod] = [branches, leaves] */
   private meshes: [THREE.InstancedMesh, THREE.InstancedMesh][][] = [];
+  /** impostors[variant]; empty until the bark/leaf textures have loaded and been baked. */
+  private impostors: THREE.InstancedMesh[] = [];
+  private counts: number[] = [];
   private frustum = new THREE.Frustum();
   private projView = new THREE.Matrix4();
   private sphere = new THREE.Sphere();
 
-  constructor(height: HeightFn, seed = 4242) {
+  constructor(height: HeightFn, private renderer: THREE.WebGLRenderer, seed = 4242) {
     const all = [...MEADOW, ...BUSHES, ...FOREST];
     const meadowIdx = MEADOW.map((_, i) => i);
     const bushIdx = BUSHES.map((_, i) => MEADOW.length + i);
@@ -238,12 +244,12 @@ export class Trees {
 
         const r = rand();
         if (r < forest * 0.08) add(pick(forestIdx), x, z, y, 0.5);
-        else if (r < forest * 0.08 + grove * 0.2 + 0.0025) add(pick(meadowIdx), x, z, y, 0.7);
-        else if (r < forest * 0.08 + grove * 0.32 + 0.004) add(pick(bushIdx), x, z, y, 0.6);
+        else if (r < forest * 0.08 + grove * 0.28 + 0.003) add(pick(meadowIdx), x, z, y, 0.7);
+        else if (r < forest * 0.08 + grove * 0.4 + 0.005) add(pick(bushIdx), x, z, y, 0.6);
       }
     }
 
-    const counts = all.map((_, vi) => this.placements.filter((pl) => pl.variant === vi).length);
+    const counts = (this.counts = all.map((_, vi) => this.placements.filter((pl) => pl.variant === vi).length));
     this.stats = all.map((v, vi) => ({ preset: v.preset, count: counts[vi], tris: [] as number[] }));
     all.forEach((v, vi) => {
       this.meshes[vi] = LODS.map((_, lod) => {
@@ -266,11 +272,32 @@ export class Trees {
     });
   }
 
+  /** Bakes one impostor per species from its mid detail level, once textures are available. */
+  private tryBakeImpostors() {
+    const mid = this.meshes.map((lods) => lods[LODS.length - 1]);
+    const materials = mid.flatMap(([b, l]) => [b.material, l.material] as THREE.MeshStandardMaterial[]);
+    if (!materials.every(textureReady)) return;
+    this.impostors = mid.map(([branches, leaves], vi) => {
+      const impostor = bakeImpostor(
+        this.renderer,
+        branches.geometry,
+        leaves.geometry,
+        branches.material as THREE.MeshStandardMaterial,
+        leaves.material as THREE.MeshStandardMaterial,
+      );
+      const mesh = createImpostorMesh(impostor, this.counts[vi]);
+      this.group.add(mesh);
+      return mesh;
+    });
+  }
+
   /** Re-buckets every tree into a detail level by distance, skipping ones outside the (padded) view. */
   update(camera: THREE.Camera) {
+    if (this.impostors.length === 0) this.tryBakeImpostors();
     this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projView);
     for (const pair of this.meshes.flat()) pair[0].count = pair[1].count = 0;
+    for (const mesh of this.impostors) mesh.count = 0;
 
     for (const pl of this.placements) {
       this.sphere.center.copy(pl.center);
@@ -278,13 +305,31 @@ export class Trees {
       this.sphere.radius = pl.radius + 25;
       if (!this.frustum.intersectsSphere(this.sphere)) continue;
       const d = pl.center.distanceTo(camera.position);
-      const lod = LODS.findIndex((l) => d < l.maxDist);
+      const impostor = this.impostors[pl.variant];
+      if (d >= LODS[LODS.length - 1].maxDist && impostor) {
+        impostor.setMatrixAt(impostor.count, pl.matrix);
+        impostor.setColorAt(impostor.count, pl.color);
+        impostor.count++;
+        continue;
+      }
+      let lod = LODS.findIndex((l) => d < l.maxDist);
+      // Beyond the last level but impostors aren't baked yet: use the coarsest geometry.
+      if (lod === -1) lod = LODS.length - 1;
       const [branches, leaves] = this.meshes[pl.variant][lod];
       branches.setMatrixAt(branches.count, pl.matrix);
       leaves.setMatrixAt(leaves.count, pl.matrix);
       leaves.setColorAt(leaves.count, pl.color);
       branches.count++;
       leaves.count++;
+    }
+    for (const mesh of this.impostors) {
+      if (mesh.count === 0) continue;
+      mesh.instanceMatrix.clearUpdateRanges();
+      mesh.instanceMatrix.addUpdateRange(0, mesh.count * 16);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.instanceColor!.clearUpdateRanges();
+      mesh.instanceColor!.addUpdateRange(0, mesh.count * 3);
+      mesh.instanceColor!.needsUpdate = true;
     }
     for (const [branches, leaves] of this.meshes.flat()) {
       if (branches.count === 0) continue;

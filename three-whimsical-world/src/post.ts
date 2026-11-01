@@ -34,7 +34,7 @@ const AtmosphereShader = {
     uSunUv: { value: new THREE.Vector2() },
     uSunFacing: { value: 0 },
     uSunColor: { value: new THREE.Color(1, 0.9, 0.75) },
-    uFogDensity: { value: 0.0006 },
+    uFogDensity: { value: 0.0004 },
     uFogHeightFalloff: { value: 0.012 },
     uShaftStrength: { value: 0.5 },
   },
@@ -67,19 +67,21 @@ const AtmosphereShader = {
     float skyLight(vec2 uv) {
       if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
       float nearSun = 1.0 - smoothstep(0.0, 0.35, length((uv - uSunUv) * vec2(1.0, 0.6)));
-      return texture2D(tDepth, uv).x >= 0.99999 ? nearSun : 0.0;
+      return texture2D(tDepth, uv).x >= 1.0 ? nearSun : 0.0;
     }
 
     void main() {
       vec3 color = texture2D(tDiffuse, vUv).rgb;
       float depth = texture2D(tDepth, vUv).x;
       vec3 camPos = uViewInv[3].xyz;
-      vec3 world = worldFromDepth(vUv, min(depth, 0.999999));
+      // The sky is drawn at exactly depth 1.0 (distant land can reach 0.99998, so no epsilon here).
+      bool isSky = depth >= 1.0;
+      vec3 world = worldFromDepth(vUv, min(depth, 0.9999999));
       vec3 ray = world - camPos;
       float dist = length(ray);
       ray /= dist;
 
-      if (depth < 0.99999) {
+      if (!isSky) {
         color *= mix(1.0, texture2D(tAO, vUv).r, uAOStrength);
         // Exponential haze, thinner higher up (integrated along the ray).
         float h = max(camPos.y, 0.0);
@@ -112,7 +114,7 @@ const AtmosphereShader = {
 
       // The sky's sun disc is orders of magnitude brighter than anything else; cap it so bloom
       // stays a glow instead of a full-screen veil. Tone mapping saturates these values anyway.
-      gl_FragColor = vec4(min(color, vec3(12.0)), 1.0);
+      gl_FragColor = vec4(min(color, vec3(8.0)), 1.0);
     }
   `,
 };
@@ -122,8 +124,8 @@ const GradeShader = {
   name: 'Grade',
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
-    uSaturation: { value: 1.12 },
-    uContrast: { value: 1.08 },
+    uSaturation: { value: 1.18 },
+    uContrast: { value: 1.14 },
     uWarmth: { value: 0.04 },
     uVignette: { value: 0.28 },
   },

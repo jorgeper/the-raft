@@ -61,7 +61,7 @@ scene.add(water.mesh);
 scene.add(createFarLand(height));
 scene.add(createRocks(height));
 
-const trees = new Trees(height);
+const trees = new Trees(height, renderer);
 scene.add(trees.group);
 
 const grass = new Grass(height);
@@ -77,7 +77,7 @@ const settings = {
   turbidity: 1.5,
   rayleigh: 3,
   exposure: renderer.toneMappingExposure,
-  fogDensity: 0.0006,
+  fogDensity: 0.0004,
 };
 const sunDir = new THREE.Vector3();
 
@@ -152,7 +152,8 @@ if (camParam?.length === 6 && camParam.every(Number.isFinite)) {
 }
 
 // Walk (default) or fly; F toggles. Walking follows the ground with gravity and jumping.
-let flying = false;
+// A ?cam= view above walking height starts in fly mode so it holds its altitude.
+let flying = (camParam?.[1] ?? 0) > EYE_HEIGHT + 0.5;
 let verticalSpeed = 0;
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyF') {

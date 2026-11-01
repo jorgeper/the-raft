@@ -43,7 +43,7 @@ const aoMaterial = new THREE.ShaderMaterial({
 
     void main() {
       float d = texture2D(tDepth, vUv).x;
-      if (d >= 0.99999) { gl_FragColor = vec4(1.0); return; }
+      if (d >= 1.0) { gl_FragColor = vec4(1.0); return; }
       vec3 P = viewPos(vUv);
       vec3 N = normalize(cross(dFdx(P), dFdy(P)));
       if (dot(N, P) > 0.0) N = -N;

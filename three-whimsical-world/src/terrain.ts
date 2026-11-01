@@ -84,8 +84,8 @@ const COLORS = {
   grassDry: new THREE.Color('#7c8a38'),
   dirt: new THREE.Color('#6a573a'),
   rock: new THREE.Color('#6c6862'),
-  sand: new THREE.Color('#cbb98a'),
-  wetSand: new THREE.Color('#8b7a57'),
+  sand: new THREE.Color('#c4a874'),
+  wetSand: new THREE.Color('#7a6646'),
   seabed: new THREE.Color('#6f6448'),
 };
 
@@ -151,6 +151,7 @@ export function createTerrainMesh(height: HeightFn): THREE.Mesh {
         varying float vGrass;
         varying vec3 vWorld;
         uniform float uGrassRadius;
+        float wetSand = 0.0;
         float tHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float tNoise(vec2 p) {
           vec2 i = floor(p), f = fract(p);
@@ -167,8 +168,17 @@ export function createTerrainMesh(height: HeightFn): THREE.Mesh {
         diffuseColor.rgb *= mix(1.0, 0.3, under);
         // Mottling so distant meadow and sand don't read as flat paint.
         float mottle = tNoise(vWorld.xz * 0.35) * 0.6 + tNoise(vWorld.xz * 1.9) * 0.4;
-        diffuseColor.rgb *= 0.82 + 0.36 * mottle;`,
-      );
+        diffuseColor.rgb *= 0.82 + 0.36 * mottle;
+        // Beach: wind ripples and grain on dry sand, a darker band where waves wet it.
+        float sand = 1.0 - smoothstep(2.0, 3.6, vWorld.y);
+        float warp = tNoise(vWorld.xz * 0.08) * 6.0;
+        float ripple = 0.5 + 0.5 * sin(dot(vWorld.xz, vec2(0.83, 0.55)) * 4.5 + warp);
+        float grain = tNoise(vWorld.xz * 23.0);
+        diffuseColor.rgb *= mix(1.0, 0.84 + 0.18 * ripple + 0.12 * (grain - 0.5), sand);
+        wetSand = sand * (1.0 - smoothstep(0.2, 1.1, vWorld.y + 0.3 * tNoise(vWorld.xz * 0.5)));
+        diffuseColor.rgb *= mix(1.0, 0.62, wetSand);`,
+      )
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.35, wetSand);');
   };
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
