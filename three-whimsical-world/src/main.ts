@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import GUI from 'lil-gui';
-import { createWater } from './water';
+import { createWater, addRipple } from './water';
 import { wind, sunLight } from './wind';
 import { createPost } from './post';
 import { World } from './world';
@@ -912,7 +912,7 @@ renderer.setAnimationLoop((now) => {
   post.atmosphere.uForest.value += (forestHere - post.atmosphere.uForest.value) * Math.min(dt * 1.5, 1);
   world.life.update(timer.getElapsed(), camera, daylight, post.atmosphere.uForest.value);
   world.deer.update(timer.getElapsed(), player.position);
-  world.pondLife.update(timer.getElapsed(), player.position);
+  world.pondLife.update(timer.getElapsed(), player.position, daylight);
 
   // Eye adaptation: looking into the sun stops the view down a little, so it glows instead of blinding
   // (under a canopy most of it is hidden, so adapt less there).
@@ -960,5 +960,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, fps, sunShadows, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fps, sunShadows, get world() { return world; } },
 });

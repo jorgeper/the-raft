@@ -3,6 +3,17 @@ import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { TERRAIN_SIZE } from './terrain';
 import { weatherUniforms, RAIN_RIPPLES } from './weather';
 
+/** How many ripple events (a frog diving, a fish rising) can spread at once. */
+const MAX_RIPPLES = 12;
+/** Ripple events as (x, z, start time, strength), round robin; the water shader spreads a ring from each. */
+const ripples = { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4(0, 0, -100, 0)) };
+let nextRipple = 0;
+/** Starts rings spreading on the water at (x, z): `time` on the water's clock (the app timer), `strength` 0..1. */
+export function addRipple(x: number, z: number, time: number, strength = 1) {
+  ripples.value[nextRipple].set(x, z, time, strength);
+  nextRipple = (nextRipple + 1) % MAX_RIPPLES;
+}
+
 /** Resolution of the river flow map over the terrain (TERRAIN_SIZE / FLOW_RES ≈ 4 m a texel). */
 const FLOW_RES = 512;
 
@@ -46,6 +57,7 @@ const fragmentShader = /* glsl */ `
   // River flow map over the terrain: rg = flow direction (0.5 + 0.5 d), b = how much this is river water.
   uniform sampler2D tFlow;
   uniform float uRain;
+  uniform vec4 uRipples[${MAX_RIPPLES}];
   varying vec3 vWorld;
   ${RAIN_RIPPLES}
   varying vec3 vView;
@@ -179,6 +191,21 @@ const fragmentShader = /* glsl */ `
     }
     // Rain: rings spreading where the drops land (close by; further out they're too fine to see).
     if (uRain > 0.01) g += rainRipples(vWorld.xz, uTime) * uRain * 0.35 * (1.0 - smoothstep(10.0, 40.0, dist));
+    // Rings where something broke the surface: a packet of a few ripples spreading from it and dying away, and a
+    // fleck of white water at the start.
+    float plop = 0.0;
+    for (int i = 0; i < ${MAX_RIPPLES}; i++) {
+      vec4 rp = uRipples[i];
+      float age = uTime - rp.z;
+      if (age < 0.0 || age > 4.0) continue;
+      vec2 rd = vWorld.xz - rp.xy;
+      float rr = length(rd);
+      float x = rr - (0.08 + age * 0.5);
+      if (x > 0.2) continue;
+      float packet = exp(-x * x * 28.0) * (1.0 - age / 4.0) / (1.0 + rr * 2.0);
+      g += rd / max(rr, 1e-3) * cos(x * 30.0) * packet * rp.w * 0.65;
+      plop += exp(-rr * rr * 120.0) * max(0.0, 1.0 - age / 0.5) * rp.w;
+    }
     vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
 
     // --- Refraction: shift the lookup by the wave normal, more where the water is deeper.
@@ -290,6 +317,7 @@ const fragmentShader = /* glsl */ `
       float white = smoothstep(0.58, 0.82, flecks) * shallow * smoothstep(0.02, 0.06, depthV);
       foam = max(foam, white * (0.4 + 0.6 * lace) * river * 0.75);
     }
+    foam = max(foam, min(plop, 1.0) * 0.8);
     vec3 foamColor = vec3(0.85, 0.88, 0.88) * (0.5 + 0.5 * max(uSunDir.y, 0.2)) * (0.08 + 0.92 * light) * 1.6;
     col = mix(col, foamColor, foam * 0.8);
 
@@ -386,6 +414,7 @@ export function createWater(env: THREE.Texture) {
     uProj: { value: new THREE.Matrix4() },
     tFlow: { value: emptyFlow },
     uRain: weatherUniforms.uRain,
+    uRipples: ripples,
   };
   const material = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader, defines: { SSR_STEPS: 32 } });
   const geo = new THREE.PlaneGeometry(20000, 20000, 1, 1);

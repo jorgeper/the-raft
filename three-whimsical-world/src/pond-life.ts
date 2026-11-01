@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, type Pond, type WorldFns } from './worldgen';
+import { addRipple } from './water';
 
 /**
  * Pond life: water lilies (pads and flowers) floating in rafts, frogs sitting on the pads and the shore that croak,
@@ -118,6 +119,32 @@ function createFishGeometry() {
   ])!;
 }
 
+/**
+ * A dragonfly about 8 cm long facing +z: a slim abdomen, thorax and big-eyed head (white, tinted by the instance
+ * color), and four glassy wings; aFlag is +1/-1 on the right/left wings (the shader flutters them), 0 on the body.
+ */
+function createDragonflyGeometry() {
+  const body = new THREE.Color('#ffffff'), eye = new THREE.Color('#304050'), wing = new THREE.Color('#8fa8b0');
+  const wingGeo = (side: number, z: number, len: number) => {
+    const g = new THREE.BufferGeometry();
+    const w = 0.0085;
+    const v = [0, 0, z, side * len * 0.5, 0.002, z + w, side * len, 0.003, z + w * 0.3, side * len * 0.5, 0.002, z - w * 0.6];
+    g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    g.computeVertexNormals();
+    return part(g, () => wing, () => side, new THREE.Matrix4());
+  };
+  return mergeGeometries([
+    part(new THREE.CylinderGeometry(0.0028, 0.0018, 0.06, 6), flat('#ffffff'), none, mat4([0, 0, -0.028], [1, 1, 1], [Math.PI / 2, 0, 0])),
+    part(new THREE.SphereGeometry(1, 8, 6), () => body, none, mat4([0, 0, 0.008], [0.0055, 0.0055, 0.011])),
+    part(new THREE.SphereGeometry(1, 8, 6), () => eye, none, mat4([0, 0.001, 0.021], [0.0062, 0.005, 0.005])),
+    wingGeo(1, 0.012, 0.042),
+    wingGeo(-1, 0.012, 0.042),
+    wingGeo(1, 0.003, 0.038),
+    wingGeo(-1, 0.003, 0.038),
+  ])!;
+}
+
 interface Pad { pond: Pond; x: number; z: number; r: number; frog: boolean }
 interface Frog {
   pond: Pond; x: number; y: number; z: number; yaw: number; scale: number;
@@ -129,6 +156,13 @@ interface Frog {
   hidden: number;
 }
 interface Fish { pond: Pond; x: number; y: number; z: number; yaw: number; turn: number; speed: number; scale: number; depth: number; rest: number }
+interface Dragonfly {
+  pond: Pond; x: number; y: number; z: number; yaw: number;
+  /** Where it is darting to, and whether it will touch the water there. */
+  tx: number; ty: number; tz: number; dip: boolean;
+  /** Seconds left hovering in place. */
+  hover: number;
+}
 
 export class PondLife {
   readonly group = new THREE.Group();
@@ -139,6 +173,8 @@ export class PondLife {
   private shores = new Map<Pond, THREE.Vector2[]>();
   private frogMesh: THREE.InstancedMesh;
   private fishMesh: THREE.InstancedMesh;
+  private flies: Dragonfly[] = [];
+  private flyMesh: THREE.InstancedMesh;
   private rand: () => number;
   private matrix = new THREE.Matrix4();
   private q = new THREE.Quaternion();
@@ -158,6 +194,9 @@ export class PondLife {
     this.frogMesh = this.createFrogs();
     this.fishMesh = this.createFish();
     this.group.add(this.frogMesh, this.fishMesh);
+    // Created last, so the pads, frogs and fish keep their seeded places.
+    this.flyMesh = this.createDragonflies();
+    this.group.add(this.flyMesh);
   }
 
   /** Points just up the bank all around a pond, where frogs can sit. */
@@ -308,6 +347,87 @@ export class PondLife {
     return mesh;
   }
 
+  private createDragonflies() {
+    const geo = createDragonflyGeometry();
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0.45, side: THREE.DoubleSide, alphaHash: true });
+    // Wings beat too fast to see: a shimmering flutter about the body's long axis.
+    this.animate(mat, `transformed.y += abs(aFlag) * abs(transformed.x) * sin(uTime * 95.0 + seed * 5.0 + step(transformed.z, 0.008) * 1.7) * 0.35;`);
+    // The wings stay glassy whatever the body's color (the instance tint would paint them too).
+    const patchAnimate = mat.onBeforeCompile;
+    mat.onBeforeCompile = (shader, renderer) => {
+      patchAnimate.call(mat, shader, renderer);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying float vWing;')
+        .replace('#include <color_vertex>', '#include <color_vertex>\nvWing = step(0.5, abs(aFlag));\nif (vWing > 0.5) vColor.rgb = vec3(0.36, 0.42, 0.45);');
+      // Wings are thin clear film: mostly see-through (hashed alpha, which the TAA smooths) and not metal, so in
+      // full sun they don't read as white blades.
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vWing;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a = mix(diffuseColor.a, 0.45, vWing);')
+        .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor *= 1.0 - vWing;\nroughnessFactor = mix(roughnessFactor, 0.7, vWing);');
+    };
+    mat.customProgramCacheKey = () => 'dragonfly';
+    const colors = ['#2f6fd8', '#3aa0c8', '#3c9a48', '#c8452c', '#2f6fd8'].map((c) => new THREE.Color(c));
+    for (const pond of this.world.ponds) {
+      const n = 2 + Math.floor(this.rand() * 3);
+      for (let i = 0; i < n; i++) {
+        const a = this.rand() * Math.PI * 2, d = this.rand() * pond.radius * 0.7;
+        const x = pond.x + Math.cos(a) * d, z = pond.z + Math.sin(a) * d, y = pond.level + 0.4 + this.rand() * 0.6;
+        this.flies.push({ pond, x, y, z, yaw: this.rand() * Math.PI * 2, tx: x, ty: y, tz: z, dip: false, hover: this.rand() * 3 });
+      }
+    }
+    const mesh = new THREE.InstancedMesh(geo, mat, Math.max(this.flies.length, 1));
+    mesh.count = this.flies.length;
+    this.flies.forEach((_, i) => mesh.setColorAt(i, colors[Math.floor(this.rand() * colors.length)]));
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.frustumCulled = false;
+    mesh.castShadow = false;
+    this.disposables.push(geo, mat);
+    return mesh;
+  }
+
+  /** Dragonflies hover, dart a metre or two to a new spot, and sometimes dip to touch the water. */
+  private stepFly(f: Dragonfly, time: number, dt: number) {
+    const p = f.pond;
+    if (f.hover > 0) {
+      f.hover -= dt;
+      if (f.hover <= 0) {
+        // Next spot: over the water or along the margin, near where it is.
+        const a = this.rand() * Math.PI * 2, d = 0.8 + this.rand() * 2.2;
+        let tx = f.x + Math.cos(a) * d, tz = f.z + Math.sin(a) * d;
+        if (Math.hypot(tx - p.x, tz - p.z) > p.radius * 1.05) {
+          tx = f.x + (p.x - f.x) * 0.4;
+          tz = f.z + (p.z - f.z) * 0.4;
+        }
+        f.dip = this.world.pondEdge(tx, tz) < -0.4 && this.rand() < 0.18;
+        f.tx = tx;
+        f.tz = tz;
+        f.ty = f.dip ? p.level + 0.015 : p.level + 0.3 + this.rand() * 0.9;
+      }
+      return;
+    }
+    const dx = f.tx - f.x, dy = f.ty - f.y, dz = f.tz - f.z, d = Math.hypot(dx, dy, dz);
+    const step = Math.min(d, (f.dip ? 2.2 : 3.6) * dt);
+    if (d > 1e-3) {
+      f.x += (dx / d) * step;
+      f.y += (dy / d) * step;
+      f.z += (dz / d) * step;
+      if (Math.hypot(dx, dz) > 0.05) f.yaw = Math.atan2(dx, dz);
+    }
+    if (d - step < 0.01) {
+      if (f.dip) {
+        addRipple(f.x, f.z, time, 0.3);
+        f.dip = false;
+        // Straight back up after touching the water.
+        f.ty = p.level + 0.4 + this.rand() * 0.5;
+        f.tx = f.x;
+        f.tz = f.z;
+        return;
+      }
+      f.hover = 0.6 + this.rand() * 2.8;
+    }
+  }
+
   private sitOnPad(frog: Frog, pad: Pad) {
     if (frog.pad) frog.pad.frog = false;
     frog.pad = pad;
@@ -350,7 +470,8 @@ export class PondLife {
     }
   }
 
-  update(time: number, viewer: THREE.Vector3) {
+  /** `day` 0..1 is daylight: dragonflies only fly by day. */
+  update(time: number, viewer: THREE.Vector3, day = 1) {
     const dt = this.last < 0 ? 0 : Math.min(time - this.last, 0.1);
     this.last = time;
     this.uniforms.uTime.value = time;
@@ -381,6 +502,18 @@ export class PondLife {
       this.fishMesh.setMatrixAt(i, m);
     });
     this.fishMesh.instanceMatrix.needsUpdate = true;
+
+    const out = day < 0.3;
+    this.flies.forEach((f, i) => {
+      const near = Math.hypot(f.pond.x - viewer.x, f.pond.z - viewer.z) < 90;
+      if (near && !out) this.stepFly(f, time, dt);
+      // A hovering dragonfly is never quite still.
+      const bob = f.hover > 0 ? Math.sin(time * 3.1 + i * 1.7) * 0.012 : 0;
+      this.e.set(f.hover > 0 ? 0 : -0.08, f.yaw, Math.sin(time * 2.3 + i) * 0.06, 'YXZ');
+      m.compose(this.v.set(f.x, f.y + bob, f.z), this.q.setFromEuler(this.e), this.s.setScalar(near && !out ? 1.15 : 0));
+      this.flyMesh.setMatrixAt(i, m);
+    });
+    this.flyMesh.instanceMatrix.needsUpdate = true;
   }
 
   private stepFrog(f: Frog, time: number, dt: number, viewer: THREE.Vector3) {
@@ -389,8 +522,12 @@ export class PondLife {
       // Surface again on a free pad, or on the bank if every pad is taken.
       f.hidden = 0;
       const pads = this.pads.filter((p) => p.pond === f.pond && !p.frog && p.r > 0.2);
-      if (pads.length) this.sitOnPad(f, pads[Math.floor(this.rand() * pads.length)]);
-      else this.sitOnShore(f, this.shores.get(f.pond)![Math.floor(this.rand() * 40)]);
+      if (pads.length) {
+        const pad = pads[Math.floor(this.rand() * pads.length)];
+        this.sitOnPad(f, pad);
+        // Climbing back out onto a pad stirs the water a little.
+        addRipple(pad.x, pad.z, time, 0.35);
+      } else this.sitOnShore(f, this.shores.get(f.pond)![Math.floor(this.rand() * 40)]);
       f.wait = 4 + this.rand() * 8;
       return;
     }
@@ -403,7 +540,10 @@ export class PondLife {
         f.y = h.y1;
         f.z = h.z1;
         if (h.pad) f.pad = h.pad;
-        if (h.dive) f.hidden = time + 6 + this.rand() * 10;
+        if (h.dive) {
+          f.hidden = time + 6 + this.rand() * 10;
+          addRipple(h.x1, h.z1, time, 1);
+        } else if (h.pad) addRipple(h.x1, h.z1, time, 0.25);
       }
       return;
     }
@@ -450,6 +590,8 @@ export class PondLife {
     }
     // Some cruise just under the surface, others nearer the bed; they drift between depths over time.
     if (this.rand() < dt * 0.05) f.depth = 0.1 + this.rand() * 0.3;
+    // Now and then one cruising just under the surface rises to sip something off it.
+    if (f.depth < 0.18 && this.rand() < dt * 0.025) addRipple(f.x + Math.sin(f.yaw) * 0.15, f.z + Math.cos(f.yaw) * 0.15, time, 0.55);
     const bed = this.world.height(f.x, f.z) + 0.1;
     const target = Math.max(p.level - f.depth, bed);
     f.y += (Math.min(target, p.level - 0.08) - f.y) * Math.min(dt * 0.8, 1);
