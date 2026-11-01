@@ -117,6 +117,18 @@ export function patchMoss(shader: THREE.WebGLProgramParametersWithUniforms) {
         float moss = max(smoothstep(0.6, 0.92, facing) * smoothstep(2.5, 6.0, vMossPos.y) * uMossAmount,
                          wet * smoothstep(-0.25, 0.45, facing + (n - 0.5) * 0.4));
         vec3 mossColor = mix(vec3(0.075, 0.09, 0.035), vec3(0.085, 0.12, 0.035), wet) * (0.75 + 0.5 * n);
+        // Crustose lichen in round blotches with speckles around them: orange (Xanthoria, thickest on rocks by the
+        // sea, as on real coasts) and pale grey-green map lichen, on the sides and tops but not in the overhangs.
+        float blob = mNoise(vMossPos * 2.3 + 11.0) * 0.7 + mNoise(vMossPos * 9.0 - 3.0) * 0.3;
+        float speck = mNoise(vMossPos * 23.0 + 5.0);
+        float lichenAt = smoothstep(-0.35, 0.2, worldNormal.y) * (1.0 - wet);
+        float coast = 1.0 - smoothstep(4.0, 12.0, vMossPos.y);
+        float orange = max(smoothstep(0.7 - 0.08 * coast, 0.75 - 0.08 * coast, blob), smoothstep(0.86 - 0.08 * coast, 0.9, speck) * 0.8)
+          * lichenAt * (0.35 + 0.65 * coast);
+        float pale = smoothstep(0.64, 0.7, mNoise(vMossPos * 1.6 - 21.0) * 0.75 + speck * 0.25) * lichenAt * (1.0 - orange);
+        vec3 orangeLichen = mix(vec3(0.5, 0.2, 0.04), vec3(0.62, 0.36, 0.07), mNoise(vMossPos * 5.0));
+        diffuseColor.rgb = mix(diffuseColor.rgb, orangeLichen, orange * 0.75);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.45, 0.35) * (0.8 + 0.4 * speck), pale * 0.55);
         diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, moss);
         roughnessFactor = mix(roughnessFactor, 0.95, moss);
         // After rain the stone darkens and turns glossy (tops and faces to the sky first, the overhangs stay dry),

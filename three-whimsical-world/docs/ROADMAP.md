@@ -9,6 +9,7 @@ In priority order: the first items are the user's requests for the next sessions
    **soundscape** (wind, birds, crickets and owls, frogs, surf, rain, torch crackle, footsteps by surface).
    1. ~~Moonlit nights~~ (done, see Done).
    2. ~~God rays from clouds~~ (done, see Done).
+   3. ~~Rowans with red berries, lichen-orange rocks~~ (done, see Done).
 
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
@@ -96,8 +97,8 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Ideas for a gorgeous, rich land (suggested to the user, not yet prioritized)
 
-- Color: ~~purple heather drifts~~, ~~autumn-tinted birches~~ (done, see Done); still open: rowans with red berries,
-  lichen-orange rocks.
+- Color: ~~purple heather drifts~~, ~~autumn-tinted birches~~, ~~rowans with red berries~~, ~~lichen-orange rocks~~
+  (done, see Done).
 - Light: god rays from clouds over the sea; aurora on clear nights; moonlit
   silver-blue nights; sun glitter on water.
 - Life and motion: butterflies, birds, deer at forest edges, falling leaves, swaying reeds, ~~drifting seed fluff~~.
@@ -120,6 +121,15 @@ In priority order: the first items are the user's requests for the next sessions
 - Nights are very dark without the torch, by design.
 
 ## Done
+
+- Rowans and lichen (user, 2026-11-01):
+  - **Rowans** (`rowan` in `src/trees.ts`): two slim ash-leaved species among the young trees (forest edges, lone on
+    the meadow, ~390 in the default world) hung with clusters of scarlet berries: octahedra placed under random
+    outer-shell leaves, swaying with the crown (`buildBerries`, `berryMaterial`), on the two nearer detail levels.
+    No measurable fps cost. Adding species reshuffles which young tree grows where (positions are unchanged).
+  - **Lichen** (`patchMoss` in `src/scanned-rocks.ts`, so scanned and fractured rocks both): orange crustose blotches
+    and speckles, thickest on rocks near the sea, and pale grey-green map lichen elsewhere, under the moss and not in
+    overhangs. Shots: `.playwright-mcp/wild/rw-4.jpg`, `li-4.jpg`.
 
 - Crepuscular rays from broken cloud (user, 2026-11-01): the volumetric pass also marches each ray 3 km out (16
   steps, squared spacing, below the cloud base) through the clouds' coarse shadow field (the sky's fbm, first three

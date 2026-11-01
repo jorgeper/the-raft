@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { weatherUniforms } from './weather';
 import { Tree } from '@dgreenheck/ez-tree';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise2D } from 'simplex-noise';
 import { TERRAIN_SIZE } from './terrain';
 import type { WorldFns } from './worldgen';
@@ -20,6 +21,8 @@ interface Variant {
   tweak?: (o: TreeOptions) => void;
   /** Leaf color multiplier, for species told apart by foliage color. */
   tint?: string;
+  /** Clusters of berries among the outer leaves (rowan), in this color. */
+  berries?: string;
 }
 
 interface BuiltVariant {
@@ -29,6 +32,8 @@ interface BuiltVariant {
   leafMaterial: THREE.MeshPhysicalMaterial;
   /** Casts the leaves' shadows with the crown's sway, so sun flecks drift on the ground beneath. */
   leafDepth: THREE.MeshDepthMaterial;
+  /** Berry clusters (rowan), only on the nearer detail levels. */
+  berries?: THREE.BufferGeometry;
 }
 
 // Valheim meadow trees: tall beech with dense rounded crowns, broad oaks, and birch.
@@ -56,6 +61,15 @@ const birch = (o: TreeOptions) => {
   o.leaves.size *= 1.25;
   o.leaves.start = 0;
 };
+// Rowan: a slim tree with feathery ash-like leaves and clusters of scarlet berries, at forest edges and alone on
+// the meadow.
+const rowan = (o: TreeOptions) => {
+  o.branch.children = { 0: 7, 1: 4, 2: 3 };
+  o.branch.angle = { 1: 38, 2: 38, 3: 32 };
+  o.branch.start = { 1: 0.35, 2: 0.1, 3: 0 };
+  o.leaves.count = Math.round(o.leaves.count * 1.1);
+  o.leaves.start = 0;
+};
 const MEADOW: Variant[] = [
   { preset: 'Ash Large', seed: 101, height: 22, tweak: beech },
   { preset: 'Ash Large', seed: 131, height: 19, tweak: beech },
@@ -70,6 +84,8 @@ const SMALL_TREES: Variant[] = [
   { preset: 'Ash Small', seed: 1202, height: 8, tweak: beech },
   { preset: 'Aspen Small', seed: 1203, height: 9, tweak: birch },
   { preset: 'Aspen Medium', seed: 1204, height: 12, tweak: birch, tint: '#fff4b0' },
+  { preset: 'Ash Small', seed: 1301, height: 7, tweak: rowan, tint: '#e6ffc0', berries: '#d8200c' },
+  { preset: 'Ash Medium', seed: 1302, height: 9.5, tweak: rowan, tint: '#f0ffd0', berries: '#e2340e' },
 ];
 const bushLeaves = (type: string, count = 1.3, size = 1.1) => (o: TreeOptions) => {
   o.leaves.type = type;
@@ -256,8 +272,62 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
       );
   };
 
-  return { branches, leaves, barkMaterial, leafMaterial, leafDepth };
+  const berries = v.berries && lod < 2 ? buildBerries(leaves, center, halfSize, v.seed, new THREE.Color(v.berries)) : undefined;
+  return { branches, leaves, barkMaterial, leafMaterial, leafDepth, berries };
 }
+
+/**
+ * Hanging clusters of berries on the crown's outer shell: a handful of small octahedra per cluster, each a little
+ * different in shade, placed just under randomly chosen outer leaves. Exaggerated in size so they read from afar.
+ */
+function buildBerries(leaves: THREE.BufferGeometry, center: THREE.Vector3, halfSize: THREE.Vector3, seed: number, color: THREE.Color) {
+  let s = seed * 9973;
+  const rand = () => {
+    s = (s * 16807) % 2147483647;
+    return s / 2147483647;
+  };
+  const pos = leaves.attributes.position as THREE.BufferAttribute;
+  const berry = new THREE.OctahedronGeometry(0.045, 0);
+  const parts: THREE.BufferGeometry[] = [];
+  const v = new THREE.Vector3(), d = new THREE.Vector3(), c = new THREE.Color();
+  const clusters = THREE.MathUtils.clamp(Math.round(pos.count / 40), 24, 90);
+  for (let k = 0, tries = 0; k < clusters && tries < clusters * 20; tries++) {
+    v.fromBufferAttribute(pos, Math.floor(rand() * pos.count));
+    d.copy(v).sub(center);
+    // Outer shell and upper two thirds of the crown, where the light reaches.
+    if (Math.hypot(d.x / halfSize.x, d.y / halfSize.y, d.z / halfSize.z) < 0.7 || d.y < -0.4 * halfSize.y) continue;
+    k++;
+    const count = 6 + Math.floor(rand() * 5);
+    for (let i = 0; i < count; i++) {
+      const b = berry.clone();
+      const a = rand() * Math.PI * 2, r = rand() * 0.11;
+      b.scale(0.8 + rand() * 0.4, 0.8 + rand() * 0.4, 0.8 + rand() * 0.4);
+      b.translate(v.x + Math.cos(a) * r, v.y - 0.12 - rand() * 0.12, v.z + Math.sin(a) * r);
+      c.copy(color).multiplyScalar(0.75 + rand() * 0.35);
+      const cols = new Float32Array(b.attributes.position.count * 3);
+      for (let j = 0; j < cols.length; j += 3) cols.set([c.r, c.g, c.b], j);
+      b.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+      parts.push(b);
+    }
+  }
+  const merged = mergeGeometries(parts);
+  for (const part of parts) part.dispose();
+  berry.dispose();
+  return merged;
+}
+
+/** Glossy berries that sway with the crown (the same slow sway the leaves' shadows use). */
+const berryMaterial = (() => {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0 });
+  addWind(
+    m,
+    /* glsl */ `
+      float h = max(p.y - root.y, 0.0);
+      p += windOffset(root, h * 0.012);
+    `,
+  );
+  return m;
+})();
 
 interface Placement {
   variant: number;
@@ -274,6 +344,8 @@ export class Trees {
   private placements: Placement[] = [];
   /** meshes[variant][lod] = [branches, leaves] */
   private meshes: [THREE.InstancedMesh, THREE.InstancedMesh][][] = [];
+  /** berries[variant][lod], for species that bear them (rowan) at the nearer levels. */
+  private berries: (THREE.InstancedMesh | null)[][] = [];
   /** impostors[variant]; empty until the bark/leaf textures have loaded and been baked. */
   private impostors: THREE.InstancedMesh[] = [];
   private counts: number[] = [];
@@ -387,6 +459,15 @@ export class Trees {
           new THREE.InstancedMesh(b.leaves, b.leafMaterial, Math.max(counts[vi], 1)),
         ] as [THREE.InstancedMesh, THREE.InstancedMesh];
         pair[1].customDepthMaterial = b.leafDepth;
+        (this.berries[vi] ??= [])[lod] = null;
+        if (b.berries) {
+          const bm = new THREE.InstancedMesh(b.berries, berryMaterial, Math.max(counts[vi], 1));
+          bm.count = 0;
+          bm.frustumCulled = false;
+          bm.receiveShadow = true;
+          this.group.add(bm);
+          this.berries[vi][lod] = bm;
+        }
         for (const mesh of pair) {
           mesh.count = 0;
           // Culling is done per instance in update(), so the whole-world bounds check is skipped.
@@ -441,6 +522,7 @@ export class Trees {
     this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projView);
     for (const pair of this.meshes.flat()) pair[0].count = pair[1].count = 0;
+    for (const bm of this.berries.flat()) if (bm) bm.count = 0;
     for (const mesh of this.impostors) mesh.count = 0;
 
     for (const pl of this.placements) {
@@ -466,6 +548,14 @@ export class Trees {
       leaves.setColorAt(leaves.count, pl.color);
       branches.count++;
       leaves.count++;
+      const bm = this.berries[pl.variant][lod];
+      if (bm) bm.setMatrixAt(bm.count++, pl.matrix);
+    }
+    for (const bm of this.berries.flat()) {
+      if (!bm || bm.count === 0) continue;
+      bm.instanceMatrix.clearUpdateRanges();
+      bm.instanceMatrix.addUpdateRange(0, bm.count * 16);
+      bm.instanceMatrix.needsUpdate = true;
     }
     for (const mesh of this.impostors) {
       if (mesh.count === 0) continue;
