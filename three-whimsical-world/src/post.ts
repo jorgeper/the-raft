@@ -198,8 +198,12 @@ const AtmosphereShader = {
           : 1.0;
         // Forests hold a thick haze near the ground (it doesn't thin with height inside the canopy).
         // Whimsy thickens the air, so tree rows behind each other fade into flat colored layers.
-        float density = uFogDensity * mix(1.0, 7.0, uForest) * (1.0 + 0.5 * uWhimsy);
-        float optical = density * dist * mix(exp(-uFogHeightFalloff * h) * heightTerm, 1.0, uForest);
+        // The forest's thick air only fills the first stretch of the ray: standing among trees at a clearing's or
+        // a gorge's rim, the open air beyond is ordinary haze (inside a forest, trunks hide anything farther anyway).
+        float base = uFogDensity * (1.0 + 0.5 * uWhimsy);
+        float openTerm = exp(-uFogHeightFalloff * h) * heightTerm;
+        float near = min(dist, 70.0);
+        float optical = base * (mix(1.0, 7.0, uForest) * mix(openTerm, 1.0, uForest) * near + openTerm * (dist - near));
         float fog = 1.0 - exp(-optical);
         vec3 horizonDir = normalize(vec3(ray.x, 0.04 + max(ray.y, 0.0) * 0.5, ray.z));
         vec3 fogColor = textureCube(tSky, horizonDir).rgb;
@@ -236,8 +240,11 @@ const AtmosphereShader = {
         if (uGroundFog > 0.0) {
           float H = uGroundFogHeight;
           float L = min(dist, 500.0);
-          float y0 = max(camPos.y - uGroundY, -3.0 * H);
-          float y1 = max(camPos.y + ray.y * L - uGroundY, -3.0 * H);
+          // Heights are measured from the ground under the camera, so anything lower reads as deep in the mist.
+          // A little below that pools it in hollows; the old floor of 3 layer heights (20x as dense) filled a
+          // whole gorge or valley seen from its rim with a wall of fog.
+          float y0 = max(camPos.y - uGroundY, -0.7 * H);
+          float y1 = max(camPos.y + ray.y * L - uGroundY, -0.7 * H);
           float dy = y1 - y0;
           float integral = abs(dy) > 0.01 ? L * H / dy * (exp(-y0 / H) - exp(-y1 / H)) : L * exp(-y0 / H);
           float n = 0.0;
