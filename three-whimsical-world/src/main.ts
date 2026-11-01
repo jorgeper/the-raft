@@ -932,6 +932,7 @@ renderer.setAnimationLoop((now) => {
   world.life.update(timer.getElapsed(), camera, daylight, post.atmosphere.uForest.value);
   world.deer.update(timer.getElapsed(), player.position);
   world.pondLife.update(timer.getElapsed(), player.position, daylight);
+  world.waterfalls.update(timer.getElapsed(), camera.position, daylight);
 
   // Eye adaptation: looking into the sun stops the view down a little, so it glows instead of blinding
   // (under a canopy most of it is hidden, so adapt less there).

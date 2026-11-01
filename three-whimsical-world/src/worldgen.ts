@@ -66,6 +66,19 @@ export interface WorldFns {
   clearing: FieldFn;
   /** 0..1 heath: drifts of heather on open, higher ground, where the grass grows thin and short. */
   heath: FieldFn;
+  /** Waterfalls spilling off gorge rims into the rivers below. */
+  waterfalls: Waterfall[];
+}
+
+export interface Waterfall {
+  /** The lip, on the rim. */
+  x: number;
+  z: number;
+  /** Ground height at the lip. */
+  top: number;
+  /** Horizontal unit direction the water leaves in (toward the river). */
+  dirX: number;
+  dirZ: number;
 }
 
 export interface Landmark {
@@ -364,7 +377,37 @@ export function createWorld(params: WorldParams): WorldFns {
     }
     if (best.score > 2.5) add('oak', best.x, best.z, 14);
   }
+  // Waterfalls: where a gorge wall drops a long way into a river, a spring spills over the rim. The steepest drops,
+  // kept well apart. (A coarse scan: the gorges are in the mountains, far inland.)
+  const waterfalls: Waterfall[] = [];
+  {
+    const cands: { x: number; z: number; top: number; a: number; drop: number }[] = [];
+    for (let x = -860; x < 100; x += 8) {
+      for (let z = -960; z < 960; z += 8) {
+        if (riverEdge(x, z) < 1.5) continue;
+        const top = height(x, z);
+        if (top < 10) continue;
+        let drop = 0, dir = 0;
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * Math.PI * 2;
+          const bx = x + Math.cos(a) * 12, bz = z + Math.sin(a) * 12;
+          if (riverEdge(bx, bz) > -0.5) continue;
+          const d = top - Math.max(height(bx, bz), 0);
+          if (d > drop) (drop = d), (dir = a);
+        }
+        if (drop > 11) cands.push({ x, z, top, a: dir, drop });
+      }
+    }
+    cands.sort((p, q) => q.drop - p.drop);
+    for (const c of cands) {
+      if (waterfalls.length >= 5) break;
+      if (waterfalls.some((w) => Math.hypot(w.x - c.x, w.z - c.z) < 160)) continue;
+      waterfalls.push({ x: c.x, z: c.z, top: c.top, dirX: Math.cos(c.a), dirZ: Math.sin(c.a) });
+    }
+  }
+
   const clearing: FieldFn = (x, z) => {
+    for (const w of waterfalls) if (Math.abs(x - w.x) < 6 && Math.abs(z - w.z) < 6) return 1;
     for (const l of landmarks) {
       const reach = l.kind === 'circle' ? l.radius + 4 : l.kind === 'mound' ? l.radius * 0.9 : l.kind === 'oak' ? l.radius : 2.5;
       if (Math.abs(x - l.x) < reach && Math.abs(z - l.z) < reach && Math.hypot(x - l.x, z - l.z) < reach) return 1;
@@ -381,5 +424,5 @@ export function createWorld(params: WorldParams): WorldFns {
     return drift * smoothstep(4, 7, h) * (0.2 + 0.8 * smoothstep(8, 22, h)) * (1 - smoothstep(0.12, 0.35, forest(x, z)));
   };
 
-  return { params, height, forest, dirt, river: riverField, riverEdge, riverCenters, ponds, pondEdge, landmarks, clearing, heath };
+  return { params, height, forest, dirt, river: riverField, riverEdge, riverCenters, ponds, pondEdge, landmarks, clearing, heath, waterfalls };
 }
