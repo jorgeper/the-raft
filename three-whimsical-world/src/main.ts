@@ -361,7 +361,7 @@ timeGui.add(settings, 'sunRotation', -180, 180, 1).name('sun direction').onChang
 timeGui
   .add(settings, 'weather', { 'Auto (changes by itself)': 'auto', Clear: 'clear', Fair: 'fair', Cloudy: 'cloudy', Overcast: 'overcast', Rain: 'rain', 'Manual (cloud slider)': 'manual' })
   .name('weather')
-  .onChange((m: WeatherMode) => (weather.mode = m));
+  .onChange((m: WeatherMode) => weather.pick(m));
 timeGui.add(settings, 'clouds', 0, 1, 0.01).name('clouds (manual weather)').onChange(updateSun);
 timeGui.add(settings, 'aurora', 0, 1.5, 0.01).name('northern lights').onChange(updateSun);
 timeGui.add(settings, 'moonPhase', 0, 1, 0.01).name('moon phase (0.5 full)').onChange(updateSun);

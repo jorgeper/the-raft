@@ -275,15 +275,20 @@ const fragmentShader = /* glsl */ `
     col += scatter * vec3(1.5, 2.2, 1.8) * lip * sunUp * (1.0 - crest) * 0.9;
     foam = max(foam, surf);
 
-    // White water in the river: streaks dragged along the current, thickest over the shallows at its edges.
+    // White water in the river: flecks of foam carried downstream over the shallows by the banks. Advected with the
+    // same two cross-faded phases as the ripples. (Streaks stretched along a per-pixel flow frame sheared into ruled
+    // white lines where the flow turned: the frame was taken against absolute world position.)
     if (river > 0.01) {
-      vec2 fd = normalize(flowDir + 1e-4), fp = vec2(-fd.y, fd.x);
-      float along = dot(vWorld.xz, fd), across = dot(vWorld.xz, fp);
-      float streak = vnoise(vec2(along * 0.2 - uTime * 0.35, across * 1.6)) * 0.6
-        + vnoise(vec2(along * 0.7 - uTime * 1.1, across * 4.5)) * 0.4;
-      float shallow = 1.0 - smoothstep(0.1, 0.7, depthV);
-      float white = smoothstep(0.58 - 0.3 * shallow, 0.8, streak) * (0.3 + 0.7 * shallow) * smoothstep(0.02, 0.08, depthV);
-      foam = max(foam, white * (0.5 + 0.5 * lace) * river);
+      const float FP = 3.0;
+      float f0 = fract(uTime / FP), f1 = fract(uTime / FP + 0.5);
+      vec2 adv = flowDir * 1.4 * FP;
+      vec2 wp = vWorld.xz * 0.9;
+      float fa = vnoise(wp - adv * f0 * 0.9) * 0.6 + vnoise(wp * 2.7 - adv * f0 * 2.43 + 3.1) * 0.4;
+      float fb = vnoise(wp - adv * f1 * 0.9 + 5.2) * 0.6 + vnoise(wp * 2.7 - adv * f1 * 2.43 + 8.7) * 0.4;
+      float flecks = mix(fa, fb, abs(f0 * 2.0 - 1.0));
+      float shallow = 1.0 - smoothstep(0.08, 0.45, depthV);
+      float white = smoothstep(0.58, 0.82, flecks) * shallow * smoothstep(0.02, 0.06, depthV);
+      foam = max(foam, white * (0.4 + 0.6 * lace) * river * 0.75);
     }
     vec3 foamColor = vec3(0.85, 0.88, 0.88) * (0.5 + 0.5 * max(uSunDir.y, 0.2)) * (0.08 + 0.92 * light) * 1.6;
     col = mix(col, foamColor, foam * 0.8);

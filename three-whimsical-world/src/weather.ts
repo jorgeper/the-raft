@@ -109,6 +109,17 @@ export class Weather {
   private left = 240;
   private sinceRain = 1e9;
   private rand = Math.random;
+  /** Seconds left of a quick change (after a pick in the panel); auto weather drifts slowly instead. */
+  private hurry = 0;
+
+  /**
+   * Switches weather from the panel. The sky turns over in a few seconds rather than the minute or two auto weather
+   * takes (which looked like the pick did nothing).
+   */
+  pick(mode: WeatherMode) {
+    this.mode = mode;
+    if (mode !== 'auto') this.hurry = 8;
+  }
 
   /** Starts the auto weather in a given state (the opening scene is fair). */
   set(kind: WeatherKind, seconds = 240) {
@@ -137,12 +148,16 @@ export class Weather {
     }
     const target: Target =
       this.mode === 'manual' ? { clouds: manualClouds, overcast: 0, rain: 0 } : TARGETS[this.mode === 'auto' ? this.kind : this.mode];
-    // Cloud builds over a minute or so; rain starts and stops over ~15 s, after the sky has greyed.
-    const k = Math.min(dt / 40, 1);
+    // Cloud builds over a minute or so; rain starts and stops over ~15 s, after the sky has greyed. A panel pick
+    // runs the same course in a few seconds.
+    // (In manual mode the cloud slider takes effect at once too.)
+    const fast = this.hurry > 0 || this.mode === 'manual';
+    this.hurry = Math.max(0, this.hurry - dt);
+    const k = Math.min(dt / (fast ? 1.6 : 40), 1);
     this.clouds += (target.clouds - this.clouds) * k;
     this.overcast += (target.overcast - this.overcast) * k;
     const rainGoal = target.rain * THREE.MathUtils.smoothstep(this.overcast, 0.6, 0.9);
-    this.rain += (rainGoal - this.rain) * Math.min(dt / 12, 1);
+    this.rain += (rainGoal - this.rain) * Math.min(dt / (fast ? 1.2 : 12), 1);
 
     // The ground soaks up quickly in rain and dries over a few minutes (faster in sun).
     const sun = THREE.MathUtils.smoothstep(sunElevation, 0, 25) * (1 - this.overcast);
