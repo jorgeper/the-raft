@@ -24,6 +24,9 @@ const COLORS = {
   // River shores: grey-brown gravel and stones, darker where the water wets them.
   gravel: new THREE.Color('#7a746a'),
   wetStone: new THREE.Color('#4c4842'),
+  // Ponds: deep green moss carpeting the shore, dark silt under the water.
+  pondMoss: new THREE.Color('#3f5a1c'),
+  silt: new THREE.Color('#3a3324'),
 };
 
 /**
@@ -100,6 +103,15 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
     c.lerp(COLORS.gravel, gravel);
     c.lerp(COLORS.wetStone, riverBank * (1 - smoothstep(-0.2, 0.8, y)));
     c.lerp(COLORS.seabed, 1 - smoothstep(-6, -1, y));
+    // Ponds: a carpet of moss around the shore, in patches that reach farther out in places; silt below the water.
+    const pe = world.pondEdge(x, z);
+    let pondMoss = 0, silt = 0;
+    if (pe < 12) {
+      pondMoss = (1 - smoothstep(1.5, 4 + 6 * v, pe)) * smoothstep(-0.8, 0.2, pe) * (0.6 + 0.4 * fine);
+      silt = 1 - smoothstep(-0.6, 0.1, pe);
+      c.lerp(COLORS.pondMoss, pondMoss).lerp(COLORS.silt, silt);
+      grass[i] *= smoothstep(0.5, 3, pe) * (1 - 0.6 * pondMoss);
+    }
 
     w.fill(0);
     w[0] = 1;
@@ -108,6 +120,8 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
     toward(steepDirt, 2);
     toward(Math.max(rock, gravel), 3);
     toward(sandAmt, 4);
+    toward(pondMoss, 1);
+    toward(silt, 2);
     splat.set([w[1], w[2], w[3], w[4]], i * 4);
 
     // Subtle brightness jitter so flat areas aren't one tone.

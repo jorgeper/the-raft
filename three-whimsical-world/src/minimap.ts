@@ -4,11 +4,12 @@ import type { WorldFns } from './worldgen';
 
 const RESOLUTION = 256;
 
-export type Biome = 'Ocean' | 'River' | 'Beach' | 'Meadows' | 'Black Forest' | 'Mountain';
+export type Biome = 'Ocean' | 'River' | 'Pond' | 'Beach' | 'Meadows' | 'Black Forest' | 'Mountain';
 
 export function biomeAt(world: WorldFns, x: number, z: number): Biome {
   const h = world.height(x, z);
   if (h < 0) return world.river(x, z) > 0.5 ? 'River' : 'Ocean';
+  if (world.pondEdge(x, z) < 0) return 'Pond';
   if (h < 2.5) return 'Beach';
   if (h > 45) return 'Mountain';
   return world.forest(x, z) > 0.5 ? 'Black Forest' : 'Meadows';
@@ -79,6 +80,8 @@ export class Minimap {
         const h = heights[j * n + i];
         if (h < 0) {
           c.copy(shallow).lerp(deep, Math.min(-h / 18, 1));
+        } else if (world.pondEdge(x, z) < 0) {
+          c.copy(shallow);
         } else {
           const f = world.forest(x, z);
           c.copy(meadow).lerp(earth, world.dirt(x, z) * (1 - f) * 0.6).lerp(forest, THREE.MathUtils.smoothstep(f, 0.3, 0.7));

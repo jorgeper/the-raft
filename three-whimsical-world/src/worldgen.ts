@@ -54,6 +54,21 @@ export interface WorldFns {
   river: FieldFn;
   /** Signed distance (m) from the river's water edge: negative in the channel, growing up the bank. */
   riverEdge: FieldFn;
+  /** Small ponds in the meadows and forest edges, each with its own water level. */
+  ponds: Pond[];
+  /** Signed distance (m) from the nearest pond's waterline: negative in the water (large far from any pond). */
+  pondEdge: FieldFn;
+}
+
+export interface Pond {
+  x: number;
+  z: number;
+  /** Nominal radius of the water (the shore wobbles around it). */
+  radius: number;
+  /** Height of the water surface. */
+  level: number;
+  /** Deepest point below the surface. */
+  depth: number;
 }
 
 export function mulberry32(seed: number) {
@@ -124,7 +139,7 @@ export function createWorld(params: WorldParams): WorldFns {
 
   const coastline = (z: number) => 220 + 110 * fbm(z * 0.0018, 4.2, 4);
 
-  const height: HeightFn = (x, z) => {
+  const baseHeight: HeightFn = (x, z) => {
     // Domain warp keeps hills from looking like uniform noise blobs.
     const wx = x + 60 * noise(x * 0.0015, z * 0.0015);
     const wz = z + 60 * noise(x * 0.0015 + 31.7, z * 0.0015 - 17.3);
@@ -171,6 +186,61 @@ export function createWorld(params: WorldParams): WorldFns {
     return h;
   };
 
+  // Ponds: small basins on flat ground in the meadows and along forest edges, away from rivers and the coast, one
+  // of them in view of the start. The water level sits below the lowest ground around the rim, so it can't spill.
+  const pondRand = mulberry32(params.seed * 31 + 977);
+  const ponds: Pond[] = [];
+  const trySite = (x: number, z: number, radius: number) => {
+    const h0 = baseHeight(x, z);
+    if (h0 < 4.5 || h0 > 40 || riverEdge(x, z) < 35 + radius || coastline(z) - x < 120) return false;
+    if (ponds.some((p) => Math.hypot(p.x - x, p.z - z) < 140)) return false;
+    let lo = Infinity, hi = -Infinity;
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      for (const f of [0.6, 1.1, 1.6]) {
+        const hh = baseHeight(x + Math.cos(a) * radius * f, z + Math.sin(a) * radius * f);
+        lo = Math.min(lo, hh);
+        hi = Math.max(hi, hh);
+      }
+    }
+    // Flat enough that the basin reads as a pond, not a notch cut in a slope.
+    if (hi - lo > 2.2) return false;
+    ponds.push({ x, z, radius, level: lo - 0.35, depth: 0.9 + pondRand() * 0.8 });
+    return true;
+  };
+  for (let i = 0; i < 400 && !ponds.length; i++) {
+    const a = pondRand() * Math.PI * 2, d = 45 + pondRand() * 70;
+    trySite(-30 + Math.cos(a) * d, Math.sin(a) * d, 7 + pondRand() * 4);
+  }
+  for (let i = 0; i < 4000 && ponds.length < 14; i++) {
+    trySite(-750 + pondRand() * 850, -900 + pondRand() * 1800, 6 + pondRand() * 9);
+  }
+
+  /** Signed distance from a pond's waterline, and that pond (the shore wobbles in coves and points). */
+  const pondAt = (x: number, z: number): [number, Pond | null] => {
+    let best = Infinity, which: Pond | null = null;
+    for (const p of ponds) {
+      const dx = x - p.x, dz = z - p.z;
+      if (Math.abs(dx) > p.radius * 2.5 || Math.abs(dz) > p.radius * 2.5) continue;
+      const rr = p.radius * (1 + 0.2 * noise(x * 0.12 + p.x, z * 0.12) + 0.08 * noise(x * 0.4, z * 0.4 - p.z));
+      const e = Math.hypot(dx, dz) - rr;
+      if (e < best) (best = e), (which = p);
+    }
+    return [best, which];
+  };
+  const pondEdge: FieldFn = (x, z) => pondAt(x, z)[0];
+
+  const height: HeightFn = (x, z) => {
+    const h = baseHeight(x, z);
+    const [e, p] = pondAt(x, z);
+    if (!p) return h;
+    // A bowl under the water, then a low shore rising back to the land over a few meters.
+    const inside = Math.max(-e / p.radius, 0);
+    const bed = p.level - 0.12 - p.depth * Math.pow(Math.min(inside * 1.6, 1), 0.8) + 0.15 * noise(x * 0.5, z * 0.5);
+    const shore = smoothstep(0, p.radius * 0.6 + 2.5, e);
+    return e < 0 ? Math.min(h, bed) : Math.min(h, lerp(p.level - 0.12, h, shore) + 0.12 * shore * noise(x * 0.3, z * 0.3));
+  };
+
   // forest = 0 → threshold above any noise value (no forest); forest = 1 → below all (all forest).
   const threshold = lerp(0.85, -0.85, params.forest);
   const forest: FieldFn = (x, z) => {
@@ -185,5 +255,5 @@ export function createWorld(params: WorldParams): WorldFns {
     return smoothstep(0.42, 0.62, n);
   };
 
-  return { params, height, forest, dirt, river: riverField, riverEdge };
+  return { params, height, forest, dirt, river: riverField, riverEdge, ponds, pondEdge };
 }

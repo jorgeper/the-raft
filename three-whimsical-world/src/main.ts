@@ -8,7 +8,7 @@ import { World } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
 import { Torch } from './torch';
 import { Minimap } from './minimap';
-import { loadScannedRocks, rockMoss } from './scanned-rocks';
+import { loadScannedRocks, rockMoss, setRockPonds } from './scanned-rocks';
 import { Persist } from './persist';
 import { createSky, CLOUD_HEIGHT } from './sky';
 import { Character, type MotionState } from './character';
@@ -118,6 +118,8 @@ const plantsLoad = loadPlants();
 const scannedRocks = await loadScannedRocks();
 await Promise.all([groundLoad, plantsLoad]);
 let world = new World(params, renderer, scannedRocks);
+water.setPonds(world.fns.ponds);
+setRockPonds(world.fns.ponds);
 /** The world settings the current world was built from, to tell whether a reset needs a regenerate. */
 let builtParams = JSON.stringify(params);
 scene.add(world.group);
@@ -459,6 +461,8 @@ function regenerate() {
       scene.remove(world.group);
       world.dispose();
       world = new World(params, renderer, scannedRocks);
+      water.setPonds(world.fns.ponds);
+      setRockPonds(world.fns.ponds);
       builtParams = JSON.stringify(params);
       scene.add(world.group);
       player.position.y = Math.max(world.height(player.position.x, player.position.z), 0) + (movement.mode === 'fly' ? 20 : EYE_HEIGHT);
@@ -728,6 +732,7 @@ renderer.setAnimationLoop((now) => {
   post.atmosphere.uForest.value += (forestHere - post.atmosphere.uForest.value) * Math.min(dt * 1.5, 1);
   world.life.update(timer.getElapsed(), camera, daylight, post.atmosphere.uForest.value);
   world.deer.update(timer.getElapsed(), player.position);
+  world.pondLife.update(timer.getElapsed(), player.position);
 
   // Eye adaptation: looking into the sun stops the view down a little, so it glows instead of blinding
   // (under a canopy most of it is hidden, so adapt less there).

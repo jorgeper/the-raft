@@ -134,13 +134,17 @@ const fragmentShader = /* glsl */ `
     float sceneZ = viewZAt(suv);
     float rayScale = dist / max(-vView.z, 1e-3);
     float bottomDist = -sceneZ * rayScale;
-    float depthHere = max(-(cameraPosition.y - V.y * bottomDist), 0.0);
+    // Depths are measured from this surface's own height: the sea at 0, a pond at its level.
+    float surfaceY = vWorld.y;
+    float depthHere = max(surfaceY - (cameraPosition.y - V.y * bottomDist), 0.0);
+    // Ponds (any water above sea level) are sheltered: no swell, only a faint ripple.
+    float pond = step(0.3, surfaceY);
 
     // Fade small waves with distance to avoid aliasing shimmer; keep some roughness far out so the distant sea
     // doesn't mirror the white horizon. The swell flattens in the shallows.
     float fade = mix(0.35, 1.0, 1.0 - smoothstep(40.0, 600.0, dist));
     float calm = smoothstep(0.0, 3.0, depthHere);
-    vec2 g = waveGradient(vWorld.xz, uTime, fade, mix(0.25, 1.0, calm));
+    vec2 g = waveGradient(vWorld.xz, uTime, fade, mix(0.25, 1.0, calm) * (1.0 - pond)) * mix(1.0, 0.18, pond);
     vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
 
     // --- Refraction: shift the lookup by the wave normal, more where the water is deeper.
@@ -151,7 +155,7 @@ const fragmentShader = /* glsl */ `
     if (rZ > vView.z) { ruv = suv; rZ = sceneZ; }
     float rBottom = -rZ * rayScale;
     vec3 bottomPos = cameraPosition - V * rBottom;
-    float depthV = max(-bottomPos.y, 0.0);
+    float depthV = max(surfaceY - bottomPos.y, 0.0);
     // Light travels down to the bottom and back up along the view ray.
     float path = max(rBottom - dist, 0.0) + depthV;
     vec3 seabed = texture2D(tSceneColor, ruv).rgb;
@@ -164,9 +168,10 @@ const fragmentShader = /* glsl */ `
     seabed *= 1.0 + caust * 1.2 * sunUp * light * (1.0 - smoothstep(25.0, 80.0, dist));
 
     // Absorption (red first, then green) and in-scattering toward a teal-blue body color.
-    vec3 absorb = vec3(0.42, 0.085, 0.06);
+    // Ponds: murkier than the sea, a deep teal-blue (red fades out fastest).
+    vec3 absorb = mix(vec3(0.42, 0.085, 0.06), vec3(1.6, 0.6, 0.7), pond);
     vec3 T = exp(-absorb * path);
-    vec3 scatter = vec3(0.012, 0.085, 0.13) * (0.35 + 0.65 * max(uSunDir.y, 0.0)) * (0.1 + 0.9 * light);
+    vec3 scatter = mix(vec3(0.012, 0.085, 0.13), vec3(0.012, 0.06, 0.075), pond) * (0.35 + 0.65 * max(uSunDir.y, 0.0)) * (0.1 + 0.9 * light);
     // Shallow water picks up a brighter turquoise from the lit sand beneath it.
     scatter = mix(scatter * vec3(1.6, 2.4, 1.7), scatter, smoothstep(0.5, 6.0, depthV));
     vec3 below = seabed * T + scatter * (1.0 - T);
@@ -219,9 +224,20 @@ const fragmentShader = /* glsl */ `
     float foam = smoothstep(0.03, 0.12, depthV) * (1.0 - smoothstep(0.2, 0.45, depthV)) * smoothstep(0.55, 0.85, bands) * lace;
     // The lapping line: a thin edge of foam riding in and out, clear film behind it.
     float lap = (1.0 - smoothstep(0.0, 0.035, abs(depthV - swash))) * (0.35 + 0.65 * lace);
-    foam = max(foam, lap) * smoothstep(0.0, 0.015, depthV);
+    foam = max(foam, lap) * smoothstep(0.0, 0.015, depthV) * (1.0 - pond);
     vec3 foamColor = vec3(0.85, 0.88, 0.88) * (0.5 + 0.5 * max(uSunDir.y, 0.2)) * (0.08 + 0.92 * light) * 1.6;
     col = mix(col, foamColor, foam * 0.8);
+
+    // Duckweed: a few small rafts of tiny leaves drifting in a pond's shallows and coves; open water stays clear.
+    if (pond > 0.5) {
+      vec2 dp = vWorld.xz + uTime * vec2(0.02, 0.012);
+      float raft = smoothstep(0.66, 0.8, vnoise(dp * 0.35) * 0.65 + vnoise(dp * 1.3) * 0.35) * (1.0 - smoothstep(0.1, 0.5, depthV));
+      float specks = smoothstep(0.35, 0.6, vnoise(dp * 9.0) * 0.6 + vnoise(dp * 23.0) * 0.4);
+      float duck = clamp(raft * (0.55 + 0.45 * specks), 0.0, 1.0);
+      // Lit like the land around it: sun plus a little sky.
+      vec3 duckLight = uSunColor * 8.0 * max(uSunDir.y, 0.0) / 3.14159 * sunUp + vec3(0.25, 0.32, 0.4);
+      col = mix(col, vec3(0.12, 0.24, 0.05) * mix(0.7, 1.15, specks) * duckLight, duck * 0.85);
+    }
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -270,9 +286,23 @@ export function createWater(env: THREE.Texture) {
   geo.rotateX(-Math.PI / 2);
   const mesh = new THREE.Mesh(geo, material);
   mesh.frustumCulled = false;
+  /** One disc per pond at its water level (the shore terrain hides what reaches past the waterline). */
+  const ponds = new THREE.Group();
   return {
     mesh,
+    ponds,
     uniforms,
+    setPonds(list: { x: number; z: number; radius: number; level: number }[]) {
+      for (const c of ponds.children) (c as THREE.Mesh).geometry.dispose();
+      ponds.clear();
+      for (const p of list) {
+        const g = new THREE.CircleGeometry(p.radius * 1.6, 64);
+        g.rotateX(-Math.PI / 2);
+        const m = new THREE.Mesh(g, material);
+        m.position.set(p.x, p.level, p.z);
+        ponds.add(m);
+      }
+    },
     /** Reflection march steps (0 = sky reflections only). */
     setReflectionSteps(steps: number) {
       if (material.defines.SSR_STEPS === steps) return;
@@ -297,7 +327,7 @@ export class WaterPass extends Pass {
       type: THREE.HalfFloatType,
       depthTexture: new THREE.DepthTexture(1, 1, THREE.FloatType),
     });
-    this.scene.add(water.mesh);
+    this.scene.add(water.mesh, water.ponds);
   }
 
   setSize(width: number, height: number) {

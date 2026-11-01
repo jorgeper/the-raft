@@ -259,6 +259,9 @@ export class Grass {
     const up = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
     const clump: Clump = { x: 0, z: 0, height: 1, tint: 0, lean: 1 };
     let placed = 0;
+    // Ponds: no blades in the water, thinning to the shore.
+    const half = CHUNK / 2;
+    const nearPond = this.world.ponds.some((p) => Math.abs(p.x - x0 - half) < half + p.radius * 2.5 && Math.abs(p.z - z0 - half) < half + p.radius * 2.5);
 
     for (let k = 0; k < BLADES_PER_CHUNK; k++) {
       const lx = rand() * CHUNK, lz = rand() * CHUNK;
@@ -272,6 +275,7 @@ export class Grass {
       const x = x0 + lx, z = z0 + lz;
       const forest = bilerp(forests, gx, gz, fx, fz);
       if (rand() > coverageFrom(h, slope, forest, bilerp(dirts, gx, gz, fx, fz))) continue;
+      if (nearPond && this.world.pondEdge(x, z) < 0.4 + rand() * 1.6) continue;
       const dry = 0.5 + 0.5 * this.colorNoise(x * 0.012, z * 0.012);
       // Sparse, short patches where it's dry.
       if (dry > 0.78 && rand() < (dry - 0.78) * 2.5) continue;

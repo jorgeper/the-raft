@@ -118,7 +118,7 @@ export function createRocks(world: WorldFns, scanned: ScannedRock[] = []): Rocks
   for (let i = 0; i < 9000 * params.rocks; i++) {
     const x = (rand() * 2 - 1) * half, z = (rand() * 2 - 1) * half;
     const h = height(x, z);
-    if (h < -0.5) continue;
+    if (h < -0.5 || world.pondEdge(x, z) < 1) continue;
     const cluster = THREE.MathUtils.smoothstep(noise(x * 0.006, z * 0.006), 0.3, 0.8);
     const beach = h < 3 ? 0.35 : 0;
     // Forest floors are strewn with mossy boulders.
@@ -166,11 +166,27 @@ export function createRocks(world: WorldFns, scanned: ScannedRock[] = []): Rocks
     }
   }
 
+  // Ponds: mossy boulders around the rim (a few half-sunk in the shallows), in clumps with open stretches between.
+  for (const pond of world.ponds) {
+    const n = Math.round(pond.radius * 2.2);
+    for (let k = 0; k < n; k++) {
+      const a = rand() * Math.PI * 2;
+      // Walk out from the center to the waterline, then a little past or short of it.
+      let r = pond.radius * 0.5;
+      while (r < pond.radius * 2 && world.pondEdge(pond.x + Math.cos(a) * r, pond.z + Math.sin(a) * r) < 0) r += 0.25;
+      r += -0.6 + rand() * 2.6;
+      const x = pond.x + Math.cos(a) * r, z = pond.z + Math.sin(a) * r;
+      if (noise(x * 0.15 + 3, z * 0.15) < -0.25) continue;
+      const big = rand() < 0.3;
+      place(pickShape(), x, z, big ? 0.9 + rand() * 1.1 : 0.25 + rand() * 0.5, 0.3, 0.5);
+    }
+  }
+
   // Pebbles scattered everywhere on land, denser where boulders cluster.
   for (let i = 0; i < 14000 * params.rocks; i++) {
     const x = (rand() * 2 - 1) * half, z = (rand() * 2 - 1) * half;
     const h = height(x, z);
-    if (h < 0.3) continue;
+    if (h < 0.3 || world.pondEdge(x, z) < 0) continue;
     const cluster = THREE.MathUtils.smoothstep(noise(x * 0.006, z * 0.006), 0.1, 0.7);
     if (rand() > 0.3 + cluster * 0.7) continue;
     place(pickShape(), x, z, 0.12 + rand() * 0.3, 0.25, 0.6);

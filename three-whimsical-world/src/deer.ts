@@ -129,7 +129,7 @@ export class DeerHerds {
       const a = this.rand() * Math.PI * 2, r = minR + this.rand() * (maxR - minR);
       const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
       const f = w.forest(x, z), h = w.height(x, z);
-      if (h < 2.5 || f < 0.04 || f > 0.6 || w.river(x, z) > 0.2) continue;
+      if (h < 2.5 || f < 0.04 || f > 0.6 || w.river(x, z) > 0.2 || w.pondEdge(x, z) < 4) continue;
       const slope = Math.abs(w.height(x + 2, z) - w.height(x - 2, z)) + Math.abs(w.height(x, z + 2) - w.height(x, z - 2));
       if (slope > 1.6) continue;
       return out.set(x, h, z);
@@ -271,7 +271,7 @@ export class DeerHerds {
     if (d.speed > 0.05) {
       const nx = d.pos.x + Math.cos(d.heading) * d.speed * dt, nz = d.pos.z + Math.sin(d.heading) * d.speed * dt;
       // Deer stay out of the water.
-      if (this.world.height(nx, nz) > 1) (d.pos.x = nx), (d.pos.z = nz);
+      if (this.world.height(nx, nz) > 1 && this.world.pondEdge(nx, nz) > 0.5) (d.pos.x = nx), (d.pos.z = nz);
       else d.target.set(d.pos.x - (nx - d.pos.x) * 40, d.pos.z - (nz - d.pos.z) * 40);
       d.pos.y = this.world.height(d.pos.x, d.pos.z);
     }

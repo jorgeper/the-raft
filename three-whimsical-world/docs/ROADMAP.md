@@ -11,8 +11,8 @@ In priority order: the first items are the user's requests for the next sessions
       toward the sun is rendered pastel by tone mapping. Next try: hue-preserving shoulder for the haze, or a
       saturation-keeping tweak to the Neutral curve's desaturation for warm hues.
    3. ~~Flicker~~ (TAA part done, see Done; waiting on the user's verdict in motion).
-   4. Small ponds: mossy surroundings, rocks and moss patches, floating plants (lily pads, duckweed), frogs and
-      fish peacefully hanging around.
+   4. ~~Ponds~~ (done, see Done). Possible follow-ups: ripple rings where a frog dives or a fish rises, a
+      croak sound, dragonflies over the water.
 
 3. **Valheim look pass**: match the user's reference shots in `reference/`, not just generic realism.
    - First pass landed: painted sky (`src/sky.ts`), Neutral tone mapping, luminous sun-glowing haze, lime grass,
@@ -108,6 +108,18 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Ponds (`src/worldgen.ts` `ponds`/`pondEdge`, `src/pond-life.ts`): 14 small ponds, the first 45-115 m from spawn,
+  on flat ground away from rivers and the coast. Each pond is a basin carved into the terrain with a disc of water at
+  its level. The water shader measures depth from its own surface, so ponds are calm, teal-blue and clear, with only a
+  few rafts of duckweed in the shallows. The shore has a moss carpet (less grass), silt under the water, moss
+  cushions, a reed ring and rim boulders, some half-sunk; rock moss creeps down to the waterline near a pond (`uPonds`
+  in `scanned-rocks.ts`). Pond life:
+  - lily pads in rafts, about 30 % with white-to-pink flowers;
+  - frogs on pads and the bank that croak (throat sac), hop around now and then, and dive when you come within
+    3.5 m, then resurface on a free pad later;
+  - fish wandering under the surface with a tail wave, resting now and then.
+
+  Trees, logs, deer and dry ground cover keep out of the water, and the minimap shows ponds. Pond view 43 fps.
 - Wind motion for the TAA, which is now on by default: every wind-swayed material (grass, ferns, flowers, reeds,
   shrubs, leaves) evaluates its sway at this frame's and last frame's time and writes how far it moved along the
   wind into the scene's alpha (1 + 8 × meters); the TAA moves each point back by that much before reprojecting.

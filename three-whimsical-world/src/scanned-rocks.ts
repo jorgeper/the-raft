@@ -41,9 +41,24 @@ function normalize(near: THREE.BufferGeometry, far: THREE.BufferGeometry) {
   return size.y / width;
 }
 
+const MAX_PONDS = 16;
+
 /** World-space moss on upward faces, broken up by noise, on top of the scanned color. */
 /** How much extra moss grows on scanned rocks (0..1); shared by every rock material. */
-export const rockMoss = { uMossAmount: { value: 0.5 } };
+export const rockMoss = {
+  uMossAmount: { value: 0.5 },
+  /** Ponds as (x, z, radius, level): rocks around them are carpeted in moss down to the waterline. */
+  uPonds: { value: Array.from({ length: MAX_PONDS }, () => new THREE.Vector4(1e6, 1e6, 0, 0)) },
+};
+
+/** Points the rock moss at this world's ponds. */
+export function setRockPonds(ponds: { x: number; z: number; radius: number; level: number }[]) {
+  rockMoss.uPonds.value.forEach((v, i) => {
+    const p = ponds[i];
+    if (p) v.set(p.x, p.z, p.radius, p.level);
+    else v.set(1e6, 1e6, 0, 0);
+  });
+}
 
 function addMoss(material: THREE.MeshStandardMaterial) {
   material.onBeforeCompile = (shader) => patchMoss(shader);
@@ -70,8 +85,10 @@ export function patchMoss(shader: THREE.WebGLProgramParametersWithUniforms) {
     .replace(
       '#include <common>',
       `#include <common>
+      #define MAX_PONDS ${MAX_PONDS}
       varying vec3 vMossPos;
       uniform float uMossAmount;
+      uniform vec4 uPonds[MAX_PONDS];
       float mHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float mNoise(vec3 p) {
         vec3 i = floor(p), f = fract(p);
@@ -86,10 +103,19 @@ export function patchMoss(shader: THREE.WebGLProgramParametersWithUniforms) {
       {
         vec3 worldNormal = inverseTransformDirection(normal, viewMatrix);
         float n = mNoise(vMossPos * 1.7) * 0.6 + mNoise(vMossPos * 6.0) * 0.4;
+        // Damp pond margins: moss creeps over the sides too, right down to the water.
+        float wet = 0.0;
+        for (int i = 0; i < MAX_PONDS; i++) {
+          vec4 p = uPonds[i];
+          float d = length(vMossPos.xz - p.xy) - p.z * 1.15;
+          wet = max(wet, (1.0 - smoothstep(1.0, 7.0, d)) * smoothstep(p.w - 0.15, p.w + 0.05, vMossPos.y));
+        }
         // Only on upward faces, never near the salty shoreline.
-        float moss = smoothstep(0.6, 0.92, worldNormal.y + (n - 0.5) * 0.5) * smoothstep(2.5, 6.0, vMossPos.y);
-        vec3 mossColor = vec3(0.075, 0.09, 0.035) * (0.75 + 0.5 * n);
-        diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, moss * uMossAmount);
+        float facing = worldNormal.y + (n - 0.5) * 0.5;
+        float moss = max(smoothstep(0.6, 0.92, facing) * smoothstep(2.5, 6.0, vMossPos.y) * uMossAmount,
+                         wet * smoothstep(-0.25, 0.45, facing + (n - 0.5) * 0.4));
+        vec3 mossColor = mix(vec3(0.075, 0.09, 0.035), vec3(0.085, 0.12, 0.035), wet) * (0.75 + 0.5 * n);
+        diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, moss);
         roughnessFactor = mix(roughnessFactor, 0.95, moss);
       }`,
     );

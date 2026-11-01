@@ -142,6 +142,8 @@ interface LayerSpec {
   perChunk: number;
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
+  /** True for plants that may stand in a pond's water (otherwise ponds are skipped). */
+  wet?: boolean;
   /** Returns a scale (> 0) to place an instance here, or 0 to skip; may set `color`. */
   place: (x: number, z: number, h: number, forest: number, rand: () => number, color: THREE.Color) => number;
 }
@@ -186,6 +188,8 @@ class ScatterLayer {
 
   private build(cx: number, cz: number) {
     const x0 = cx * CHUNK, z0 = cz * CHUNK, n = CHUNK / GRID + 1;
+    const half = CHUNK / 2;
+    const nearPond = this.world.ponds.some((p) => Math.abs(p.x - x0 - half) < half + p.radius * 2.5 && Math.abs(p.z - z0 - half) < half + p.radius * 2.5);
     const heights = new Float32Array(n * n), forests = new Float32Array(n * n);
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
@@ -206,6 +210,8 @@ class ScatterLayer {
         (a[gz * n + gx] * (1 - fx) + a[gz * n + gx + 1] * fx) * (1 - fz) + (a[(gz + 1) * n + gx] * (1 - fx) + a[(gz + 1) * n + gx + 1] * fx) * fz;
       const h = lerp2(heights), forest = lerp2(forests);
       color.setRGB(1, 1, 1);
+      // Nothing grows in a pond except what's meant to (reeds at the shore).
+      if (nearPond && !this.spec.wet && this.world.pondEdge(x0 + lx, z0 + lz) < 0.3) continue;
       const scale = this.spec.place(x0 + lx, z0 + lz, h, forest, rand, color);
       if (scale <= 0) continue;
       e.set((rand() - 0.5) * 0.2, rand() * Math.PI * 2, (rand() - 0.5) * 0.2);
@@ -429,10 +435,19 @@ export class GroundCover {
           perChunk: 260,
           geometry: reedGeo,
           material: reedMat,
+          wet: true,
           place: (x, z, h, _forest, rand, color) => {
+            const clumps = 0.4 + 0.6 * smoothstep(-0.2, 0.6, patchNoise(x * 0.07, z * 0.07 + 5));
+            // Pond margins: a ring from the shallows to just up the shore, in clumps with gaps of open water.
+            const pe = world.pondEdge(x, z);
+            if (pe < 3) {
+              if (pe < -1.6 || rand() > (1 - smoothstep(0.5, 3, Math.abs(pe + 0.3))) * clumps * 0.9) return 0;
+              color.setRGB(1, 1, 1).multiplyScalar(0.85 + rand() * 0.3);
+              return 0.6 + rand() * 0.6;
+            }
             if (h < -0.7 || h > 1.6) return 0;
             const river = world.river(x, z);
-            if (rand() > smoothstep(0.25, 0.6, river) * (0.4 + 0.6 * smoothstep(-0.2, 0.6, patchNoise(x * 0.07, z * 0.07 + 5)))) return 0;
+            if (rand() > smoothstep(0.25, 0.6, river) * clumps) return 0;
             color.setRGB(1, 1, 1).multiplyScalar(0.85 + rand() * 0.3);
             return 0.7 + rand() * 0.6;
           },
@@ -525,7 +540,10 @@ export class GroundCover {
           material: mossMat,
           place: (x, z, h, forest, rand, color) => {
             const damp = smoothstep(-0.1, 0.5, patchNoise(x * 0.06 - 13, z * 0.06 + 41));
-            if (h < 2 || rand() > smoothstep(0.35, 0.8, forest) * damp) return 0;
+            // Pond margins stay damp enough for moss even out in the meadow: cushions from the waterline up the shore.
+            const pe = world.pondEdge(x, z);
+            const pondside = pe < 7 ? (1 - smoothstep(1.5, 6, pe)) * smoothstep(-0.3, 0.3, pe) * (0.35 + 0.65 * damp) : 0;
+            if (h < 2 || rand() > Math.max(smoothstep(0.35, 0.8, forest) * damp, pondside)) return 0;
             color.copy(mossTints[Math.floor(rand() * mossTints.length)]);
             return 0.6 + rand() * rand() * 1.8;
           },
@@ -689,7 +707,7 @@ export class GroundCover {
       const forest = world.forest(x, z);
       if (rand() > forest * 0.12) continue;
       const h = height(x, z);
-      if (h < 3) continue;
+      if (h < 3 || world.pondEdge(x, z) < 4) continue;
       const k = 0.7 + rand() * 0.6;
       if (rand() < 0.5) {
         // Settle the log onto the slope along its length.

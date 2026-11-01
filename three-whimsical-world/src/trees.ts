@@ -300,7 +300,7 @@ export class Trees {
         const slope = Math.hypot(height(x + 1, z) - y, height(x, z + 1) - y);
         if (slope > 0.6) continue;
 
-        if (world.river(x, z) > 0.2) continue;
+        if (world.river(x, z) > 0.2 || world.pondEdge(x, z) < 3) continue;
         // 0 on the open meadow, 1 deep in a forest.
         const forest = world.forest(x, z);
         // Broadleaf groves come in clumps on the meadow; a few lone trees anywhere.
