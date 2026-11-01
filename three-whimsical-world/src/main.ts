@@ -163,6 +163,11 @@ const settings = {
   daySpeed: 0,
   clouds: 0.38,
   exposure: renderer.toneMappingExposure,
+  /**
+   * Seeing in the dark, a game's kindness rather than physics: dark views (night, deep forest) open the exposure up
+   * and the grade lifts the deepest shade. 0 = off, 1 = default, 2 = strong.
+   */
+  nightVision: 1,
   fogDensity: 0.0006,
   /** Valheim's dreamy side: two-tone haze, stronger beams, lens flares, soft glow, floating motes and fireflies. */
   whimsy: 0.6,
@@ -190,6 +195,11 @@ function sunPath(hours: number) {
   return { elevation: -28 * Math.sin(Math.PI * phase), azimuth: 90 - phase * 180 };
 }
 
+/** The grade's share of seeing in the dark: lifts the deepest shade (the exposure share is in the frame loop). */
+function applyNightVision() {
+  post.grade.uShadowLift.value = 0.45 * settings.nightVision;
+}
+
 function updateSun() {
   const path = sunPath(settings.time);
   const elevation = path.elevation;
@@ -208,11 +218,14 @@ function updateSun() {
   const sunColor = new THREE.Color(1, 0.62 + 0.3 * warmth, 0.38 + 0.42 * warmth);
   const moonColor = new THREE.Color(0.55, 0.65, 1);
   lightDir.copy(daylight > 0.05 ? sunDir : moonDir);
-  lightColor.copy(moonColor).multiplyScalar(0.6 * night).lerp(sunColor, daylight);
+  lightColor.copy(moonColor).multiplyScalar(0.85 * night).lerp(sunColor, daylight);
   sun.color.copy(lightColor);
   // Strong sun against modest sky fill, so shadows and light beams have real contrast.
   sun.intensity = daylight > 0.05 ? 8 * daylight : 2.2;
-  nightFill.intensity = 1.4 * night;
+  // The blue fill also covers twilight: after sunset neither sun nor moon lights the shade, and under a canopy the
+  // ground went black (exposure can't lift black).
+  const twilight = 1 - THREE.MathUtils.smoothstep(elevation, -6, 3);
+  nightFill.intensity = 2.2 * Math.max(night, twilight);
   (stars.material as THREE.PointsMaterial).opacity = night;
   baseExposure = settings.exposure * (1 + 1.6 * night);
   renderer.toneMappingExposure = baseExposure * eyeAdapt;
@@ -233,7 +246,8 @@ function updateSun() {
   scene.environmentIntensity = 0.34;
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
-persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'fogDensity', 'whimsy', 'groundFog', 'groundFogHeight', 'groundFogPatchy']);
+persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'fogDensity', 'whimsy', 'groundFog', 'groundFogHeight', 'groundFogPatchy']);
+applyNightVision();
 post.setWhimsy(settings.whimsy);
 persist.bind('tint', post.atmosphere.uTintStrength, ['value']);
 // Valheim's hue split (blue -> violet-pink -> orange) in the sky, the haze and the scattered sunlight.
@@ -321,6 +335,7 @@ torchGui.close();
 
 const postGui = gui.addFolder('Effects');
 postGui.add(settings, 'exposure', 0.1, 2, 0.01).onChange(updateSun);
+postGui.add(settings, 'nightVision', 0, 2, 0.05).name('see in the dark').onChange(applyNightVision);
 postGui.add(volumetric, 'value', 0, 3, 0.01).name('volumetric light').onChange(updateSun);
 postGui.add(shaftStrength, 'value', 0, 3, 0.01).name('sun glare shafts').onChange(updateSun);
 postGui.add(post.atmosphere.uAOStrength, 'value', 0, 1, 0.01).name('ambient occlusion');
@@ -739,8 +754,15 @@ renderer.setAnimationLoop((now) => {
   const intoSun = THREE.MathUtils.smoothstep(camera.getWorldDirection(lookDir).dot(lightDir), 0.7, 0.97) * daylight;
   // Under a dense canopy the eye opens up, so forests read as shaded rather than murky.
   const forestOpen = 1 + 0.3 * post.atmosphere.uForest.value * daylight;
-  const adaptTarget = (1 - 0.22 * intoSun * (1 - 0.6 * post.atmosphere.uForest.value)) * forestOpen;
-  eyeAdapt += (adaptTarget - eyeAdapt) * Math.min(dt * 1.5, 1);
+  // Dark views open up: the metered mid-tone (at the base exposure, so this doesn't chase its own output) is pulled
+  // toward a floor, partly (a night should still look like night), up to a limit set by `nightVision`.
+  const metered = post.luminance.average * baseExposure;
+  const darkLift = Number.isFinite(metered) && metered > 0
+    ? THREE.MathUtils.clamp(Math.pow(0.05 / metered, 0.6), 1, 1 + 3.5 * settings.nightVision)
+    : 1;
+  const adaptTarget = (1 - 0.22 * intoSun * (1 - 0.6 * post.atmosphere.uForest.value)) * forestOpen * darkLift;
+  // Stopping down is quick; opening up in the dark takes a couple of seconds, like an eye.
+  eyeAdapt += (adaptTarget - eyeAdapt) * Math.min(dt * (adaptTarget < eyeAdapt ? 1.5 : 0.8), 1);
   renderer.toneMappingExposure = baseExposure * eyeAdapt;
 
   // Keep the shadow frustum centered on the viewer.

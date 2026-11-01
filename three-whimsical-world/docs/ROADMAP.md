@@ -6,10 +6,8 @@ In priority order: the first items are the user's requests for the next sessions
 
 0. **User's queue (2026-11-01), in this order:**
    1. ~~River banks~~ (done, see Done).
-   2. ~~Teal shade~~ (done, see Done). Still open: the sunset glow over the sea reads pastel white. Not the sky's
-      brightness near the sun (compressing it above a luma knee changed nothing visible); the pale bright haze
-      toward the sun is rendered pastel by tone mapping. Next try: hue-preserving shoulder for the haze, or a
-      saturation-keeping tweak to the Neutral curve's desaturation for warm hues.
+   2. ~~Teal shade~~ (done, see Done). The sky cap (see Done) made the sky near a low sun richer, but the
+      sunset glow over the sea can still read pastel; the haze over land toward the sun is the remaining suspect.
    3. ~~Flicker~~ (TAA part done, see Done; waiting on the user's verdict in motion).
    4. ~~Ponds~~ (done, see Done). Possible follow-ups: ripple rings where a frog dives or a fish rises, a
       croak sound, dragonflies over the water.
@@ -108,6 +106,19 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Sky no longer washes out, and dark places stay readable (user, 2026-11-01: "the sky still feels a bit washed
+  out", "during the night i can't see anything in forest areas"):
+  - The visible sky's brightest channel is soft-capped (knee 1.0, ceiling 1.6, `uSkyKnee`/`uSkyCeil` in `sky.ts` and
+    the haze pass), so it stays out of the tone curve's shoulder. Scaling the whole color keeps the hue, so the noon
+    horizon reads cyan-blue, not white (sky saturation 33 → 45). The haze pass caps sky pixels the same way after
+    adding beams and glow; the sun disc is exempt, for bloom. Afternoon sun-side stops are warmer gold.
+  - "See in the dark" (`nightVision`, panel slider, 0-2): `LuminancePass` (`src/exposure.ts`) meters the HDR
+    frame, using a 32×18 log-luminance grid read back asynchronously every 4 frames, at no measurable fps cost.
+    When the metered mid-tone falls below 0.05, the eye opens up: (0.05/m)^0.6, at most 4.5×. It opens over a
+    couple of seconds and stops down quickly. The grade adds a shadow toe (`uShadowLift`). Moonlight is up 40 %, and
+    the blue fill is brighter and also covers twilight. The night sky is a little brighter.
+  - Forest at 23:00: brightness 18 → 29 (16 = black), now ferns and trunks read. Meadow at 01:00: 21 → 40. Daytime
+    views are unchanged (they meter above the threshold).
 - Ponds (`src/worldgen.ts` `ponds`/`pondEdge`, `src/pond-life.ts`): 14 small ponds, the first 45-115 m from spawn,
   on flat ground away from rivers and the coast. Each pond is a basin carved into the terrain with a disc of water at
   its level. The water shader measures depth from its own surface, so ponds are calm, teal-blue and clear, with only a

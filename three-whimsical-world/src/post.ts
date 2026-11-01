@@ -12,6 +12,7 @@ import { TAAPass } from './taa';
 import type { SunShadows } from './cascades';
 import { VolumetricPass, VIS_UPSAMPLE } from './volumetric';
 import type { CloudPass } from './clouds';
+import { LuminancePass } from './exposure';
 
 const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
@@ -55,6 +56,9 @@ const AtmosphereShader = {
     uShadeTint: { value: 0.6 },
     /** Gold glow of the haze between you and the sun. */
     uForwardGlow: { value: 1 },
+    /** Soft cap on the sky's brightest channel after the haze adds to it (matches sky.ts's uSkyKnee/uSkyCeil). */
+    uSkyKnee: { value: 1.0 },
+    uSkyCeil: { value: 1.6 },
     /** 0 in the open, 1 deep in a forest: thicker, more strongly tinted haze and stronger shafts. */
     uForest: { value: 0 },
     // Volumetric sunlight: how much of each view ray sees the sun, marched at half resolution (`VolumetricPass`).
@@ -108,6 +112,8 @@ const AtmosphereShader = {
     uniform vec3 uFogWarm;
     uniform float uTintStrength;
     uniform float uForwardGlow;
+    uniform float uSkyKnee;
+    uniform float uSkyCeil;
     uniform float uForest;
     uniform float uVolumetric;
     uniform vec3 uTorchPos;
@@ -189,6 +195,8 @@ const AtmosphereShader = {
         vec4 cl = texture2D(tClouds, vUv);
         color = color * cl.a + cl.rgb;
       }
+      // The sky as drawn (and capped in sky.ts); the sun disc is the only part far above the cap.
+      float skyPeak = max(max(color.r, color.g), color.b);
 
       float shade = isSky ? 1.0 : cloudShade(world);
       if (!isSky) {
@@ -377,6 +385,14 @@ const AtmosphereShader = {
       // The sky's sun disc is orders of magnitude brighter than anything else; cap it so bloom
       // stays a glow instead of a full-screen veil. Tone mapping saturates these values anyway.
       // Alpha carries the wind motion on to the TAA (see MOTION_SCALE in wind.ts); the sky has none.
+      // Beams, shafts and glow add on top of the sky near the sun; cap the sum the way sky.ts caps the sky, hue
+      // kept, so it stays a colored glow instead of a milky veil. The sun disc itself keeps its brightness for bloom.
+      if (isSky) {
+        float peak = max(max(color.r, color.g), color.b);
+        float over = max(peak - uSkyKnee, 0.0);
+        vec3 capped = color * (min(peak, uSkyKnee) + over / (1.0 + over / max(uSkyCeil - uSkyKnee, 1e-3))) / max(peak, 1e-4);
+        color = mix(capped, color, smoothstep(2.5, 5.0, skyPeak));
+      }
       gl_FragColor = vec4(min(color, vec3(6.6)), isSky ? 1.0 : scene.a);
     }
   `,
@@ -396,12 +412,15 @@ const GradeShader = {
     uDepth: { value: 0.35 },
     /** Three-way color: blue-cyan shadows, a touch of pink in the mids, orange-gold highlights. */
     uColorRichness: { value: 0.5 },
+    /** Lifts the deepest shade so dark scenes stay readable (main.ts sets it from "see in the dark"). */
+    uShadowLift: { value: 0.45 },
   },
   vertexShader: fullscreenVertex,
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
     uniform float uDepth;
     uniform float uColorRichness;
+    uniform float uShadowLift;
     uniform float uSaturation;
     uniform float uContrast;
     uniform float uWarmth;
@@ -421,6 +440,9 @@ const GradeShader = {
       float lc = clamp(dot(c, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
       // Full strength in the shade, half in the highlights, so bright skies don't lift toward white.
       float ls = mix(lc, lc * lc * (3.0 - 2.0 * lc), uDepth * (lc < 0.5 ? 1.0 : 0.5));
+      // Shadow lift: a toe that raises the darkest tones most (about doubling near black), fading out by the mids,
+      // so night and deep forest stay legible without greying the rest of the frame.
+      ls += uShadowLift * ls * pow(1.0 - ls, 5.0) * 2.0;
       c *= ls / max(lc, 1e-4);
       // Three-way grade, weighted by luminance band so every frame holds cool shade, rosy mids and warm light.
       float k = uColorRichness * (1.0 + 0.5 * uWhimsy);
@@ -491,6 +513,9 @@ export function createPost(
   composer.addPass(atmosphere);
   const taa = new TAAPass(camera, target.depthTexture!);
   composer.addPass(taa);
+  // Meters the finished HDR frame for eye adaptation (main.ts turns it into exposure).
+  const luminance = new LuminancePass();
+  composer.addPass(luminance);
   if (overlay) {
     const overlayPass = new RenderPass(overlay, camera);
     overlayPass.clear = false;
@@ -526,6 +551,8 @@ export function createPost(
     sceneDepth: target.depthTexture!,
     grade: grade.uniforms,
     taa,
+    /** The frame's metered brightness (geometric mean of HDR luminance, before exposure). */
+    luminance,
     /** 0 = natural look; higher = dreamier (haze split, beams, flares, glow, grade). */
     setWhimsy(w: number) {
       atmosphere.uniforms.uWhimsy.value = w;

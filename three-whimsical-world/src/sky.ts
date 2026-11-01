@@ -34,9 +34,9 @@ interface Stop {
 // Shared by morning and evening once the sun is well up, and at night.
 const NIGHT: Stop = {
   e: -18,
-  zenith: [0.0012, 0.0025, 0.008],
-  horizon: [0.007, 0.012, 0.028],
-  sunHorizon: [0.008, 0.012, 0.03],
+  zenith: [0.0026, 0.004, 0.0095],
+  horizon: [0.012, 0.019, 0.04],
+  sunHorizon: [0.013, 0.02, 0.043],
   glow: [0, 0, 0],
   cloudLit: [0.006, 0.009, 0.02],
   cloudShade: [0.003, 0.005, 0.012],
@@ -46,8 +46,8 @@ const AFTERNOON: Stop = {
   e: 22,
   zenith: [0.07, 0.6, 2.8],
   horizon: [1.2, 2.5, 3.4],
-  sunHorizon: [3.4, 3.0, 2.3],
-  glow: [1.7, 1.35, 0.8],
+  sunHorizon: [3.5, 2.65, 1.6],
+  glow: [1.8, 1.2, 0.55],
   cloudLit: [4.3, 4.1, 3.8],
   cloudShade: [1.35, 1.75, 2.45],
   wisp: [3.4, 3.5, 3.8],
@@ -238,6 +238,8 @@ const fragmentShader = /* glsl */ `
   /** Valheim's hue split: a lilac-pink stop between the cool sky and the warm sun, instead of a grey RGB blend. */
   uniform float uHueSplit;
   uniform float uSunDisc;
+  uniform float uSkyKnee;
+  uniform float uSkyCeil;
   uniform float uClouds;
   uniform float uTime;
   /** Cloud drift plus the camera's position over the cloud layer, so clouds are anchored to the world. */
@@ -327,6 +329,14 @@ const fragmentShader = /* glsl */ `
     }
     #endif
 
+    #ifndef LIGHTING_PROBE
+      // Keep the visible sky out of the tone curve's shoulder: past a knee, scale the color down as a whole (hue and
+      // saturation kept) toward a ceiling, so a bright horizon reads pale cyan or rose instead of near-white.
+      float peak = max(max(col.r, col.g), col.b);
+      float over = max(peak - uSkyKnee, 0.0);
+      col *= (min(peak, uSkyKnee) + over / (1.0 + over / max(uSkyCeil - uSkyKnee, 1e-3))) / max(peak, 1e-4);
+    #endif
+
     // Big soft sun disc (Valheim's sun reads as a glowing ball, not a pinpoint).
     float disc = smoothstep(0.99985, 0.99993, cosT);
     col += uSunDisc * disc * sunUp * (uGlow + vec3(0.5));
@@ -366,6 +376,9 @@ export function createSky() {
     uWisps: { value: 0.8 },
     uHueSplit: { value: 1 },
     uSunDisc: { value: 12 },
+    /** Soft ceiling on the visible sky's brightest channel (above the knee), so it never tone-maps to white. */
+    uSkyKnee: { value: 1.0 },
+    uSkyCeil: { value: 1.6 },
     uClouds: { value: 0.38 },
     uTime: { value: 0 },
     uCloudOffset: { value: new THREE.Vector2() },
