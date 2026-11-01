@@ -68,9 +68,8 @@ In priority order: the first items are the user's requests for the next sessions
    volumetric and AO noise. Static views are clean; grass swaying in the wind still softens a little because only
    camera motion is reprojected. Next: per-vertex wind velocity from the grass/fern shaders into a motion buffer,
    then turn it on by default.
-10. **Volumetric clouds**. Cloud shadows landed: the sky's clouds are anchored to the world (layer at
-    `CLOUD_HEIGHT` 900 m) and the haze pass casts the same field down the sun ray onto land and sea ("cloud
-    shadows" slider). Still open: raymarched volumetric cloud shapes.
+10. (Done, see below: volumetric clouds.) Follow-ups: temporal reprojection so the march can run at quarter
+    resolution, cloud-to-cloud shadowing in the haze probe, and the lighting probe seeing the volumetric clouds.
 11. Small: (Done: grass blade detail per fragment (pale midrib, veins, darker edges, ~18% of blades with sun-dried
    brown tips), real flower heads (eight rounded petals around a golden center instead of flat heptagons); calmer fern greens, the eye opening up under a canopy, caustics and
    textured shore foam with the water.)
@@ -102,6 +101,15 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Volumetric clouds (`src/clouds.ts`): cumulus raymarched at half resolution through a slab around the cloud
+  layer, shaped by the same 2D cover field as the cloud shadows (so shadows still match). A cumulus profile (flat
+  bases, tops as tall as the cover is thick) is eroded by billowing 3D noise. Three steps toward the sun
+  self-shadow them, with a powder term and a forward silver lining, colored by the sky table's `cloudLit` /
+  `cloudShade`. Around sunset and in the afterglow they glow pink over violet bases. Distant ones sink into the
+  horizon haze. The visible sky drops its painted cumulus while they're on; the haze, reflection and lighting
+  probes keep them. Steps per preset: Low off (painted), Medium 16, High 24, Ultra 32. Cost on High: about 2 fps in
+  ground views (meadow 36 to 34), 5 looking at open sky (52 to 47). Shots: `.playwright-mcp/b2/g-c3.jpg`,
+  `g-c5.jpg`.
 - Fractured procedural rocks (`src/fractured-rocks.ts`): lumpy point clouds cut by random fracture planes and
   wrapped in a convex hull, with creased normals, so split faces meet at sharp edges between weathered sides. Five
   kinds (boulder, block, slab, crag, standing stone), two variants each, generated per world seed. Vertex colors

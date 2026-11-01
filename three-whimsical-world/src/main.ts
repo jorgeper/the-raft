@@ -13,6 +13,7 @@ import { Persist } from './persist';
 import { createSky, CLOUD_HEIGHT } from './sky';
 import { Character, type MotionState } from './character';
 import { loadGroundTextures, groundUniforms } from './ground';
+import { CloudPass } from './clouds';
 import { Motes } from './motes';
 import { loadPlants } from './plants';
 import { QUALITY_PRESETS, quality, setQuality, type QualityLevel } from './quality';
@@ -122,8 +123,10 @@ scene.add(world.group);
 
 // Glowing motes draw over the haze so it doesn't fog them out.
 const overlay = new THREE.Scene();
-const post = createPost(renderer, scene, camera, cubeTarget.texture, sunShadows, overlay, water);
-post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow);
+const clouds = new CloudPass(camera, sky.uniforms);
+const post = createPost(renderer, scene, camera, cubeTarget.texture, sunShadows, overlay, water, clouds);
+post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow, quality.cloudSteps);
+sky.setVolumetricClouds(quality.cloudSteps > 0);
 
 // The player's eye: mouse look and WASD move this; the camera follows it in first person, or orbits behind the
 // character in third person.
@@ -221,7 +224,7 @@ function updateSun() {
   // The ambient light sees land below the horizon; the cube (haze, water) keeps the painted sky.
   sky.probeMesh.material = sky.lightingMaterial;
   envTarget = pmrem.fromScene(skyScene);
-  sky.probeMesh.material = sky.mesh.material;
+  sky.probeMesh.material = sky.probeMaterial;
   scene.environment = envTarget.texture;
   // Modest sky fill: shadows stay deep enough for light and shade to model the scene.
   scene.environmentIntensity = 0.34;
@@ -363,7 +366,8 @@ function applyQuality(keepScale = false) {
   setQuality(display.quality);
   if (!keepScale) display.renderScale = quality.renderScale;
   sunShadows.applyQuality();
-  post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow);
+  post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow, quality.cloudSteps);
+  sky.setVolumetricClouds(quality.cloudSteps > 0);
   water.setReflectionSteps(quality.waterReflectionSteps);
   qualityInfo.text = QUALITY_PRESETS[display.quality].label;
   applyDisplay();

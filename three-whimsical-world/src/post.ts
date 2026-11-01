@@ -11,6 +11,7 @@ import { WaterPass, type Water } from './water';
 import { TAAPass } from './taa';
 import type { SunShadows } from './cascades';
 import { VolumetricPass, VIS_UPSAMPLE } from './volumetric';
+import type { CloudPass } from './clouds';
 
 const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
@@ -57,6 +58,9 @@ const AtmosphereShader = {
     uVisTexel: { value: new THREE.Vector2(1, 1) },
     /** 0 until the sun's shadow map exists (visibility is then 1 everywhere). */
     uVisOn: { value: 0 },
+    // Volumetric clouds (half resolution, `CloudPass`): rgb scattered light, a transmittance.
+    tClouds: { value: null as THREE.Texture | null },
+    uCloudsOn: { value: 0 },
     uVolumetric: { value: 1 },
     // Torch glow scattered by the haze around the flame.
     uTorchPos: { value: new THREE.Vector3() },
@@ -116,6 +120,8 @@ const AtmosphereShader = {
     uniform vec2 uCloudOffset;
     uniform float uCloudShadow;
     uniform float uVisOn;
+    uniform sampler2D tClouds;
+    uniform float uCloudsOn;
     varying vec2 vUv;
     ${VIS_UPSAMPLE}
     ${CLOUD_NOISE}
@@ -167,6 +173,11 @@ const AtmosphereShader = {
       float marchLen = marchLength(isSky, dist);
       float vis = uVisOn > 0.5 && uVolumetric > 0.0 ? upsampleVis(vUv, marchLen) : 1.0;
       float sunUpV = smoothstep(-0.05, 0.08, uSunDir.y);
+
+      if (isSky && uCloudsOn > 0.5) {
+        vec4 cl = texture2D(tClouds, vUv);
+        color = color * cl.a + cl.rgb;
+      }
 
       float shade = isSky ? 1.0 : cloudShade(world);
       if (!isSky) {
@@ -404,6 +415,8 @@ export function createPost(
   overlay?: THREE.Scene,
   /** Translucent water, drawn over the opaque scene before AO and haze. */
   water?: Water,
+  /** Volumetric clouds, composited over the sky by the haze pass. */
+  clouds?: CloudPass,
 ) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
@@ -422,6 +435,7 @@ export function createPost(
   composer.addPass(ao);
   const volumetric = new VolumetricPass(camera, sun);
   composer.addPass(volumetric);
+  if (clouds) composer.addPass(clouds);
   const atmosphere = new DepthShaderPass(AtmosphereShader);
   atmosphere.uniforms.tSky.value = sky;
   atmosphere.uniforms.tAO.value = ao.texture;
@@ -429,7 +443,9 @@ export function createPost(
   atmosphere.beforeRender = () => {
     atmosphere.uniforms.uVisOn.value = volumetric.enabled && volumetric.ready ? 1 : 0;
     atmosphere.uniforms.uVisTexel.value.copy(volumetric.texel);
+    atmosphere.uniforms.uCloudsOn.value = clouds?.enabled ? 1 : 0;
   };
+  if (clouds) atmosphere.uniforms.tClouds.value = clouds.texture;
   composer.addPass(atmosphere);
   const taa = new TAAPass(camera, target.depthTexture!);
   composer.addPass(taa);
@@ -475,9 +491,10 @@ export function createPost(
       whimsy = w;
       applyGlow();
     },
-    /** Quality preset knobs: volumetric march steps, AO resolution (0 = off) and whether the glow pass runs. */
-    setQuality(volumetricSteps: number, aoScale: number, glowOn: boolean) {
+    /** Quality preset knobs: volumetric march steps, AO resolution (0 = off), glow pass, cloud steps (0 = off). */
+    setQuality(volumetricSteps: number, aoScale: number, glowOn: boolean, cloudSteps = 0) {
       volumetric.setSteps(volumetricSteps * 2);
+      clouds?.setSteps(cloudSteps);
       ao.enabled = aoScale > 0;
       atmosphere.uniforms.uAOOn.value = aoScale > 0 ? 1 : 0;
       if (aoScale > 0) ao.setScale(aoScale);

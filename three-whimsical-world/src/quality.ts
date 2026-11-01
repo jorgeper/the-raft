@@ -31,6 +31,8 @@ export interface QualityPreset {
   motes: number;
   /** Screen-space reflection steps on the water (0 = sky reflections only). */
   waterReflectionSteps: number;
+  /** Volumetric cloud march steps (0 = the sky's flat painted clouds). */
+  cloudSteps: number;
 }
 
 export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
@@ -50,6 +52,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     glow: false,
     motes: 0.3,
     waterReflectionSteps: 0,
+    cloudSteps: 0,
   },
   medium: {
     label: 'Medium: 85% resolution, thinner grass, half-res AO',
@@ -67,6 +70,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     glow: true,
     motes: 0.6,
     waterReflectionSteps: 16,
+    cloudSteps: 16,
   },
   high: {
     label: 'High: full resolution and detail (the default)',
@@ -84,6 +88,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     glow: true,
     motes: 1,
     waterReflectionSteps: 32,
+    cloudSteps: 24,
   },
   ultra: {
     label: 'Ultra: 125% supersampling, grass to 150 m, finer beams (slow)',
@@ -101,6 +106,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     glow: true,
     motes: 1,
     waterReflectionSteps: 48,
+    cloudSteps: 32,
   },
 };
 

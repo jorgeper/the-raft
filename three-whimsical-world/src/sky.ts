@@ -290,7 +290,9 @@ const fragmentShader = /* glsl */ `
       col = mix(col, wisp, wm * show * smoothstep(0.0, 0.06, y));
     }
 
-    // Clouds: a flat layer projected onto the dome, soft and painterly.
+    // Clouds: a flat layer projected onto the dome, soft and painterly. (In the visible sky the volumetric cloud
+    // pass draws them instead when it's on; the probes behind the haze, reflections and ambient keep these.)
+    #ifndef VOLUMETRIC_CLOUDS
     if (y > 0.0 && uClouds > 0.0) {
       vec2 uv = d.xz / (y + 0.12) * 0.9 + uCloudOffset;
       float n = fbm(uv) * 0.5 + 0.5;
@@ -312,6 +314,7 @@ const fragmentShader = /* glsl */ `
       col = mix(col, cloud, mask * smoothstep(0.0, 0.05, y) * 0.92);
       fwd *= 1.0 - mask * 0.9;
     }
+    #endif
 
     // Big soft sun disc (Valheim's sun reads as a glowing ball, not a pinpoint).
     float disc = smoothstep(0.99985, 0.99993, cosT);
@@ -336,6 +339,8 @@ const fragmentShader = /* glsl */ `
     #include <colorspace_fragment>
   }
 `;
+
+export type SkyUniforms = ReturnType<typeof createSky>['uniforms'];
 
 export function createSky() {
   const uniforms = {
@@ -362,7 +367,10 @@ export function createSky() {
     depthWrite: false,
   });
   const geometry = new THREE.BoxGeometry(1, 1, 1);
-  const mesh = new THREE.Mesh(geometry, material);
+  // The visible sky has its own copy (same uniforms), so it alone can hand its clouds to the volumetric pass.
+  const viewMaterial = material.clone();
+  viewMaterial.uniforms = uniforms;
+  const mesh = new THREE.Mesh(geometry, viewMaterial);
   mesh.frustumCulled = false;
   const probeMesh = new THREE.Mesh(geometry, material);
   /** For the probe while it's baked into the scene's ambient light (PMREM): land below the horizon. */
@@ -374,7 +382,16 @@ export function createSky() {
     mesh,
     probeMesh,
     lightingMaterial,
+    /** Use the probe's own material (the visible sky's may leave its clouds to the volumetric pass). */
+    probeMaterial: material,
     uniforms,
+    /** True when the volumetric cloud pass draws the visible sky's cumulus. */
+    setVolumetricClouds(on: boolean) {
+      if (on === 'VOLUMETRIC_CLOUDS' in viewMaterial.defines) return;
+      if (on) viewMaterial.defines.VOLUMETRIC_CLOUDS = '';
+      else delete viewMaterial.defines.VOLUMETRIC_CLOUDS;
+      viewMaterial.needsUpdate = true;
+    },
     /** Sets the palette for a sun elevation (degrees); `evening` picks the dusk palette over the dawn one. */
     update(sunDir: THREE.Vector3, elevation: number, evening: boolean, clouds: number) {
       uniforms.uSunDir.value.copy(sunDir);
