@@ -15,6 +15,7 @@ Visual work is done when a screenshot shows it, not when it type-checks. The loo
    background if it isn't running).
 2. Frame the shot with URL params: `?cam=x,heightAboveGround,z,targetX,targetY,targetZ&time=hours`
    (a height above walking eye level starts in fly mode).
+   Panel settings persist in `localStorage`; add `&defaults` so a shot ignores (and doesn't overwrite) them.
 3. Screenshot into `.playwright-mcp/` (Playwright can only write inside the project) and look at it.
 4. Compare against the references in `reference/` (Valheim meadow and forest shots).
 5. Measure fps with a `requestAnimationFrame` counter for 2 s; meadows should hold 60 at 1280×720.

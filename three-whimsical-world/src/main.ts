@@ -10,6 +10,10 @@ import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
 import { Torch } from './torch';
 import { Minimap } from './minimap';
 import { loadScannedRocks, rockMoss } from './scanned-rocks';
+import { Persist } from './persist';
+
+// Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
+const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 // --- Display: the view fills the window up to a configurable maximum size, centered when the window is larger.
@@ -22,6 +26,7 @@ const display = {
   showMinimap: true,
   minimapSize: 220,
 };
+persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize']);
 const stage = document.getElementById('stage')!;
 const viewSize = () => ({ width: Math.min(window.innerWidth, display.maxWidth), height: Math.min(window.innerHeight, display.maxHeight) });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * display.renderScale);
@@ -106,9 +111,13 @@ scene.add(water.mesh);
 
 // --- World (regenerated from the World panel)
 const params: WorldParams = { ...DEFAULT_PARAMS };
+persist.bind('world', params, Object.keys(DEFAULT_PARAMS) as (keyof WorldParams)[]);
+persist.bind('moss', rockMoss.uMossAmount, ['value']);
 // Photoscanned rocks are fetched by `npm run assets`; without them the world uses procedural rocks.
 const scannedRocks = await loadScannedRocks();
 let world = new World(params, renderer, scannedRocks);
+/** The world settings the current world was built from, to tell whether a reset needs a regenerate. */
+let builtParams = JSON.stringify(params);
 scene.add(world.group);
 water.uniforms.uDepth.value = world.depthTexture;
 
@@ -199,6 +208,21 @@ function updateSun() {
   scene.environmentIntensity = 0.25;
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
+persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'turbidity', 'rayleigh', 'clouds', 'exposure', 'fogDensity']);
+persist.bind('tint', post.atmosphere.uTintStrength, ['value']);
+persist.bind('wind', wind.uWindStrength, ['value']);
+persist.bind('torch', torch, ['on', 'brightness', 'embersOn', 'smokeOn']);
+persist.bind('volumetric', volumetric, ['value']);
+persist.bind('shafts', shaftStrength, ['value']);
+persist.bind('aoStrength', post.atmosphere.uAOStrength, ['value']);
+persist.bind('aoRadius', post.ao.uRadius, ['value']);
+persist.bind('aoIntensity', post.ao.uIntensity, ['value']);
+persist.bind('bloom', post.bloom, ['strength', 'threshold']);
+persist.bind('saturation', post.grade.uSaturation, ['value']);
+persist.bind('contrast', post.grade.uContrast, ['value']);
+persist.bind('warmth', post.grade.uWarmth, ['value']);
+persist.bind('vignette', post.grade.uVignette, ['value']);
+post.atmosphere.uFogDensity.value = settings.fogDensity;
 updateSun();
 
 // --- Controls panel
@@ -269,6 +293,7 @@ const movement = {
   flyBoost: 5,
   sensitivity: 1,
 };
+persist.bind('movement', movement, ['mode', 'walkSpeed', 'runSpeed', 'flySpeed', 'flyBoost', 'sensitivity']);
 const controlsGui = gui.addFolder('Controls');
 controlsGui.add(movement, 'mode', ['walk', 'fly']).name('mode (F)').listen().onChange(() => (verticalSpeed = 0));
 controlsGui.add(movement, 'walkSpeed', 1, 15, 0.1).name('walk speed (m/s)');
@@ -326,6 +351,7 @@ function regenerate() {
       scene.remove(world.group);
       world.dispose();
       world = new World(params, renderer, scannedRocks);
+      builtParams = JSON.stringify(params);
       scene.add(world.group);
       water.uniforms.uDepth.value = world.depthTexture;
       camera.position.y = Math.max(world.height(camera.position.x, camera.position.z), 0) + (movement.mode === 'fly' ? 20 : EYE_HEIGHT);
@@ -338,6 +364,7 @@ function regenerate() {
 
 // --- Camera controls
 const controls = new PointerLockControls(camera, renderer.domElement);
+controls.pointerSpeed = movement.sensitivity;
 const hint = document.getElementById('hint')!;
 renderer.domElement.addEventListener('click', () => controls.lock());
 controls.addEventListener('lock', () => (hint.style.opacity = '0'));
@@ -409,6 +436,27 @@ function updateCamera(dt: number) {
 window.addEventListener('resize', applyDisplay);
 applyDisplay();
 
+// Save whenever a panel edit is committed, after the keyboard toggles (T, F, M), and when leaving the page
+// (which also catches the clock moving on its own).
+gui.onFinishChange(() => persist.save());
+window.addEventListener('keyup', (e) => {
+  if (['KeyT', 'KeyF', 'KeyM'].includes(e.code)) persist.save();
+});
+window.addEventListener('pagehide', () => persist.save());
+document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && persist.save());
+
+function resetToDefaults() {
+  persist.reset();
+  post.atmosphere.uFogDensity.value = settings.fogDensity;
+  controls.pointerSpeed = movement.sensitivity;
+  verticalSpeed = 0;
+  updateSun();
+  applyDisplay();
+  gui.controllersRecursive().forEach((c) => c.updateDisplay());
+  if (JSON.stringify(params) !== builtParams) regenerate();
+}
+gui.add({ reset: resetToDefaults }, 'reset').name('↺ Reset to defaults');
+
 const lookDir = new THREE.Vector3();
 const timer = new THREE.Timer();
 let sinceSunUpdate = 0;
@@ -461,5 +509,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, resetToDefaults, get world() { return world; } },
 });

@@ -1,6 +1,6 @@
 # Roadmap
 
-In priority order: items 1–4 are the user's requests for the next sessions, the rest ranked by realism gained. Move items to "Done" with the commit hash when finished.
+In priority order: items 1–3 are the user's requests for the next sessions, the rest ranked by realism gained. Move items to "Done" with the commit hash when finished.
 
 ## Next
 
@@ -26,10 +26,7 @@ In priority order: items 1–4 are the user's requests for the next sessions, th
    - Strong cyan-shadow / gold-highlight split toning; haze that glows pink-orange toward a low sun.
    - Done when: for each reference image, a matching screenshot (same time of day, similar framing) sits beside it
      and the user agrees the palette reads as Valheim.
-3. **Persistent settings + reset**: every panel setting (world, time and weather, torch, effects, controls,
-   display) survives a reload via `localStorage` (wrap in try/catch; the page must work without it). A
-   "Reset to defaults" button restores everything and regenerates the world if world settings changed.
-4. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
+3. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
    - Undergrowth variety: berry bushes (raspberry, blueberry), thistles, mushrooms, dandelions and clover, tall
      grass tufts, reeds by rivers, fallen leaves and needle litter, moss carpets on forest floors.
    - Atmosphere: morning mist pooling in hollows and over rivers, drifting dust and pollen motes in sunbeams,
@@ -38,16 +35,16 @@ In priority order: items 1–4 are the user's requests for the next sessions, th
    - Light: richer dappled light under canopies, sun glints on wet rocks after rain.
    - Done when: walking from beach through meadow into forest at three times of day looks dense and alive in
      screenshots, compared against the references, at a playable frame rate.
-5. **Procedural rocks with scanned textures** for outcrops, slabs and standing stones: sharp fracture-face
+4. **Procedural rocks with scanned textures** for outcrops, slabs and standing stones: sharp fracture-face
    geometry plus triplanar Poly Haven/ambientCG rock textures (the scans alone repeat after ~17 shapes).
    Through Blender MCP when it's connected.
-6. **Textured terrain**: splat scanned ground textures (grass soil, dirt, sand, forest floor, rock) by slope and
+5. **Textured terrain**: splat scanned ground textures (grass soil, dirt, sand, forest floor, rock) by slope and
    biome, triplanar on steep faces. Today the ground is vertex colors.
-7. **Water reflects the land**: planar reflection of terrain, trees and islands; refraction in the shallows.
-8. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
-9. **Temporal anti-aliasing**: grass and leaves shimmer in motion.
-10. **Volumetric clouds** with cloud shadows on the ground.
-11. Small: ferns read too neon next to the scanned rocks; grass blade textures, auto-exposure entering forests,
+6. **Water reflects the land**: planar reflection of terrain, trees and islands; refraction in the shallows.
+7. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
+8. **Temporal anti-aliasing**: grass and leaves shimmer in motion.
+9. **Volumetric clouds** with cloud shadows on the ground.
+10. Small: ferns read too neon next to the scanned rocks; grass blade textures, auto-exposure entering forests,
    caustics, textured shore foam.
 
 ## Later
@@ -65,6 +62,8 @@ In priority order: items 1–4 are the user's requests for the next sessions, th
 
 ## Done
 
+- Persistent settings: every panel value survives a reload (`src/persist.ts`, `?defaults` skips it); "Reset to
+  defaults" restores them and regenerates the world if world settings changed.
 - Scanned rocks: 17 Poly Haven shapes (`npm run assets`), two detail levels, moss slider. `boulder_01` was left
   out because it won't simplify below ~54k triangles.
 - `33ddfd9` Terrain, sky, sea. `56dbf71` Grass, trees, LODs. `6141e7c` Post-processing, walking.
