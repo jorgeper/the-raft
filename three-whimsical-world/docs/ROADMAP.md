@@ -31,7 +31,9 @@ In priority order: the first items are the user's requests for the next sessions
    - Tall meadow landed: magenta fireweed spikes in drifts (thickest at forest-edge clearings), white-to-pink yarrow
      umbels, seeding grass tufts with golden to purplish heads, dandelion clocks, and the daisies/buttercups raised
      so their heads nod above the grass (`addTallMeadow` in `src/cover.ts`). ~1–2 fps. Shots: `.playwright-mcp/b2/`.
-     Still open: moss cushions and leaf litter where the forest floor shows, mist over rivers, deer, wet-rock glints.
+     Still open: moss cushions and leaf litter where the forest floor shows, deer, wet-rock glints.
+   - Water mist landed: a thin layer at sea and river level (not the ground under the viewer), drawn into drifting
+     wisps, thick at dawn and dusk and nearly gone by noon; scales with the ground-fog slider. Shots: `b2/r2-*`.
    - Undergrowth variety: berry bushes (raspberry, blueberry), thistles, mushrooms, dandelions and clover, tall
      grass tufts, reeds by rivers, fallen leaves and needle litter, moss carpets on forest floors.
    - Atmosphere: morning mist pooling in hollows and over rivers, drifting dust and pollen motes in sunbeams,

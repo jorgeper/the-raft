@@ -270,6 +270,23 @@ const AtmosphereShader = {
           float mistLuma = dot(mist, vec3(0.2126, 0.7152, 0.0722));
           mist *= min(1.0, 1.6 / max(mistLuma, 1e-4));
           color = mix(color, mist, g);
+
+          // Water mist: a thin layer hugging sea and river level (y = 0) rather than the ground under the viewer,
+          // drawn into long wisps that drift over the water. (Clamped at the surface: the ray may run on down
+          // to the riverbed.)
+          float Hw = 1.3;
+          float Lw = min(dist, 300.0);
+          float w0 = max(camPos.y, 0.0), w1 = max(camPos.y + ray.y * Lw, 0.0);
+          float dw = w1 - w0;
+          float wIntegral = abs(dw) > 0.01 ? Lw * Hw / dw * (exp(-w0 / Hw) - exp(-w1 / Hw)) : Lw * exp(-w0 / Hw);
+          float wisps = 0.0;
+          for (int k = 0; k < 3; k++) {
+            vec3 q = camPos + ray * Lw * (0.15 + 0.35 * float(k));
+            vec2 st = q.xz * vec2(0.035, 0.12) + uTime * vec2(0.05, 0.012);
+            wisps += smoothstep(0.35, 0.8, gNoise(st) * 0.7 + gNoise(q.xz * 0.2 + uTime * vec2(-0.02, 0.04)) * 0.3);
+          }
+          float gw = 1.0 - exp(-uGroundFog * 0.08 * wIntegral * (0.2 + wisps * 0.8) * burnOff * burnOff);
+          color = mix(color, mist, gw);
         }
       }
 
