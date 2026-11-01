@@ -653,6 +653,8 @@ renderer.setAnimationLoop((now) => {
   water.uniforms.uHaze.value = settings.fogDensity;
   water.uniforms.uGlitter.value = 0.5 + settings.whimsy;
   sky.uniforms.uTime.value = timer.getElapsed();
+  // High cirrus: more with whimsy, none when the clouds slider clears the sky.
+  sky.uniforms.uWisps.value = (0.5 + settings.whimsy * 0.6) * THREE.MathUtils.smoothstep(settings.clouds, 0, 0.2);
   // Clouds drift with the wind and stay put over the land as you move, so their shadows line up with them.
   const t = timer.getElapsed();
   sky.uniforms.uCloudOffset.value.set(t * 0.004 + (camera.position.x * 0.9) / CLOUD_HEIGHT, t * 0.0015 + (camera.position.z * 0.9) / CLOUD_HEIGHT);

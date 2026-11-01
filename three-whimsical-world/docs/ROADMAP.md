@@ -19,7 +19,12 @@ In priority order: the first items are the user's requests for the next sessions
    effects, and put them behind one "whimsical" slider in the panel that cranks them all up or down.
    - First pass landed: "✨ whimsy" slider (default 0.6) drives a thicker teal/orange split haze, stronger beams,
      lens-flare ghosts, a soft glow pass, a saturated split-tone grade and drifting motes/fireflies (`src/motes.ts`).
-     Next: sun glints on water, falling leaves, pink-lit cloud wisps, user's verdict.
+     Next: user's verdict. (Sun glitter on water and falling leaves landed with the water and life passes.)
+   - Pink-lit cloud wisps landed: a layer of high cirrus above the cumulus (`src/sky.ts`), fibrous streaks combed
+     along the wind in patches. Faint white by day; around sunset they're lit pink from below, and they stay rosy
+     in the afterglow after the sun has set; toward the sun they turn a deeper rose than the glowing sky behind.
+     Their color is a `wisp` stop in the sky table; the amount rises with whimsy and goes when the clouds slider
+     clears the sky. No fps cost. Shots: `.playwright-mcp/b2/g-k1.jpg` (before) and `g-k4.jpg`, `g-k6.jpg` (day and dawn).
    - Light pass landed: haze darkens in canopy shadow and a broad scattering lobe makes sunbeams between trunks;
      ground fog (amount / height / patchiness controls) pools in hollows; S-curve "depth" and three-way
      "color richness" grade (cyan shade, rosy mids, gold light). Side-on beams are still faint: try a dedicated
@@ -70,7 +75,7 @@ In priority order: the first items are the user's requests for the next sessions
 
 - Color: wildflower meadows in drifts of purple heather, pink fireweed, yellow buttercups; autumn-tinted birches and
   rowans with red berries among the greens; lichen-orange and moss-green rocks.
-- Light: god rays from clouds over the sea; pink-lit cloud wisps at dusk; aurora on clear nights; moonlit
+- Light: god rays from clouds over the sea; aurora on clear nights; moonlit
   silver-blue nights; sun glitter on water.
 - Life and motion: butterflies, birds, deer at forest edges, falling leaves, swaying reeds, drifting seed fluff.
 - Landmarks: standing stones and rune stones, ruined towers, a Viking longhouse with smoke curling from the roof,

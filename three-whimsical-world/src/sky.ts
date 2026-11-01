@@ -2,7 +2,8 @@ import * as THREE from 'three';
 
 /**
  * Valheim-style painted sky: a deep blue zenith over a pale cyan horizon, peach-pink-gold toward the sun, soft
- * cumulus lit pink and gold from below at a low sun, and a large glowing sun disc. Colors come from a table of stops
+ * cumulus lit pink and gold from below at a low sun, high cirrus streaks that glow pink around sunset and in the
+ * afterglow, and a large glowing sun disc. Colors come from a table of stops
  * keyed by sun elevation (rose-gold mornings, magenta-violet dusks), so the whole day can be art-directed instead of
  * following a physical model. The same material renders the visible sky and the probe that lights the scene and
  * colors the haze, so ambient light and fog follow the palette automatically.
@@ -26,6 +27,8 @@ interface Stop {
   cloudLit: RGB;
   /** Shaded underside of clouds. */
   cloudShade: RGB;
+  /** High cirrus streaks: white by day, lit pink from below around sunset and in the afterglow after it. */
+  wisp: RGB;
 }
 
 // Shared by morning and evening once the sun is well up, and at night.
@@ -37,6 +40,7 @@ const NIGHT: Stop = {
   glow: [0, 0, 0],
   cloudLit: [0.006, 0.009, 0.02],
   cloudShade: [0.003, 0.005, 0.012],
+  wisp: [0.004, 0.006, 0.014],
 };
 const AFTERNOON: Stop = {
   e: 22,
@@ -46,6 +50,7 @@ const AFTERNOON: Stop = {
   glow: [1.7, 1.45, 1.0],
   cloudLit: [4.3, 4.1, 3.8],
   cloudShade: [1.35, 1.75, 2.45],
+  wisp: [3.4, 3.5, 3.8],
 };
 const NOON: Stop = {
   e: 50,
@@ -55,6 +60,7 @@ const NOON: Stop = {
   glow: [1.5, 1.35, 1.05],
   cloudLit: [4.6, 4.5, 4.3],
   cloudShade: [1.5, 1.9, 2.6],
+  wisp: [3.6, 3.7, 3.9],
 };
 
 /** Dusk: magenta-violet after sunset, deep orange-pink at the horizon, gold at the golden hour. */
@@ -68,6 +74,7 @@ const EVENING: Stop[] = [
     glow: [0.06, 0.02, 0.05],
     cloudLit: [0.09, 0.05, 0.12],
     cloudShade: [0.03, 0.03, 0.07],
+    wisp: [0.08, 0.04, 0.1],
   },
   {
     e: -3.5,
@@ -77,6 +84,7 @@ const EVENING: Stop[] = [
     glow: [0.7, 0.2, 0.25],
     cloudLit: [1.5, 0.45, 0.6],
     cloudShade: [0.22, 0.16, 0.36],
+    wisp: [2.3, 0.6, 1.05],
   },
   {
     e: 1,
@@ -86,6 +94,7 @@ const EVENING: Stop[] = [
     glow: [2.6, 1.0, 0.45],
     cloudLit: [4.2, 1.7, 1.25],
     cloudShade: [0.6, 0.45, 0.85],
+    wisp: [3.6, 1.35, 1.4],
   },
   {
     e: 8,
@@ -95,6 +104,7 @@ const EVENING: Stop[] = [
     glow: [2.8, 1.75, 0.85],
     cloudLit: [4.7, 3.2, 2.4],
     cloudShade: [1.0, 1.05, 1.6],
+    wisp: [4.0, 2.5, 2.1],
   },
   AFTERNOON,
   NOON,
@@ -111,6 +121,7 @@ const MORNING: Stop[] = [
     glow: [0.05, 0.025, 0.035],
     cloudLit: [0.08, 0.06, 0.1],
     cloudShade: [0.03, 0.035, 0.07],
+    wisp: [0.07, 0.05, 0.09],
   },
   {
     e: -3.5,
@@ -120,6 +131,7 @@ const MORNING: Stop[] = [
     glow: [0.7, 0.32, 0.28],
     cloudLit: [1.6, 0.75, 0.75],
     cloudShade: [0.25, 0.24, 0.42],
+    wisp: [2.1, 0.85, 1.0],
   },
   {
     e: 1,
@@ -129,6 +141,7 @@ const MORNING: Stop[] = [
     glow: [2.5, 1.3, 0.75],
     cloudLit: [4.2, 2.3, 1.85],
     cloudShade: [0.75, 0.65, 1.0],
+    wisp: [3.7, 1.95, 1.65],
   },
   {
     e: 8,
@@ -138,12 +151,13 @@ const MORNING: Stop[] = [
     glow: [2.6, 1.9, 1.2],
     cloudLit: [4.6, 3.6, 3.0],
     cloudShade: [1.05, 1.2, 1.75],
+    wisp: [4.1, 3.0, 2.6],
   },
   AFTERNOON,
   NOON,
 ];
 
-const KEYS = ['zenith', 'horizon', 'sunHorizon', 'glow', 'cloudLit', 'cloudShade'] as const;
+const KEYS = ['zenith', 'horizon', 'sunHorizon', 'glow', 'cloudLit', 'cloudShade', 'wisp'] as const;
 
 function sample(stops: Stop[], e: number, key: (typeof KEYS)[number], out: THREE.Color) {
   if (e <= stops[0].e) return out.fromArray(stops[0][key]);
@@ -218,6 +232,9 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uGlow;
   uniform vec3 uCloudLit;
   uniform vec3 uCloudShade;
+  uniform vec3 uWisp;
+  /** Cirrus amount (raised by whimsy). */
+  uniform float uWisps;
   uniform float uSunDisc;
   uniform float uClouds;
   uniform float uTime;
@@ -247,6 +264,31 @@ const fragmentShader = /* glsl */ `
     col += uGlow * (mix(0.12, 0.3, lowSun) * pow(fwd, 5.0) + 0.35 * pow(fwd, 40.0) + 0.6 * pow(fwd, 600.0));
     // Below the horizon (seen in reflections and the lighting probe): the horizon haze darkening downward.
     if (y < 0.0) col = mix(col, horizon * 0.55 + uZenith * 0.08, smoothstep(0.0, -0.35, y));
+
+    // High cirrus: thin streaks combed out along the wind, far above the cumulus (so they parallax less and sit
+    // behind them). Faint white by day; around sunset they catch the light from below and glow pink, and stay rosy
+    // for a while after the sun has set, the way high cloud does.
+    if (y > 0.0 && uWisps > 0.0) {
+      vec2 cuv = d.xz / (y + 0.06) * 0.55 + uCloudOffset * 0.6;
+      // Wind frame: long along x, narrow across.
+      vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * cuv;
+      // Warp the streaks into hooks and ripples.
+      q.y += noise(q * vec2(0.3, 0.5) + 11.0) * 0.8;
+      float streak = fbm(q * vec2(0.25, 2.6) + vec2(uTime * 0.003, 0.0)) * 0.5 + 0.5;
+      // Fine combing along the streaks.
+      float comb = noise(q * vec2(0.5, 16.0) + 4.0) * 0.5 + 0.5;
+      // Patches of sky with cirrus, patches without.
+      float patchy = smoothstep(0.3, 0.7, noise(cuv * 0.1 - 7.0) * 0.5 + 0.5);
+      float wm = smoothstep(0.5, 0.82, streak) * patchy * (0.35 + 0.65 * comb);
+      // Thicker and brighter at a low sun; nearly gone in the deep night.
+      float show = min(uWisps * mix(0.35, 0.7, lowSun), 1.0);
+      // Toward a low sun they're backlit: a deeper rose than the glowing sky behind, with golden edges.
+      float back = pow(toSun, 3.0) * lowSun;
+      vec3 wisp = uWisp * mix(vec3(1.0), vec3(0.95, 0.55, 0.62), back);
+      wisp += uGlow * (pow(fwd, 5.0) * 0.6 + pow(fwd, 40.0) * 0.8) * (1.0 - wm * 0.6 * back);
+      wisp = mix(horizon, wisp, smoothstep(0.0, 0.25, y));
+      col = mix(col, wisp, wm * show * smoothstep(0.0, 0.06, y));
+    }
 
     // Clouds: a flat layer projected onto the dome, soft and painterly.
     if (y > 0.0 && uClouds > 0.0) {
@@ -290,6 +332,8 @@ export function createSky() {
     uGlow: { value: new THREE.Color() },
     uCloudLit: { value: new THREE.Color() },
     uCloudShade: { value: new THREE.Color() },
+    uWisp: { value: new THREE.Color() },
+    uWisps: { value: 0.8 },
     uSunDisc: { value: 12 },
     uClouds: { value: 0.38 },
     uTime: { value: 0 },
@@ -323,6 +367,7 @@ export function createSky() {
       sample(stops, elevation, 'glow', uniforms.uGlow.value);
       sample(stops, elevation, 'cloudLit', uniforms.uCloudLit.value);
       sample(stops, elevation, 'cloudShade', uniforms.uCloudShade.value);
+      sample(stops, elevation, 'wisp', uniforms.uWisp.value);
     },
   };
 }
