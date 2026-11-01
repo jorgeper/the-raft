@@ -10,6 +10,7 @@ import { CLOUD_NOISE, CLOUD_HEIGHT } from './sky';
 import { WaterPass, type Water } from './water';
 import { TAAPass } from './taa';
 import type { SunShadows } from './cascades';
+import { VolumetricPass, VIS_UPSAMPLE } from './volumetric';
 
 const fullscreenVertex = /* glsl */ `
   varying vec2 vUv;
@@ -51,12 +52,11 @@ const AtmosphereShader = {
     uForwardGlow: { value: 1 },
     /** 0 in the open, 1 deep in a forest: thicker, more strongly tinted haze and stronger shafts. */
     uForest: { value: 0 },
-    // Volumetric sunlight: march each view ray through the sun's shadow map.
-    tShadow: { value: null as THREE.Texture | null },
-    uShadowMatrix: { value: new THREE.Matrix4() },
-    // The far cascade, for beams beyond the near shadow square.
-    tShadowFar: { value: null as THREE.Texture | null },
-    uShadowMatrixFar: { value: new THREE.Matrix4() },
+    // Volumetric sunlight: how much of each view ray sees the sun, marched at half resolution (`VolumetricPass`).
+    tVis: { value: null as THREE.Texture | null },
+    uVisTexel: { value: new THREE.Vector2(1, 1) },
+    /** 0 until the sun's shadow map exists (visibility is then 1 everywhere). */
+    uVisOn: { value: 0 },
     uVolumetric: { value: 1 },
     // Torch glow scattered by the haze around the flame.
     uTorchPos: { value: new THREE.Vector3() },
@@ -101,12 +101,6 @@ const AtmosphereShader = {
     uniform float uTintStrength;
     uniform float uForwardGlow;
     uniform float uForest;
-    uniform sampler2DShadow tShadow;
-    uniform mat4 uShadowMatrix;
-    #ifdef HAS_SHADOW_FAR
-    uniform sampler2DShadow tShadowFar;
-    uniform mat4 uShadowMatrixFar;
-    #endif
     uniform float uVolumetric;
     uniform vec3 uTorchPos;
     uniform vec3 uTorchColor;
@@ -121,7 +115,9 @@ const AtmosphereShader = {
     uniform float uClouds;
     uniform vec2 uCloudOffset;
     uniform float uCloudShadow;
+    uniform float uVisOn;
     varying vec2 vUv;
+    ${VIS_UPSAMPLE}
     ${CLOUD_NOISE}
 
     // How much a cloud shades this point: follow the sun ray up to the cloud layer and read the cover there.
@@ -140,36 +136,6 @@ const AtmosphereShader = {
       vec2 u = f * f * (3.0 - 2.0 * f);
       return mix(mix(gHash(i), gHash(i + vec2(1, 0)), u.x), mix(gHash(i + vec2(0, 1)), gHash(i + vec2(1, 1)), u.x), u.y);
     }
-
-    // Fraction of the first stretch of the ray that sees the sun (1 = no shadow casters along it).
-    // Compiled only once the sun's shadow map exists (a shadow sampler can't be bound to an empty texture).
-    #ifdef HAS_SHADOW
-    float sunVisibility(vec3 origin, vec3 dir, float len) {
-      const int STEPS = VOL_STEPS;
-      float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + uNoiseOffset);
-      float stepLen = len / float(STEPS);
-      float lit = 0.0;
-      for (int i = 0; i < STEPS; i++) {
-        vec3 p = origin + dir * (float(i) + jitter) * stepLen;
-        vec4 sc = uShadowMatrix * vec4(p, 1.0);
-        vec3 c = sc.xyz / sc.w;
-        bool inside = all(greaterThan(c, vec3(0.0))) && all(lessThan(c, vec3(1.0)));
-        if (inside) {
-          lit += texture(tShadow, vec3(c.xy, c.z - 0.0015));
-        } else {
-          #ifdef HAS_SHADOW_FAR
-            vec4 fc = uShadowMatrixFar * vec4(p, 1.0);
-            vec3 f = fc.xyz / fc.w;
-            bool insideFar = all(greaterThan(f, vec3(0.0))) && all(lessThan(f, vec3(1.0)));
-            lit += insideFar ? texture(tShadowFar, vec3(f.xy, f.z - 0.001)) : 1.0;
-          #else
-            lit += 1.0;
-          #endif
-        }
-      }
-      return lit / float(STEPS);
-    }
-    #endif
 
     vec3 worldFromDepth(vec2 uv, float depth) {
       vec4 ndc = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -198,11 +164,8 @@ const AtmosphereShader = {
 
       // How much of the air along this ray sees the sun (1 without a shadow map). Used twice: shadowed air keeps
       // the haze darker, and lit air adds in-scattered sunlight, so the gaps between crowns become beams.
-      float marchLen = min(isSky ? 160.0 : dist, mix(160.0, 70.0, uForest));
-      float vis = 1.0;
-      #ifdef HAS_SHADOW
-        if (uVolumetric > 0.0) vis = sunVisibility(camPos, ray, marchLen);
-      #endif
+      float marchLen = marchLength(isSky, dist);
+      float vis = uVisOn > 0.5 && uVolumetric > 0.0 ? upsampleVis(vUv, marchLen) : 1.0;
       float sunUpV = smoothstep(-0.05, 0.08, uSunDir.y);
 
       float shade = isSky ? 1.0 : cloudShade(world);
@@ -291,22 +254,22 @@ const AtmosphereShader = {
       }
 
       // Volumetric sunlight: haze in sunlit gaps between shadows glows, forming beams through the canopy.
-      #ifdef HAS_SHADOW
-      if (uVolumetric > 0.0) {
+      if (uVisOn > 0.5 && uVolumetric > 0.0) {
         float cosT = dot(ray, uSunDir);
         // Henyey-Greenstein forward scattering (brightest toward the sun) plus a broad lobe, so beams also show
         // from the side, slanting between the trunks.
         float g = 0.65;
         float hg = (1.0 - g * g) / (4.0 * 3.14159 * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
         // Capped so staring into the sun doesn't flood the frame; the sky already has its own glow there.
-        float phase = min(hg + 0.06 * uForest, mix(0.5, 0.75, uForest));
+        // The broad lobe is what makes beams read side-on; whimsy widens it further.
+        float phase = min(hg + mix(0.03, 0.3, uForest) * (1.0 + 0.6 * uWhimsy), mix(0.5, 0.75, uForest));
         float density = mix(0.0015, 0.024, uForest) * (1.0 + 0.5 * uWhimsy);
         float scatter = (1.0 - exp(-density * marchLen)) * phase * mix(3.0, 5.5, uForest);
         // Beams read from the contrast between lit and shadowed air: pow() deepens the shadowed stretches.
-        color += uSunColor * scatter * pow(vis, 1.6) * uVolumetric * sunUpV * (1.0 + 0.5 * uWhimsy) * cloudShade(camPos);
+        // (The half-res march is smooth enough to take a harder curve without breaking into noise.)
+        color += uSunColor * scatter * pow(vis, 2.0) * uVolumetric * sunUpV * (1.0 + 0.5 * uWhimsy) * cloudShade(camPos);
         if (uDebugVolumetric > 0.5) { gl_FragColor = vec4(vec3(vis), 1.0); return; }
       }
-      #endif
 
       // Torch: analytic in-scattering of a point light in uniform haze (closest-approach formula).
       if (dot(uTorchColor, uTorchColor) > 0.0) {
@@ -457,27 +420,15 @@ export function createPost(
   if (water) composer.addPass(new WaterPass(water, camera));
   const ao = new AOPass(camera);
   composer.addPass(ao);
+  const volumetric = new VolumetricPass(camera, sun);
+  composer.addPass(volumetric);
   const atmosphere = new DepthShaderPass(AtmosphereShader);
-  atmosphere.material.defines.VOL_STEPS = 40;
   atmosphere.uniforms.tSky.value = sky;
   atmosphere.uniforms.tAO.value = ao.texture;
-  // The sun's shadow map only exists after the first scene render, so hook it up from inside the pass.
+  atmosphere.uniforms.tVis.value = volumetric.texture;
   atmosphere.beforeRender = () => {
-    const u = atmosphere.uniforms, defines = atmosphere.material.defines;
-    const depth = sun.near.shadow.map?.depthTexture ?? null;
-    const farDepth = sun.far.visible ? (sun.far.shadow.map?.depthTexture ?? null) : null;
-    const hasFar = farDepth !== null;
-    // (Right after a quality change the maps are rebuilt; wait for the near one before rebinding.)
-    if (depth && (u.tShadow.value !== depth || hasFar !== 'HAS_SHADOW_FAR' in defines || (hasFar && u.tShadowFar.value !== farDepth))) {
-      u.tShadow.value = depth;
-      u.tShadowFar.value = farDepth;
-      defines.HAS_SHADOW = '';
-      if (hasFar) defines.HAS_SHADOW_FAR = '';
-      else delete defines.HAS_SHADOW_FAR;
-      atmosphere.material.needsUpdate = true;
-    }
-    u.uShadowMatrix.value.copy(sun.near.shadow.matrix);
-    u.uShadowMatrixFar.value.copy(sun.far.shadow.matrix);
+    atmosphere.uniforms.uVisOn.value = volumetric.enabled && volumetric.ready ? 1 : 0;
+    atmosphere.uniforms.uVisTexel.value.copy(volumetric.texel);
   };
   composer.addPass(atmosphere);
   const taa = new TAAPass(camera, target.depthTexture!);
@@ -526,10 +477,7 @@ export function createPost(
     },
     /** Quality preset knobs: volumetric march steps, AO resolution (0 = off) and whether the glow pass runs. */
     setQuality(volumetricSteps: number, aoScale: number, glowOn: boolean) {
-      if (atmosphere.material.defines.VOL_STEPS !== volumetricSteps) {
-        atmosphere.material.defines.VOL_STEPS = volumetricSteps;
-        atmosphere.material.needsUpdate = true;
-      }
+      volumetric.setSteps(volumetricSteps * 2);
       ao.enabled = aoScale > 0;
       atmosphere.uniforms.uAOOn.value = aoScale > 0 ? 1 : 0;
       if (aoScale > 0) ao.setScale(aoScale);
@@ -546,6 +494,10 @@ export function createPost(
       noiseFrame = (noiseFrame + 1) % 64;
       const noise = taa.enabled ? (noiseFrame * 0.618034) % 1 : 0;
       u.uNoiseOffset.value = noise;
+      volumetric.uniforms.uNoiseOffset.value = noise;
+      volumetric.uniforms.uForest.value = u.uForest.value;
+      // Nothing to march while the volumetric slider is off (or at night, when main sets it to 0).
+      volumetric.enabled = u.uVolumetric.value > 0;
       ao.uniforms.uFrame.value = noise;
       u.uProjInv.value.copy(camera.projectionMatrixInverse);
       u.uViewInv.value.copy(camera.matrixWorld);

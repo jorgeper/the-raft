@@ -27,8 +27,13 @@ In priority order: the first items are the user's requests for the next sessions
      clears the sky. No fps cost. Shots: `.playwright-mcp/b2/g-k1.jpg` (before) and `g-k4.jpg`, `g-k6.jpg` (day and dawn).
    - Light pass landed: haze darkens in canopy shadow and a broad scattering lobe makes sunbeams between trunks;
      ground fog (amount / height / patchiness controls) pools in hollows; S-curve "depth" and three-way
-     "color richness" grade (cyan shade, rosy mids, gold light). Side-on beams are still faint: try a dedicated
-     beam pass at half resolution with more steps, and denser canopy shadow casters.
+     "color richness" grade (cyan shade, rosy mids, gold light).
+   - Beam pass landed (`src/volumetric.ts`): the shadow-map march moved out of the atmosphere pass into its own pass
+     at half resolution with twice the steps (80 on High), a depth-aware blur and a depth-weighted upsample, so the
+     dither speckle is gone and trunk edges stay crisp. Samples are weighted by the haze's transmittance (near shafts
+     count more) and the broad scattering lobe is five times as strong in forests, so beams read side-on as well as into
+     the sun. Same fps. Shots: `.playwright-mcp/vol/` (`g-v5.jpg` before/after, `g-crop.jpg` noise).
+     Still open: denser canopy shadow casters.
 6. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
    - First pass landed: mushrooms (fly agaric, boletes) on damp forest floor, reeds and cattails on riverbanks,
      berry shrubs at forest edges (`src/undergrowth.ts`); butterflies over the meadows, birds wheeling overhead,
@@ -96,7 +101,7 @@ In priority order: the first items are the user's requests for the next sessions
   tint shows nearly black there), and the cyan shadow grade pushes it further. Needs a less saturated diffuse
   sky ambient (or a warmer bounce term from the ground), checked against the Valheim references.
 - ~35 fps deep in forest at night with the torch on (1280×720, headless). Lower render scale if needed.
-- Forest light beams are subtle by default; the "volumetric light" slider strengthens them.
+- Forest light beams are moderate by default; the "volumetric light" slider strengthens them.
 - Nights are very dark without the torch, by design.
 
 ## Done

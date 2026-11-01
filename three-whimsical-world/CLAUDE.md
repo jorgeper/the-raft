@@ -36,8 +36,8 @@ volumetric, shafts, fog, AO) before changing code.
   table of stops by sun elevation in `src/sky.ts`; keep them under ~5.5 except the sun disc.
 - The haze pass caps HDR at 6.6 before bloom (threshold 6). Raising the cap or bloom strength veils the
   frame whenever the sun is in view.
-- A `sampler2DShadow` can't be bound before the shadow map exists: the volumetric code is behind the
-  `HAS_SHADOW` define, set once the sun's shadow map is created.
+- A `sampler2DShadow` can't be bound before the shadow map exists: `VolumetricPass` (`src/volumetric.ts`) skips
+  its march until the sun's map is there, and the atmosphere pass treats visibility as 1 until then (`uVisOn`).
 - Hot reload can interrupt Playwright navigation (`ERR_ABORTED`); just navigate again.
 - lil-gui 0.21 uses different DOM class names than older docs show; drive settings through `__app` instead.
 
