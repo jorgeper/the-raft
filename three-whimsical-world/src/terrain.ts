@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
 import { mulberry32, smoothstep, type HeightFn, type WorldFns } from './worldgen';
+import { groundUniforms } from './ground';
 
 export type { HeightFn } from './worldgen';
 
@@ -53,6 +54,14 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
   const normals = geo.attributes.normal as THREE.BufferAttribute;
   const colors = new Float32Array(pos.count * 3);
   const grass = new Float32Array(pos.count);
+  // Ground texture weights (forest floor, bare earth, rock, sand); meadow soil is the remainder.
+  const splat = new Float32Array(pos.count * 4);
+  const w = [0, 0, 0, 0, 0];
+  /** Mirrors a color lerp onto the layer weights: blends `k` of layer `layer` over everything so far. */
+  const toward = (k: number, layer: number) => {
+    for (let l = 0; l < 5; l++) w[l] *= 1 - k;
+    w[layer] += k;
+  };
   const variation = createNoise2D(mulberry32(7));
   const c = new THREE.Color();
 
@@ -70,8 +79,10 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
     c.copy(COLORS.grassLush).lerp(COLORS.grassDry, v * 0.8);
     c.lerp(COLORS.earth, earth * 0.9);
     c.lerp(COLORS.moss, forest).lerp(COLORS.needles, forest * fine * 0.6);
-    c.lerp(COLORS.dirt, smoothstep(0.12, 0.3, slope) * 0.85);
-    c.lerp(COLORS.rock, smoothstep(0.3, 0.5, slope));
+    const steepDirt = smoothstep(0.12, 0.3, slope) * 0.85;
+    c.lerp(COLORS.dirt, steepDirt);
+    const rock = smoothstep(0.3, 0.5, slope);
+    c.lerp(COLORS.rock, rock);
 
     // Beach and seabed by height.
     const sandAmt = 1 - smoothstep(1.6, 3.2 + fine * 1.5, y);
@@ -79,27 +90,62 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
     c.lerp(COLORS.wetSand, 1 - smoothstep(-0.3, 0.7, y));
     c.lerp(COLORS.seabed, 1 - smoothstep(-6, -1, y));
 
+    w.fill(0);
+    w[0] = 1;
+    toward(earth * 0.9, 2);
+    toward(forest, 1);
+    toward(steepDirt, 2);
+    toward(rock, 3);
+    toward(sandAmt, 4);
+    splat.set([w[1], w[2], w[3], w[4]], i * 4);
+
     // Subtle brightness jitter so flat areas aren't one tone.
     c.multiplyScalar(0.9 + 0.2 * fine);
     c.toArray(colors, i * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.setAttribute('aGrass', new THREE.BufferAttribute(grass, 1));
+  geo.setAttribute('aSplat', new THREE.BufferAttribute(splat, 4));
 
   const mat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.95, specularIntensity: 0.15 });
+  // Scanned ground textures, when `npm run assets` has fetched them (loaded before the world is built).
+  if (groundUniforms.tGroundDiff.value) mat.defines = { USE_GROUND: '' };
   mat.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, terrainUniforms);
+    Object.assign(shader.uniforms, terrainUniforms, groundUniforms);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aGrass;\nvarying float vGrass;\nvarying vec3 vWorld;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGrass = aGrass;\nvWorld = (modelMatrix * vec4(position, 1.0)).xyz;');
+      .replace(
+        '#include <common>',
+        '#include <common>\nattribute float aGrass;\nattribute vec4 aSplat;\nvarying float vGrass;\nvarying vec3 vWorld;\nvarying vec4 vSplat;\nvarying vec3 vWorldNormal;',
+      )
+      .replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvGrass = aGrass;\nvSplat = aSplat;\nvWorld = (modelMatrix * vec4(position, 1.0)).xyz;\nvWorldNormal = normalize(mat3(modelMatrix) * objectNormal);',
+      );
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         `#include <common>
         varying float vGrass;
         varying vec3 vWorld;
+        varying vec4 vSplat;
+        varying vec3 vWorldNormal;
         uniform float uGrassRadius;
         float wetSand = 0.0;
+        vec3 groundN = vec3(0.0, 1.0, 0.0);
+        float groundFade = 0.0;
+        #ifdef USE_GROUND
+          uniform sampler2DArray tGroundDiff;
+          uniform sampler2DArray tGroundNorm;
+          uniform vec3 uGroundMean[5];
+          uniform float uGroundDetail;
+          // Tile frequency per layer (repeats per meter): meadow, forest floor, earth, rock, sand.
+          const float GROUND_SCALE[5] = float[5](0.4, 0.33, 0.3, 0.12, 0.35);
+          // Whiteout-blended normal for a top-down (xz) projection.
+          vec3 topNormal(vec3 tn, vec3 n) {
+            vec3 t = vec3(tn.xy + n.xz, abs(tn.z) * n.y);
+            return t.xzy;
+          }
+        #endif
         float tHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float tNoise(vec2 p) {
           vec2 i = floor(p), f = fract(p);
@@ -113,10 +159,57 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         float camDist = distance(vWorld.xz, cameraPosition.xz);
         // Under the blades the ground is in the grass's own shade; past the grass radius it stands in for the grass tops.
         float under = vGrass * (1.0 - smoothstep(uGrassRadius * 0.5, uGrassRadius * 0.95, camDist));
-        diffuseColor.rgb *= mix(1.0, 0.3, under);
+        diffuseColor.rgb *= mix(1.0, 0.55, under);
         // Mottling so distant meadow and sand don't read as flat paint.
         float mottle = tNoise(vWorld.xz * 0.35) * 0.6 + tNoise(vWorld.xz * 1.9) * 0.4;
-        diffuseColor.rgb *= 0.82 + 0.36 * mottle;
+        #ifdef USE_GROUND
+          diffuseColor.rgb *= 0.9 + 0.2 * mottle;
+          // Splat the scans: each layer's texture over its mean color is the detail multiplied onto the palette.
+          // Blending leans on each sample's brightness, so pebbles and leaves poke through at the borders.
+          float ws[5] = float[5](max(1.0 - vSplat.x - vSplat.y - vSplat.z - vSplat.w, 0.0), vSplat.x, vSplat.y, vSplat.z, vSplat.w);
+          vec3 Nw = normalize(vWorldNormal);
+          vec3 tri = pow(abs(Nw), vec3(4.0));
+          tri /= tri.x + tri.y + tri.z;
+          vec3 detail = vec3(0.0), nSum = vec3(0.0);
+          float wSum = 0.0;
+          for (int i = 0; i < 5; i++) {
+            if (ws[i] < 0.01) continue;
+            float layer = float(i), s = GROUND_SCALE[i];
+            vec3 c, n;
+            if (i == 3) {
+              // Rock: triplanar, so cliffs aren't smeared by a top-down projection.
+              vec3 cX = texture(tGroundDiff, vec3(vWorld.zy * s, layer)).rgb;
+              vec3 cY = texture(tGroundDiff, vec3(vWorld.xz * s, layer)).rgb;
+              vec3 cZ = texture(tGroundDiff, vec3(vWorld.xy * s, layer)).rgb;
+              c = cX * tri.x + cY * tri.y + cZ * tri.z;
+              vec3 nX = texture(tGroundNorm, vec3(vWorld.zy * s, layer)).xyz * 2.0 - 1.0;
+              vec3 nY = texture(tGroundNorm, vec3(vWorld.xz * s, layer)).xyz * 2.0 - 1.0;
+              vec3 nZ = texture(tGroundNorm, vec3(vWorld.xy * s, layer)).xyz * 2.0 - 1.0;
+              nX = vec3(nX.xy + Nw.zy, abs(nX.z) * Nw.x);
+              nY = vec3(nY.xy + Nw.xz, abs(nY.z) * Nw.y);
+              nZ = vec3(nZ.xy + Nw.xy, abs(nZ.z) * Nw.z);
+              n = normalize(nX.zyx * tri.x + nY.xzy * tri.y + nZ.xyz * tri.z);
+            } else {
+              vec2 uv = vWorld.xz * s;
+              // A second, rotated sample at another scale breaks up the tiling.
+              vec2 uv2 = mat2(0.8, -0.6, 0.6, 0.8) * uv * 0.37 + 0.31;
+              c = mix(texture(tGroundDiff, vec3(uv, layer)).rgb, texture(tGroundDiff, vec3(uv2, layer)).rgb, 0.4);
+              n = topNormal(texture(tGroundNorm, vec3(uv, layer)).xyz * 2.0 - 1.0, Nw);
+            }
+            c /= uGroundMean[i];
+            float hw = ws[i] * (0.35 + dot(c, vec3(0.333)));
+            detail += c * hw;
+            nSum += n * hw;
+            wSum += hw;
+          }
+          detail /= max(wSum, 1e-4);
+          // Far away the scans just shimmer; fade them toward the plain palette.
+          groundFade = (1.0 - smoothstep(70.0, 260.0, camDist)) * uGroundDetail;
+          diffuseColor.rgb *= mix(vec3(1.0), detail, mix(0.3 * uGroundDetail, 1.0, groundFade));
+          groundN = normalize(nSum);
+        #else
+          diffuseColor.rgb *= 0.82 + 0.36 * mottle;
+        #endif
         // Beach: wind ripples and grain on dry sand, a darker band where waves wet it.
         float sand = 1.0 - smoothstep(2.0, 3.6, vWorld.y);
         float warp = tNoise(vWorld.xz * 0.08) * 6.0;
@@ -126,7 +219,14 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         wetSand = sand * (1.0 - smoothstep(0.2, 1.1, vWorld.y + 0.3 * tNoise(vWorld.xz * 0.5)));
         diffuseColor.rgb *= mix(1.0, 0.62, wetSand);`,
       )
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.35, wetSand);');
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.35, wetSand);')
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        #ifdef USE_GROUND
+          normal = normalize(mix(normal, normalize((viewMatrix * vec4(groundN, 0.0)).xyz), groundFade));
+        #endif`,
+      );
   };
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;

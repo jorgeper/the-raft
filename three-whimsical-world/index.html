@@ -19,6 +19,13 @@
         font: 13px/1.4 system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.45);
         padding: 8px 14px; border-radius: 6px; pointer-events: none; transition: opacity .3s;
       }
+      /* Always-visible reminder of the panel key, even while playing. */
+      #menu-key {
+        position: fixed; right: 12px; bottom: 10px; pointer-events: none; user-select: none;
+        font: 12px/1 system-ui, sans-serif; color: rgba(255,255,255,.85); background: rgba(0,0,0,.35);
+        padding: 6px 9px; border-radius: 5px; letter-spacing: .02em;
+      }
+      #menu-key kbd { font: 600 11px/1 system-ui, sans-serif; border: 1px solid rgba(255,255,255,.6); border-radius: 3px; padding: 1px 5px; margin-right: 5px; }
       #busy {
         position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
         background: rgba(10, 14, 12, .45); color: #fff; font: 600 18px/1 system-ui, sans-serif; letter-spacing: .02em;
@@ -27,8 +34,9 @@
   </head>
   <body>
     <div id="busy">Generating world…</div>
+    <div id="menu-key"><kbd>H</kbd>menu</div>
     <div id="stage">
-      <div id="hint">Click to look around · WASD move · Shift run · Space jump · T torch · V first/third person (wheel zooms) · F fly (Space / C up / down) · M map · Esc release (then click the map to travel)</div>
+      <div id="hint">Click to look around · WASD move · Shift run · Space jump · T torch · V first/third person (wheel zooms) · F fly (Space / C up / down) · M map · H menu · Esc release (then click the map to travel)</div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

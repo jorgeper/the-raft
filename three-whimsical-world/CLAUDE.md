@@ -43,6 +43,8 @@ volumetric, shafts, fog, AO) before changing code.
 
 ## Assets and references
 
+- Ground textures (`public/assets/ground/`, Poly Haven CC0) come from `npm run assets` like the rocks; without them
+  the terrain falls back to flat vertex colors.
 - `reference/` holds the user's Valheim screenshots (copyrighted, gitignored). Use them for comparison only.
 - Third-party assets must allow redistribution on the web: CC0 first (Poly Haven, ambientCG). Downloaded
   assets live under `public/assets/` (gitignored) and are fetched by `scripts/fetch-assets.mjs`, so the repo

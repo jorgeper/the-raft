@@ -12,6 +12,7 @@ import { loadScannedRocks, rockMoss } from './scanned-rocks';
 import { Persist } from './persist';
 import { createSky } from './sky';
 import { Character, type MotionState } from './character';
+import { loadGroundTextures, groundUniforms } from './ground';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
 const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
@@ -26,8 +27,10 @@ const display = {
   fov: 60,
   showMinimap: true,
   minimapSize: 220,
+  /** The settings panel (H toggles). */
+  showPanel: true,
 };
-persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize']);
+persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize', 'showPanel']);
 const stage = document.getElementById('stage')!;
 const viewSize = () => ({ width: Math.min(window.innerWidth, display.maxWidth), height: Math.min(window.innerHeight, display.maxHeight) });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * display.renderScale);
@@ -94,7 +97,9 @@ persist.bind('world', params, Object.keys(DEFAULT_PARAMS) as (keyof WorldParams)
 persist.bind('moss', rockMoss.uMossAmount, ['value']);
 // Photoscanned rocks are fetched by `npm run assets`; without them the world uses procedural rocks.
 const characterLoad = Character.load();
+const groundLoad = loadGroundTextures();
 const scannedRocks = await loadScannedRocks();
+await groundLoad;
 let world = new World(params, renderer, scannedRocks);
 /** The world settings the current world was built from, to tell whether a reset needs a regenerate. */
 let builtParams = JSON.stringify(params);
@@ -296,6 +301,7 @@ function applyDisplay() {
   camera.updateProjectionMatrix();
   minimap.setSize(display.minimapSize);
   minimap.setVisible(display.showMinimap);
+  gui.show(display.showPanel);
 }
 const displayGui = gui.addFolder('Display');
 displayGui.add(display, 'maxWidth', 640, 3840, 10).name('max width (px)').onChange(applyDisplay);
@@ -321,6 +327,10 @@ minimap.onNavigate = (x, z) => {
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') {
     display.showMinimap = !display.showMinimap;
+    applyDisplay();
+  }
+  if (e.code === 'KeyH') {
+    display.showPanel = !display.showPanel;
     applyDisplay();
   }
 });
@@ -517,11 +527,11 @@ function updateCharacter(dt: number, motion: { grounded: boolean; jumped: boolea
 window.addEventListener('resize', applyDisplay);
 applyDisplay();
 
-// Save whenever a panel edit is committed, after the keyboard toggles (T, F, M), and when leaving the page
+// Save whenever a panel edit is committed, after the keyboard toggles (T, F, M, V, H), and when leaving the page
 // (which also catches the clock moving on its own).
 gui.onFinishChange(() => persist.save());
 window.addEventListener('keyup', (e) => {
-  if (['KeyT', 'KeyF', 'KeyM', 'KeyV'].includes(e.code)) persist.save();
+  if (['KeyT', 'KeyF', 'KeyM', 'KeyV', 'KeyH'].includes(e.code)) persist.save();
 });
 window.addEventListener('pagehide', () => persist.save());
 document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && persist.save());
@@ -592,5 +602,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, sky, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, resetToDefaults, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, sky, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, get world() { return world; } },
 });

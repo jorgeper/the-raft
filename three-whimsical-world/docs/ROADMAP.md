@@ -14,12 +14,14 @@ In priority order: items 1–4 are the user's requests for the next sessions, th
    - Strong cyan-shadow / gold-highlight split toning; haze that glows pink-orange toward a low sun.
    - Done when: for each reference image, a matching screenshot (same time of day, similar framing) sits beside it
      and the user agrees the palette reads as Valheim.
-2. **Textured terrain** (user request: with knee-high grass, the flat-colored gaps between blades look off):
-   splat scanned ground textures (grass soil, dirt, sand, forest floor, rock) by slope and
-   biome, triplanar on steep faces. Today the ground is vertex colors.
-3. **Whimsical pass** (user request; examples v1–v6 in `~/Downloads`): Valheim's dreamy moments, with lots of
+2. **Whimsical pass** (user request; examples v1–v6 in `~/Downloads`): Valheim's dreamy moments, with lots of
    volumetric light and fog and rich colors contrasting in the same frame. Analyze the examples, recreate the
    effects, and put them behind one "whimsical" slider in the panel that cranks them all up or down.
+3. **Realistic water** (user request: more translucent, especially where it meets the ground):
+   - Shallows you can see into: refraction of the seabed and riverbed through the surface, depth-tinted
+     absorption (clear turquoise at the edge, deep blue offshore), sand and pebbles visible near the shore.
+   - Soft shorelines: depth-faded edges instead of a hard line, wet darkening on the sand, foam lapping in and out.
+   - Caustics shimmering on the shallow bottom; planar reflection of terrain, trees and islands.
 4. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
    - Undergrowth variety: berry bushes (raspberry, blueberry), thistles, mushrooms, dandelions and clover, tall
      grass tufts, reeds by rivers, fallen leaves and needle litter, moss carpets on forest floors.
@@ -32,11 +34,10 @@ In priority order: items 1–4 are the user's requests for the next sessions, th
 5. **Procedural rocks with scanned textures** for outcrops, slabs and standing stones: sharp fracture-face
    geometry plus triplanar Poly Haven/ambientCG rock textures (the scans alone repeat after ~17 shapes).
    Through Blender MCP when it's connected.
-6. **Water reflects the land**: planar reflection of terrain, trees and islands; refraction in the shallows.
-7. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
-8. **Temporal anti-aliasing**: grass and leaves shimmer in motion.
-9. **Volumetric clouds** with cloud shadows on the ground.
-10. Small: ferns read too neon next to the scanned rocks; grass blade textures, auto-exposure entering forests,
+6. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
+7. **Temporal anti-aliasing**: grass and leaves shimmer in motion.
+8. **Volumetric clouds** with cloud shadows on the ground.
+9. Small: ferns read too neon next to the scanned rocks; grass blade textures, auto-exposure entering forests,
    caustics, textured shore foam.
 
 ## Later
@@ -54,6 +55,8 @@ In priority order: items 1–4 are the user's requests for the next sessions, th
 
 ## Done
 
+- Textured terrain: five CC0 Poly Haven scans (meadow soil, forest floor, earth, rock, sand) splatted by biome and
+  slope as detail over the vertex-color palette, triplanar rock, normal maps (`src/ground.ts`). H toggles the panel.
 - Playable Viking (Quaternius CC0, assembled in Blender) with idle/walk/jog/sprint/jump clips, third-person
   spring-arm camera (V toggles first person), torch in hand. See `docs/CHARACTER.md`.
 - Persistent settings: every panel value survives a reload (`src/persist.ts`, `?defaults` skips it); "Reset to

@@ -1,4 +1,5 @@
-// Downloads CC0 photoscanned rocks from Poly Haven and builds two detail levels of each for the scene.
+// Downloads CC0 photoscanned rocks from Poly Haven and builds two detail levels of each for the scene, plus
+// the CC0 ground textures the terrain splats (public/assets/ground/).
 // Usage: npm run assets            (skips assets already built)
 //        npm run assets -- --force (rebuilds the models; downloads stay cached)
 //
@@ -97,6 +98,28 @@ async function main() {
 
   await writeFile(join(OUT, 'manifest.json'), JSON.stringify({ rocks: manifest, lods: LODS.map((l) => l.name) }, null, 2));
   console.log(`Wrote ${manifest.length} rocks to ${OUT}`);
+  await fetchGround();
+}
+
+/** Ground texture layers for the terrain, in the order src/ground.ts samples them. */
+const GROUND = ['leafy_grass', 'forrest_ground_01', 'brown_mud_leaves_01', 'rock_face_03', 'coast_sand_01'];
+const GROUND_OUT = join(ROOT, 'public/assets/ground');
+
+async function fetchGround() {
+  await mkdir(GROUND_OUT, { recursive: true });
+  for (const id of GROUND) {
+    const res = await fetch(`https://api.polyhaven.com/files/${id}`, { headers: { 'User-Agent': '3d-tests asset fetcher' } });
+    if (!res.ok) throw new Error(`${res.status} listing files for ${id}`);
+    const files = await res.json();
+    for (const [map, suffix] of [['Diffuse', 'diff'], ['nor_gl', 'nor']]) {
+      const url = files[map]?.[RESOLUTION]?.jpg?.url;
+      if (!url) throw new Error(`${id} has no ${RESOLUTION} ${map} jpg`);
+      const path = join(GROUND_OUT, `${id}_${suffix}.jpg`);
+      if (force || !(await exists(path))) await download(url, path);
+    }
+    console.log(`✓ ground ${id}`);
+  }
+  await writeFile(join(GROUND_OUT, 'manifest.json'), JSON.stringify({ layers: GROUND }, null, 2));
 }
 
 main().catch((err) => {
