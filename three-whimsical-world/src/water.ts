@@ -72,7 +72,9 @@ const fragmentShader = /* glsl */ `
     vec3 deepColor = vec3(0.012, 0.075, 0.14);
     vec3 shallowColor = vec3(0.04, 0.24, 0.24);
     vec3 body = mix(shallowColor, deepColor, 1.0 - exp(-depth * 0.3));
-    body *= 0.35 + 0.65 * max(uSunDir.y, 0.0);
+    // How much light is around (sun by day, a dim moon by night).
+    float light = clamp(dot(uSunColor, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+    body *= (0.35 + 0.65 * max(uSunDir.y, 0.0)) * (0.1 + 0.9 * light);
 
     vec3 col = mix(body, refl, fresnel);
     float spec = pow(max(dot(R, uSunDir), 0.0), 900.0);
@@ -83,7 +85,7 @@ const fragmentShader = /* glsl */ `
     float bands = 0.5 + 0.5 * sin(depth * 9.0 - uTime * 1.4 + n * 4.0);
     float foam = (1.0 - smoothstep(0.0, 0.45, depth)) * smoothstep(0.35, 0.75, bands * n + 0.3);
     foam = max(foam, 1.0 - smoothstep(0.0, 0.06, depth));
-    col = mix(col, vec3(0.85, 0.88, 0.88) * (0.5 + 0.5 * max(uSunDir.y, 0.2)), foam * 0.85);
+    col = mix(col, vec3(0.85, 0.88, 0.88) * (0.5 + 0.5 * max(uSunDir.y, 0.2)) * (0.08 + 0.92 * light), foam * 0.85);
 
     // Shallow water is see-through so sand shows; deep water is opaque.
     float alpha = mix(0.25, 1.0, smoothstep(0.0, 3.0, depth));

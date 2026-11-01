@@ -37,6 +37,12 @@ const AtmosphereShader = {
     uFogDensity: { value: 0.0004 },
     uFogHeightFalloff: { value: 0.012 },
     uShaftStrength: { value: 0.5 },
+    // Valheim's split light: haze turns cyan away from the sun and gold toward it.
+    uFogCool: { value: new THREE.Color(0.7, 1.0, 1.18) },
+    uFogWarm: { value: new THREE.Color(1.4, 1.0, 0.55) },
+    uTintStrength: { value: 0.55 },
+    /** 0 in the open, 1 deep in a forest: thicker, more strongly tinted haze and stronger shafts. */
+    uForest: { value: 0 },
   },
   vertexShader: fullscreenVertex,
   fragmentShader: /* glsl */ `
@@ -54,6 +60,10 @@ const AtmosphereShader = {
     uniform float uFogDensity;
     uniform float uFogHeightFalloff;
     uniform float uShaftStrength;
+    uniform vec3 uFogCool;
+    uniform vec3 uFogWarm;
+    uniform float uTintStrength;
+    uniform float uForest;
     varying vec2 vUv;
 
     vec3 worldFromDepth(vec2 uv, float depth) {
@@ -89,10 +99,19 @@ const AtmosphereShader = {
         float heightTerm = abs(dy) > 0.01
           ? (1.0 - exp(-uFogHeightFalloff * dy)) / (uFogHeightFalloff * dy)
           : 1.0;
-        float optical = uFogDensity * dist * exp(-uFogHeightFalloff * h) * heightTerm;
+        // Forests hold a thick haze near the ground (it doesn't thin with height inside the canopy).
+        float density = uFogDensity * mix(1.0, 9.0, uForest);
+        float optical = density * dist * mix(exp(-uFogHeightFalloff * h) * heightTerm, 1.0, uForest);
         float fog = 1.0 - exp(-optical);
         vec3 horizonDir = normalize(vec3(ray.x, 0.04 + max(ray.y, 0.0) * 0.5, ray.z));
         vec3 fogColor = textureCube(tSky, horizonDir).rgb;
+        // The sky near the sun is far brighter than anything on the ground; cap the haze so even a thin layer
+        // tints the view instead of washing it out.
+        float fogLuma = dot(fogColor, vec3(0.2126, 0.7152, 0.0722));
+        fogColor *= 0.75 * min(1.0, 1.4 / max(fogLuma, 1e-4));
+        float toSun = max(dot(normalize(vec3(ray.x, 0.0, ray.z)), normalize(vec3(uSunDir.x, 0.0, uSunDir.z))), 0.0);
+        vec3 tint = mix(uFogCool, uFogWarm, pow(toSun, 2.0));
+        fogColor *= mix(vec3(1.0), tint, clamp(uTintStrength + 0.35 * uForest, 0.0, 1.0));
         color = mix(color, fogColor, fog);
       }
 
@@ -109,7 +128,7 @@ const AtmosphereShader = {
         }
         shaft /= float(SAMPLES);
         float sunAlign = pow(max(dot(ray, uSunDir), 0.0), 3.0);
-        color += uSunColor * shaft * sunAlign * uSunFacing * uShaftStrength;
+        color += uSunColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest);
       }
 
       // The sky's sun disc is orders of magnitude brighter than anything else; cap it so bloom

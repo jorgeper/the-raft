@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
-import { TERRAIN_SIZE, type HeightFn } from './terrain';
+import { TERRAIN_SIZE } from './terrain';
+import type { WorldFns } from './worldgen';
 
 const FAR_SIZE = 16000;
 const FAR_SEGMENTS = 400;
@@ -9,8 +10,9 @@ const FAR_SEGMENTS = 400;
  * Low-detail land beyond the playable terrain: the same meadow/forest continuing past the edges,
  * plus islands and mountains across the sea. It's mostly seen through haze, so color carries it.
  */
-export function createFarLand(height: HeightFn, seed = 99) {
-  let s = seed;
+export function createFarLand(world: WorldFns) {
+  const { height } = world;
+  let s = world.params.seed * 31 + 99;
   const noise = createNoise2D(() => {
     s = (s * 16807) % 2147483647;
     return s / 2147483647;
@@ -60,8 +62,8 @@ export function createFarLand(height: HeightFn, seed = 99) {
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
     const slope = 1 - normals.getY(i);
-    // Most land out there is wooded; open meadow in patches.
-    const woods = THREE.MathUtils.smoothstep(noise(x * 0.0012 + 40, z * 0.0012), -0.3, 0.2);
+    // Same forest map as the playable area, plus extra woods on the islands.
+    const woods = Math.max(world.forest(x, z), THREE.MathUtils.smoothstep(x, 1500, 2000) * THREE.MathUtils.smoothstep(noise(x * 0.0012 + 40, z * 0.0012), -0.3, 0.2));
     c.copy(meadow).lerp(forest, Math.max(woods, THREE.MathUtils.smoothstep(y, 60, 140)));
     c.lerp(rock, THREE.MathUtils.smoothstep(slope, 0.25, 0.45) + THREE.MathUtils.smoothstep(y, 200, 280));
     c.lerp(sand, 1 - THREE.MathUtils.smoothstep(y, 1, 4));

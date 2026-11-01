@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
-import { grassCoverage, type HeightFn } from './terrain';
+import { coverageFrom } from './terrain';
+import type { WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
 
 const CHUNK = 24;
@@ -106,8 +107,10 @@ export class Grass {
   private lush = new THREE.Color('#3d6a12');
   private deep = new THREE.Color('#2a5014');
   private dry = new THREE.Color('#8c9435');
+  // Under the forest canopy the little grass there is darker and bluer.
+  private shade = new THREE.Color('#2a4a1c');
 
-  constructor(private height: HeightFn) {
+  constructor(private world: WorldFns) {
     this.material = new THREE.MeshPhysicalMaterial({
       vertexColors: true,
       side: THREE.DoubleSide,
@@ -154,6 +157,14 @@ export class Grass {
     };
   }
 
+  dispose() {
+    for (const mesh of this.chunks.values()) mesh.dispose();
+    this.chunks.clear();
+    this.group.clear();
+    this.geometry.dispose();
+    this.material.dispose();
+  }
+
   /** Builds or drops chunks around the viewer. `budget` caps new chunks per call to avoid frame hitches. */
   update(viewer: THREE.Vector3, budget = 3) {
     const cx0 = Math.floor(viewer.x / CHUNK), cz0 = Math.floor(viewer.z / CHUNK);
@@ -197,7 +208,18 @@ export class Grass {
     const x0 = cx * CHUNK, z0 = cz * CHUNK;
     const n = CHUNK / GRID + 1;
     const heights = new Float32Array(n * n);
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) heights[j * n + i] = this.height(x0 + i * GRID, z0 + j * GRID);
+    const forests = new Float32Array(n * n);
+    const dirts = new Float32Array(n * n);
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const gx = x0 + i * GRID, gz = z0 + j * GRID;
+        heights[j * n + i] = this.world.height(gx, gz);
+        forests[j * n + i] = this.world.forest(gx, gz);
+        dirts[j * n + i] = this.world.dirt(gx, gz);
+      }
+    }
+    const bilerp = (a: Float32Array, gx: number, gz: number, fx: number, fz: number) =>
+      (a[gz * n + gx] * (1 - fx) + a[gz * n + gx + 1] * fx) * (1 - fz) + (a[(gz + 1) * n + gx] * (1 - fx) + a[(gz + 1) * n + gx + 1] * fx) * fz;
 
     const rand = hashSeed(cx, cz);
     const mesh = new THREE.InstancedMesh(this.geometry, this.material, BLADES_PER_CHUNK);
@@ -216,7 +238,8 @@ export class Grass {
       const slope = Math.hypot(h10 - h00, h01 - h00) / GRID;
 
       const x = x0 + lx, z = z0 + lz;
-      if (rand() > grassCoverage(h, slope)) continue;
+      const forest = bilerp(forests, gx, gz, fx, fz);
+      if (rand() > coverageFrom(h, slope, forest, bilerp(dirts, gx, gz, fx, fz))) continue;
       const dry = 0.5 + 0.5 * this.colorNoise(x * 0.012, z * 0.012);
       // Sparse, short patches where it's dry.
       if (dry > 0.78 && rand() < (dry - 0.78) * 2.5) continue;
@@ -224,13 +247,14 @@ export class Grass {
       const fromCenter = clumpAt(x, z, clump);
       // Blades fan outward from their clump center and are tallest in the middle.
       const outward = Math.atan2(x - clump.x, z - clump.z);
-      const bladeHeight = (0.45 + rand() * 0.45) * clump.height * (1.2 - 0.45 * fromCenter / CLUMP_SIZE) * (1.15 - 0.4 * dry);
+      const bladeHeight = (0.45 + rand() * 0.45) * clump.height * (1.2 - 0.45 * fromCenter / CLUMP_SIZE) * (1.15 - 0.4 * dry) * (1 - 0.35 * forest);
       q.setFromAxisAngle(up, outward + (rand() - 0.5) * 1.2);
       s.set(0.75 + rand() * 0.6, bladeHeight, clump.lean * (0.6 + rand() * 0.8));
       p.set(x, h - 0.05, z);
       mesh.setMatrixAt(placed, m.compose(p, q, s));
 
       c.copy(this.deep).lerp(this.lush, clump.tint).lerp(this.dry, Math.min(dry * dry * 0.85 + rand() * 0.15, 1));
+      c.lerp(this.shade, forest);
       c.multiplyScalar(0.8 + rand() * 0.35);
       mesh.setColorAt(placed, c);
       placed++;

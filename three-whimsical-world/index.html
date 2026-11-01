@@ -12,9 +12,14 @@
         font: 13px/1.4 system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.45);
         padding: 8px 14px; border-radius: 6px; pointer-events: none; transition: opacity .3s;
       }
+      #busy {
+        position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+        background: rgba(10, 14, 12, .45); color: #fff; font: 600 18px/1 system-ui, sans-serif; letter-spacing: .02em;
+      }
     </style>
   </head>
   <body>
+    <div id="busy">Generating world…</div>
     <div id="hint">Click to look around · WASD move · Shift run · Space jump · F fly (Space / C up / down) · Esc release</div>
     <script type="module" src="/src/main.ts"></script>
   </body>

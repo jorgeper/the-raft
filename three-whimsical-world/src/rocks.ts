@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createNoise2D, createNoise3D } from 'simplex-noise';
-import { TERRAIN_SIZE, type HeightFn } from './terrain';
+import { TERRAIN_SIZE } from './terrain';
+import type { WorldFns } from './worldgen';
 
 function mulberry32(seed: number) {
   return () => {
@@ -12,9 +13,9 @@ function mulberry32(seed: number) {
 }
 
 /** A lumpy boulder about 1 unit across: noise-displaced sphere, flattened underneath, mossy on top. */
-function createRockGeometry(seed: number, stretch: THREE.Vector3) {
+function createRockGeometry(seed: number, stretch: THREE.Vector3, detail = 5) {
   const noise = createNoise3D(mulberry32(seed));
-  const geo = new THREE.IcosahedronGeometry(0.5, 5);
+  const geo = new THREE.IcosahedronGeometry(0.5, detail);
   const pos = geo.attributes.position as THREE.BufferAttribute;
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
@@ -50,13 +51,16 @@ function createRockGeometry(seed: number, stretch: THREE.Vector3) {
   return geo;
 }
 
-export function createRocks(height: HeightFn, seed = 7331) {
-  const rand = mulberry32(seed);
+export function createRocks(world: WorldFns) {
+  const { height, params } = world;
+  const rand = mulberry32(params.seed * 13 + 7331);
   const noise = createNoise2D(rand);
   const material = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.9, specularIntensity: 0.3 });
   const group = new THREE.Group();
 
   const boulders = [0, 1, 2, 3].map((i) => createRockGeometry(100 + i, new THREE.Vector3(1, 0.65 + 0.15 * i, 1 - 0.1 * i)));
+  // Pebbles are small and numerous, so they get a much coarser mesh.
+  const pebbles = [0, 1].map((i) => createRockGeometry(300 + i, new THREE.Vector3(1, 0.55, 0.85), 1));
   const standing = [0, 1].map((i) => createRockGeometry(200 + i, new THREE.Vector3(0.55, 2.6, 0.4)));
 
   const matrices: THREE.Matrix4[][] = boulders.map(() => []);
@@ -70,13 +74,15 @@ export function createRocks(height: HeightFn, seed = 7331) {
 
   // Scattered boulders: clustered by noise, more on hills and along the beach.
   const half = TERRAIN_SIZE / 2 - 30;
-  for (let i = 0; i < 9000; i++) {
+  for (let i = 0; i < 9000 * params.rocks; i++) {
     const x = (rand() * 2 - 1) * half, z = (rand() * 2 - 1) * half;
     const h = height(x, z);
     if (h < -0.5) continue;
     const cluster = THREE.MathUtils.smoothstep(noise(x * 0.006, z * 0.006), 0.3, 0.8);
     const beach = h < 3 ? 0.35 : 0;
-    if (rand() > cluster * 0.5 + beach + 0.02) continue;
+    // Forest floors are strewn with mossy boulders.
+    const forest = world.forest(x, z) * 0.35;
+    if (rand() > cluster * 0.5 + beach + forest + 0.02) continue;
     const big = rand() < 0.12;
     const size = big ? 2.5 + rand() * 3 : 0.4 + rand() * 1.2;
     place(matrices[Math.floor(rand() * boulders.length)], x, z, size, big ? 0.3 : 0.2);
@@ -87,6 +93,25 @@ export function createRocks(height: HeightFn, seed = 7331) {
     const mesh = new THREE.InstancedMesh(geo, material, matrices[i].length);
     matrices[i].forEach((m, k) => mesh.setMatrixAt(k, m));
     mesh.castShadow = mesh.receiveShadow = true;
+    mesh.computeBoundingSphere();
+    group.add(mesh);
+  });
+
+  // Pebbles scattered everywhere on land, denser where boulders cluster.
+  const pebbleMatrices: THREE.Matrix4[][] = pebbles.map(() => []);
+  for (let i = 0; i < 14000 * params.rocks; i++) {
+    const x = (rand() * 2 - 1) * half, z = (rand() * 2 - 1) * half;
+    const h = height(x, z);
+    if (h < 0.3) continue;
+    const cluster = THREE.MathUtils.smoothstep(noise(x * 0.006, z * 0.006), 0.1, 0.7);
+    if (rand() > 0.3 + cluster * 0.7) continue;
+    place(pebbleMatrices[i % 2], x, z, 0.15 + rand() * 0.35, 0.25, 0.6);
+  }
+  pebbles.forEach((geo, i) => {
+    if (pebbleMatrices[i].length === 0) return;
+    const mesh = new THREE.InstancedMesh(geo, material, pebbleMatrices[i].length);
+    pebbleMatrices[i].forEach((m, k) => mesh.setMatrixAt(k, m));
+    mesh.receiveShadow = true;
     mesh.computeBoundingSphere();
     group.add(mesh);
   });

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { Tree } from '@dgreenheck/ez-tree';
 import { createNoise2D } from 'simplex-noise';
-import type { HeightFn } from './terrain';
 import { TERRAIN_SIZE } from './terrain';
+import type { WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
 import { bakeImpostor, createImpostorMesh, textureReady } from './impostor';
 
@@ -59,14 +59,23 @@ const BUSHES: Variant[] = [
   { preset: 'Bush 1', seed: 505, height: 1.8 },
   { preset: 'Bush 2', seed: 606, height: 2.2 },
 ];
-// Inland: dense spruce like Valheim's Black Forest edge.
+// Forest biome: tall Black Forest spruce with thick, bare lower trunks and dense layered boughs.
 const spruce = (o: TreeOptions) => {
-  o.leaves.count = Math.round(o.leaves.count * 1.6);
-  o.leaves.size *= 1.2;
+  o.branch.start = { ...o.branch.start, 1: 0.34 };
+  o.branch.radius = { ...o.branch.radius, 0: o.branch.radius[0] * 1.35 };
+  o.branch.gnarliness = { ...o.branch.gnarliness, 0: 0.02 };
+  o.leaves.count = Math.round(o.leaves.count * 1.5);
+  o.leaves.size *= 1.25;
 };
+// Young spruce dotting the forest floor and its edges.
+const SAPLINGS: Variant[] = [
+  { preset: 'Pine Small', seed: 1001, height: 3.5, tweak: spruce },
+  { preset: 'Pine Small', seed: 1002, height: 5.5, tweak: spruce },
+];
 const FOREST: Variant[] = [
-  { preset: 'Pine Medium', seed: 707, height: 20, tweak: spruce },
-  { preset: 'Pine Large', seed: 808, height: 27, tweak: spruce },
+  { preset: 'Pine Medium', seed: 707, height: 24, tweak: spruce },
+  { preset: 'Pine Large', seed: 808, height: 31, tweak: spruce },
+  { preset: 'Pine Large', seed: 919, height: 27, tweak: spruce },
 ];
 
 /**
@@ -74,9 +83,20 @@ const FOREST: Variant[] = [
  * triangles. Past the last one, trees are drawn as baked impostor quads.
  */
 const LODS = [
-  { maxDist: 140, leafCount: 1, leafSize: 1, geo: 1 },
-  { maxDist: 280, leafCount: 0.5, leafSize: 1.6, geo: 0.5 },
+  { maxDist: 100, leafCount: 1, leafSize: 1, geo: 1 },
+  { maxDist: 240, leafCount: 0.5, leafSize: 1.6, geo: 0.5 },
 ];
+
+// Tree geometry and impostors depend only on the species, so they're built once and reused across worlds.
+const variantCache = new Map<string, BuiltVariant>();
+const impostorCache = new Map<string, ReturnType<typeof bakeImpostor>>();
+const variantKey = (v: Variant, lod: number) => `${v.preset}|${v.seed}|${lod}`;
+function getVariant(v: Variant, lod: number) {
+  const key = variantKey(v, lod);
+  let built = variantCache.get(key);
+  if (!built) variantCache.set(key, (built = buildVariant(v, lod)));
+  return built;
+}
 
 function buildVariant(v: Variant, lod: number): BuiltVariant {
   const tree = new Tree();
@@ -198,11 +218,16 @@ export class Trees {
   private projView = new THREE.Matrix4();
   private sphere = new THREE.Sphere();
 
-  constructor(height: HeightFn, private renderer: THREE.WebGLRenderer, seed = 4242) {
-    const all = [...MEADOW, ...BUSHES, ...FOREST];
+  private all = [...MEADOW, ...BUSHES, ...FOREST, ...SAPLINGS];
+
+  constructor(world: WorldFns, private renderer: THREE.WebGLRenderer) {
+    const { height, params } = world;
+    const seed = params.seed * 7 + 4242;
+    const all = this.all;
     const meadowIdx = MEADOW.map((_, i) => i);
     const bushIdx = BUSHES.map((_, i) => MEADOW.length + i);
     const forestIdx = FOREST.map((_, i) => MEADOW.length + BUSHES.length + i);
+    const saplingIdx = SAPLINGS.map((_, i) => MEADOW.length + BUSHES.length + FOREST.length + i);
 
     let s = seed;
     const rand = () => {
@@ -237,15 +262,24 @@ export class Trees {
         const slope = Math.hypot(height(x + 1, z) - y, height(x, z + 1) - y);
         if (slope > 0.6) continue;
 
-        // 0 on the open meadow, 1 deep in the inland forest.
-        const forest = THREE.MathUtils.smoothstep(-x, 230, 420) * (0.75 + 0.25 * noise(x * 0.01, z * 0.01));
-        // Broadleaf groves come in clumps.
-        const grove = THREE.MathUtils.smoothstep(noise(x * 0.0045, z * 0.0045) + 0.25 * noise(x * 0.03, z * 0.03), 0.35, 0.75);
+        if (world.river(x, z) > 0.2) continue;
+        // 0 on the open meadow, 1 deep in a forest.
+        const forest = world.forest(x, z);
+        // Broadleaf groves come in clumps on the meadow; a few lone trees anywhere.
+        const grove =
+          THREE.MathUtils.smoothstep(noise(x * 0.0045, z * 0.0045) + 0.25 * noise(x * 0.03, z * 0.03), 0.35, 0.75) * params.groves;
 
-        const r = rand();
-        if (r < forest * 0.08) add(pick(forestIdx), x, z, y, 0.5);
-        else if (r < forest * 0.08 + grove * 0.28 + 0.003) add(pick(meadowIdx), x, z, y, 0.7);
-        else if (r < forest * 0.08 + grove * 0.4 + 0.005) add(pick(bushIdx), x, z, y, 0.6);
+        // ~one spruce per 110 m² deep in the forest, with broadleaf and bushes mixed in at its edge.
+        const pSpruce = forest * 0.22;
+        const pBroadleaf = (1 - forest) * (grove * 0.28 + 0.003 * params.groves) + forest * (1 - forest) * 0.15;
+        const pBush = (1 - forest) * (grove * 0.12 + 0.002) + forest * 0.02;
+        // Saplings crowd the forest edge, where there's more light.
+        const pSapling = forest * 0.06 + forest * (1 - forest) * 0.3;
+        let r = rand();
+        if (r < pSpruce) add(pick(forestIdx), x, z, y, 0.45);
+        else if ((r -= pSpruce) < pBroadleaf) add(pick(meadowIdx), x, z, y, 0.7);
+        else if ((r -= pBroadleaf) < pBush) add(pick(bushIdx), x, z, y, 0.6);
+        else if ((r -= pBush) < pSapling) add(pick(saplingIdx), x, z, y, 0.6);
       }
     }
 
@@ -253,7 +287,7 @@ export class Trees {
     this.stats = all.map((v, vi) => ({ preset: v.preset, count: counts[vi], tris: [] as number[] }));
     all.forEach((v, vi) => {
       this.meshes[vi] = LODS.map((_, lod) => {
-        const b = buildVariant(v, lod);
+        const b = getVariant(v, lod);
         this.stats[vi].tris.push(((b.branches.index?.count ?? 0) + (b.leaves.index?.count ?? 0)) / 3);
         const pair = [
           new THREE.InstancedMesh(b.branches, b.barkMaterial, Math.max(counts[vi], 1)),
@@ -278,17 +312,29 @@ export class Trees {
     const materials = mid.flatMap(([b, l]) => [b.material, l.material] as THREE.MeshStandardMaterial[]);
     if (!materials.every(textureReady)) return;
     this.impostors = mid.map(([branches, leaves], vi) => {
-      const impostor = bakeImpostor(
-        this.renderer,
-        branches.geometry,
-        leaves.geometry,
-        branches.material as THREE.MeshStandardMaterial,
-        leaves.material as THREE.MeshStandardMaterial,
-      );
+      const key = variantKey(this.all[vi], LODS.length - 1);
+      let impostor = impostorCache.get(key);
+      if (!impostor) {
+        impostor = bakeImpostor(
+          this.renderer,
+          branches.geometry,
+          leaves.geometry,
+          branches.material as THREE.MeshStandardMaterial,
+          leaves.material as THREE.MeshStandardMaterial,
+        );
+        impostorCache.set(key, impostor);
+      }
       const mesh = createImpostorMesh(impostor, this.counts[vi]);
       this.group.add(mesh);
       return mesh;
     });
+  }
+
+  /** Frees this world's instance buffers; species geometry and impostors stay cached for the next world. */
+  dispose() {
+    for (const mesh of this.group.children as THREE.InstancedMesh[]) mesh.dispose();
+    for (const mesh of this.impostors) (mesh.material as THREE.Material).dispose();
+    this.group.clear();
   }
 
   /** Re-buckets every tree into a detail level by distance, skipping ones outside the (padded) view. */
