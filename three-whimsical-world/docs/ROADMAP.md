@@ -11,7 +11,12 @@ In priority order: items 1–6 are the user's requests for the next sessions, th
    - An always-visible FPS readout (corner overlay, smoothed over ~1 s, with frame time in ms), toggleable.
    - Measure each preset in a meadow and a forest at 1280×720 and note the numbers here; this browser has
      swung between ~60 and ~36 fps all session, so compare presets back to back, not against old numbers.
-2. **Tone down the sun glare** (user request: "looking at the sun blinds too much, seems way bright"):
+2. **Less fog and sun glare** (user request: "looking at the sun blinds too much, seems way bright", then
+   "just feels maybe too foggy?"):
+   - The whole scene may be too hazy, and the glare is partly haze lit by the sun. Haze density is the "haze"
+     slider (0.0008), ×7 in forests and ×(1 + 0.9·whimsy), so ×1.54 at the default whimsy; on top sit the
+     ground fog (0.35) and the volumetric in-scatter. Find a clearer default: distant hills and tree lines
+     should read with depth, not a milky veil, while forests keep their beams.
    - Looking toward the sun should feel warm and luminous, not white-out. Several effects stack in that direction:
      the sky's sun disc (`uSunDisc` 12 in `src/sky.ts`) and its glow lobes, the haze's forward glow toward the
      sun and the volumetric phase lobe (`src/post.ts`), bloom (threshold 6 against the 6.6 HDR cap), the whimsy
