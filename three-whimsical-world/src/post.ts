@@ -51,6 +51,8 @@ const AtmosphereShader = {
     uTintStrength: { value: 0.55 },
     /** Valheim's hue split: lilac-pink between the cool and warm haze, and orange (not white-gold) scattered sun. */
     uHueSplit: { value: 1 },
+    /** How far shade (out of the sun) shifts toward teal-blue. */
+    uShadeTint: { value: 0.6 },
     /** Gold glow of the haze between you and the sun. */
     uForwardGlow: { value: 1 },
     /** 0 in the open, 1 deep in a forest: thicker, more strongly tinted haze and stronger shafts. */
@@ -112,6 +114,7 @@ const AtmosphereShader = {
     uniform vec3 uTorchColor;
     uniform float uWhimsy;
     uniform float uHueSplit;
+    uniform float uShadeTint;
     uniform float uGroundFog;
     uniform float uGroundFogHeight;
     uniform float uGroundFogPatchy;
@@ -175,7 +178,8 @@ const AtmosphereShader = {
       // How much of the air along this ray sees the sun (1 without a shadow map). Used twice: shadowed air keeps
       // the haze darker, and lit air adds in-scattered sunlight, so the gaps between crowns become beams.
       float marchLen = marchLength(isSky, dist);
-      float vis = uVisOn > 0.5 && uVolumetric > 0.0 ? upsampleVis(vUv, marchLen) : 1.0;
+      vec2 visPair = uVisOn > 0.5 && uVolumetric > 0.0 ? upsampleVis(vUv, marchLen) : vec2(1.0);
+      float vis = visPair.x;
       float sunUpV = smoothstep(-0.05, 0.08, uSunDir.y);
       // Sunlight scattered by the haze has come a long way through it, so it reaches the eye orange rather than
       // white-gold: a saturated version of the sun's color (luma kept), deeper in forests' thick air.
@@ -190,6 +194,15 @@ const AtmosphereShader = {
       if (!isSky) {
         color *= mix(1.0, texture2D(tAO, vUv).r, uAOStrength * uAOOn);
         color *= shade;
+        // Valheim's shade is blue-teal: what the sun doesn't reach is lit by the sky alone. Shift its hue (luma
+        // kept) toward teal, more under a forest canopy. Cloud shadow counts as shade too.
+        float inShade = (1.0 - visPair.y * shade) * sunUpV;
+        float shadeK = uShadeTint * inShade * mix(1.0, 1.35, uForest);
+        color *= mix(vec3(1.0), vec3(0.74, 1.0, 1.45), clamp(shadeK, 0.0, 1.0));
+        // Our shade is close to black, where a hue shift barely shows; Valheim's is a luminous teal. Lift it with a
+        // little teal skylight, scaled by how bright the sky overhead is (so dusk shade stays dark).
+        float skyUp = dot(textureCube(tSky, vec3(0.0, 1.0, 0.0)).rgb, vec3(0.2126, 0.7152, 0.0722));
+        color += vec3(0.3, 0.75, 1.0) * skyUp * 0.04 * shadeK;
         // Exponential haze, thinner higher up (integrated along the ray).
         float h = max(camPos.y, 0.0);
         float dy = ray.y * dist;

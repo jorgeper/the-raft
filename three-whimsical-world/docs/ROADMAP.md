@@ -6,8 +6,10 @@ In priority order: the first items are the user's requests for the next sessions
 
 0. **User's queue (2026-11-01), in this order:**
    1. ~~River banks~~ (done, see Done).
-   2. Rest of the color pass: teal-blue shade on the forest floor (Valheim's), sunset glow over the sea bleaching
-      to white.
+   2. ~~Teal shade~~ (done, see Done). Still open: the sunset glow over the sea reads pastel white. Not the sky's
+      brightness near the sun (compressing it above a luma knee changed nothing visible); the pale bright haze
+      toward the sun is rendered pastel by tone mapping. Next try: hue-preserving shoulder for the haze, or a
+      saturation-keeping tweak to the Neutral curve's desaturation for warm hues.
    3. Flicker when moving, "specially in the grass" (suspect the TAA: jitter/reprojection on thin blades).
    4. Small ponds: mossy surroundings, rocks and moss patches, floating plants (lily pads, duckweed), frogs and
       fish peacefully hanging around.
@@ -135,6 +137,11 @@ In priority order: the first items are the user's requests for the next sessions
   visibility on two rings of taps around each pixel, and the beam scatter falls back to open air's thin glow as
   that turns lit. Washed views: 214 → 164-180; dark forests and the beam shots unchanged; same fps. Shots:
   `.playwright-mcp/bright2/` (`ab1.jpg`, `ab2.jpg`: before left, after right) and `.playwright-mcp/vol/g-nab.jpg`.
+- Teal-blue shade (Valheim's shaded forest floor is a luminous teal; ours was near-black green). The volumetric
+  march also records whether each visible surface sees the sun (one shadow lookup at the ray's end, carried
+  through the blur in B). The atmosphere pass shifts shaded surfaces' hue toward teal (luma kept) and lifts them
+  with a little teal skylight scaled by the sky's brightness overhead, more under a canopy; cloud shadow counts
+  as shade. Panel: Time > "teal shade" (default 0.6). Shots: `.playwright-mcp/hue/gs2.jpg` (off left, on right).
 - Rocky river banks (user report: "banks look super fake and simple", plus a glowing yellow sawtooth along the
   water). The sawtooth was beach sand colored by height per vertex: on a steep bank the thin sand band zig-zagged
   across the 2.5 m triangles. Now `riverEdge` (`src/worldgen.ts`) is a signed distance to a jagged water edge

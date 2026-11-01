@@ -88,6 +88,20 @@ const marchMaterial = new THREE.ShaderMaterial({
       return lit / wSum;
     }
 
+    // Whether the visible surface itself sees the sun (pulled a little toward the eye against acne). The
+    // atmosphere pass tints what's in shade toward the sky's blue, as Valheim's shade is.
+    float surfaceSun(vec3 p) {
+      vec4 sc = uShadowMatrix * vec4(p, 1.0);
+      vec3 c = sc.xyz / sc.w;
+      if (all(greaterThan(c, vec3(0.0))) && all(lessThan(c, vec3(1.0)))) return texture(tShadow, vec3(c.xy, c.z - 0.002));
+      #ifdef HAS_SHADOW_FAR
+        vec4 fc = uShadowMatrixFar * vec4(p, 1.0);
+        vec3 f = fc.xyz / fc.w;
+        if (all(greaterThan(f, vec3(0.0))) && all(lessThan(f, vec3(1.0)))) return texture(tShadowFar, vec3(f.xy, f.z - 0.0015));
+      #endif
+      return 1.0;
+    }
+
     void main() {
       float depth = texture2D(tDepth, vUv).x;
       bool isSky = depth >= 1.0;
@@ -98,7 +112,7 @@ const marchMaterial = new THREE.ShaderMaterial({
       vec3 ray = world - camPos;
       float dist = length(ray);
       float len = marchLength(isSky, dist);
-      gl_FragColor = vec4(sunVisibility(camPos, ray / dist, len), len, 0.0, 1.0);
+      gl_FragColor = vec4(sunVisibility(camPos, ray / dist, len), len, isSky ? 1.0 : surfaceSun(world - ray / dist * 0.3), 1.0);
     }
   `,
   depthTest: false,
@@ -118,16 +132,21 @@ const blurMaterial = new THREE.ShaderMaterial({
     uniform vec2 uDirection;
     varying vec2 vUv;
     void main() {
-      vec2 c = texture2D(tVis, vUv).rg;
-      float sum = c.r, wSum = 1.0;
+      vec3 c = texture2D(tVis, vUv).rgb;
+      // R (air) is blurred wide; B (the surface's own sun) only by its nearest neighbours, to keep shadow edges.
+      float sum = c.r, wSum = 1.0, sumB = c.b, wB = 1.0;
       for (int i = -4; i <= 4; i++) {
         if (i == 0) continue;
-        vec2 s = texture2D(tVis, vUv + uDirection * float(i)).rg;
-        float w = exp(-float(i * i) / 12.0) * exp(-abs(s.g - c.g) / (0.08 * c.g + 0.3));
+        vec3 s = texture2D(tVis, vUv + uDirection * float(i)).rgb;
+        float wd = exp(-abs(s.g - c.g) / (0.08 * c.g + 0.3));
+        float w = exp(-float(i * i) / 12.0) * wd;
         sum += s.r * w;
         wSum += w;
+        float w2 = exp(-float(i * i) / 1.5) * wd;
+        sumB += s.b * w2;
+        wB += w2;
       }
-      gl_FragColor = vec4(sum / wSum, c.g, 0.0, 1.0);
+      gl_FragColor = vec4(sum / wSum, c.g, sumB / wB, 1.0);
     }
   `,
   depthTest: false,
@@ -142,19 +161,21 @@ export const VIS_UPSAMPLE = /* glsl */ `
   uniform sampler2D tVis;
   uniform vec2 uVisTexel;
   ${MARCH_GLSL}
-  float upsampleVis(vec2 uv, float key) {
+  // x = the air's sun visibility, y = the visible surface's own.
+  vec2 upsampleVis(vec2 uv, float key) {
     vec2 pos = uv / uVisTexel - 0.5;
     vec2 base = floor(pos), f = pos - base;
-    float sum = 0.0, wSum = 0.0;
+    vec2 sum = vec2(0.0);
+    float wSum = 0.0;
     for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
-      vec2 s = texture2D(tVis, (base + vec2(i, j) + 0.5) * uVisTexel).rg;
+      vec3 s = texture2D(tVis, (base + vec2(i, j) + 0.5) * uVisTexel).rgb;
       float bw = (i == 0 ? 1.0 - f.x : f.x) * (j == 0 ? 1.0 - f.y : f.y);
       float w = (bw + 1e-3) * exp(-abs(s.g - key) / (0.05 * key + 0.15));
-      sum += s.r * w;
+      sum += s.rb * w;
       wSum += w;
     }
     // No texel at a matching depth (a thin twig): take the plain bilinear value.
-    return wSum > 1e-4 ? sum / wSum : texture2D(tVis, uv).r;
+    return wSum > 1e-4 ? sum / wSum : texture2D(tVis, uv).rb;
   }
   // How much of the air around this pixel sees the sun: two rings of taps across a good part of the screen.
   // Beams are the contrast between lit and shaded air; where nearly all of it is lit there are no beams to draw.
