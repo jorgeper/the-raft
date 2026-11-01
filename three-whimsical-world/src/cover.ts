@@ -7,40 +7,83 @@ import { addWind } from './wind';
 const CHUNK = 24;
 const GRID = 4;
 
-/** A fern: fronds arching out from the center, each a stem with paired leaflets that shrink toward the tip. */
+/** Draws one fern frond (stem plus tapering leaflets) into a transparent texture. */
+function createFrondTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+  const cx = 64;
+  ctx.strokeStyle = '#6d8a3a';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, 512);
+  ctx.lineTo(cx, 8);
+  ctx.stroke();
+  // Leaflets: pairs angled toward the tip, longest a third of the way up, shrinking to the tip.
+  for (let y = 500; y > 14; y -= 13) {
+    const t = 1 - y / 512;
+    const len = 58 * Math.sin(Math.PI * Math.min(t * 1.25 + 0.12, 1)) * (1 - t * 0.35);
+    const shade = 150 + Math.round(70 * t);
+    ctx.fillStyle = `rgb(${Math.round(shade * 0.45)}, ${shade}, ${Math.round(shade * 0.32)})`;
+    for (const dir of [-1, 1]) {
+      ctx.save();
+      ctx.translate(cx, y);
+      ctx.rotate(dir * (Math.PI / 2 - 0.45));
+      ctx.beginPath();
+      ctx.ellipse(0, -len / 2, 6.5, len / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
+/** A fern: textured fronds arching out from the center and drooping at the tips. */
 function createFernGeometry() {
   const positions: number[] = [];
+  const uvs: number[] = [];
   const colors: number[] = [];
-  const fronds = 8, segments = 9;
-  const dark = new THREE.Color(0.22, 0.3, 0.14), light = new THREE.Color(1, 1.05, 0.85), c = new THREE.Color();
-  const along = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-  const point = (theta: number, t: number, lift: number) =>
-    new THREE.Vector3(Math.cos(theta) * t, Math.sin(Math.PI * t * 0.85) * 0.45 * lift + 0.05, Math.sin(theta) * t);
+  const indices: number[] = [];
+  const fronds = 9, segments = 7;
   for (let f = 0; f < fronds; f++) {
-    const theta = (f / fronds) * Math.PI * 2 + (f % 2) * 0.3;
-    const lift = 0.7 + (f % 3) * 0.2;
-    for (let s = 0; s < segments; s++) {
-      const t0 = s / segments, t1 = (s + 1) / segments;
-      const a = point(theta, t0, lift), b = point(theta, t1, lift);
-      along.subVectors(b, a).normalize();
-      side.crossVectors(along, up).normalize();
-      const leaflet = 0.16 * (1 - t0 * 0.85);
-      for (const dir of [1, -1]) {
-        // Leaflets angle forward along the frond, with a slight droop.
-        const tip = a.clone().addScaledVector(side, dir * leaflet).addScaledVector(along, leaflet * 0.6).add(new THREE.Vector3(0, -0.03, 0));
-        positions.push(a.x, a.y, a.z, b.x, b.y, b.z, tip.x, tip.y, tip.z);
-        for (const t of [t0, t1, t0 + 0.5 / segments]) {
-          c.copy(dark).lerp(light, Math.min(t * 1.4, 1));
-          colors.push(c.r, c.g, c.b);
-        }
+    const theta = (f / fronds) * Math.PI * 2 + (f % 3) * 0.25;
+    const length = 0.85 + (f % 4) * 0.12;
+    const lift = 0.55 + (f % 3) * 0.15;
+    const dir = new THREE.Vector3(Math.cos(theta), 0, Math.sin(theta));
+    const side = new THREE.Vector3(-dir.z, 0, dir.x);
+    const base = positions.length / 3;
+    for (let s = 0; s <= segments; s++) {
+      const t = s / segments;
+      // Rises, then arches over and droops.
+      const centre = dir.clone().multiplyScalar(t * length);
+      centre.y = Math.sin(Math.PI * t * 0.8) * lift * length * 0.6 + 0.03;
+      const halfWidth = 0.17 * length;
+      for (const k of [-1, 1]) {
+        const p = centre.clone().addScaledVector(side, k * halfWidth);
+        // Leaflets tilt down at the edges a little, like a real frond.
+        p.y -= 0.04 * t;
+        positions.push(p.x, p.y, p.z);
+        uvs.push(k < 0 ? 0 : 1, t);
+        const shade = 0.4 + 0.6 * Math.min(t * 1.5, 1);
+        colors.push(shade, shade, shade);
+      }
+      if (s < segments) {
+        const a = base + s * 2;
+        indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
       }
     }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  // Soft, mostly-up normals so the fern shades as a clump rather than sparkling triangles.
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(positions.length / 3).fill([0.15, 1, 0.1]).flat(), 3));
+  geo.setIndex(indices);
+  // Soft, mostly-up normals so the fern shades as a clump.
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(positions.length / 3).fill([0.1, 1, 0.1]).flat(), 3));
   geo.normalizeNormals();
   return geo;
 }
@@ -170,9 +213,18 @@ export class GroundCover {
 
     // Ferns carpet the forest floor and spill a little into the meadow edges.
     const fernGeo = createFernGeometry();
-    const fernMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.8, specularIntensity: 0.15 });
+    const frondTexture = createFrondTexture();
+    const fernMat = new THREE.MeshPhysicalMaterial({
+      map: frondTexture,
+      vertexColors: true,
+      alphaTest: 0.5,
+      alphaToCoverage: true,
+      side: THREE.DoubleSide,
+      roughness: 0.75,
+      specularIntensity: 0.15,
+    });
     addWind(fernMat, `p += windOffset(root, position.y * 0.25) * 0.5;`);
-    const fernTints = ['#3f6a1e', '#4d7a22', '#365c1c', '#5a7d2a'].map((c) => new THREE.Color(c));
+    const fernTints = ['#c8e0b0', '#b0d090', '#a8c890', '#d8e8a8'].map((c) => new THREE.Color(c));
     this.layers.push(
       new ScatterLayer(
         world,
@@ -238,7 +290,7 @@ export class GroundCover {
       ),
     );
     for (const layer of this.layers) this.group.add(layer.group);
-    this.disposables.push(fernGeo, fernMat, flowerGeo, flowerMat);
+    this.disposables.push(fernGeo, fernMat, frondTexture, flowerGeo, flowerMat);
 
     this.addLogsAndStumps(world);
   }

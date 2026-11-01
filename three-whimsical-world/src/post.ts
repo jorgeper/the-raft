@@ -43,6 +43,13 @@ const AtmosphereShader = {
     uTintStrength: { value: 0.55 },
     /** 0 in the open, 1 deep in a forest: thicker, more strongly tinted haze and stronger shafts. */
     uForest: { value: 0 },
+    // Volumetric sunlight: march each view ray through the sun's shadow map.
+    tShadow: { value: null as THREE.Texture | null },
+    uShadowMatrix: { value: new THREE.Matrix4() },
+    uVolumetric: { value: 1 },
+    // Torch glow scattered by the haze around the flame.
+    uTorchPos: { value: new THREE.Vector3() },
+    uTorchColor: { value: new THREE.Color(0, 0, 0) },
   },
   vertexShader: fullscreenVertex,
   fragmentShader: /* glsl */ `
@@ -64,7 +71,31 @@ const AtmosphereShader = {
     uniform vec3 uFogWarm;
     uniform float uTintStrength;
     uniform float uForest;
+    uniform sampler2DShadow tShadow;
+    uniform mat4 uShadowMatrix;
+    uniform float uVolumetric;
+    uniform vec3 uTorchPos;
+    uniform vec3 uTorchColor;
     varying vec2 vUv;
+
+    // Fraction of the first stretch of the ray that sees the sun (1 = no shadow casters along it).
+    // Compiled only once the sun's shadow map exists (a shadow sampler can't be bound to an empty texture).
+    #ifdef HAS_SHADOW
+    float sunVisibility(vec3 origin, vec3 dir, float len) {
+      const int STEPS = 28;
+      float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+      float stepLen = len / float(STEPS);
+      float lit = 0.0;
+      for (int i = 0; i < STEPS; i++) {
+        vec3 p = origin + dir * (float(i) + jitter) * stepLen;
+        vec4 sc = uShadowMatrix * vec4(p, 1.0);
+        vec3 c = sc.xyz / sc.w;
+        bool inside = all(greaterThan(c, vec3(0.0))) && all(lessThan(c, vec3(1.0)));
+        lit += inside ? texture(tShadow, vec3(c.xy, c.z - 0.0015)) : 1.0;
+      }
+      return lit / float(STEPS);
+    }
+    #endif
 
     vec3 worldFromDepth(vec2 uv, float depth) {
       vec4 ndc = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -115,6 +146,33 @@ const AtmosphereShader = {
         color = mix(color, fogColor, fog);
       }
 
+      // Volumetric sunlight: haze in sunlit gaps between shadows glows, forming beams through the canopy.
+      #ifdef HAS_SHADOW
+      if (uVolumetric > 0.0) {
+        float marchLen = min(isSky ? 160.0 : dist, 160.0);
+        float vis = sunVisibility(camPos, ray, marchLen);
+        float cosT = dot(ray, uSunDir);
+        // Henyey-Greenstein forward scattering: brightest looking toward the sun.
+        float g = 0.65;
+        // Capped so staring into the sun doesn't flood the frame; the sky already has its own glow there.
+        float phase = min((1.0 - g * g) / (4.0 * 3.14159 * pow(1.0 + g * g - 2.0 * g * cosT, 1.5)), 0.5);
+        float density = mix(0.0015, 0.018, uForest);
+        float scatter = (1.0 - exp(-density * marchLen)) * phase * 3.0;
+        // Only the contrast between lit and shadowed air reads as beams; cap the flat part so open meadows stay clear.
+        color += uSunColor * scatter * vis * uVolumetric;
+      }
+      #endif
+
+      // Torch: analytic in-scattering of a point light in uniform haze (closest-approach formula).
+      if (dot(uTorchColor, uTorchColor) > 0.0) {
+        float rayLen = isSky ? 60.0 : min(dist, 60.0);
+        vec3 toLight = uTorchPos - camPos;
+        float tc = dot(toLight, ray);
+        float h = max(length(toLight - ray * tc), 0.05);
+        float glowAmt = (atan((rayLen - tc) / h) - atan(-tc / h)) / h;
+        color += uTorchColor * glowAmt * 0.004 * (1.0 + 1.5 * uForest);
+      }
+
       // Light shafts: march from this pixel toward the sun, collecting unblocked sky.
       if (uSunFacing > 0.0 && uShaftStrength > 0.0) {
         const int SAMPLES = 48;
@@ -133,7 +191,7 @@ const AtmosphereShader = {
 
       // The sky's sun disc is orders of magnitude brighter than anything else; cap it so bloom
       // stays a glow instead of a full-screen veil. Tone mapping saturates these values anyway.
-      gl_FragColor = vec4(min(color, vec3(8.0)), 1.0);
+      gl_FragColor = vec4(min(color, vec3(6.6)), 1.0);
     }
   `,
 };
@@ -173,13 +231,23 @@ const GradeShader = {
 
 /** ShaderPass that also hands the scene depth buffer to its shader. */
 class DepthShaderPass extends ShaderPass {
+  /** Runs just before drawing, after the scene (and its shadow maps) has rendered this frame. */
+  beforeRender?: () => void;
+
   render(renderer: THREE.WebGLRenderer, writeBuffer: WebGLRenderTarget, readBuffer: WebGLRenderTarget, deltaTime: number, maskActive: boolean) {
     this.uniforms.tDepth.value = readBuffer.depthTexture;
+    this.beforeRender?.();
     super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
   }
 }
 
-export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, sky: THREE.Texture) {
+export function createPost(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  camera: THREE.PerspectiveCamera,
+  sky: THREE.Texture,
+  sun: THREE.DirectionalLight,
+) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
     type: THREE.HalfFloatType,
@@ -197,10 +265,20 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   const atmosphere = new DepthShaderPass(AtmosphereShader);
   atmosphere.uniforms.tSky.value = sky;
   atmosphere.uniforms.tAO.value = ao.texture;
+  // The sun's shadow map only exists after the first scene render, so hook it up from inside the pass.
+  atmosphere.beforeRender = () => {
+    const depth = sun.shadow.map?.depthTexture;
+    if (depth && atmosphere.uniforms.tShadow.value !== depth) {
+      atmosphere.uniforms.tShadow.value = depth;
+      atmosphere.material.defines.HAS_SHADOW = '';
+      atmosphere.material.needsUpdate = true;
+    }
+    atmosphere.uniforms.uShadowMatrix.value.copy(sun.shadow.matrix);
+  };
   composer.addPass(atmosphere);
   // Small, tight bloom on the brightest highlights only; a wide radius lets the sky near the sun
   // spill a milky veil over the whole frame.
-  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.2, 0.35, 6);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.06, 0.35, 6);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GradeShader);

@@ -7,6 +7,7 @@ import { wind, sunLight } from './wind';
 import { createPost } from './post';
 import { World, MAX_WATER_DEPTH } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
+import { Torch } from './torch';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -95,7 +96,17 @@ let world = new World(params, renderer);
 scene.add(world.group);
 water.uniforms.uDepth.value = world.depthTexture;
 
-const post = createPost(renderer, scene, camera, cubeTarget.texture);
+const post = createPost(renderer, scene, camera, cubeTarget.texture, sun);
+
+// Torch (T): the flame model rides on the camera, its lights live in the world.
+const torch = new Torch();
+scene.add(camera);
+camera.add(torch.object);
+scene.add(torch.spot, torch.spot.target, torch.glow);
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyT') torch.toggle();
+});
+const volumetric = { value: 1 };
 
 // --- Time of day and atmosphere
 const settings = {
@@ -153,7 +164,8 @@ function updateSun() {
   lightDir.copy(daylight > 0.05 ? sunDir : moonDir);
   lightColor.copy(moonColor).multiplyScalar(0.6 * night).lerp(sunColor, daylight);
   sun.color.copy(lightColor);
-  sun.intensity = daylight > 0.05 ? 3.2 * daylight : 2.2;
+  // Strong sun against modest sky fill, so shadows and light beams have real contrast.
+  sun.intensity = daylight > 0.05 ? 5 * daylight : 2.2;
   nightFill.intensity = 1.4 * night;
   (stars.material as THREE.PointsMaterial).opacity = night;
   nightDomeMaterial.opacity = night;
@@ -162,12 +174,13 @@ function updateSun() {
   water.uniforms.uSunDir.value.copy(lightDir);
   water.uniforms.uSunColor.value.copy(lightColor);
   post.atmosphere.uShaftStrength.value = shaftStrength.value * daylight;
+  post.atmosphere.uVolumetric.value = volumetric.value * daylight;
 
   cubeCamera.update(renderer, skyScene);
   envTarget?.dispose();
   envTarget = pmrem.fromScene(skyScene);
   scene.environment = envTarget.texture;
-  scene.environmentIntensity = 0.45;
+  scene.environmentIntensity = 0.25;
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
 updateSun();
@@ -203,12 +216,14 @@ timeGui.add(settings, 'clouds', 0, 1, 0.01).onChange(updateSun);
 timeGui.add(settings, 'fogDensity', 0, 0.003, 0.0001).name('haze').onChange((v: number) => (post.atmosphere.uFogDensity.value = v));
 timeGui.add(post.atmosphere.uTintStrength, 'value', 0, 1, 0.01).name('cyan / gold tint');
 timeGui.add(wind.uWindStrength, 'value', 0, 3, 0.01).name('wind');
+timeGui.add(torch, 'on').name('torch (T)').listen();
 
 const postGui = gui.addFolder('Effects');
 postGui.add(settings, 'exposure', 0.1, 2, 0.01).onChange(updateSun);
 postGui.add(settings, 'turbidity', 0, 20, 0.1).onChange(updateSun);
 postGui.add(settings, 'rayleigh', 0, 4, 0.01).onChange(updateSun);
-postGui.add(shaftStrength, 'value', 0, 3, 0.01).name('light shafts').onChange(updateSun);
+postGui.add(volumetric, 'value', 0, 3, 0.01).name('volumetric light').onChange(updateSun);
+postGui.add(shaftStrength, 'value', 0, 3, 0.01).name('sun glare shafts').onChange(updateSun);
 postGui.add(post.atmosphere.uAOStrength, 'value', 0, 1, 0.01).name('ambient occlusion');
 postGui.add(post.ao.uRadius, 'value', 0.2, 5, 0.05).name('AO radius');
 postGui.add(post.ao.uIntensity, 'value', 0, 4, 0.05).name('AO intensity');
@@ -347,6 +362,10 @@ renderer.setAnimationLoop(() => {
   sun.position.copy(camera.position).addScaledVector(lightDir, 500);
   stars.position.copy(camera.position);
   nightDome.position.copy(camera.position);
+
+  torch.update(camera, timer.getElapsed(), dt);
+  post.atmosphere.uTorchPos.value.copy(torch.flameWorld);
+  post.atmosphere.uTorchColor.value.copy(torch.flameColor);
 
   sunLight.uSunDirView.value.copy(lightDir).transformDirection(camera.matrixWorldInverse);
   sunLight.uSunColor.value.copy(lightColor);
