@@ -137,6 +137,13 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Vibes (user, 2026-11-01): a "🎨 vibe" dropdown at the top of the panel, with a strength slider and `?vibe=name`.
+  Whimsical (the tuned cyan-and-gold look) is the default and switches the vibe pass off, so it stays pixel for
+  pixel as it was. The others are one display-space pass after the grade (`src/vibes.ts`): Amethyst (purple
+  monochrome), Honey hour (warm gold haze), Frostbound (cold silver blue), Storybook (Kuwahara brush strokes, banded
+  light, ink silhouettes from the depth buffer, paper), Ember (red sky at Ragnarök), Old film (faded teal blacks,
+  red halation, grain) and Otherworld (hues turned: purple woods under a lime-gold sky). About 1 ms at most.
+
 - Changing wind (user, 2026-11-01): with "wind changes by itself" on (the default), `WindDrift` in `src/wind.ts`
   moves the wind through spells around the slider's strength: still (0.1-0.35×), breezy, blustery and now and then
   a gale (2.5-3×), easing between them over 10-30 s, with rain bringing at least a fresh blow. Grass, trees, seed

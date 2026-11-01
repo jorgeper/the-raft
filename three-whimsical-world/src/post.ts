@@ -4,6 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { VibeShader, applyVibe, type VibeName } from './vibes';
 import type { WebGLRenderTarget } from 'three';
 import { AOPass } from './ao';
 import { CLOUD_NOISE, CLOUD_HEIGHT } from './sky';
@@ -610,6 +611,10 @@ export function createPost(
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
+  // The chosen vibe's grade on top (off for the whimsical look, so that stays exactly as tuned).
+  const vibe = new ShaderPass(VibeShader);
+  vibe.enabled = false;
+  composer.addPass(vibe);
 
   let whimsy = 0, glowAllowed = true, beamsAllowed = true, noiseFrame = 0;
   const applyGlow = () => {
@@ -627,6 +632,11 @@ export function createPost(
     /** The scene's depth (land, trees, grass; not the water), for overlay materials that must hide behind geometry. */
     sceneDepth: waterPass ? waterPass.depth : target.depthTexture!,
     grade: grade.uniforms,
+    vibe: vibe.uniforms,
+    /** Switches to a precanned color mood (vibes.ts); 'whimsical' is the tuned look with the vibe pass off. */
+    setVibe(name: VibeName) {
+      vibe.enabled = applyVibe(vibe.uniforms as typeof VibeShader.uniforms, name);
+    },
     taa,
     motion,
     /** The frame's metered brightness (geometric mean of HDR luminance, before exposure). */
@@ -685,6 +695,12 @@ export function createPost(
       camera.getWorldDirection(camDir);
       // Fade shafts out as the sun leaves the view instead of popping.
       u.uSunFacing.value = THREE.MathUtils.smoothstep(camDir.dot(sunDir), 0.0, 0.5);
+      if (vibe.enabled) {
+        vibe.uniforms.tDepth.value = waterPass ? waterPass.depth : target.depthTexture!;
+        vibe.uniforms.uNear.value = camera.near;
+        vibe.uniforms.uFar.value = camera.far;
+        vibe.uniforms.uTime.value = performance.now() / 1000;
+      }
       composer.render();
       taa.endFrame();
     },

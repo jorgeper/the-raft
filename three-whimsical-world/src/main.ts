@@ -3,6 +3,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import GUI from 'lil-gui';
 import { createWater, addRipple } from './water';
 import { wind, sunLight, windControl, WindDrift } from './wind';
+import { VIBES, type VibeName } from './vibes';
 import { createPost } from './post';
 import { World } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
@@ -196,6 +197,10 @@ const settings = {
   /** Master switch for seeing in the dark: off restores plain night (no eye adaptation, shadow lift or extra moonlight). */
   nightVisionOn: true,
   fogDensity: 0.00045,
+  /** The world's color mood (vibes.ts); 'whimsical' is the tuned cyan-and-gold look. */
+  vibe: 'whimsical' as VibeName,
+  /** How far the vibe goes: 0 = the whimsical look, 1 = as designed, 1.5 = pushed. */
+  vibeStrength: 1,
   /** Valheim's dreamy side: two-tone haze, stronger beams, lens flares, soft glow, floating motes and fireflies. */
   whimsy: 0.9,
   /** Pollen and dust motes by day, and seed fluff on the wind (fireflies at night stay). */
@@ -321,7 +326,7 @@ function updateSun() {
   scene.environmentIntensity = 0.34 * (1 + 0.6 * overcast);
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
-persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'nightVisionOn', 'fogDensity', 'whimsy', 'pollen', 'groundFog', 'groundFogHeight', 'groundFogPatchy', 'weather', 'aurora', 'moonPhase']);
+persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'nightVisionOn', 'fogDensity', 'whimsy', 'pollen', 'groundFog', 'groundFogHeight', 'groundFogPatchy', 'weather', 'aurora', 'moonPhase', 'vibe', 'vibeStrength']);
 weather.mode = settings.weather;
 applyNightVision();
 post.setWhimsy(settings.whimsy);
@@ -355,6 +360,14 @@ updateSun();
 
 // --- Controls panel
 const gui = new GUI({ title: 'Meadows' });
+const vibeOptions = Object.fromEntries(Object.entries(VIBES).map(([key, v]) => [v.label, key]));
+const applyVibe = () => {
+  if (!(settings.vibe in VIBES)) settings.vibe = 'whimsical';
+  post.setVibe(settings.vibe);
+  post.vibe.uStrength.value = settings.vibeStrength;
+};
+gui.add(settings, 'vibe', vibeOptions).name('🎨 vibe').onChange(applyVibe);
+gui.add(settings, 'vibeStrength', 0, 1.5, 0.01).name('vibe strength').onChange(applyVibe);
 gui.add(settings, 'whimsy', 0, 1.5, 0.01).name('✨ whimsy').onChange((v: number) => post.setWhimsy(v));
 gui.add(settings, 'pollen').name('pollen & seed fluff');
 
@@ -676,6 +689,9 @@ if (query.has('weather')) {
   weather.snow = weather.snowCover = q === 'snow' ? 1 : 0;
   updateSun();
 }
+// ?vibe=name picks a color mood (see VIBES in vibes.ts).
+if (query.has('vibe')) settings.vibe = query.get('vibe') as VibeName;
+applyVibe();
 // ?wind=strength holds the wind steady at that strength (for screenshots).
 if (query.has('wind')) {
   windControl.value = Number(query.get('wind'));
@@ -849,6 +865,7 @@ function resetToDefaults() {
   applyQuality(true);
   post.atmosphere.uFogDensity.value = settings.fogDensity;
   post.setWhimsy(settings.whimsy);
+  applyVibe();
   applyGroundFog();
   controls.pointerSpeed = movement.sensitivity;
   verticalSpeed = 0;
