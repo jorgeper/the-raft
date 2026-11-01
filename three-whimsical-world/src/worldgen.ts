@@ -64,6 +64,8 @@ export interface WorldFns {
   landmarks: Landmark[];
   /** 1 where a landmark keeps the ground clear of trees and boulders, 0 elsewhere. */
   clearing: FieldFn;
+  /** 0..1 heath: drifts of heather on open, higher ground, where the grass grows thin and short. */
+  heath: FieldFn;
 }
 
 export interface Landmark {
@@ -348,5 +350,14 @@ export function createWorld(params: WorldParams): WorldFns {
     return 0;
   };
 
-  return { params, height, forest, dirt, river: riverField, riverEdge, riverCenters, ponds, pondEdge, landmarks, clearing };
+  // Heath drifts, on their own noise so nothing else moves.
+  const heathNoise = createNoise2D(mulberry32(params.seed * 71 + 5));
+  const heath: FieldFn = (x, z) => {
+    const drift = smoothstep(0.2, 0.55, heathNoise(x * 0.008, z * 0.008) + 0.2 * heathNoise(x * 0.04, z * 0.04));
+    if (drift <= 0) return 0;
+    const h = baseHeight(x, z);
+    return drift * smoothstep(4, 7, h) * (0.2 + 0.8 * smoothstep(8, 22, h)) * (1 - smoothstep(0.12, 0.35, forest(x, z)));
+  };
+
+  return { params, height, forest, dirt, river: riverField, riverEdge, riverCenters, ponds, pondEdge, landmarks, clearing, heath };
 }

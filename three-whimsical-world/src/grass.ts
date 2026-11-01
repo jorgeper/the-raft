@@ -7,6 +7,9 @@ import { weatherUniforms } from './weather';
 import { quality } from './quality';
 
 const CHUNK = 24;
+
+/** Blade color on the heath (see `WorldFns.heath`). */
+const HEATH_TINT = new THREE.Color('#7a4c68');
 /** Default reach; the quality preset sets the live one (`quality.grassRadius`). */
 export const GRASS_RADIUS = 120;
 // Many thin blades rather than fewer wide ones: Valheim's meadow reads as a full, soft field.
@@ -253,13 +256,14 @@ export class Grass {
     const n = CHUNK / GRID + 1;
     const heights = new Float32Array(n * n);
     const forests = new Float32Array(n * n);
-    const dirts = new Float32Array(n * n);
+    const dirts = new Float32Array(n * n), heaths = new Float32Array(n * n);
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
         const gx = x0 + i * GRID, gz = z0 + j * GRID;
         heights[j * n + i] = this.world.height(gx, gz);
         forests[j * n + i] = this.world.forest(gx, gz);
         dirts[j * n + i] = this.world.dirt(gx, gz);
+        heaths[j * n + i] = this.world.heath(gx, gz);
       }
     }
     const bilerp = (a: Float32Array, gx: number, gz: number, fx: number, fz: number) =>
@@ -289,14 +293,16 @@ export class Grass {
       if (rand() > coverageFrom(h, slope, forest, bilerp(dirts, gx, gz, fx, fz))) continue;
       if (nearPond && this.world.pondEdge(x, z) < 0.4 + rand() * 1.6) continue;
       const dry = 0.5 + 0.5 * this.colorNoise(x * 0.012, z * 0.012);
-      // Sparse, short patches where it's dry.
+      // Sparse, short patches where it's dry, and on the heath, where heather takes over.
       if (dry > 0.78 && rand() < (dry - 0.78) * 2.5) continue;
+      const heath = bilerp(heaths, gx, gz, fx, fz);
+      if (heath > 0 && rand() < heath * 0.75) continue;
 
       const fromCenter = clumpAt(x, z, clump);
       // Blades fan outward from their clump center and are tallest in the middle.
       const outward = Math.atan2(x - clump.x, z - clump.z);
       // Knee- to thigh-high on the character, like Valheim's meadows.
-      const bladeHeight = 0.78 * (0.45 + rand() * 0.45) * clump.height * (1.2 - 0.45 * fromCenter / CLUMP_SIZE) * (1.15 - 0.4 * dry) * (1 - 0.35 * forest);
+      const bladeHeight = 0.78 * (0.45 + rand() * 0.45) * clump.height * (1.2 - 0.45 * fromCenter / CLUMP_SIZE) * (1.15 - 0.4 * dry) * (1 - 0.35 * forest) * (1 - 0.6 * heath);
       q.setFromAxisAngle(up, outward + (rand() - 0.5) * 1.2);
       s.set(0.75 + rand() * 0.6, bladeHeight, clump.lean * (0.6 + rand() * 0.8));
       p.set(x, h - 0.05, z);
@@ -304,6 +310,8 @@ export class Grass {
 
       c.copy(this.deep).lerp(this.lush, clump.tint).lerp(this.dry, Math.min(dry * dry * 0.85 + rand() * 0.15, 1));
       c.lerp(this.shade, forest);
+      // On the heath the sward is half heather: a muted mauve-brown that reads as a drift from afar.
+      if (heath > 0) c.lerp(HEATH_TINT, heath * 0.5);
       c.multiplyScalar(0.8 + rand() * 0.35);
       mesh.setColorAt(placed, c);
       placed++;

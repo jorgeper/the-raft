@@ -272,6 +272,40 @@ export function createSpikeFlowerGeometry() {
   return fromTriangles(out.p, out.c, out.h, 0.5);
 }
 
+/**
+ * Heather (ling): a low cushion of woody sprigs leaning out from the center, needle-leaved below and crowded with
+ * tiny bell florets along the tips, which take the instance color (mauve to purple).
+ */
+export function createHeatherGeometry() {
+  const out = { p: [] as number[], c: [] as number[], h: [] as number[] };
+  const rand = seeded(17);
+  const wood = new THREE.Color('#4a3a26'), leaf = new THREE.Color('#2e4420'), bloom = new THREE.Color('#ffffff');
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2 + rand() * 0.5, r = rand() * 0.1;
+    const base = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+    const lean = 0.35 + rand() * 0.45, height = 0.22 + rand() * 0.24;
+    const top = base.clone().add(new THREE.Vector3(Math.cos(a) * lean * height, height, Math.sin(a) * lean * height));
+    stalk(out, base, top, 0.005, wood);
+    for (let i = 0; i < 20; i++) {
+      const t = 0.12 + (i / 20) * 0.88;
+      const c = base.clone().lerp(top, t);
+      const fa = i * 2.4 + rand() * 0.5;
+      const dir = new THREE.Vector3(Math.cos(fa), 0.3, Math.sin(fa)).normalize();
+      const flower = t > 0.42;
+      // Bells crowd the upper sprig, biggest midway, small buds at the tip.
+      const s = flower ? 0.03 * (1.15 - 0.55 * ((t - 0.42) / 0.58) ** 2) : 0.028;
+      const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(s * 0.55);
+      const tip = c.clone().addScaledVector(dir, s);
+      if (flower) tip.y -= s * 0.45; // the bells hang a little
+      out.p.push(...c.clone().add(side).toArray(), ...c.clone().sub(side).toArray(), ...tip.toArray());
+      const shade = flower ? 0.7 + 0.3 * rand() : 0.8 + 0.2 * rand();
+      const col = flower ? bloom : leaf;
+      for (let j = 0; j < 3; j++) out.c.push(col.r * shade, col.g * shade, col.b * shade), out.h.push(flower ? 1 : 0);
+    }
+  }
+  return fromTriangles(out.p, out.c, out.h, 0.7);
+}
+
 /** Yarrow / meadowsweet: stems with flat umbrella heads of tiny florets (cream, white, pale pink). */
 export function createUmbelGeometry() {
   const out = { p: [] as number[], c: [] as number[], h: [] as number[] };

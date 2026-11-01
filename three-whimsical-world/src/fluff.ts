@@ -50,7 +50,7 @@ const vertexShader = /* glsl */ `
       hidden = step(scene, ndc.z * 0.5 + 0.5 - 1e-5);
     }
     float edge = 1.0 - smoothstep(${f(BOX * 0.3)}, ${f(BOX * 0.5)}, length(p.xz - uCam.xz));
-    float near = smoothstep(0.3, 1.2, dist);
+    float near = smoothstep(1.0, 2.5, dist);
 
     // White filaments: lit by the sky all round, by the sun, and glowing when backlit.
     vec3 toFluff = normalize(p - uCam);

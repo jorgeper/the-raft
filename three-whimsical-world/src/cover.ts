@@ -5,7 +5,7 @@ import { mulberry32, smoothstep, type WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
 import { plants } from './plants';
 import { quality } from './quality';
-import { createMossGeometry, createLitterGeometry, createLitterTexture, createMushroomGeometry, createSpikeFlowerGeometry, createUmbelGeometry, createSeedGrassGeometry, createDandelionClockGeometry, createFluffTexture, createReedGeometry, createShrubGeometry, createShrubLeafTexture, headColored } from './undergrowth';
+import { createMossGeometry, createLitterGeometry, createLitterTexture, createMushroomGeometry, createSpikeFlowerGeometry, createHeatherGeometry, createUmbelGeometry, createSeedGrassGeometry, createDandelionClockGeometry, createFluffTexture, createReedGeometry, createShrubGeometry, createShrubLeafTexture, headColored } from './undergrowth';
 
 const CHUNK = 24;
 const GRID = 4;
@@ -611,6 +611,24 @@ export class GroundCover {
         },
       },
       24,
+    );
+
+    // Heather: low purple cushions in broad drifts on the open, higher ground.
+    const mauves = ['#b45aa0', '#9c4a9a', '#c873b0', '#8a4486', '#a8569c'].map((c) => new THREE.Color(c));
+    const heatherGeo = createHeatherGeometry();
+    layer(
+      {
+        radius: 90,
+        perChunk: 900,
+        geometry: heatherGeo,
+        material: make(heatherGeo, 0.3),
+        place: (x, z, h, forest, rand, color) => {
+          if (rand() > world.heath(x, z) * 0.95) return 0;
+          color.copy(mauves[Math.floor(rand() * mauves.length)]);
+          return 1.1 + rand() * 0.8;
+        },
+      },
+      31,
     );
 
     // Yarrow and meadowsweet: flat white-to-pink heads scattered widely, in looser drifts.
