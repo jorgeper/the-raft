@@ -17,6 +17,7 @@ In priority order: the first items are the user's requests for the next sessions
       floor is shaded with beams through the gaps; `.playwright-mcp/wild/can0.jpg`. No change.)
    8. ~~Concave rocks and cliff strata~~ (done, see Done).
    9. ~~Snow~~ (done, see Done).
+   10. ~~Deer grazing steps and ear flicks~~ (done, see Done).
 
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
@@ -76,7 +77,7 @@ In priority order: the first items are the user's requests for the next sessions
      graze, look up, wander and bolt into the trees when you come within 26 m. The model was built in Blender from
      metaballs (no skeleton); the vertex shader swings the legs and lowers the neck from a per-instance pose, and
      the shadow pass uses the same pose. Shots: `.playwright-mcp/deer/`. Since rigged and animated, with fawns
-     and staring (see Done); fawns are spotted now. Next: grazing steps, ears flicking on their own bones.
+     and staring (see Done); fawns are spotted now; grazing steps and ear flicks since (see Done).
    - Forest floor landed: velvety moss cushions (speckled, bump-shaded) in damp patches, and litter cards of fallen
      leaves and spruce needles, thickest at the forest edge. Forest 32 fps (was 33). Shots: `b2/f2-*`.
    - Water mist landed: a thin layer at sea and river level (not the ground under the viewer), drawn into drifting
@@ -129,6 +130,12 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Deer grazing steps and ear flicks (2026-11-01): a grazing deer now and then takes a step or two to fresh grass, a
+  slowed Walk blended under the Graze (the mixer averages weights, so the head stays mostly down). Ears flick on
+  their own clocks (quicker while the deer looks or stares) without ear bones: `refine()` tags the ear vertices
+  (`aEar`) and the vertex shader turns each ear about its base in the rest pose, before skinning, so it still rides
+  on the head. Each deer has its own material clone for its ear uniform (same program); copying `onBeforeCompile`
+  onto the clones matters, since `Material.clone()` drops it. Shots: `.playwright-mcp/wild/ear0.jpg` / `ear1.jpg`.
 - Snow (2026-11-01): a "Snow" weather pick (panel, or `?weather=snow`; never chosen by the auto weather, which is
   summer's). Soft flakes drift down in little loops in a box around the camera (`Snow` in `rain.ts`, scaled by the
   raindrops perf slider); the air thickens. `weather.snowCover` builds over about a minute while it snows and

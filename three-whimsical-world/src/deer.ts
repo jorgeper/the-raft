@@ -22,6 +22,8 @@ import type { WorldFns } from './worldgen';
 function refine(geometry: THREE.BufferGeometry) {
   const pos = geometry.attributes.position as THREE.BufferAttribute;
   const col = geometry.attributes.color as THREE.BufferAttribute;
+  // Which ear a vertex belongs to (-1 left, 1 right, 0 neither), for the flicks in the vertex shader.
+  const ear = new Float32Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
     const r = col.getX(i), g = col.getY(i), b = col.getZ(i);
@@ -29,6 +31,7 @@ function refine(geometry: THREE.BufferGeometry) {
     if (Math.abs(x) > 0.06 && Math.abs(x) < 0.3 && y > 1.6 && y < 1.9 && z > -0.98 && z < -0.62 && r > b * 1.45) {
       const k = 0.7, sx = Math.sign(x);
       pos.setXYZ(i, sx * 0.06 + (x - sx * 0.06) * k, 1.66 + (y - 1.66) * k, -0.81 + (z + 0.81) * k);
+      ear[i] = sx;
     }
     let c = 1.15;
     if (z < -1.0) c *= THREE.MathUtils.lerp(1, 0.55, THREE.MathUtils.smoothstep(-z, 1.0, 1.1));
@@ -36,6 +39,31 @@ function refine(geometry: THREE.BufferGeometry) {
     col.setXYZ(i, Math.min(r * c, 1), Math.min(g * c, 1), Math.min(b * c, 1));
   }
   geometry.computeVertexNormals();
+  geometry.setAttribute('aEar', new THREE.BufferAttribute(ear, 1));
+}
+
+/**
+ * Ear flicks without ear bones: in the rest pose (before skinning, so they still ride on the head), each ear's
+ * vertices turn about its base by its own angle: back and out on a twitch. `uEars` is (left, right) in radians.
+ */
+function patchEars(shader: THREE.WebGLProgramParametersWithUniforms, ears: THREE.IUniform<THREE.Vector2>) {
+  shader.uniforms.uEars = ears;
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float aEar;\nuniform vec2 uEars;')
+    .replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+      if (aEar != 0.0) {
+        float ang = aEar > 0.0 ? uEars.y : uEars.x;
+        vec3 piv = vec3(aEar * 0.06, 1.66, -0.81);
+        vec3 q = transformed - piv;
+        float c = cos(ang), s = sin(ang);
+        q = vec3(q.x, c * q.y + s * q.z, -s * q.y + c * q.z);
+        float sw = ang * 0.7 * aEar, c2 = cos(sw), s2 = sin(sw);
+        q = vec3(c2 * q.x - s2 * q.z, q.y, s2 * q.x + c2 * q.z);
+        transformed = piv + q;
+      }`,
+    );
 }
 
 type State = 'graze' | 'look' | 'walk' | 'stare' | 'flee';
@@ -63,6 +91,16 @@ interface Deer {
   stareCooldown: number;
   /** A fawn keeps close to its mother. */
   mother?: Deer;
+  /** This deer's own material (a clone), so its ears flick on their own. */
+  material: THREE.MeshStandardMaterial;
+  ears: THREE.IUniform<THREE.Vector2>;
+  /** Seconds into each ear's current flick (negative: waiting for the next). */
+  earT: [number, number];
+  /** While grazing: seconds left of a shuffling step forward, and until the next. */
+  stepT: number;
+  stepWait: number;
+  /** The Walk action is playing blended under the graze for a step (not as the gait). */
+  stepping: boolean;
 }
 
 const HERDS = 4;
@@ -88,7 +126,8 @@ export class DeerHerds {
 
   private build(scene: THREE.Object3D, clips: THREE.AnimationClip[]) {
     const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-    material.onBeforeCompile = (shader) => {
+    material.onBeforeCompile = function (this: THREE.Material, shader) {
+      patchEars(shader, this.userData.ears);
       // A soft sheen on the coat's rim, like fur catching the light.
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <emissivemap_fragment>',
@@ -102,8 +141,8 @@ export class DeerHerds {
     // Fawns wear white spots in rows along the back and upper flanks, placed in the rest pose so they move with
     // the skin.
     const fawn = material.clone();
-    fawn.onBeforeCompile = (shader, renderer) => {
-      material.onBeforeCompile(shader, renderer);
+    fawn.onBeforeCompile = function (this: THREE.Material, shader, renderer) {
+      material.onBeforeCompile.call(this, shader, renderer);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vRest;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRest = position;');
@@ -157,12 +196,20 @@ export class DeerHerds {
     const root = cloneSkinned(this.template!);
     const keep = kind === 'stag' ? 'Stag' : 'Doe';
     for (const name of ['Doe', 'Stag']) if (name !== keep) root.getObjectByName(name)?.removeFromParent();
-    if (kind === 'fawn') root.traverse((o) => ((o as THREE.SkinnedMesh).isSkinnedMesh ? ((o as THREE.SkinnedMesh).material = this.fawnMaterial!) : 0));
+    // Same program for every deer (same cache key); its own uniforms for the ears.
+    const base = kind === 'fawn' ? this.fawnMaterial! : this.material!;
+    const material = base.clone();
+    // clone() leaves the shader patches behind.
+    material.onBeforeCompile = base.onBeforeCompile;
+    material.customProgramCacheKey = base.customProgramCacheKey;
+    const ears = { value: new THREE.Vector2() };
+    material.userData.ears = ears;
+    root.traverse((o) => ((o as THREE.SkinnedMesh).isSkinnedMesh ? ((o as THREE.SkinnedMesh).material = material) : 0));
     const mixer = new THREE.AnimationMixer(root);
     const actions = {} as Record<Clip, THREE.AnimationAction>;
     for (const clip of this.clips) actions[clip.name as Clip] = mixer.clipAction(clip);
     this.group.add(root);
-    return { root, mixer, actions };
+    return { root, mixer, actions, material, ears };
   }
 
   /** A spot at the forest edge, on gentle dry ground, in a ring around the viewer. */
@@ -206,6 +253,10 @@ export class DeerHerds {
         scale: kind === 'stag' ? 1.12 + this.rand() * 0.08 : kind === 'fawn' ? 0.55 + this.rand() * 0.06 : 0.92 + this.rand() * 0.1,
         stareCooldown: 0,
         mother: kind === 'fawn' ? mother : undefined,
+        earT: [-this.rand() * 4, -this.rand() * 4],
+        stepT: 0,
+        stepWait: 2 + this.rand() * 6,
+        stepping: false,
       };
       if (kind === 'doe' && !mother) mother = d;
       // Start mid-clip, so a herd doesn't move in lockstep.
@@ -237,6 +288,7 @@ export class DeerHerds {
     d.mixer.stopAllAction();
     d.mixer.uncacheRoot(d.root);
     d.root.removeFromParent();
+    d.material.dispose();
   }
 
   private think(d: Deer, dt: number, viewer: THREE.Vector3) {
@@ -265,6 +317,15 @@ export class DeerHerds {
     let face: number | null = null;
     switch (d.state) {
       case 'graze':
+        // Now and then a step or two forward to fresh grass, head still down.
+        d.stepWait -= dt;
+        if (d.stepWait < 0 && d.stepT <= 0) (d.stepT = 0.9 + this.rand() * 0.9), (d.stepWait = 3 + this.rand() * 6);
+        if (d.stepT > 0) {
+          d.stepT -= dt;
+          const nx = d.pos.x + Math.cos(d.heading) * 0.3 * d.scale * dt, nz = d.pos.z + Math.sin(d.heading) * 0.3 * d.scale * dt;
+          if (this.world.height(nx, nz) > 1 && this.world.pondEdge(nx, nz) > 0.5) (d.pos.x = nx), (d.pos.z = nz), (d.pos.y = this.world.height(nx, nz));
+          else d.stepT = 0;
+        }
         if (d.timer < 0) {
           d.state = this.rand() < 0.55 ? 'look' : 'walk';
           d.timer = 2 + this.rand() * 4;
@@ -321,12 +382,19 @@ export class DeerHerds {
   }
 
   private animate(d: Deer, dt: number) {
+    if (d.state !== 'graze') d.stepT = 0;
     // While still easing to a stop after a walk or run, keep the gait going (slowed) instead of sliding.
     let want: Clip = CLIP[d.state];
     if (d.speed > 0.35 && !NATURAL_SPEED[want]) want = d.speed > 3 ? 'Gallop' : 'Walk';
     else if (d.speed > 3) want = 'Gallop';
+    if (d.stepping && (want !== 'Graze' || d.stepT <= 0)) {
+      // End a grazing step (or hand the Walk over to a real walk at full weight).
+      d.actions.Walk.stop().setEffectiveWeight(1);
+      d.stepping = false;
+    }
     if (want !== d.clip) {
       const next = d.actions[want];
+      next.setEffectiveWeight(1);
       next.reset().play();
       d.actions[d.clip].crossFadeTo(next, want === 'Gallop' || d.clip === 'Gallop' ? 0.25 : 0.5, false);
       d.clip = want;
@@ -334,6 +402,26 @@ export class DeerHerds {
     const natural = NATURAL_SPEED[d.clip];
     // Gaits play at the rate that matches the ground speed (smaller deer take quicker steps).
     d.actions[d.clip].timeScale = natural ? THREE.MathUtils.clamp(d.speed / (natural * d.scale), 0.3, 1.6) : 1;
+    // A grazing step: a slow walk blended in under the graze (weights average, so the head stays mostly down).
+    const walk = d.actions.Walk;
+    if (d.clip === 'Graze' && d.stepT > 0 && (d.stepping || !walk.isRunning())) {
+      if (!d.stepping) walk.reset().play(), (d.stepping = true);
+      walk.setEffectiveWeight(0.55 * Math.min(1, d.stepT * 3));
+      walk.timeScale = 0.3 / 1.1;
+    }
+    // Ear flicks: each ear on its own clock, a quick twitch back and out and home again; quicker when wary.
+    const wary = d.state === 'stare' || d.state === 'look';
+    for (let e = 0; e < 2; e++) {
+      d.earT[e] += dt;
+      const FLICK = 0.28;
+      let ang = 0;
+      if (d.earT[e] > 0) {
+        ang = Math.sin(Math.PI * Math.min(d.earT[e] / FLICK, 1)) * 0.55;
+        if (d.earT[e] > FLICK) d.earT[e] = -(wary ? 0.6 + this.rand() * 1.5 : 1.5 + this.rand() * 5);
+      }
+      if (e === 0) d.ears.value.x = ang;
+      else d.ears.value.y = ang;
+    }
     d.mixer.update(dt);
 
     // The model faces -Z; heading 0 is +X. Sink the hooves a touch so they don't float over grassy slopes.
