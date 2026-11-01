@@ -46,8 +46,8 @@ const AFTERNOON: Stop = {
   e: 22,
   zenith: [0.07, 0.6, 2.8],
   horizon: [1.2, 2.5, 3.4],
-  sunHorizon: [3.3, 3.2, 2.8],
-  glow: [1.7, 1.45, 1.0],
+  sunHorizon: [3.4, 3.0, 2.3],
+  glow: [1.7, 1.35, 0.8],
   cloudLit: [4.3, 4.1, 3.8],
   cloudShade: [1.35, 1.75, 2.45],
   wisp: [3.4, 3.5, 3.8],
@@ -100,8 +100,8 @@ const EVENING: Stop[] = [
     e: 8,
     zenith: [0.15, 0.45, 2.2],
     horizon: [1.45, 1.75, 2.55],
-    sunHorizon: [4.6, 3.0, 1.6],
-    glow: [2.8, 1.75, 0.85],
+    sunHorizon: [4.3, 2.4, 1.05],
+    glow: [2.7, 1.35, 0.55],
     cloudLit: [4.7, 3.2, 2.4],
     cloudShade: [1.0, 1.05, 1.6],
     wisp: [4.0, 2.5, 2.1],
@@ -147,8 +147,8 @@ const MORNING: Stop[] = [
     e: 8,
     zenith: [0.1, 0.55, 2.4],
     horizon: [1.45, 1.95, 2.75],
-    sunHorizon: [4.5, 3.4, 2.3],
-    glow: [2.6, 1.9, 1.2],
+    sunHorizon: [4.3, 2.8, 1.6],
+    glow: [2.6, 1.6, 0.85],
     cloudLit: [4.6, 3.6, 3.0],
     cloudShade: [1.05, 1.2, 1.75],
     wisp: [4.1, 3.0, 2.6],
@@ -235,6 +235,8 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uWisp;
   /** Cirrus amount (raised by whimsy). */
   uniform float uWisps;
+  /** Valheim's hue split: a lilac-pink stop between the cool sky and the warm sun, instead of a grey RGB blend. */
+  uniform float uHueSplit;
   uniform float uSunDisc;
   uniform float uClouds;
   uniform float uTime;
@@ -253,12 +255,21 @@ const fragmentShader = /* glsl */ `
     // Clamped: rounding can push it a hair below 0 straight away from the sun, and pow() of that is NaN.
     float toSun = clamp(dot(flatD, flatS) * 0.5 + 0.5, 0.0, 1.0);
     float lowSun = 1.0 - smoothstep(0.05, 0.6, uSunDir.y);
-    vec3 horizon = mix(uHorizon, uSunHorizon, pow(toSun, mix(3.5, 1.6, lowSun)));
+    float warmW = pow(toSun, mix(3.5, 1.6, lowSun));
+    vec3 horizon = mix(uHorizon, uSunHorizon, warmW);
+    // Blending cyan into peach in RGB passes through grey; Valheim's sky goes blue -> violet-pink -> orange
+    // instead. Push the middle of each blend toward magenta (green down, red and blue up), most at a low sun.
+    vec3 violet = vec3(1.16, 0.8, 1.1);
+    float split = uHueSplit * mix(0.35, 1.0, lowSun);
+    horizon *= mix(vec3(1.0), violet, split * 4.0 * warmW * (1.0 - warmW));
 
     float y = d.y;
     float up = max(y, 0.0);
     // A broad pale band at the horizon fading into the deep blue overhead.
-    vec3 col = mix(horizon, uZenith, smoothstep(0.0, 1.0, pow(up, mix(0.6, 0.45, lowSun))));
+    float upW = smoothstep(0.0, 1.0, pow(up, mix(0.6, 0.45, lowSun)));
+    vec3 col = mix(horizon, uZenith, upW);
+    // The same violet between the warm horizon and the blue overhead, strongest on the sun's side.
+    col *= mix(vec3(1.0), violet, split * 4.0 * upW * (1.0 - upW) * mix(0.4, 1.0, toSun));
     // Warm glow around the sun: a wide soft halo plus a tighter bright one.
     float fwd = max(cosT, 0.0);
     col += uGlow * (mix(0.12, 0.3, lowSun) * pow(fwd, 5.0) + 0.35 * pow(fwd, 40.0) + 0.6 * pow(fwd, 600.0));
@@ -353,6 +364,7 @@ export function createSky() {
     uCloudShade: { value: new THREE.Color() },
     uWisp: { value: new THREE.Color() },
     uWisps: { value: 0.8 },
+    uHueSplit: { value: 1 },
     uSunDisc: { value: 12 },
     uClouds: { value: 0.38 },
     uTime: { value: 0 },

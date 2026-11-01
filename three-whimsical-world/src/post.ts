@@ -49,6 +49,8 @@ const AtmosphereShader = {
     uFogCool: { value: new THREE.Color(0.7, 1.0, 1.18) },
     uFogWarm: { value: new THREE.Color(1.4, 1.0, 0.55) },
     uTintStrength: { value: 0.55 },
+    /** Valheim's hue split: lilac-pink between the cool and warm haze, and orange (not white-gold) scattered sun. */
+    uHueSplit: { value: 1 },
     /** Gold glow of the haze between you and the sun. */
     uForwardGlow: { value: 1 },
     /** 0 in the open, 1 deep in a forest: thicker, more strongly tinted haze and stronger shafts. */
@@ -109,6 +111,7 @@ const AtmosphereShader = {
     uniform vec3 uTorchPos;
     uniform vec3 uTorchColor;
     uniform float uWhimsy;
+    uniform float uHueSplit;
     uniform float uGroundFog;
     uniform float uGroundFogHeight;
     uniform float uGroundFogPatchy;
@@ -174,6 +177,9 @@ const AtmosphereShader = {
       float marchLen = marchLength(isSky, dist);
       float vis = uVisOn > 0.5 && uVolumetric > 0.0 ? upsampleVis(vUv, marchLen) : 1.0;
       float sunUpV = smoothstep(-0.05, 0.08, uSunDir.y);
+      // Sunlight scattered by the haze has come a long way through it, so it reaches the eye orange rather than
+      // white-gold: a saturated version of the sun's color (luma kept), deeper in forests' thick air.
+      vec3 scatterColor = uSunColor * mix(vec3(1.0), vec3(1.3, 0.86, 0.5), uHueSplit * mix(0.6, 1.0, uForest));
 
       if (isSky && uCloudsOn > 0.5) {
         vec4 cl = texture2D(tClouds, vUv);
@@ -207,13 +213,17 @@ const AtmosphereShader = {
         // Whimsy splits the haze harder: saturated teal away from the sun, orange-pink toward it.
         vec3 cool = mix(uFogCool, vec3(0.42, 0.98, 1.4), clamp(uWhimsy, 0.0, 1.0));
         vec3 warm = mix(uFogWarm, vec3(1.75, 0.82, 0.62), clamp(uWhimsy, 0.0, 1.0));
-        vec3 tint = mix(cool, warm, pow(toSun, mix(2.0, 1.4, clamp(uWhimsy, 0.0, 1.0))));
+        float warmW = pow(toSun, mix(2.0, 1.4, clamp(uWhimsy, 0.0, 1.0)));
+        vec3 tint = mix(cool, warm, warmW);
+        // A lilac-pink stop between teal and gold (an RGB blend of the two is grey), so the haze runs
+        // blue -> violet-pink -> orange around the view, as Valheim's does.
+        tint *= mix(vec3(1.0), vec3(1.2, 0.84, 1.02), uHueSplit * 4.0 * warmW * (1.0 - warmW));
         fogColor *= mix(vec3(1.0), tint, clamp(uTintStrength + 0.5 * uForest + 0.45 * uWhimsy, 0.0, 1.0));
         // Forward scattering: haze between you and a low sun glows gold (and orange under the canopy).
         float sunLow = 1.0 - smoothstep(0.1, 0.7, uSunDir.y);
         // A tight lobe: a warm glow around the sun, not a white-out across half the view.
         float forward = pow(max(dot(ray, uSunDir), 0.0), 9.0) * (0.5 + 1.2 * sunLow) * (1.0 + 0.6 * uForest);
-        fogColor += uSunColor * forward * smoothstep(-0.06, 0.04, uSunDir.y) * 1.3 * uForwardGlow;
+        fogColor += scatterColor * forward * smoothstep(-0.06, 0.04, uSunDir.y) * 1.3 * uForwardGlow;
         // Even toward the sun the haze stays a colored glow rather than clipping to white.
         float fogPeak = dot(fogColor, vec3(0.2126, 0.7152, 0.0722));
         fogColor *= min(1.0, 3.2 / max(fogPeak, 1e-4));
@@ -289,7 +299,7 @@ const AtmosphereShader = {
         // leaves the dim, shaded range nearly linear, so beams keep their contrast against it.
         const float BEAM_MAX = 0.8;
         beam = BEAM_MAX * (1.0 - exp(-beam / BEAM_MAX));
-        color += uSunColor * beam * uVolumetric * sunUpV * cloudShade(camPos);
+        color += scatterColor * beam * uVolumetric * sunUpV * cloudShade(camPos);
         if (uDebugVolumetric > 0.5) { gl_FragColor = vec4(vec3(vis), 1.0); return; }
       }
 
@@ -316,7 +326,7 @@ const AtmosphereShader = {
         }
         shaft /= float(SAMPLES);
         float sunAlign = pow(max(dot(ray, uSunDir), 0.0), 3.0);
-        color += uSunColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest) * (1.0 + 0.5 * uWhimsy);
+        color += scatterColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest) * (1.0 + 0.5 * uWhimsy);
       }
 
       // Lens flare ghosts strung along the line from the sun through the screen center, when the sun is visible.

@@ -234,6 +234,13 @@ const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
 persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'fogDensity', 'whimsy', 'groundFog', 'groundFogHeight', 'groundFogPatchy']);
 post.setWhimsy(settings.whimsy);
 persist.bind('tint', post.atmosphere.uTintStrength, ['value']);
+// Valheim's hue split (blue -> violet-pink -> orange) in the sky, the haze and the scattered sunlight.
+const hueSplit = { value: 1 };
+persist.bind('hueSplit', hueSplit, ['value']);
+const applyHueSplit = () => {
+  sky.uniforms.uHueSplit.value = post.atmosphere.uHueSplit.value = hueSplit.value;
+  updateSun();
+};
 persist.bind('cloudShadow', post.atmosphere.uCloudShadow, ['value']);
 persist.bind('wind', wind.uWindStrength, ['value']);
 persist.bind('torch', torch, ['on', 'brightness', 'embersOn', 'smokeOn']);
@@ -297,6 +304,8 @@ timeGui.add(settings, 'groundFog', 0, 2, 0.01).name('ground fog').onChange(apply
 timeGui.add(settings, 'groundFogHeight', 0.5, 20, 0.1).name('ground fog height (m)').onChange(applyGroundFog);
 timeGui.add(settings, 'groundFogPatchy', 0, 1, 0.01).name('ground fog patchiness').onChange(applyGroundFog);
 timeGui.add(post.atmosphere.uTintStrength, 'value', 0, 1, 0.01).name('cyan / gold tint');
+timeGui.add(hueSplit, 'value', 0, 2, 0.01).name('hue split (violet, orange)').onChange(applyHueSplit);
+applyHueSplit();
 timeGui.add(wind.uWindStrength, 'value', 0, 3, 0.01).name('wind');
 
 const torchGui = gui.addFolder('Torch');

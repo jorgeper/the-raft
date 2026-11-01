@@ -127,6 +127,15 @@ In priority order: the first items are the user's requests for the next sessions
   visibility on two rings of taps around each pixel, and the beam scatter falls back to open air's thin glow as
   that turns lit. Washed views: 214 → 164-180; dark forests and the beam shots unchanged; same fps. Shots:
   `.playwright-mcp/bright2/` (`ab1.jpg`, `ab2.jpg`: before left, after right) and `.playwright-mcp/vol/g-nab.jpg`.
+- Valheim's hue split (user request: "blue to purple to orange, more saturated sky"). Blending the cool sky or
+  haze into the warm sun side in RGB passed through grey; now the middle of each blend is pushed toward violet-pink
+  (green down, red and blue up), in the sky's horizon and vertical gradients (strongest at a low sun) and in the
+  haze tint. Sunlight scattered by the haze (beams, shafts, the forward glow) is orange rather than the pale sun
+  color, deeper in forests. The golden-hour and afternoon stops near the sun are less pale, so tone mapping keeps
+  their orange instead of bleaching it. Panel: Time > "hue split" (0 = no violet stop or orange scatter, default 1, up to 2). Shots:
+  `.playwright-mcp/hue/` (`g1.jpg`, `g2.jpg`: split off left, on right; `g3.jpg`, `g4.jpg`: before vs final).
+  Next: teal-blue shade on the ground under the canopy (Valheim's shaded forest floor is blue, ours black-green),
+  and the sun's glow at sunset still bleaches toward white over the sea.
 - Volumetric clouds (`src/clouds.ts`): cumulus raymarched at half resolution through a slab around the cloud
   layer, shaped by the same 2D cover field as the cloud shadows (so shadows still match). A cumulus profile (flat
   bases, tops as tall as the cover is thick) is eroded by billowing 3D noise. Three steps toward the sun
