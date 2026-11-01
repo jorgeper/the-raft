@@ -137,13 +137,19 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Sound and sea fixes (user, 2026-11-01): the mix is half as loud; the waterfall roar now fades out by 200 m
+  instead of hissing across the map; wind and leaves follow the gusts squared, so lulls go quiet; surf and rivers
+  fall off with the square of distance. No cuckoo; birds call about four times a minute at midday (more at dawn).
+  The sea's concentric moiré rings from high up are gone: `waveGradient` in `src/water.ts` fades each wave once
+  its wavelength approaches the pixel footprint (`dFdx`/`dFdy` of the world position).
+
 - Soundscape (user, 2026-11-01): `src/audio.ts`, all synthesized with Web Audio (no sample files), starting on the
   first click or key press. N toggles it (the context suspends while off); a Sound panel section has on/off and
   volume. Beds of filtered noise: wind on the same gust rhythm as the grass (louder up high and in the open, hushed
   in woods, a thin whistle when it blows hard), leaves rustling in the canopy, surf breaking every 5-9 s near the
   sea, rivers babbling, rain (with patter on leaves and drips under the trees), the torch's flame and crackles, and
   a positional roar at the foot of each waterfall. Creatures: birds by day with a dawn chorus (robin-like warbles,
-  chaffinch trills, a fluting blackbird, sparrow chirps, a skylark high over the meadows, a cuckoo and a woodpecker
+  chaffinch trills, a fluting blackbird, sparrow chirps, a skylark high over the meadows, a woodpecker
   in the woods, gulls by the sea), crickets on clear nights in the open, tawny owls from the forest, frogs at the
   nearest pond (a chorus after dusk). Footsteps keep the character's legs' rhythm (`Character.footfalls()`: two per
   gait cycle) and change with the ground: grass, leaf litter, dirt, sand, snow, stone and splashing water; a landing

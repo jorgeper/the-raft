@@ -70,7 +70,9 @@ const fragmentShader = /* glsl */ `
   }
 
   // Sum of directional waves travelling mostly toward the shore (-x). Returns the height gradient.
-  vec2 waveGradient(vec2 p, float t, float fade, float calm) {
+  // \`dx\`, \`dy\`: how far p moves per pixel across and up the screen. A wave shorter than a few pixels along its own
+  // direction can't be drawn, only aliased (far out it made moire rings around the viewer), so it fades out.
+  vec2 waveGradient(vec2 p, float t, float fade, float calm, vec2 dx, vec2 dy) {
     vec2 g = vec2(0.0);
     for (int i = 0; i < 14; i++) {
       float fi = float(i);
@@ -79,6 +81,8 @@ const fragmentShader = /* glsl */ `
       float k = 6.2831853 / wavelength;
       // Steepness-based amplitude keeps slopes realistic at every scale; the long swell dies down in the shallows.
       float amp = (0.09 * pow(0.9, fi) / k) * mix(1.0, fade, step(4.0, fi)) * mix(calm, 1.0, step(4.0, fi));
+      float footprint = max(abs(dot(dx, dir)), abs(dot(dy, dir)));
+      amp *= 1.0 - smoothstep(0.25, 0.45, footprint / wavelength);
       float speed = sqrt(9.81 / k);
       float phase = k * (dot(dir, p) - speed * t) + fi * 1.3;
       g += amp * k * cos(phase) * dir;
@@ -172,7 +176,7 @@ const fragmentShader = /* glsl */ `
     // doesn't mirror the white horizon. The swell flattens in the shallows.
     float fade = mix(0.35, 1.0, 1.0 - smoothstep(40.0, 600.0, dist));
     float calm = smoothstep(0.0, 3.0, depthHere);
-    vec2 g = waveGradient(vWorld.xz, uTime, fade, mix(0.25, 1.0, calm) * (1.0 - pond)) * mix(1.0, 0.18, pond);
+    vec2 g = waveGradient(vWorld.xz, uTime, fade, mix(0.25, 1.0, calm) * (1.0 - pond), dFdx(vWorld.xz), dFdy(vWorld.xz)) * mix(1.0, 0.18, pond);
 
     // Rivers flow: their ripples drift downstream (two flow-map phases, cross-faded so the drift never snaps back)
     // instead of rolling ashore like the sea's.

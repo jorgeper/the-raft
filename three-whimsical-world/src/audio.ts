@@ -4,7 +4,7 @@ import type { WorldFns } from './worldgen';
 /**
  * The soundscape, all synthesized with Web Audio (no sample files): beds of filtered noise for the wind, leaves,
  * surf, rivers, rain and each waterfall's roar, and creatures voiced from oscillators: birdsong by day (a dawn
- * chorus, a skylark over the meadows, a cuckoo and a woodpecker in the woods), crickets on summer nights, owls in
+ * chorus, a skylark over the meadows, a woodpecker in the woods), crickets on summer nights, owls in
  * the forest, frogs at the ponds. The torch crackles; footsteps change with the ground underfoot.
  *
  * Positional sounds (waterfalls, birds, owls, frogs) go through equal-power panners that follow the camera; every
@@ -110,7 +110,7 @@ export class Soundscape {
   private reverb!: ConvolverNode;
   private noise!: Record<'white' | 'pink' | 'brown', AudioBuffer>;
   private beds!: Record<'wind' | 'whistle' | 'leaves' | 'surf' | 'river' | 'rain' | 'patter' | 'torch', Bed>;
-  private falls: { gain: GainNode; panner: PannerNode; sources: AudioBufferSourceNode[] }[] = [];
+  private falls: { gain: GainNode; panner: PannerNode; sources: AudioBufferSourceNode[]; pos: THREE.Vector3 }[] = [];
   private crickets: { osc: OscillatorNode; gain: GainNode; next: number; period: number; pitch: number; amp: number }[] = [];
   private suspendAt?: number;
   private nextBird = 0;
@@ -239,14 +239,15 @@ export class Soundscape {
       lp.type = 'lowpass';
       lp.frequency.value = 2200;
       const gain = ctx.createGain();
-      gain.gain.value = 1.1;
-      const panner = this.panner(w.x + w.dirX * 8, w.top * 0.4, w.z + w.dirZ * 8, 14);
+      gain.gain.value = 0;
+      const pos = new THREE.Vector3(w.x + w.dirX * 8, w.top * 0.4, w.z + w.dirZ * 8);
+      const panner = this.panner(pos.x, pos.y, pos.z, 14);
       src.connect(lp);
       low.connect(lp);
       lp.connect(gain).connect(panner);
       src.start(0, rand(0, 4));
       low.start(0, rand(0, 4));
-      this.falls.push({ gain, panner, sources: [src, low] });
+      this.falls.push({ gain, panner, sources: [src, low], pos });
     }
   }
 
@@ -309,7 +310,8 @@ export class Soundscape {
     this.suspendAt = undefined;
     if (ctx.state === 'suspended') void ctx.resume();
     if (ctx.state !== 'running') return;
-    this.master.gain.setTargetAtTime(this.settings.volume, now, 0.15);
+    // The slider's full scale is a gentle level: this is ambience, meant to sit under the scene.
+    this.master.gain.setTargetAtTime(this.settings.volume * 0.5, now, 0.15);
 
     // The listener rides on the camera.
     const cam = f.camera;
@@ -347,19 +349,20 @@ export class Soundscape {
     const t = performance.now() / 1000;
     const gust = 0.5 + 0.5 * Math.sin(this.v.x * 0.045 - t * 1.3) * Math.sin(this.v.x * 0.013 + this.v.z * 0.021 + t * 0.4);
     const windAmt = f.wind * (0.3 + 0.7 * gust) * (0.55 + 0.6 * P.open) * (1 - 0.45 * P.forest) * (1 + 0.6 * f.rain + 0.3 * f.snow);
-    set(this.beds.wind, 0.16 * windAmt);
+    // Squared gust: the air goes nearly quiet between gusts instead of a constant roar.
+    set(this.beds.wind, 0.11 * windAmt * gust * gust);
     this.beds.wind.filters[0].frequency.setTargetAtTime(260 + 380 * gust * Math.min(f.wind, 2), now, 0.5);
     set(this.beds.whistle, 0.05 * smooth(windAmt, 0.9, 1.8));
     this.beds.whistle.filters[0].frequency.setTargetAtTime(750 + 500 * gust, now, 0.6);
-    set(this.beds.leaves, 0.09 * f.wind * (0.25 + 0.75 * gust) * smooth(P.forest, 0.05, 0.5));
+    set(this.beds.leaves, 0.035 * f.wind * gust * gust * smooth(P.forest, 0.15, 0.6));
 
     // Surf: a wave breaks every several seconds; the swell opens up bright and loud, then washes back.
-    const seaNear = Math.pow(clamp01(1 - P.sea / 240), 2);
+    const seaNear = Math.pow(clamp01(1 - P.sea / 150), 2);
     if (now > this.nextWave) {
       const period = rand(5.5, 9);
       this.nextWave = now + period;
       const g = this.beds.surf.gain.gain, lp = this.beds.surf.filters[0].frequency;
-      const peak = 0.55 * seaNear * rand(0.7, 1.1);
+      const peak = 0.4 * seaNear * rand(0.7, 1.1);
       g.cancelScheduledValues(now);
       g.setTargetAtTime(peak, now, 0.5);
       g.setTargetAtTime(peak * 0.3, now + 1.6, 1.4);
@@ -369,12 +372,12 @@ export class Soundscape {
     }
 
     // Rivers: babbling, the two bands nudged to new pitches and levels every moment.
-    const riverNear = clamp01(1 / (1 + P.river / 10)) * (P.river < 120 ? 1 : 0);
+    const riverNear = Math.pow(clamp01(1 - P.river / 45), 2);
     if (now > this.nextBabble) {
       this.nextBabble = now + rand(0.06, 0.16);
       this.beds.river.filters[0].frequency.setTargetAtTime(rand(900, 1700), now, 0.05);
       this.beds.river.filters[1].frequency.setTargetAtTime(rand(2300, 3600), now, 0.05);
-      this.beds.river.gain.gain.setTargetAtTime(0.32 * riverNear * rand(0.6, 1), now, 0.05);
+      this.beds.river.gain.gain.setTargetAtTime(0.22 * riverNear * rand(0.6, 1), now, 0.05);
     }
 
     // Rain on the ground, and on the leaves overhead in the woods; drips under the trees after.
@@ -395,7 +398,9 @@ export class Soundscape {
       this.crackle(now, Math.random() < 0.08 ? 0.5 : rand(0.06, 0.2));
     }
 
-    // Waterfalls: the panners do the distance; nothing to update.
+    // Waterfalls: the panners place them; the roar fades out entirely by ~200 m (an inverse falloff alone never
+    // reaches silence, and left a hiss everywhere).
+    for (const fall of this.falls) fall.gain.gain.setTargetAtTime(0.9 * (1 - smooth(fall.pos.distanceTo(this.v), 60, 200)), now, 0.3);
 
     // Crickets: summer evenings and nights in the open (not in the rain or snow, quieter in the woods).
     const cricketAmt = smooth(night, 0.35, 0.8) * (1 - 0.8 * P.forest) * (1 - f.rain) * (1 - f.snowCover) * (1 - smooth(f.wind, 1.5, 3));
@@ -421,7 +426,8 @@ export class Soundscape {
     const dawn = smooth(f.hours, 4.3, 5.5) * (1 - smooth(f.hours, 7.5, 9.5));
     const birdRate = (f.daylight * (0.35 + 1.4 * dawn) + 0.1 * smooth(f.daylight, 0.05, 0.3)) * (1 - 0.8 * f.rain) * (1 - 0.6 * f.snow);
     if (now > this.nextBird) {
-      this.nextBird = now + (birdRate > 0.02 ? rand(0.6, 3.2) / birdRate : 2);
+      // Sparse: a song now and then, not a constant chorus.
+      this.nextBird = now + (birdRate > 0.02 ? rand(4, 12) / birdRate : 3);
       if (birdRate > 0.02) this.bird(now, P.forest, f.daylight, P.sea);
     }
 
@@ -575,7 +581,7 @@ export class Soundscape {
       return;
     }
     // Over open meadow on a fine day: a skylark pouring out song high overhead.
-    if (!woods && daylight > 0.6 && r < 0.22) {
+    if (!woods && daylight > 0.6 && r < 0.12) {
       const notes = [];
       let t = 0;
       const len = rand(3, 6);
@@ -587,19 +593,8 @@ export class Soundscape {
       this.phrase(at, this.around(20, 50, [25, 45]), notes, { ref: 20, wet: 0.1 });
       return;
     }
-    // A cuckoo calling from the far woods.
-    if (r < 0.3 && (woods || Math.random() < 0.4)) {
-      const pos = this.around(60, 140, [6, 12]);
-      const reps = 2 + Math.floor(Math.random() * 3);
-      const notes = [];
-      for (let i = 0; i < reps; i++) {
-        notes.push({ t: i * 0.75, dur: 0.22, f0: 700, f1: 690, amp: 0.35 }, { t: i * 0.75 + 0.3, dur: 0.32, f0: 590, f1: 575, amp: 0.3 });
-      }
-      this.phrase(at, pos, notes, { ref: 12, wet: 0.5, lowpass: 1600, harmonic: 0.08 });
-      return;
-    }
     // A woodpecker drumming on a trunk.
-    if (woods && r < 0.38) {
+    if (woods && r < 0.1) {
       const pos = this.around(25, 70, [4, 10]);
       const panner = this.panner(pos.x, pos.y, pos.z, 6, 0.4);
       const n = 12 + Math.floor(Math.random() * 10);
