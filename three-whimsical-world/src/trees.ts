@@ -15,6 +15,8 @@ interface Variant {
   height: number;
   /** Edits applied on top of the preset to get a Valheim-like silhouette. */
   tweak?: (o: TreeOptions) => void;
+  /** Leaf color multiplier, for species told apart by foliage color. */
+  tint?: string;
 }
 
 interface BuiltVariant {
@@ -52,12 +54,35 @@ const birch = (o: TreeOptions) => {
 const MEADOW: Variant[] = [
   { preset: 'Ash Large', seed: 101, height: 22, tweak: beech },
   { preset: 'Ash Large', seed: 131, height: 19, tweak: beech },
+  { preset: 'Ash Large', seed: 151, height: 25, tweak: beech, tint: '#e8ffd0' },
   { preset: 'Oak Large', seed: 202, height: 16, tweak: oak },
+  { preset: 'Oak Large', seed: 222, height: 13, tweak: oak, tint: '#fff0c8' },
   { preset: 'Aspen Large', seed: 404, height: 17, tweak: birch },
 ];
-const BUSHES: Variant[] = [
+// Young broadleaf trees: scattered singly on the meadow and crowding grove and forest edges.
+const SMALL_TREES: Variant[] = [
+  { preset: 'Oak Small', seed: 1201, height: 6.5, tweak: oak },
+  { preset: 'Ash Small', seed: 1202, height: 8, tweak: beech },
+  { preset: 'Aspen Small', seed: 1203, height: 9, tweak: birch },
+  { preset: 'Aspen Medium', seed: 1204, height: 12, tweak: birch, tint: '#fff4b0' },
+];
+const bushLeaves = (type: string, count = 1.3, size = 1.1) => (o: TreeOptions) => {
+  o.leaves.type = type;
+  o.leaves.count = Math.round(o.leaves.count * count);
+  o.leaves.size *= size;
+};
+// Meadow undergrowth: hazel-like, raspberry (reddish), elder (dark), and a low wide shrub.
+const MEADOW_BUSHES: Variant[] = [
   { preset: 'Bush 1', seed: 505, height: 1.8 },
   { preset: 'Bush 2', seed: 606, height: 2.2 },
+  { preset: 'Bush 3', seed: 707, height: 2.8 },
+  { preset: 'Bush 1', seed: 515, height: 1.2, tweak: bushLeaves('aspen', 1.5), tint: '#ffb0a0' },
+  { preset: 'Bush 2', seed: 616, height: 1.5, tweak: bushLeaves('oak', 1.4, 1.2), tint: '#a8c890' },
+];
+// Forest undergrowth: juniper-like evergreen shrubs.
+const FOREST_BUSHES: Variant[] = [
+  { preset: 'Bush 3', seed: 717, height: 1.6, tweak: bushLeaves('pine', 2, 1.4) },
+  { preset: 'Bush 1', seed: 727, height: 1.1, tweak: bushLeaves('pine', 2.2, 1.3), tint: '#c0d8a8' },
 ];
 // Forest biome: tall Black Forest spruce with thick, bare lower trunks and dense layered boughs.
 const spruce = (o: TreeOptions) => {
@@ -74,8 +99,11 @@ const SAPLINGS: Variant[] = [
 ];
 const FOREST: Variant[] = [
   { preset: 'Pine Medium', seed: 707, height: 24, tweak: spruce },
+  { preset: 'Pine Medium', seed: 1111, height: 18, tweak: spruce },
   { preset: 'Pine Large', seed: 808, height: 31, tweak: spruce },
   { preset: 'Pine Large', seed: 919, height: 27, tweak: spruce },
+  // Old giants towering over the canopy.
+  { preset: 'Pine Large', seed: 1010, height: 38, tweak: spruce, tint: '#d8e8c8' },
 ];
 
 /**
@@ -156,7 +184,7 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
     specularIntensity: 0.25,
     map: srcLeaf.map,
     // The presets' pale tint washes leaves out under sky light; pull toward a deeper summer green.
-    color: srcLeaf.color.clone().multiply(new THREE.Color(0.62, 0.72, 0.5)),
+    color: srcLeaf.color.clone().multiply(new THREE.Color(0.62, 0.72, 0.5)).multiply(new THREE.Color(v.tint ?? '#ffffff')),
     vertexColors: true,
     alphaTest: srcLeaf.alphaTest,
     alphaToCoverage: true,
@@ -218,16 +246,25 @@ export class Trees {
   private projView = new THREE.Matrix4();
   private sphere = new THREE.Sphere();
 
-  private all = [...MEADOW, ...BUSHES, ...FOREST, ...SAPLINGS];
+  private all = [...MEADOW, ...SMALL_TREES, ...MEADOW_BUSHES, ...FOREST_BUSHES, ...FOREST, ...SAPLINGS];
 
   constructor(world: WorldFns, private renderer: THREE.WebGLRenderer) {
     const { height, params } = world;
     const seed = params.seed * 7 + 4242;
     const all = this.all;
-    const meadowIdx = MEADOW.map((_, i) => i);
-    const bushIdx = BUSHES.map((_, i) => MEADOW.length + i);
-    const forestIdx = FOREST.map((_, i) => MEADOW.length + BUSHES.length + i);
-    const saplingIdx = SAPLINGS.map((_, i) => MEADOW.length + BUSHES.length + FOREST.length + i);
+    // Index ranges of each group inside `all`.
+    let offset = 0;
+    const range = (group: Variant[]) => {
+      const ids = group.map((_, i) => offset + i);
+      offset += group.length;
+      return ids;
+    };
+    const meadowIdx = range(MEADOW);
+    const smallIdx = range(SMALL_TREES);
+    const meadowBushIdx = range(MEADOW_BUSHES);
+    const forestBushIdx = range(FOREST_BUSHES);
+    const forestIdx = range(FOREST);
+    const saplingIdx = range(SAPLINGS);
 
     let s = seed;
     const rand = () => {
@@ -270,16 +307,23 @@ export class Trees {
           THREE.MathUtils.smoothstep(noise(x * 0.0045, z * 0.0045) + 0.25 * noise(x * 0.03, z * 0.03), 0.35, 0.75) * params.groves;
 
         // ~one spruce per 110 m² deep in the forest, with broadleaf and bushes mixed in at its edge.
-        const pSpruce = forest * 0.22;
-        const pBroadleaf = (1 - forest) * (grove * 0.28 + 0.003 * params.groves) + forest * (1 - forest) * 0.15;
-        const pBush = (1 - forest) * (grove * 0.12 + 0.002) + forest * 0.02;
+        const edge = forest * (1 - forest);
+        const pSpruce = forest * 0.22 * params.bigTrees;
+        const pBroadleaf = ((1 - forest) * (grove * 0.28 + 0.003 * params.groves) + edge * 0.15) * params.bigTrees;
+        // Young trees ring the groves and forest edges, with a few loners in the open.
+        const pSmall = ((1 - forest) * (grove * 0.14 + 0.003) + edge * 0.25) * params.smallTrees;
+        // Bushes cluster around groves and line the forest edge; juniper fills the forest floor.
+        const pMeadowBush = ((1 - forest) * (grove * 0.2 + 0.006) + edge * 0.35) * params.bushes;
+        const pForestBush = forest * 0.05 * params.bushes;
         // Saplings crowd the forest edge, where there's more light.
-        const pSapling = forest * 0.06 + forest * (1 - forest) * 0.3;
+        const pSapling = (forest * 0.06 + edge * 0.3) * params.smallTrees;
         let r = rand();
         if (r < pSpruce) add(pick(forestIdx), x, z, y, 0.45);
         else if ((r -= pSpruce) < pBroadleaf) add(pick(meadowIdx), x, z, y, 0.7);
-        else if ((r -= pBroadleaf) < pBush) add(pick(bushIdx), x, z, y, 0.6);
-        else if ((r -= pBush) < pSapling) add(pick(saplingIdx), x, z, y, 0.6);
+        else if ((r -= pBroadleaf) < pSmall) add(pick(smallIdx), x, z, y, 0.6);
+        else if ((r -= pSmall) < pMeadowBush) add(pick(meadowBushIdx), x, z, y, 0.7);
+        else if ((r -= pMeadowBush) < pForestBush) add(pick(forestBushIdx), x, z, y, 0.6);
+        else if ((r -= pForestBush) < pSapling) add(pick(saplingIdx), x, z, y, 0.6);
       }
     }
 

@@ -13,8 +13,14 @@ export interface WorldParams {
   rocks: number;
   /** Fraction of land covered by dense forest (0..1). */
   forest: number;
-  /** Tree density in meadow groves (0..2). */
+  /** How many meadow groves there are (0..2). */
   groves: number;
+  /** Density of large trees, broadleaf and spruce (0..2). */
+  bigTrees: number;
+  /** Density of young/small trees and spruce saplings (0..2). */
+  smallTrees: number;
+  /** Density of bushes and shrubs (0..3). */
+  bushes: number;
   /** Flower density in the meadows (0..2). */
   flowers: number;
 }
@@ -27,6 +33,9 @@ export const DEFAULT_PARAMS: WorldParams = {
   rocks: 1,
   forest: 0.35,
   groves: 1,
+  bigTrees: 1,
+  smallTrees: 1,
+  bushes: 1,
   flowers: 1,
 };
 

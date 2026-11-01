@@ -131,7 +131,7 @@ const AtmosphereShader = {
           ? (1.0 - exp(-uFogHeightFalloff * dy)) / (uFogHeightFalloff * dy)
           : 1.0;
         // Forests hold a thick haze near the ground (it doesn't thin with height inside the canopy).
-        float density = uFogDensity * mix(1.0, 9.0, uForest);
+        float density = uFogDensity * mix(1.0, 4.0, uForest);
         float optical = density * dist * mix(exp(-uFogHeightFalloff * h) * heightTerm, 1.0, uForest);
         float fog = 1.0 - exp(-optical);
         vec3 horizonDir = normalize(vec3(ray.x, 0.04 + max(ray.y, 0.0) * 0.5, ray.z));
@@ -139,7 +139,8 @@ const AtmosphereShader = {
         // The sky near the sun is far brighter than anything on the ground; cap the haze so even a thin layer
         // tints the view instead of washing it out.
         float fogLuma = dot(fogColor, vec3(0.2126, 0.7152, 0.0722));
-        fogColor *= 0.75 * min(1.0, 1.4 / max(fogLuma, 1e-4));
+        // Under the canopy the haze is lit by much less sky, so it's darker.
+        fogColor *= 0.75 * min(1.0, 1.4 / max(fogLuma, 1e-4)) * mix(1.0, 0.45, uForest);
         float toSun = max(dot(normalize(vec3(ray.x, 0.0, ray.z)), normalize(vec3(uSunDir.x, 0.0, uSunDir.z))), 0.0);
         vec3 tint = mix(uFogCool, uFogWarm, pow(toSun, 2.0));
         fogColor *= mix(vec3(1.0), tint, clamp(uTintStrength + 0.35 * uForest, 0.0, 1.0));
@@ -156,7 +157,7 @@ const AtmosphereShader = {
         float g = 0.65;
         // Capped so staring into the sun doesn't flood the frame; the sky already has its own glow there.
         float phase = min((1.0 - g * g) / (4.0 * 3.14159 * pow(1.0 + g * g - 2.0 * g * cosT, 1.5)), 0.5);
-        float density = mix(0.0015, 0.018, uForest);
+        float density = mix(0.0015, 0.01, uForest);
         float scatter = (1.0 - exp(-density * marchLen)) * phase * 3.0;
         // Only the contrast between lit and shadowed air reads as beams; cap the flat part so open meadows stay clear.
         color += uSunColor * scatter * vis * uVolumetric;
@@ -294,6 +295,7 @@ export function createPost(
     bloom,
     grade: grade.uniforms,
     setSize(width: number, height: number) {
+      composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(width, height);
     },
     render(sunDir: THREE.Vector3, sunColor: THREE.Color) {

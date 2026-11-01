@@ -58,7 +58,18 @@ export function createRocks(world: WorldFns) {
   const material = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.9, specularIntensity: 0.3 });
   const group = new THREE.Group();
 
-  const boulders = [0, 1, 2, 3].map((i) => createRockGeometry(100 + i, new THREE.Vector3(1, 0.65 + 0.15 * i, 1 - 0.1 * i)));
+  // Shapes: round boulders, flat slabs, tall angular rocks, and a squat lumpy one.
+  const boulders = [
+    ...[0, 1, 2, 3].map((i) => createRockGeometry(100 + i, new THREE.Vector3(1, 0.65 + 0.15 * i, 1 - 0.1 * i))),
+    createRockGeometry(110, new THREE.Vector3(1.7, 0.38, 1.2)),
+    createRockGeometry(111, new THREE.Vector3(1.4, 0.3, 1.5)),
+    createRockGeometry(120, new THREE.Vector3(0.75, 1.45, 0.7)),
+    createRockGeometry(121, new THREE.Vector3(0.9, 1.15, 0.6)),
+    createRockGeometry(130, new THREE.Vector3(1.3, 0.85, 1.1)),
+  ];
+  // Stone color per instance: plain grey granite, warm lichen-yellow, and dark wet stone.
+  const tints = ['#ffffff', '#ffffff', '#e8dcb0', '#c8cfd8', '#b8b4ac'].map((c) => new THREE.Color(c));
+  const tintOf = new Map<THREE.Matrix4, THREE.Color>();
   // Pebbles are small and numerous, so they get a much coarser mesh.
   const pebbles = [0, 1].map((i) => createRockGeometry(300 + i, new THREE.Vector3(1, 0.55, 0.85), 1));
   const standing = [0, 1].map((i) => createRockGeometry(200 + i, new THREE.Vector3(0.55, 2.6, 0.4)));
@@ -69,8 +80,11 @@ export function createRocks(world: WorldFns) {
     e.set((rand() - 0.5) * tilt, rand() * Math.PI * 2, (rand() - 0.5) * tilt);
     q.setFromEuler(e);
     s.set(size * (0.8 + rand() * 0.4), size * (0.8 + rand() * 0.4), size * (0.8 + rand() * 0.4));
-    list.push(new THREE.Matrix4().compose(p.set(x, height(x, z) - sink * size, z), q, s));
+    const m = new THREE.Matrix4().compose(p.set(x, height(x, z) - sink * size, z), q, s);
+    tintOf.set(m, tints[Math.floor(rand() * tints.length)]);
+    list.push(m);
   };
+  const pickShape = () => matrices[Math.floor(rand() * boulders.length)];
 
   // Scattered boulders: clustered by noise, more on hills and along the beach.
   const half = TERRAIN_SIZE / 2 - 30;
@@ -85,13 +99,32 @@ export function createRocks(world: WorldFns) {
     if (rand() > cluster * 0.5 + beach + forest + 0.02) continue;
     const big = rand() < 0.12;
     const size = big ? 2.5 + rand() * 3 : 0.4 + rand() * 1.2;
-    place(matrices[Math.floor(rand() * boulders.length)], x, z, size, big ? 0.3 : 0.2);
+    place(pickShape(), x, z, size, big ? 0.3 : 0.2);
+  }
+
+  // Outcrops: a large rock half-buried with smaller ones piled against it, mostly on hills and in forests.
+  for (let i = 0; i < 260 * params.rocks; i++) {
+    const x = (rand() * 2 - 1) * half, z = (rand() * 2 - 1) * half;
+    const h = height(x, z);
+    if (h < 4) continue;
+    const slope = Math.hypot(height(x + 2, z) - h, height(x, z + 2) - h) / 2;
+    if (rand() > 0.25 + slope * 1.5 + world.forest(x, z) * 0.4) continue;
+    const size = 4 + rand() * 5;
+    place(pickShape(), x, z, size, 0.35, 0.4);
+    const n = 2 + Math.floor(rand() * 4);
+    for (let k = 0; k < n; k++) {
+      const a = rand() * Math.PI * 2, d = size * (0.45 + rand() * 0.4);
+      place(pickShape(), x + Math.cos(a) * d, z + Math.sin(a) * d, size * (0.25 + rand() * 0.35), 0.25, 0.6);
+    }
   }
 
   boulders.forEach((geo, i) => {
     if (matrices[i].length === 0) return;
     const mesh = new THREE.InstancedMesh(geo, material, matrices[i].length);
-    matrices[i].forEach((m, k) => mesh.setMatrixAt(k, m));
+    matrices[i].forEach((m, k) => {
+      mesh.setMatrixAt(k, m);
+      mesh.setColorAt(k, tintOf.get(m)!);
+    });
     mesh.castShadow = mesh.receiveShadow = true;
     mesh.computeBoundingSphere();
     group.add(mesh);

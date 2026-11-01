@@ -8,18 +8,31 @@ import { createPost } from './post';
 import { World, MAX_WATER_DEPTH } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
 import { Torch } from './torch';
+import { Minimap } from './minimap';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+// --- Display: the view fills the window up to a configurable maximum size, centered when the window is larger.
+const display = {
+  maxWidth: 2560,
+  maxHeight: 1440,
+  /** Multiplier on the screen's pixel density (capped at 2); lower is faster, higher is sharper. */
+  renderScale: 1,
+  fov: 60,
+  showMinimap: true,
+  minimapSize: 220,
+};
+const stage = document.getElementById('stage')!;
+const viewSize = () => ({ width: Math.min(window.innerWidth, display.maxWidth), height: Math.min(window.innerHeight, display.maxHeight) });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * display.renderScale);
+renderer.setSize(viewSize().width, viewSize().height);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.65;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
-document.body.appendChild(renderer.domElement);
+stage.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000);
+const camera = new THREE.PerspectiveCamera(display.fov, viewSize().width / viewSize().height, 0.1, 20000);
 
 // --- Sky, environment lighting, and water reflections all come from one sky model.
 const sky = new Sky();
@@ -102,7 +115,7 @@ const post = createPost(renderer, scene, camera, cubeTarget.texture, sun);
 const torch = new Torch();
 scene.add(camera);
 camera.add(torch.object);
-scene.add(torch.spot, torch.spot.target, torch.glow);
+scene.add(torch.world);
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyT') torch.toggle();
 });
@@ -195,7 +208,10 @@ worldGui.add(params, 'mountains', 0, 2.5, 0.05);
 worldGui.add(params, 'rivers', 0, 6, 1);
 worldGui.add(params, 'rocks', 0, 3, 0.05).name('rockiness');
 worldGui.add(params, 'forest', 0, 1, 0.01).name('forest cover');
-worldGui.add(params, 'groves', 0, 2, 0.05).name('meadow trees');
+worldGui.add(params, 'groves', 0, 2, 0.05).name('meadow groves');
+worldGui.add(params, 'bigTrees', 0, 2, 0.05).name('big trees');
+worldGui.add(params, 'smallTrees', 0, 2, 0.05).name('small trees');
+worldGui.add(params, 'bushes', 0, 3, 0.05);
 worldGui.add(params, 'flowers', 0, 2, 0.05);
 const actions = {
   regenerate: () => regenerate(),
@@ -216,7 +232,13 @@ timeGui.add(settings, 'clouds', 0, 1, 0.01).onChange(updateSun);
 timeGui.add(settings, 'fogDensity', 0, 0.003, 0.0001).name('haze').onChange((v: number) => (post.atmosphere.uFogDensity.value = v));
 timeGui.add(post.atmosphere.uTintStrength, 'value', 0, 1, 0.01).name('cyan / gold tint');
 timeGui.add(wind.uWindStrength, 'value', 0, 3, 0.01).name('wind');
-timeGui.add(torch, 'on').name('torch (T)').listen();
+
+const torchGui = gui.addFolder('Torch');
+torchGui.add(torch, 'on').name('lit (T)').listen();
+torchGui.add(torch, 'brightness', 0, 3, 0.05);
+torchGui.add(torch, 'embersOn').name('embers');
+torchGui.add(torch, 'smokeOn').name('smoke');
+torchGui.close();
 
 const postGui = gui.addFolder('Effects');
 postGui.add(settings, 'exposure', 0.1, 2, 0.01).onChange(updateSun);
@@ -235,6 +257,62 @@ postGui.add(post.grade.uWarmth, 'value', 0, 0.3, 0.005).name('warmth');
 postGui.add(post.grade.uVignette, 'value', 0, 0.8, 0.01).name('vignette');
 postGui.close();
 
+const movement = {
+  mode: 'walk' as 'walk' | 'fly',
+  walkSpeed: 4.5,
+  runSpeed: 10,
+  flySpeed: 18,
+  flyBoost: 5,
+  sensitivity: 1,
+};
+const controlsGui = gui.addFolder('Controls');
+controlsGui.add(movement, 'mode', ['walk', 'fly']).name('mode (F)').listen().onChange(() => (verticalSpeed = 0));
+controlsGui.add(movement, 'walkSpeed', 1, 15, 0.1).name('walk speed (m/s)');
+controlsGui.add(movement, 'runSpeed', 2, 30, 0.1).name('run speed (m/s)');
+controlsGui.add(movement, 'flySpeed', 2, 100, 1).name('fly speed (m/s)');
+controlsGui.add(movement, 'flyBoost', 1, 10, 0.5).name('fly Shift boost ×');
+controlsGui.add(movement, 'sensitivity', 0.1, 3, 0.05).name('mouse sensitivity').onChange((v: number) => (controls.pointerSpeed = v));
+controlsGui.close();
+
+function applyDisplay() {
+  const { width, height } = viewSize();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * display.renderScale);
+  renderer.setSize(width, height);
+  post.setSize(width, height);
+  camera.aspect = width / height;
+  camera.fov = display.fov;
+  camera.updateProjectionMatrix();
+  minimap.setSize(display.minimapSize);
+  minimap.setVisible(display.showMinimap);
+}
+const displayGui = gui.addFolder('Display');
+displayGui.add(display, 'maxWidth', 640, 3840, 10).name('max width (px)').onChange(applyDisplay);
+displayGui.add(display, 'maxHeight', 360, 2160, 10).name('max height (px)').onChange(applyDisplay);
+displayGui.add(display, 'renderScale', 0.25, 1.5, 0.05).name('render scale').onChange(applyDisplay);
+displayGui.add(display, 'fov', 30, 100, 1).name('field of view').onChange(applyDisplay);
+displayGui.add(display, 'showMinimap').name('minimap (M)').listen().onChange(applyDisplay);
+displayGui.add(display, 'minimapSize', 120, 480, 10).name('minimap size').onChange(applyDisplay);
+displayGui.close();
+
+// --- Minimap: click to travel there.
+const minimap = new Minimap(display.minimapSize);
+stage.appendChild(minimap.element);
+minimap.setWorld(world.fns);
+minimap.onNavigate = (x, z) => {
+  const ground = Math.max(world.height(x, z), 0);
+  const altitude = camera.position.y - Math.max(world.height(camera.position.x, camera.position.z), 0);
+  camera.position.set(x, ground + (movement.mode === 'fly' ? Math.max(altitude, 10) : EYE_HEIGHT), z);
+  verticalSpeed = 0;
+  camera.updateMatrixWorld();
+  world.update(camera, true);
+};
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM') {
+    display.showMinimap = !display.showMinimap;
+    applyDisplay();
+  }
+});
+
 const busy = document.getElementById('busy')!;
 function regenerate() {
   busy.style.display = 'flex';
@@ -246,8 +324,9 @@ function regenerate() {
       world = new World(params, renderer);
       scene.add(world.group);
       water.uniforms.uDepth.value = world.depthTexture;
-      camera.position.y = Math.max(world.height(camera.position.x, camera.position.z), 0) + (flying ? 20 : EYE_HEIGHT);
+      camera.position.y = Math.max(world.height(camera.position.x, camera.position.z), 0) + (movement.mode === 'fly' ? 20 : EYE_HEIGHT);
       world.update(camera, true);
+      minimap.setWorld(world.fns);
       busy.style.display = 'none';
     }, 30),
   );
@@ -287,11 +366,11 @@ if (camParam?.length === 6 && camParam.every(Number.isFinite)) {
 
 // Walk (default) or fly; F toggles. Walking follows the ground with gravity and jumping.
 // A ?cam= view above walking height starts in fly mode so it holds its altitude.
-let flying = (camParam?.[1] ?? 0) > EYE_HEIGHT + 0.5;
+if ((camParam?.[1] ?? 0) > EYE_HEIGHT + 0.5) movement.mode = 'fly';
 let verticalSpeed = 0;
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyF') {
-    flying = !flying;
+    movement.mode = movement.mode === 'fly' ? 'walk' : 'fly';
     verticalSpeed = 0;
   }
 });
@@ -299,7 +378,8 @@ window.addEventListener('keydown', (e) => {
 const move = new THREE.Vector3();
 function updateCamera(dt: number) {
   const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
-  const speed = flying ? (sprint ? 90 : 18) : sprint ? 10 : 4.5;
+  const flying = movement.mode === 'fly';
+  const speed = flying ? movement.flySpeed * (sprint ? movement.flyBoost : 1) : sprint ? movement.runSpeed : movement.walkSpeed;
   move.set(Number(keys.has('KeyD')) - Number(keys.has('KeyA')), 0, Number(keys.has('KeyW')) - Number(keys.has('KeyS')));
   if (move.lengthSq() > 0) {
     move.normalize().multiplyScalar(speed * dt);
@@ -322,13 +402,10 @@ function updateCamera(dt: number) {
   }
 }
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  post.setSize(window.innerWidth, window.innerHeight);
-});
+window.addEventListener('resize', applyDisplay);
+applyDisplay();
 
+const lookDir = new THREE.Vector3();
 const timer = new THREE.Timer();
 let sinceSunUpdate = 0;
 renderer.setAnimationLoop(() => {
@@ -363,7 +440,9 @@ renderer.setAnimationLoop(() => {
   stars.position.copy(camera.position);
   nightDome.position.copy(camera.position);
 
-  torch.update(camera, timer.getElapsed(), dt);
+  const pixelsPerMeter = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+  torch.update(camera, timer.getElapsed(), dt, pixelsPerMeter);
+  minimap.update(camera, camera.getWorldDirection(lookDir));
   post.atmosphere.uTorchPos.value.copy(torch.flameWorld);
   post.atmosphere.uTorchColor.value.copy(torch.flameColor);
 
@@ -378,5 +457,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, cubeTarget, skyScene, post, params, regenerate, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, get world() { return world; } },
 });

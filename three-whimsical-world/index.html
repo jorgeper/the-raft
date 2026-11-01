@@ -6,9 +6,16 @@
     <title>Meadows</title>
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+      body { display: flex; align-items: center; justify-content: center; }
+      #stage { position: relative; line-height: 0; }
+      .minimap { position: absolute; top: 14px; left: 14px; line-height: 1.2; font-family: Georgia, 'Times New Roman', serif; color: #f3e9cf; text-shadow: 0 1px 3px #000; user-select: none; }
+      .minimap-frame { position: relative; border: 2px solid rgba(214, 186, 120, 0.85); border-radius: 50%; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.6); cursor: crosshair; aspect-ratio: 1; }
+      .minimap-frame canvas { position: absolute; inset: 0; display: block; }
+      .minimap-biome { text-align: center; margin-top: 8px; font-size: 18px; letter-spacing: .08em; text-transform: uppercase; }
+      .minimap-coords { text-align: center; font: 11px/1.4 system-ui, sans-serif; opacity: .7; }
       canvas { display: block; }
       #hint {
-        position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+        position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);
         font: 13px/1.4 system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.45);
         padding: 8px 14px; border-radius: 6px; pointer-events: none; transition: opacity .3s;
       }
@@ -20,7 +27,9 @@
   </head>
   <body>
     <div id="busy">Generating world…</div>
-    <div id="hint">Click to look around · WASD move · Shift run · Space jump · T torch · F fly (Space / C up / down) · Esc release</div>
+    <div id="stage">
+      <div id="hint">Click to look around · WASD move · Shift run · Space jump · T torch · F fly (Space / C up / down) · M map · Esc release (then click the map to travel)</div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
