@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { Sky } from 'three/addons/objects/Sky.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import GUI from 'lil-gui';
 import { createWater } from './water';
@@ -11,6 +10,7 @@ import { Torch } from './torch';
 import { Minimap } from './minimap';
 import { loadScannedRocks, rockMoss } from './scanned-rocks';
 import { Persist } from './persist';
+import { createSky } from './sky';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
 const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
@@ -31,7 +31,9 @@ const stage = document.getElementById('stage')!;
 const viewSize = () => ({ width: Math.min(window.innerWidth, display.maxWidth), height: Math.min(window.innerHeight, display.maxHeight) });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * display.renderScale);
 renderer.setSize(viewSize().width, viewSize().height);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// Neutral (Khronos PBR) keeps hues saturated where ACES pulls bright blues and greens toward white; Valheim's look is
+// saturated.
+renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = 0.65;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -41,14 +43,13 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(display.fov, viewSize().width / viewSize().height, 0.1, 20000);
 
 // --- Sky, environment lighting, and water reflections all come from one sky model.
-const sky = new Sky();
-sky.scale.setScalar(10000);
-scene.add(sky);
+const sky = createSky();
+sky.mesh.scale.setScalar(10000);
+scene.add(sky.mesh);
 
 const skyScene = new THREE.Scene();
-const skyBox = new THREE.Mesh(sky.geometry, sky.material);
-skyBox.scale.setScalar(1000); // must sit beyond the cube camera near plane
-skyScene.add(skyBox);
+sky.probeMesh.scale.setScalar(1000); // must sit beyond the cube camera near plane
+skyScene.add(sky.probeMesh);
 const cubeTarget = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
 const cubeCamera = new THREE.CubeCamera(1, 20000, cubeTarget);
 skyScene.add(cubeCamera);
@@ -82,29 +83,6 @@ const stars = (() => {
   return new THREE.Points(geo, mat);
 })();
 scene.add(stars);
-
-// Night sky: a dark-blue gradient dome that fades in after sunset. It's also in the sky probe scene, so the
-// environment lighting turns moonlit blue instead of black.
-const nightDomeMaterial = (() => {
-  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, transparent: true, depthWrite: false, opacity: 0 });
-  return mat;
-})();
-function createNightDome(radius: number) {
-  const geo = new THREE.SphereGeometry(radius, 32, 16);
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  const colors = new Float32Array(pos.count * 3);
-  const zenith = new THREE.Color('#050b1c'), horizon = new THREE.Color('#1b2c4c'), c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    c.copy(horizon).lerp(zenith, Math.pow(Math.max(pos.getY(i) / radius, 0), 0.6)).multiplyScalar(0.6);
-    c.toArray(colors, i * 3);
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  return new THREE.Mesh(geo, nightDomeMaterial);
-}
-const nightDome = createNightDome(9500);
-nightDome.renderOrder = -1;
-scene.add(nightDome);
-skyScene.add(createNightDome(900));
 
 const water = createWater(cubeTarget.texture, new THREE.DataTexture(), MAX_WATER_DEPTH);
 scene.add(water.mesh);
@@ -141,11 +119,9 @@ const settings = {
   sunRotation: 0,
   /** In-game hours per real minute; 0 = time stands still. */
   daySpeed: 0,
-  turbidity: 1.5,
-  rayleigh: 3,
   clouds: 0.38,
   exposure: renderer.toneMappingExposure,
-  fogDensity: 0.0004,
+  fogDensity: 0.0008,
 };
 const sunDir = new THREE.Vector3();
 const moonDir = new THREE.Vector3();
@@ -171,29 +147,23 @@ function updateSun() {
   sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elevation), THREE.MathUtils.degToRad(azimuth));
   moonDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - Math.max(-elevation, 20)), THREE.MathUtils.degToRad(azimuth + 180));
 
-  const u = sky.material.uniforms;
-  u.sunPosition.value.copy(sunDir);
-  u.turbidity.value = settings.turbidity;
-  u.rayleigh.value = settings.rayleigh;
-  u.mieCoefficient.value = 0.0015;
-  u.mieDirectionalG.value = 0.8;
-  u.cloudCoverage.value = settings.clouds;
-  u.cloudDensity.value = 0.55;
+  // Rose-gold palette before noon, magenta-violet after.
+  sky.update(sunDir, elevation, settings.time >= 13 || settings.time < 1, settings.clouds);
 
   daylight = THREE.MathUtils.smoothstep(elevation, -4, 6);
   const night = 1 - THREE.MathUtils.smoothstep(elevation, -9, -1);
   // Low sun = warm golden light; the moon is cool and dim.
   const warmth = THREE.MathUtils.smoothstep(elevation, 2, 30);
-  const sunColor = new THREE.Color(1, 0.62 + 0.35 * warmth, 0.38 + 0.52 * warmth);
+  // Valheim's sunlight stays golden even at noon.
+  const sunColor = new THREE.Color(1, 0.62 + 0.3 * warmth, 0.38 + 0.42 * warmth);
   const moonColor = new THREE.Color(0.55, 0.65, 1);
   lightDir.copy(daylight > 0.05 ? sunDir : moonDir);
   lightColor.copy(moonColor).multiplyScalar(0.6 * night).lerp(sunColor, daylight);
   sun.color.copy(lightColor);
   // Strong sun against modest sky fill, so shadows and light beams have real contrast.
-  sun.intensity = daylight > 0.05 ? 5 * daylight : 2.2;
+  sun.intensity = daylight > 0.05 ? 7.5 * daylight : 2.2;
   nightFill.intensity = 1.4 * night;
   (stars.material as THREE.PointsMaterial).opacity = night;
-  nightDomeMaterial.opacity = night;
   renderer.toneMappingExposure = settings.exposure * (1 + 1.6 * night);
 
   water.uniforms.uSunDir.value.copy(lightDir);
@@ -205,10 +175,10 @@ function updateSun() {
   envTarget?.dispose();
   envTarget = pmrem.fromScene(skyScene);
   scene.environment = envTarget.texture;
-  scene.environmentIntensity = 0.25;
+  scene.environmentIntensity = 0.4;
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
-persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'turbidity', 'rayleigh', 'clouds', 'exposure', 'fogDensity']);
+persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'fogDensity']);
 persist.bind('tint', post.atmosphere.uTintStrength, ['value']);
 persist.bind('wind', wind.uWindStrength, ['value']);
 persist.bind('torch', torch, ['on', 'brightness', 'embersOn', 'smokeOn']);
@@ -270,8 +240,6 @@ torchGui.close();
 
 const postGui = gui.addFolder('Effects');
 postGui.add(settings, 'exposure', 0.1, 2, 0.01).onChange(updateSun);
-postGui.add(settings, 'turbidity', 0, 20, 0.1).onChange(updateSun);
-postGui.add(settings, 'rayleigh', 0, 4, 0.01).onChange(updateSun);
 postGui.add(volumetric, 'value', 0, 3, 0.01).name('volumetric light').onChange(updateSun);
 postGui.add(shaftStrength, 'value', 0, 3, 0.01).name('sun glare shafts').onChange(updateSun);
 postGui.add(post.atmosphere.uAOStrength, 'value', 0, 1, 0.01).name('ambient occlusion');
@@ -477,6 +445,7 @@ renderer.setAnimationLoop(() => {
   }
 
   water.uniforms.uTime.value = timer.getElapsed();
+  sky.uniforms.uTime.value = timer.getElapsed();
   wind.uTime.value = timer.getElapsed();
   camera.updateMatrixWorld();
   world.update(camera);
@@ -490,7 +459,6 @@ renderer.setAnimationLoop(() => {
   sun.target.position.copy(camera.position);
   sun.position.copy(camera.position).addScaledVector(lightDir, 500);
   stars.position.copy(camera.position);
-  nightDome.position.copy(camera.position);
 
   const pixelsPerMeter = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
   torch.update(camera, timer.getElapsed(), dt, pixelsPerMeter);
@@ -509,5 +477,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, resetToDefaults, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, sky, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, resetToDefaults, get world() { return world; } },
 });

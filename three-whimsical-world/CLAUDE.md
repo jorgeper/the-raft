@@ -30,6 +30,8 @@ volumetric, shafts, fog, AO) before changing code.
 - `THREE.MathUtils.smoothstep(x, min, max)` takes the value first; the local `smoothstep(a, b, x)` in
   `worldgen.ts` takes it last. Mixing them up inverted the forest haze once.
 - The sky renders at depth exactly 1.0; distant land reaches 0.99998. Test sky with `depth >= 1.0`, never an epsilon.
+- Tone mapping is Neutral, not ACES: ACES pulls bright saturated blues and greens toward white. Sky colors are a
+  table of stops by sun elevation in `src/sky.ts`; keep them under ~5.5 except the sun disc.
 - The haze pass caps HDR at 6.6 before bloom (threshold 6). Raising the cap or bloom strength veils the
   frame whenever the sun is in view.
 - A `sampler2DShadow` can't be bound before the shadow map exists: the volumetric code is behind the

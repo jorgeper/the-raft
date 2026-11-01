@@ -8,7 +8,7 @@ export const TERRAIN_SIZE = 2000;
 const SEGMENTS = 800;
 
 const COLORS = {
-  grassLush: new THREE.Color('#4f6f28'),
+  grassLush: new THREE.Color('#577a24'),
   grassDry: new THREE.Color('#7c8a38'),
   dirt: new THREE.Color('#6a573a'),
   // Bare earth patches on the meadow, warm orange-brown like Valheim's.

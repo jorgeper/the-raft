@@ -34,7 +34,7 @@ const AtmosphereShader = {
     uSunUv: { value: new THREE.Vector2() },
     uSunFacing: { value: 0 },
     uSunColor: { value: new THREE.Color(1, 0.9, 0.75) },
-    uFogDensity: { value: 0.0004 },
+    uFogDensity: { value: 0.0008 },
     uFogHeightFalloff: { value: 0.012 },
     uShaftStrength: { value: 0.5 },
     // Valheim's split light: haze turns cyan away from the sun and gold toward it.
@@ -131,7 +131,7 @@ const AtmosphereShader = {
           ? (1.0 - exp(-uFogHeightFalloff * dy)) / (uFogHeightFalloff * dy)
           : 1.0;
         // Forests hold a thick haze near the ground (it doesn't thin with height inside the canopy).
-        float density = uFogDensity * mix(1.0, 4.0, uForest);
+        float density = uFogDensity * mix(1.0, 7.0, uForest);
         float optical = density * dist * mix(exp(-uFogHeightFalloff * h) * heightTerm, 1.0, uForest);
         float fog = 1.0 - exp(-optical);
         vec3 horizonDir = normalize(vec3(ray.x, 0.04 + max(ray.y, 0.0) * 0.5, ray.z));
@@ -140,10 +140,15 @@ const AtmosphereShader = {
         // tints the view instead of washing it out.
         float fogLuma = dot(fogColor, vec3(0.2126, 0.7152, 0.0722));
         // Under the canopy the haze is lit by much less sky, so it's darker.
-        fogColor *= 0.75 * min(1.0, 1.4 / max(fogLuma, 1e-4)) * mix(1.0, 0.45, uForest);
+        // Valheim's haze is luminous, close to the horizon sky's brightness, so distant land dissolves into light.
+        fogColor *= 0.85 * min(1.0, 2.3 / max(fogLuma, 1e-4)) * mix(1.0, 0.5, uForest);
         float toSun = max(dot(normalize(vec3(ray.x, 0.0, ray.z)), normalize(vec3(uSunDir.x, 0.0, uSunDir.z))), 0.0);
         vec3 tint = mix(uFogCool, uFogWarm, pow(toSun, 2.0));
-        fogColor *= mix(vec3(1.0), tint, clamp(uTintStrength + 0.35 * uForest, 0.0, 1.0));
+        fogColor *= mix(vec3(1.0), tint, clamp(uTintStrength + 0.5 * uForest, 0.0, 1.0));
+        // Forward scattering: haze between you and a low sun glows gold (and orange under the canopy).
+        float sunLow = 1.0 - smoothstep(0.1, 0.7, uSunDir.y);
+        float forward = pow(max(dot(ray, uSunDir), 0.0), 5.0) * (0.6 + 1.6 * sunLow) * (1.0 + uForest);
+        fogColor += uSunColor * forward * smoothstep(-0.06, 0.04, uSunDir.y) * 1.6;
         color = mix(color, fogColor, fog);
       }
 
@@ -171,7 +176,7 @@ const AtmosphereShader = {
         float tc = dot(toLight, ray);
         float h = max(length(toLight - ray * tc), 0.05);
         float glowAmt = (atan((rayLen - tc) / h) - atan(-tc / h)) / h;
-        color += uTorchColor * glowAmt * 0.004 * (1.0 + 1.5 * uForest);
+        color += uTorchColor * glowAmt * 0.0018 * (1.0 + 1.2 * uForest);
       }
 
       // Light shafts: march from this pixel toward the sun, collecting unblocked sky.

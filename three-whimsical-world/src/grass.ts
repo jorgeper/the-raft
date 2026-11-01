@@ -104,9 +104,9 @@ export class Grass {
   private geometry = createBladeGeometry();
   private material: THREE.MeshPhysicalMaterial;
   private colorNoise = createNoise2D(hashSeed(11, 5));
-  private lush = new THREE.Color('#3d6a12');
-  private deep = new THREE.Color('#2a5014');
-  private dry = new THREE.Color('#8c9435');
+  private lush = new THREE.Color('#4e7e10');
+  private deep = new THREE.Color('#355e12');
+  private dry = new THREE.Color('#9a9e34');
   // Under the forest canopy the little grass there is darker and bluer.
   private shade = new THREE.Color('#2a4a1c');
 

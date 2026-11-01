@@ -41,9 +41,11 @@ export class Persist {
   save() {
     if (!this.enabled) return;
     const out: Record<string, Bag> = {};
-    for (const [key, { obj, props }] of this.entries) {
-      out[key] = {};
-      for (const p of props) out[key][p] = obj[p] as Value;
+    // Only values the user changed are stored, so retuned defaults still reach everyone else.
+    for (const [key, { obj, props, defaults }] of this.entries) {
+      const changed: Bag = {};
+      for (const p of props) if (obj[p] !== defaults[p]) changed[p] = obj[p] as Value;
+      if (Object.keys(changed).length) out[key] = changed;
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(out));

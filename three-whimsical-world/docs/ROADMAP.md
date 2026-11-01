@@ -20,6 +20,9 @@ In priority order: items 1–3 are the user's requests for the next sessions, th
    - Done when: both views work while walking, running and jumping on slopes, verified with screenshots in a
      meadow and a forest, and frame rate is checked with the character on screen.
 2. **Valheim look pass**: match the user's reference shots in `reference/`, not just generic realism.
+   - First pass landed: painted sky (`src/sky.ts`), Neutral tone mapping, luminous sun-glowing haze, lime grass,
+     golden light. Side-by-side grid: `.playwright-mcp/look/compare2.jpg` (regenerate with `.playwright-mcp/compare.js`).
+     Waiting on the user's verdict; next candidates: bigger sun bloom, cloud shapes, bluer shadows.
    - Sky: Valheim's painterly gradients (deep blue zenith → pink/peach near the sun → cyan horizon away from it),
      shifting through the day: rose-gold mornings, warm afternoons, magenta-violet dusk, deep blue nights. Likely a
      custom sky shader (or color grading layered on the physical sky) with per-time-of-day color stops.
