@@ -31,7 +31,12 @@ In priority order: the first items are the user's requests for the next sessions
    - Tall meadow landed: magenta fireweed spikes in drifts (thickest at forest-edge clearings), white-to-pink yarrow
      umbels, seeding grass tufts with golden to purplish heads, dandelion clocks, and the daisies/buttercups raised
      so their heads nod above the grass (`addTallMeadow` in `src/cover.ts`). ~1–2 fps. Shots: `.playwright-mcp/b2/`.
-     Still open: deer, wet-rock glints.
+     Still open: wet-rock glints.
+   - Deer landed (`src/deer.ts`, `public/models/deer.glb`): herds of a stag and a few does at forest edges that
+     graze, look up, wander and bolt into the trees when you come within 26 m. The model was built in Blender from
+     metaballs (no skeleton); the vertex shader swings the legs and lowers the neck from a per-instance pose, and
+     the shadow pass uses the same pose. Shots: `.playwright-mcp/deer/`. Next: a proper skinned rig with a
+     gallop cycle, fawns, and deer pausing to stare at the player before fleeing.
    - Forest floor landed: velvety moss cushions (speckled, bump-shaded) in damp patches, and litter cards of fallen
      leaves and spruce needles, thickest at the forest edge. Forest 32 fps (was 33). Shots: `b2/f2-*`.
    - Water mist landed: a thin layer at sea and river level (not the ground under the viewer), drawn into drifting

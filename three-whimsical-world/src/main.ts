@@ -669,6 +669,7 @@ renderer.setAnimationLoop((now) => {
   const forestHere = world.fns.forest(camera.position.x, camera.position.z) * (1 - THREE.MathUtils.smoothstep(altitude, 5, 40));
   post.atmosphere.uForest.value += (forestHere - post.atmosphere.uForest.value) * Math.min(dt * 1.5, 1);
   world.life.update(timer.getElapsed(), camera, daylight, post.atmosphere.uForest.value);
+  world.deer.update(timer.getElapsed(), player.position);
 
   // Eye adaptation: looking into the sun stops the view down a little, so it glows instead of blinding
   // (under a canopy most of it is hidden, so adapt less there).
