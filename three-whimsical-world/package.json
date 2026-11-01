@@ -22,6 +22,7 @@
   "homepage": "https://github.com/jorgeper/3d-tests#readme",
   "type": "module",
   "dependencies": {
+    "@dgreenheck/ez-tree": "^1.1.0",
     "lil-gui": "^0.21.0",
     "simplex-noise": "^4.0.3",
     "three": "^0.187.0"

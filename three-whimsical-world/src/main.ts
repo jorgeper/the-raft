@@ -4,6 +4,9 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import GUI from 'lil-gui';
 import { createMeadowHeight, createTerrainMesh, createDepthTexture } from './terrain';
 import { createWater } from './water';
+import { Grass } from './grass';
+import { Trees } from './trees';
+import { wind } from './wind';
 
 const MAX_WATER_DEPTH = 10;
 
@@ -11,7 +14,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'hi
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.55;
+renderer.toneMappingExposure = 0.65;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 document.body.appendChild(renderer.domElement);
@@ -53,12 +56,18 @@ scene.add(terrain);
 const water = createWater(cubeTarget.texture, createDepthTexture(height, 512, MAX_WATER_DEPTH), MAX_WATER_DEPTH);
 scene.add(water.mesh);
 
+const trees = new Trees(height);
+scene.add(trees.group);
+
+const grass = new Grass(height);
+scene.add(grass.group);
+
 // --- Sun and atmosphere settings (tweakable live)
 const settings = {
-  elevation: 14,
-  azimuth: 115,
-  turbidity: 3,
-  rayleigh: 1.6,
+  elevation: 24,
+  azimuth: 200,
+  turbidity: 2,
+  rayleigh: 3,
   exposure: renderer.toneMappingExposure,
   fogDensity: (scene.fog as THREE.FogExp2).density,
   fogColor: '#aebfcc',
@@ -84,7 +93,7 @@ function updateSun() {
   envTarget?.dispose();
   envTarget = pmrem.fromScene(skyScene);
   scene.environment = envTarget.texture;
-  scene.environmentIntensity = 0.7;
+  scene.environmentIntensity = 0.45;
 }
 updateSun();
 
@@ -95,6 +104,7 @@ gui.add(settings, 'turbidity', 0, 20, 0.1).onChange(updateSun);
 gui.add(settings, 'rayleigh', 0, 4, 0.01).onChange(updateSun);
 gui.add(settings, 'exposure', 0.1, 2, 0.01).onChange((v: number) => (renderer.toneMappingExposure = v));
 gui.add(settings, 'fogDensity', 0, 0.005, 0.0001).onChange((v: number) => ((scene.fog as THREE.FogExp2).density = v));
+gui.add(wind.uWindStrength, 'value', 0, 3, 0.01).name('wind');
 gui.addColor(settings, 'fogColor').onChange((v: string) => (scene.fog as THREE.FogExp2).color.set(v));
 
 // --- Fly camera
@@ -108,10 +118,12 @@ const keys = new Set<string>();
 window.addEventListener('keydown', (e) => keys.add(e.code));
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 
-// Start on the meadow looking out to sea. ?cam=x,y,z,tx,ty,tz overrides (handy for screenshots).
+// Start on the meadow looking out to sea. ?cam=x,heightAboveGround,z,tx,ty,tz overrides (handy for screenshots).
 const camParam = new URLSearchParams(location.search).get('cam')?.split(',').map(Number);
 if (camParam?.length === 6 && camParam.every(Number.isFinite)) {
-  camera.position.set(camParam[0], camParam[1], camParam[2]);
+  // y is height above the ground here, so shots can't end up underground.
+  const [x, y, z] = camParam;
+  camera.position.set(x, Math.max(height(x, z), 0) + Math.max(y, 1.7), z);
   camera.lookAt(camParam[3], camParam[4], camParam[5]);
 } else {
   camera.position.set(-60, height(-60, 0) + 14, 0);
@@ -147,6 +159,10 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(timer.getDelta(), 0.1);
   updateCamera(dt);
   water.uniforms.uTime.value = timer.getElapsed();
+  wind.uTime.value = timer.getElapsed();
+  grass.update(camera.position);
+  camera.updateMatrixWorld();
+  trees.update(camera);
 
   // Keep the shadow frustum centered on the viewer.
   sun.target.position.copy(camera.position);
@@ -155,5 +171,8 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
+// Fill all grass before the first frame so the opening view isn't bare.
+grass.update(camera.position, Infinity);
+
 // Debug handle for automated screenshots.
-Object.assign(window, { __app: { camera, scene, renderer, settings, updateSun, cubeTarget, skyScene } });
+Object.assign(window, { __app: { camera, scene, renderer, settings, updateSun, cubeTarget, skyScene, grass, trees, height } });
