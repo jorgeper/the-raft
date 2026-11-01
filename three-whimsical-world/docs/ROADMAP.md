@@ -9,8 +9,8 @@ In priority order: the first items are the user's requests for the next sessions
    2. ~~A **Performance** panel section~~ (done: `perf` in main.ts; switches fold into the preset in `applyPerf`).
    3. ~~Realism and polish~~ (surf, flowing rivers, drifting dapples, longer golden hour: see Done; caustics were
       already there).
-   4. ~~Weather and night sky~~ (done, see Done). Not yet: splashes where drops hit the ground, rocks and trunks
-      darkening when wet, snow.
+   4. ~~Weather and night sky~~ (done, see Done), and since then splashes, wet rocks and bark (see Done). Not yet:
+      snow.
    The user wants it all to feel cozy and gorgeous.
 
 0. **User's queue (2026-11-01), in this order:**
@@ -18,8 +18,7 @@ In priority order: the first items are the user's requests for the next sessions
    2. ~~Teal shade~~ (done, see Done). The sky cap (see Done) made the sky near a low sun richer, but the
       sunset glow over the sea can still read pastel; the haze over land toward the sun is the remaining suspect.
    3. ~~Flicker~~ (TAA part done, see Done; waiting on the user's verdict in motion).
-   4. ~~Ponds~~ (done, see Done). Possible follow-ups: ripple rings where a frog dives or a fish rises, a
-      croak sound, dragonflies over the water.
+   4. ~~Ponds~~ (done, see Done), with ripple rings and dragonflies since. Possible follow-up: a croak sound.
 
 3. **Valheim look pass**: match the user's reference shots in `reference/`, not just generic realism.
    - First pass landed: painted sky (`src/sky.ts`), Neutral tone mapping, luminous sun-glowing haze, lime grass,
@@ -63,7 +62,7 @@ In priority order: the first items are the user's requests for the next sessions
      graze, look up, wander and bolt into the trees when you come within 26 m. The model was built in Blender from
      metaballs (no skeleton); the vertex shader swings the legs and lowers the neck from a per-instance pose, and
      the shadow pass uses the same pose. Shots: `.playwright-mcp/deer/`. Since rigged and animated, with fawns
-     and staring (see Done). Next: spotted fawn coats, grazing steps, ears flicking on their own bones.
+     and staring (see Done); fawns are spotted now. Next: grazing steps, ears flicking on their own bones.
    - Forest floor landed: velvety moss cushions (speckled, bump-shaded) in damp patches, and litter cards of fallen
      leaves and spruce needles, thickest at the forest edge. Forest 32 fps (was 33). Shots: `b2/f2-*`.
    - Water mist landed: a thin layer at sea and river level (not the ground under the viewer), drawn into drifting
@@ -90,13 +89,13 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Ideas for a gorgeous, rich land (suggested to the user, not yet prioritized)
 
-- Color: wildflower meadows in drifts of purple heather, pink fireweed, yellow buttercups; autumn-tinted birches and
-  rowans with red berries among the greens; lichen-orange and moss-green rocks.
+- Color: ~~purple heather drifts~~, ~~autumn-tinted birches~~ (done, see Done); still open: rowans with red berries,
+  lichen-orange rocks.
 - Light: god rays from clouds over the sea; aurora on clear nights; moonlit
   silver-blue nights; sun glitter on water.
-- Life and motion: butterflies, birds, deer at forest edges, falling leaves, swaying reeds, drifting seed fluff.
-- Landmarks: standing stones and rune stones, ruined towers, a Viking longhouse with smoke curling from the roof,
-  a lone giant oak on a hill, waterfalls off mountain cliffs, burial mounds.
+- Life and motion: butterflies, birds, deer at forest edges, falling leaves, swaying reeds, ~~drifting seed fluff~~.
+- Landmarks: ~~standing stones, rune stones, burial mounds~~ (done, see Done); still open: ruined towers, a Viking
+  longhouse with smoke curling from the roof, a lone giant oak on a hill, waterfalls off mountain cliffs.
 - Water: translucent turquoise shallows, foam, caustics, reflections (roadmap item).
 - Weather: rolling morning mist, passing rain showers with wet sheen, rainbows after rain, wind gusts across grass.
 
@@ -114,6 +113,31 @@ In priority order: the first items are the user's requests for the next sessions
 - Nights are very dark without the torch, by design.
 
 ## Done
+
+- The rest of the queue (user, 2026-11-01, after "fix the rest in the roadmap"):
+  - **Weather fixes**: picking a weather in the panel now lands in seconds (`Weather.pick`; auto mode still drifts
+    over ~40 s), and the white stripes on river mouths are gone: the streak frame sheared where the flow turned, so
+    the white water is now flecks advected along the flow.
+  - **Rain splashes** (`Splashes` in `src/rain.ts`): little rings and crowns where drops land, near and ahead of you.
+    **Wet world**: rocks (`patchMoss`) and tree bark darken and gloss in rain, moss less so.
+  - **Pond life**: rings spread where a frog dives or lands on a pad and where a fish rises (`addRipple` in
+    `src/water.ts`); dragonflies hover and dart over the ponds by day, dipping to the water.
+  - **Landmarks** (`src/landmarks.ts`, sites in `worldgen.ts`): barrow cemeteries of two to four grassy mounds
+    (part of the land's height, so grass and flowers grow on them) with a rune stone beside each; lone rune stones
+    and two more stone circles out on the meadows; a rune stone just west of the ring above the beach, facing the
+    start. Rune stones carry a serpent band with runes in its body and a ring cross, red paint worn off in places,
+    the grooves shading like cuts. Trees and boulders keep clear (`clearing`), checked after their random draws so
+    the forest doesn't reshuffle. Shots: `.playwright-mcp/polish/lm-*.png`.
+  - **Autumn touch**: birches turn gold and young broadleaf copper in drifts (instance color with little blue marks
+    an autumn tree; `AUTUMN_LEAVES` in `src/impostor.ts` serves leaves and impostors). Shots: `au-*.png`.
+  - **Seed fluff** (`src/fluff.ts`): dandelion and thistle down on the wind over open meadow on fine days, glowing
+    when backlit. No measurable fps cost. Shots: `fl-*.png`.
+  - **Heather**: a `heath` field (higher open ground) thins and shortens the grass, tints the sward mauve and grows
+    heather cushions (`createHeatherGeometry`). Shots: `he-*.png`.
+  - **Deer**: spotted fawns (their own material, spots placed in the rest pose); fixed blue-violet blotches on the
+    white rumps (vertex colors brightened past 1 wrapped around in their Uint16 attribute).
+  - All at 60 fps at medium in the shots, except looking into a low sun past the forest edge at the start (48, the
+    same as before these changes).
 
 - Weather and the night sky (user, 2026-11-01):
   - **Weather that changes by itself** (`src/weather.ts`): clear → fair → cloudy → overcast → rain and back, a few
