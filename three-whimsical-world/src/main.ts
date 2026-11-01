@@ -5,6 +5,7 @@ import { createWater, addRipple } from './water';
 import { wind, sunLight, windControl, WindDrift } from './wind';
 import { VIBES, type VibeName } from './vibes';
 import { Tour } from './tour';
+import { Trample, type Walker } from './trample';
 import { PhotoMode, PlayLens, fovFor, lensSettings, photoSettings, savePhoto } from './photo';
 import { createPost } from './post';
 import { World } from './world';
@@ -163,6 +164,9 @@ snow.setSceneDepth(post.sceneDepth);
 overlay.add(snow.points);
 // Splashes where the drops land (follows regenerate through the closure).
 const splashes = new Splashes((x, z) => world.height(x, z));
+// Footprints in snow and sand, and grass bent aside where the player and the deer walk.
+const trample = new Trample();
+const walkers: Walker[] = [];
 // Dandelion and thistle down drifting over the meadows on fine days.
 const fluff = new SeedFluff();
 fluff.setSceneDepth(post.sceneDepth);
@@ -1201,8 +1205,21 @@ renderer.setAnimationLoop((now) => {
   splashes.update(timer.getElapsed() % 10000, camera, weather.rain, perf.rain, sky.uniforms.uHorizon.value, pixelsPerMeter);
   snow.update(timer.getElapsed() % 10000, camera, weather.snow, perf.rain, sky.uniforms.uHorizon.value, pixelsPerMeter);
   soundFeet.copy(player.position).y -= EYE_HEIGHT;
+  const footfalls = character ? character.footfalls() : null;
+  const onFoot = motion.grounded && movement.mode === 'walk' && !touring;
+  {
+    walkers.length = 0;
+    const yaw = character ? character.root.rotation.y : Math.atan2(-lookDir.x, -lookDir.z);
+    if (onFoot) {
+      walkers.push({ id: player, x: soundFeet.x, z: soundFeet.z, yaw, speed: 0, size: 1 });
+    }
+    const near: Walker[] = [];
+    world.deer.walkers(near);
+    for (const w of near) if (Math.hypot(w.x - soundFeet.x, w.z - soundFeet.z) < 45) walkers.push(w);
+    trample.update(dt, walkers, weather.snow);
+  }
   sound.update({
-    dt, camera, feet: soundFeet, grounded: motion.grounded && movement.mode === 'walk', footfalls: character ? character.footfalls() : null,
+    dt, camera, feet: soundFeet, grounded: motion.grounded && movement.mode === 'walk', footfalls,
     hours: settings.time, daylight, rain: weather.rain, snow: weather.snow, snowCover: weather.snowCover,
     wind: wind.uWindStrength.value, torch: torch.on,
   });
@@ -1215,6 +1232,7 @@ renderer.setAnimationLoop((now) => {
   // Chunks streamed in since last frame bring fresh alpha-to-coverage materials; switch them before they draw
   // (a scene sweep costs ~0.05 ms).
   if (display.taa) useCoverage(false);
+  trample.render(renderer, soundFeet);
   post.render(lightDir, scatterSun);
   if (photoPending) {
     photoPending = false;
@@ -1230,5 +1248,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { sound, windControl, windDrift, applyVibe, startTour, endTour, photo, enterPhoto, exitPhoto, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
+  __app: { trample, sound, windControl, windDrift, applyVibe, startTour, endTour, photo, enterPhoto, exitPhoto, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
 });

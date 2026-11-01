@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Walker } from './trample';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import type { WorldFns } from './worldgen';
@@ -282,6 +283,11 @@ export class DeerHerds {
       this.think(d, dt, viewer);
       this.animate(d, dt);
     }
+  }
+
+  /** Each deer as a walker, for trampled grass and hoof prints (heading turned to a yaw: x = sin, z = cos). */
+  walkers(out: Walker[]) {
+    for (const d of this.deer) out.push({ id: d, x: d.pos.x, z: d.pos.z, yaw: Math.PI / 2 - d.heading, speed: d.speed, size: 1.4 * d.scale });
   }
 
   private remove(d: Deer) {

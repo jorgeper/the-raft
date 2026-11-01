@@ -137,6 +137,15 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Footprints and trampled grass (user, 2026-11-01): `src/trample.ts` keeps two maps round the player, redrawn each
+  frame. Prints (2048² over 48 m) take a boot print every stride (strides lengthen with speed) and a hoof print for
+  walking deer; the terrain dents and shades them in snow (8 cm, blue), dry sand (4.5 cm, shaded walls, a lighter
+  rim) and wet sand (2 cm, water seeping in), and they fill in over a couple of minutes, sooner while it snows. The
+  trample map (256² over 64 m) holds soft discs along the paths of the player and the deer: grass blades bend aside,
+  away from the path, and spring back over twenty seconds. About 1.5 fps.
+- AO band fixed (2026-11-01): looking down at open ground showed a dark band across the middle of the frame (and
+  faint vertical streaks). The half-res AO sampled the depth at texel corners, picking a texel by float rounding
+  that flipped across the frame; it now reads depth and position from the same texel (`src/ao.ts`).
 - Real lens while playing (user, 2026-11-01): the panel's "🔭 Lens" folder (or `?lens=48,1.2`) runs photo mode's
   depth of field all the time, with a chosen focal length (14–200 mm, which sets the field of view unless "focal
   length sets the view" is off), f-stop and extra dreaminess. Focus follows the character in third person, whose

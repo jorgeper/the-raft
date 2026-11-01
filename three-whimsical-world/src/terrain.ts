@@ -3,6 +3,7 @@ import { createNoise2D } from 'simplex-noise';
 import { mulberry32, smoothstep, type HeightFn, type WorldFns } from './worldgen';
 import { groundUniforms } from './ground';
 import { weatherUniforms, RAIN_RIPPLES } from './weather';
+import { trampleUniforms, PRINT_RES } from './trample';
 
 export type { HeightFn } from './worldgen';
 
@@ -137,7 +138,7 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
   // Scanned ground textures, when `npm run assets` has fetched them (loaded before the world is built).
   if (groundUniforms.tGroundDiff.value) mat.defines = { USE_GROUND: '' };
   mat.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, terrainUniforms, groundUniforms, weatherUniforms);
+    Object.assign(shader.uniforms, terrainUniforms, groundUniforms, weatherUniforms, trampleUniforms);
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -164,6 +165,11 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         float puddle = 0.0;
         float rainSheen = 0.0;
         float snowAmt = 0.0;
+        uniform sampler2D tPrints;
+        uniform vec4 uPrintRect;
+        // Footprints: how much the ground here takes them, and the dent's slope (world xz) for the normal.
+        float printTake = 0.0;
+        vec2 printSlope = vec2(0.0);
         ${RAIN_RIPPLES}
         vec3 groundN = vec3(0.0, 1.0, 0.0);
         float groundFade = 0.0;
@@ -301,6 +307,32 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
           puddle *= 1.0 - snowAmt;
           rainSheen *= 1.0 - snowAmt;
           wetSand *= 1.0 - snowAmt;
+        }
+        // Footprints in snow and sand (wet sand holds the crispest, dry sand slumps to soft hollows). The dent's
+        // walls shade by its slope in the normal below; here the floor darkens: packed snow goes blue-grey, and
+        // water seeps into prints in wet sand.
+        if (uPrintRect.w > 0.0) {
+          vec2 pUv = (vWorld.xz - uPrintRect.xy) / uPrintRect.z;
+          float edge = smoothstep(0.0, 0.08, min(min(pUv.x, pUv.y), min(1.0 - pUv.x, 1.0 - pUv.y)));
+          printTake = max(max(snowAmt, wetSand), sand * (1.0 - snowAmt)) * edge;
+          if (printTake > 0.01) {
+            float texel = 1.0 / ${PRINT_RES}.0;
+            float h = texture(tPrints, pUv).r;
+            float hx = texture(tPrints, pUv + vec2(texel, 0.0)).r - texture(tPrints, pUv - vec2(texel, 0.0)).r;
+            float hz = texture(tPrints, pUv + vec2(0.0, texel)).r - texture(tPrints, pUv - vec2(0.0, texel)).r;
+            // Depth (m): deep in snow, deep and slumped in dry sand, shallow and crisp in wet. Slope = depth change
+            // over two texels.
+            float depthM = mix(mix(0.045, 0.02, wetSand), 0.08, snowAmt);
+            printSlope = vec2(hx, hz) * depthM / (2.0 * uPrintRect.z * texel) * printTake;
+            float floorK = clamp(h, 0.0, 1.0) * printTake;
+            vec3 sandFloor = mix(vec3(0.78, 0.72, 0.64), vec3(0.6, 0.56, 0.52), wetSand);
+            diffuseColor.rgb *= mix(vec3(1.0), mix(sandFloor, vec3(0.6, 0.68, 0.86), snowAmt), floorK);
+            // The walls (shaded directly: bright snow clips to white whichever way it faces, and sand's grain hides
+            // a gentle tilt), and the rim of pushed-up ground a touch lighter.
+            diffuseColor.rgb *= 1.0 - min(length(printSlope) * 0.35, 0.35);
+            diffuseColor.rgb *= 1.0 + 0.2 * clamp(-h * 3.0, 0.0, 1.0) * printTake;
+            wetSand = max(wetSand, floorK * wetSand * 1.4);
+          }
         }`,
       )
       .replace(
@@ -319,6 +351,11 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
           // Under snow the ground's bumps soften to the blanket's gentle swell.
           normal = normalize(mix(normal, normalize((viewMatrix * vec4(groundN, 0.0)).xyz), groundFade * (1.0 - 0.75 * snowAmt)));
         #endif
+        if (printTake > 0.01) {
+          // The dent's slope tips the normal (the ground goes down where h goes up).
+          vec3 pn = normalize(vec3(printSlope.x, 1.0, printSlope.y));
+          normal = normalize((viewMatrix * vec4(normalize(inverseTransformDirection(normal, viewMatrix) + pn - vec3(0.0, 1.0, 0.0)), 0.0)).xyz);
+        }
         if (puddle > 0.0) {
           vec2 rr = rainRipples(vWorld.xz, uWeatherTime) * uRain * 0.25;
           vec3 pn = normalize(vec3(-rr.x, 1.0, -rr.y));

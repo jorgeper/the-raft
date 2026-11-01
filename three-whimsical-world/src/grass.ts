@@ -3,6 +3,7 @@ import { createNoise2D } from 'simplex-noise';
 import { coverageFrom } from './terrain';
 import type { WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
+import { trampleUniforms } from './trample';
 import { weatherUniforms } from './weather';
 import { quality } from './quality';
 
@@ -142,9 +143,20 @@ export class Grass {
         local.y *= fade * (1.0 - 0.6 * uSnow);
         // Lower quality presets draw fewer, wider blades so the field still reads as full.
         local.xz *= (1.0 + camDist / 25.0) * uWiden;
+        // Trampled: bent aside, away from the path (or any which way right on it), curving more toward the tip.
+        float press = min(trample.z, 1.0);
+        if (press > 0.002) {
+          float pushLen = length(trample.xy);
+          float own = fract(sin(dot(root.xz, vec2(12.9898, 78.233))) * 43758.5453) * 6.2832;
+          vec2 aside = normalize(mix(vec2(cos(own), sin(own)), trample.xy / max(pushLen, 1e-3), smoothstep(0.0, 0.25, pushLen)));
+          float bend = press * 1.3 * (0.35 + 0.65 * position.y);
+          float up = local.y;
+          local.y = up * cos(bend);
+          local.xz += aside * up * sin(bend);
+        }
         float bladeHeight = length(instanceMatrix[1].xyz);
         float flex = position.y * position.y * bladeHeight;
-        p = root + local + windOffset(root, flex * 0.6) * fade;
+        p = root + local + windOffset(root, flex * 0.6) * fade * (1.0 - 0.7 * press);
         vTip = position.y;
       `,
       this.fade,
@@ -153,8 +165,8 @@ export class Grass {
     const patchVertex = this.material.onBeforeCompile;
     this.material.onBeforeCompile = (shader, renderer) => {
       patchVertex.call(this.material, shader, renderer);
-      Object.assign(shader.uniforms, sunLight, weatherUniforms);
-      shader.vertexShader = ('varying float vTip;\nattribute float aSide;\nvarying float vSide;\nvarying float vBlade;\n' + shader.vertexShader)
+      Object.assign(shader.uniforms, sunLight, weatherUniforms, trampleUniforms);
+      shader.vertexShader = ('varying float vTip;\nattribute float aSide;\nvarying float vSide;\nvarying float vBlade;\nuniform sampler2D tTrample;\nuniform vec4 uTrampleRect;\nvec3 trample = vec3(0.0);\n' + shader.vertexShader)
         .replace(
           '#include <beginnormal_vertex>',
           // Bias normals upward so the field reads as one soft surface while blades keep some individual shading.
@@ -162,7 +174,10 @@ export class Grass {
         )
         .replace(
           '#include <begin_vertex>',
-          '#include <begin_vertex>\nvSide = aSide;\nvBlade = fract(sin(float(gl_InstanceID) * 12.9898) * 43758.5453);',
+          // How trampled this blade's root is (sampled once; the wind body runs twice).
+          '#include <begin_vertex>\n{ vec2 tUv = (instanceMatrix[3].xz - uTrampleRect.xy) / uTrampleRect.z;\n'
+          + 'if (uTrampleRect.w > 0.0 && all(greaterThan(tUv, vec2(0.0))) && all(lessThan(tUv, vec2(1.0)))) { vec4 t = textureLod(tTrample, tUv, 0.0); trample = vec3(t.ba, t.g); } }\n'
+          + 'vSide = aSide;\nvBlade = fract(sin(float(gl_InstanceID) * 12.9898) * 43758.5453);',
         );
       shader.fragmentShader = shader.fragmentShader
         .replace(
