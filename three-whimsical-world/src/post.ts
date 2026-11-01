@@ -158,7 +158,8 @@ const AtmosphereShader = {
     }
 
     void main() {
-      vec3 color = texture2D(tDiffuse, vUv).rgb;
+      vec4 scene = texture2D(tDiffuse, vUv);
+      vec3 color = scene.rgb;
       float depth = texture2D(tDepth, vUv).x;
       vec3 camPos = uViewInv[3].xyz;
       // The sky is drawn at exactly depth 1.0 (distant land can reach 0.99998, so no epsilon here).
@@ -341,7 +342,8 @@ const AtmosphereShader = {
 
       // The sky's sun disc is orders of magnitude brighter than anything else; cap it so bloom
       // stays a glow instead of a full-screen veil. Tone mapping saturates these values anyway.
-      gl_FragColor = vec4(min(color, vec3(6.6)), 1.0);
+      // Alpha carries the wind motion on to the TAA (see MOTION_SCALE in wind.ts); the sky has none.
+      gl_FragColor = vec4(min(color, vec3(6.6)), isSky ? 1.0 : scene.a);
     }
   `,
 };

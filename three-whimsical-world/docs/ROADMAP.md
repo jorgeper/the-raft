@@ -63,11 +63,8 @@ In priority order: the first items are the user's requests for the next sessions
    for cliff bands.
 8. (Done, see below: two-cascade sun shadows.) Possible follow-up: three 0.187's `SunLight` addon (native CSM in
    the WebGL renderer) if more cascades are ever needed; it would mean porting the volumetrics' shadow lookups.
-9. **Temporal anti-aliasing**: landed as an opt-in (Display → "temporal AA", `src/taa.ts`): Halton jitter,
-   depth reprojection, variance clipping, Catmull-Rom history and a light sharpen; it also averages away the
-   volumetric and AO noise. Static views are clean; grass swaying in the wind still softens a little because only
-   camera motion is reprojected. Next: per-vertex wind velocity from the grass/fern shaders into a motion buffer,
-   then turn it on by default.
+9. (Done, see below: wind motion for the TAA, now on by default.) Possible follow-up: motion for deer, birds and
+   butterflies (they move whole, so a per-object velocity would do).
 10. (Done, see below: volumetric clouds.) Follow-ups: temporal reprojection so the march can run at quarter
     resolution, cloud-to-cloud shadowing in the haze probe, and the lighting probe seeing the volumetric clouds.
 11. Small: (Done: grass blade detail per fragment (pale midrib, veins, darker edges, ~18% of blades with sun-dried
@@ -101,6 +98,15 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Wind motion for the TAA, which is now on by default: every wind-swayed material (grass, ferns, flowers, reeds,
+  shrubs, leaves) evaluates its sway at this frame's and last frame's time and writes how far it moved along the
+  wind into the scene's alpha (1 + 8 × meters); the TAA moves each point back by that much before reprojecting.
+  No extra pass, no fps cost (meadow 37.6 on vs 36.8 off). Swaying grass stays nearly as crisp as without TAA (edge
+  energy 39.5 vs 37.6 with camera-only reprojection, 43 without TAA). While TAA is on, alpha-to-coverage materials
+  use a plain alpha test (their partial alpha would read as motion), and the TAA smooths their edges. Also fixed
+  in the TAA: its sharpen could overshoot a lone bright pixel (the sun through a leaf gap) to ~1000× and bloom it
+  into a blob, and the history clip box now stays inside the neighborhood's range. Shots: `.playwright-mcp/taa/`
+  (`g-ab2.png` off / old / new, `canopy-motion.png` motion view, `g-re2.jpg` blobs gone).
 - Rigged, animated deer: one 23-bone skeleton for the doe and stag bodies, built and keyed by
   `scripts/blender/rig-deer.py` (bone-heat weights, then cleaned by region: antlers and ears on the head, no
   weights across legs). Five looping clips: Idle, Graze (the neck reaches down and the front legs splay so the

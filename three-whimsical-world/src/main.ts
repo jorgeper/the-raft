@@ -39,8 +39,9 @@ const display = {
   quality: 'high' as QualityLevel,
   /** Frame-rate readout in the corner (P toggles). */
   showFps: true,
-  /** Temporal anti-aliasing: steadies shimmering grass and edges, but softens grass swaying in the wind. */
-  taa: false,
+  /** Temporal anti-aliasing: steadies shimmering grass, leaf edges and the noise of beams and AO. Swaying grass and
+   * leaves reproject with their wind motion, so they stay sharp. */
+  taa: true,
 };
 persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize', 'showPanel', 'quality', 'showFps', 'taa']);
 if (!(display.quality in QUALITY_PRESETS)) display.quality = 'high';
@@ -360,6 +361,25 @@ function applyDisplay() {
   fps.setVisible(display.showFps);
   if (post.taa.enabled !== display.taa) post.taa.reset();
   post.taa.enabled = display.taa;
+  useCoverage(!display.taa);
+}
+
+/**
+ * Alpha-to-coverage (soft cutout edges under MSAA) writes partial alpha at leaf and frond edges, which the TAA would
+ * read as wind motion (see MOTION_SCALE in wind.ts). While TAA is on, those materials use a plain alpha test instead
+ * (the TAA smooths their edges); each remembers that it had coverage, so switching TAA off restores it.
+ */
+function useCoverage(on: boolean) {
+  scene.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.material) return;
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      if (m.alphaToCoverage) m.userData.coverage = true;
+      if (!m.userData.coverage || m.alphaToCoverage === on) continue;
+      m.alphaToCoverage = on;
+      m.needsUpdate = true;
+    }
+  });
 }
 /** Switches the graphics preset; `keepScale` leaves the render scale alone (on load, where it was persisted). */
 function applyQuality(keepScale = false) {
@@ -379,7 +399,7 @@ const qualityInfo = { text: QUALITY_PRESETS[display.quality].label };
 displayGui.add(display, 'quality', { Low: 'low', Medium: 'medium', High: 'high', Ultra: 'ultra' }).name('graphics quality').onChange(() => applyQuality());
 displayGui.add(qualityInfo, 'text').name('trade-off').disable();
 displayGui.add(display, 'showFps').name('FPS counter (P)').listen().onChange(applyDisplay);
-displayGui.add(display, 'taa').name('temporal AA (softer grass)').onChange(applyDisplay);
+displayGui.add(display, 'taa').name('temporal AA').onChange(applyDisplay);
 displayGui.add(display, 'maxWidth', 640, 3840, 10).name('max width (px)').onChange(applyDisplay);
 displayGui.add(display, 'maxHeight', 360, 2160, 10).name('max height (px)').onChange(applyDisplay);
 displayGui.add(display, 'renderScale', 0.25, 1.5, 0.05).name('render scale').onChange(applyDisplay);
@@ -686,6 +706,7 @@ renderer.setAnimationLoop((now) => {
   post.atmosphere.uClouds.value = settings.clouds;
   post.atmosphere.uTime.value = timer.getElapsed();
   post.atmosphere.uGroundY.value = Math.max(world.height(camera.position.x, camera.position.z), 0);
+  wind.uPrevTime.value = wind.uTime.value;
   wind.uTime.value = timer.getElapsed();
   camera.updateMatrixWorld();
   world.update(camera);
@@ -719,6 +740,9 @@ renderer.setAnimationLoop((now) => {
 
   sunLight.uSunDirView.value.copy(lightDir).transformDirection(camera.matrixWorldInverse);
   sunLight.uSunColor.value.copy(lightColor);
+  // Chunks streamed in since last frame bring fresh alpha-to-coverage materials; switch them before they draw
+  // (a scene sweep costs ~0.05 ms).
+  if (display.taa) useCoverage(false);
   post.render(lightDir, lightColor);
 });
 

@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { MOTION_SCALE, WIND_DIR } from './wind';
 
 /**
  * Temporal anti-aliasing. The camera is nudged by a different sub-pixel offset every frame (`jitter`), and this pass
  * blends the new frame into an accumulated history: each pixel is reprojected through the depth buffer to where it
  * was last frame, and the history there is clipped to the colors around the pixel now, so moving grass and
  * leaves don't smear. It smooths shimmering blades and the noise of the volumetric beams and AO.
- * Without per-object motion vectors, grass swaying in the wind still softens a little, so it's opt-in.
+ * Swaying grass and leaves reproject too: the wind materials write how far they moved along the wind since last frame
+ * into the frame's alpha (`addWind` in wind.ts), and the point is moved back by that much before reprojecting.
  */
 const resolveMaterial = new THREE.ShaderMaterial({
   uniforms: {
@@ -19,6 +21,10 @@ const resolveMaterial = new THREE.ShaderMaterial({
     uTexel: { value: new THREE.Vector2() },
     /** 1 on the first frame (or after a jump): take the new frame as is. */
     uReset: { value: 1 },
+    /** Debug: show the wind motion (red = with the wind, green = against) instead of the frame. */
+    uDebugMotion: { value: 0 },
+    /** 0 ignores the wind motion (reprojects as if everything stood still), for A/B comparisons. */
+    uWindMotion: { value: 1 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -33,6 +39,8 @@ const resolveMaterial = new THREE.ShaderMaterial({
     uniform mat4 uPrevViewProj;
     uniform vec2 uTexel;
     uniform float uReset;
+    uniform float uDebugMotion;
+    uniform float uWindMotion;
     varying vec2 vUv;
 
     vec3 toYCoCg(vec3 c) { return vec3(0.25 * c.r + 0.5 * c.g + 0.25 * c.b, 0.5 * c.r - 0.5 * c.b, -0.25 * c.r + 0.5 * c.g - 0.25 * c.b); }
@@ -68,7 +76,7 @@ const resolveMaterial = new THREE.ShaderMaterial({
       vec3 current = squash(texture2D(tCurrent, vUv).rgb);
       // Neighborhood statistics (for clipping the history) and the nearest depth (so edges reproject with the
       // object in front, not the background).
-      vec3 m1 = vec3(0.0), m2 = vec3(0.0);
+      vec3 m1 = vec3(0.0), m2 = vec3(0.0), mn = vec3(1e9), mx = vec3(-1e9);
       float nearest = 1.0;
       vec2 nearestUv = vUv;
       for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
@@ -76,6 +84,8 @@ const resolveMaterial = new THREE.ShaderMaterial({
         vec3 s = toYCoCg(squash(texture2D(tCurrent, uv).rgb));
         m1 += s;
         m2 += s * s;
+        mn = min(mn, s);
+        mx = max(mx, s);
         float d = texture2D(tDepth, uv).x;
         if (d < nearest) { nearest = d; nearestUv = uv; }
       }
@@ -86,20 +96,29 @@ const resolveMaterial = new THREE.ShaderMaterial({
       vec4 ndc = vec4(nearestUv * 2.0 - 1.0, min(nearest, 0.9999999) * 2.0 - 1.0, 1.0);
       vec4 view = uProjInv * ndc;
       vec3 world = (uViewInv * vec4(view.xyz / view.w, 1.0)).xyz;
+      // Wind: last frame this surface stood that far back along the wind (alpha = 1 + motion * scale).
+      float wind = nearest < 1.0 ? clamp(texture2D(tCurrent, nearestUv).a - 1.0, -0.9, 0.9) / ${MOTION_SCALE.toFixed(1)} * uWindMotion : 0.0;
+      world.xz -= wind * vec2(${WIND_DIR.x.toFixed(6)}, ${WIND_DIR.y.toFixed(6)});
+      if (uDebugMotion > 0.5) { gl_FragColor = vec4(max(wind, 0.0) * 40.0, max(-wind, 0.0) * 40.0, 0.0, 1.0); return; }
       vec4 prev = uPrevViewProj * vec4(world, 1.0);
       // The nearest neighbor supplies the motion; apply it to this pixel.
       vec2 prevUv = vUv + (prev.xy / prev.w * 0.5 + 0.5 - nearestUv);
       bool offscreen = any(lessThan(prevUv, vec2(0.0))) || any(greaterThan(prevUv, vec2(1.0))) || prev.w <= 0.0;
 
       vec3 history = toYCoCg(sampleHistory(prevUv));
-      // Variance clipping: pull the history into the box of colors around this pixel now.
-      vec3 lo = m1 - sigma, hi = m1 + sigma;
+      // Variance clipping: pull the history into the box of colors around this pixel now. Kept inside the
+      // neighborhood's actual range too: where a few dark leaves sit in bright sky, mean + sigma overshoots the
+      // brightest pixel, and history from a shifted spot (wind) came through as sparkles along the crowns.
+      vec3 lo = max(m1 - sigma, mn), hi = min(m1 + sigma, mx);
       vec3 c = clamp(history, lo, hi);
       // Fast motion (in pixels) trusts the new frame more; still views accumulate many frames.
-      float motion = length((prevUv - vUv) / uTexel);
-      float blend = mix(0.1, 0.3, clamp(motion / 6.0, 0.0, 1.0));
+      float pixels = length((prevUv - vUv) / uTexel);
+      float blend = mix(0.1, 0.3, clamp(pixels / 6.0, 0.0, 1.0));
       if (offscreen || uReset > 0.5) blend = 1.0;
       vec3 result = mix(fromYCoCg(c), current, blend);
+      // Clipping in YCoCg can push a channel past anything in the frame, and unsquashing values near 1 explodes
+      // (into bloom blobs along leaves against the sun). Nothing upstream exceeds the haze pass's 6.6 cap.
+      result = clamp(result, 0.0, 6.6 / 7.6);
       // The history is kept squashed; unsquash for the frame that moves on down the pipeline.
       gl_FragColor = vec4(result, 1.0);
     }
@@ -122,8 +141,10 @@ const copyMaterial = new THREE.ShaderMaterial({
       vec3 c = texture2D(tSource, vUv).rgb;
       vec3 n = texture2D(tSource, vUv + vec2(0.0, uTexel.y)).rgb + texture2D(tSource, vUv - vec2(0.0, uTexel.y)).rgb
         + texture2D(tSource, vUv + vec2(uTexel.x, 0.0)).rgb + texture2D(tSource, vUv - vec2(uTexel.x, 0.0)).rgb;
-      // Sharpened in the squashed space, so bright edges don't ring.
-      vec3 s = clamp(c + uSharpen * (4.0 * c - n), 0.0, 0.999);
+      // Sharpened in the squashed space, so bright edges don't ring. Capped at the haze pass's 6.6 (squashed): a
+      // lone bright pixel (sun through a gap in the leaves) overshoots, and unsquashing values near 1 blew it up
+      // a thousandfold into a bloom blob.
+      vec3 s = clamp(c + uSharpen * (4.0 * c - n), 0.0, 6.6 / 7.6);
       gl_FragColor = vec4(unsquash(s), 1.0);
     }
   `,
@@ -143,6 +164,8 @@ function halton(i: number, b: number) {
 }
 
 export class TAAPass extends Pass {
+  /** The resolve shader's uniforms (`uDebugMotion` shows the wind motion). */
+  readonly uniforms = resolveMaterial.uniforms;
   private history = [this.makeTarget(), this.makeTarget()];
   private current = 0;
   private quad = new FullScreenQuad();
