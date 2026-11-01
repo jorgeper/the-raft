@@ -143,12 +143,10 @@ In priority order: the first items are the user's requests for the next sessions
   monochrome), Honey hour (warm gold haze), Frostbound (cold silver blue), Storybook (Kuwahara brush strokes, banded
   light, ink silhouettes from the depth buffer, paper), Ember (red sky at Ragnarök), Old film (faded teal blacks,
   red halation, grain) and Otherworld (hues turned: purple woods under a lime-gold sky). About 1 ms at most.
-  Then three more: Horror film (bleached sickly green, crushed blacks, projector flicker, lens fringes, heavy
-  grain), Low poly (the ground as flat 7 m triangles anchored in the world: each pixel is found in the world from
-  the depth buffer, its facet's slope comes from a baked heightmap (`bakeHeights`, ~0.2 s on first use and after
-  each new world), it takes one color from where the facet's middle is seen, and the light of its own slope; trees
-  and rocks get the brush strokes) and Pixel art (4 px chunky pixels at 720p, six steps per channel with Bayer
-  dithering, dark outlines). 1-3 fps each in the headless browser.
+  Then two more: Horror film (bleached sickly green, crushed blacks, projector flicker, lens fringes, heavy grain)
+  and Pixel art (4 px chunky pixels at 720p, six steps per channel with Bayer dithering, dark outlines). 1-3 fps
+  each in the headless browser. A screen-space low-poly vibe (world-anchored ground facets from a baked heightmap)
+  was tried and dropped: the user found it ugly. A real low-poly look would need simplified meshes.
 
 - Changing wind (user, 2026-11-01): with "wind changes by itself" on (the default), `WindDrift` in `src/wind.ts`
   moves the wind through spells around the slider's strength: still (0.1-0.35×), breezy, blustery and now and then

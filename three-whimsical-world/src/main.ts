@@ -3,8 +3,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import GUI from 'lil-gui';
 import { createWater, addRipple } from './water';
 import { wind, sunLight, windControl, WindDrift } from './wind';
-import { VIBES, bakeHeights, type Vibe, type VibeName } from './vibes';
-import { TERRAIN_SIZE } from './terrain';
+import { VIBES, type VibeName } from './vibes';
 import { createPost } from './post';
 import { World } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
@@ -362,16 +361,8 @@ updateSun();
 // --- Controls panel
 const gui = new GUI({ title: 'Meadows' });
 const vibeOptions = Object.fromEntries(Object.entries(VIBES).map(([key, v]) => [v.label, key]));
-/** The world the low-poly heights were baked for (baked on first use, again after each new world). */
-let heightsWorld: World | null = null;
 const applyVibe = () => {
   if (!(settings.vibe in VIBES)) settings.vibe = 'whimsical';
-  if ((VIBES[settings.vibe] as Vibe).lowPoly && heightsWorld !== world) {
-    post.vibe.tHeight.value?.dispose();
-    post.vibe.tHeight.value = bakeHeights(world.fns.height, TERRAIN_SIZE);
-    post.vibe.uTerrainSize.value = TERRAIN_SIZE;
-    heightsWorld = world;
-  }
   post.setVibe(settings.vibe);
   post.vibe.uStrength.value = settings.vibeStrength;
 };
@@ -665,7 +656,6 @@ function regenerate() {
       snapView();
       world.update(camera, true);
       minimap.setWorld(world.fns);
-      applyVibe();
       busy.style.display = 'none';
     }, 30),
   );
