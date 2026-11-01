@@ -165,7 +165,10 @@ const marchMaterial = new THREE.ShaderMaterial({
       vec3 ray = world - camPos;
       float dist = length(ray);
       float len = marchLength(isSky, dist);
-      float rays = uCloudRays > 0.0 ? cloudLitAir(camPos, ray / dist, isSky ? 3000.0 : min(dist, 3000.0)) : 1.0;
+      // Always the full 3 km, whatever stands in front: the field then stays smooth across depth edges (a sky gap
+      // between leaves upsampled the leaves' short-ray value as blocks), and the atmosphere pass scales it by the
+      // real distance's haze, so near surfaces are barely touched.
+      float rays = uCloudRays > 0.0 ? cloudLitAir(camPos, ray / dist, 3000.0) : 1.0;
       gl_FragColor = vec4(sunVisibility(camPos, ray / dist, len), len, isSky ? 1.0 : surfaceSun(world - ray / dist * 0.3), rays);
     }
   `,

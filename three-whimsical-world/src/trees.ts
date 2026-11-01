@@ -127,6 +127,21 @@ const FOREST: Variant[] = [
   { preset: 'Pine Large', seed: 1010, height: 38, tweak: spruce, tint: '#d8e8c8' },
 ];
 
+// Lone giant oaks on hilltops (worldgen 'oak' landmarks): a thick, gnarled trunk under a vast, low-spreading crown.
+const giantOak = (o: TreeOptions) => {
+  oak(o);
+  o.branch.children = { 0: 9, 1: 6, 2: 4 };
+  o.branch.angle = { 1: 82, 2: 52, 3: 40 };
+  o.branch.start = { 1: 0.2, 2: 0.05, 3: 0 };
+  // Long, heavy limbs reaching out sideways: a crown wider than the tree is tall.
+  o.branch.length = { ...o.branch.length, 1: o.branch.length[1] * 1.35 };
+  o.branch.radius = { ...o.branch.radius, 0: o.branch.radius[0] * 1.9 };
+  o.branch.gnarliness = { 0: 0.06, 1: 0.18, 2: 0.14, 3: 0.1 };
+  o.leaves.count = 30;
+  o.leaves.size = 6.5;
+};
+const GIANTS: Variant[] = [{ preset: 'Oak Large', seed: 4441, height: 24, tweak: giantOak, tint: '#f4ffd8' }];
+
 /**
  * Geometry detail levels: fewer, larger leaves and coarser branches further away keep the silhouette but cut
  * triangles. Past the last one, trees are drawn as baked impostor quads.
@@ -353,7 +368,7 @@ export class Trees {
   private projView = new THREE.Matrix4();
   private sphere = new THREE.Sphere();
 
-  private all = [...MEADOW, ...SMALL_TREES, ...MEADOW_BUSHES, ...FOREST_BUSHES, ...FOREST, ...SAPLINGS];
+  private all = [...MEADOW, ...SMALL_TREES, ...MEADOW_BUSHES, ...FOREST_BUSHES, ...FOREST, ...SAPLINGS, ...GIANTS];
 
   constructor(world: WorldFns, private renderer: THREE.WebGLRenderer) {
     const { height, params } = world;
@@ -372,6 +387,7 @@ export class Trees {
     const forestBushIdx = range(FOREST_BUSHES);
     const forestIdx = range(FOREST);
     const saplingIdx = range(SAPLINGS);
+    const giantIdx = range(GIANTS);
 
     let s = seed;
     const rand = () => {
@@ -446,6 +462,21 @@ export class Trees {
         else if ((r -= pMeadowBush) < pForestBush) add(pick(forestBushIdx), x, z, y, 0.6);
         else if ((r -= pForestBush) < pSapling) add(pick(saplingIdx), x, z, y, 0.6);
       }
+    }
+
+    // The giant oaks stand in their own clearings (which keep every other tree away).
+    for (const l of world.landmarks) {
+      if (l.kind !== 'oak') continue;
+      const v = all[giantIdx[0]];
+      q.setFromAxisAngle(up, l.yaw);
+      const y = height(l.x, l.z);
+      this.placements.push({
+        variant: giantIdx[0],
+        matrix: new THREE.Matrix4().compose(p.set(l.x, y - 0.5, l.z), q, sc.set(1, 1, 1)),
+        center: new THREE.Vector3(l.x, y + v.height * 0.5, l.z),
+        radius: v.height * 0.7,
+        color: new THREE.Color(0.95, 1, 0.92),
+      });
     }
 
     const counts = (this.counts = all.map((_, vi) => this.placements.filter((pl) => pl.variant === vi).length));

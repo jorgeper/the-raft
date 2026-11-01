@@ -10,6 +10,7 @@ In priority order: the first items are the user's requests for the next sessions
    1. ~~Moonlit nights~~ (done, see Done).
    2. ~~God rays from clouds~~ (done, see Done).
    3. ~~Rowans with red berries, lichen-orange rocks~~ (done, see Done).
+   4. ~~Lone giant oak on a hill~~ (done, see Done).
 
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
@@ -102,8 +103,9 @@ In priority order: the first items are the user's requests for the next sessions
 - Light: god rays from clouds over the sea; aurora on clear nights; moonlit
   silver-blue nights; sun glitter on water.
 - Life and motion: butterflies, birds, deer at forest edges, falling leaves, swaying reeds, ~~drifting seed fluff~~.
-- Landmarks: ~~standing stones, rune stones, burial mounds~~ (done, see Done); still open: ruined towers, a Viking
-  longhouse with smoke curling from the roof, a lone giant oak on a hill, waterfalls off mountain cliffs.
+- Landmarks: ~~standing stones, rune stones, burial mounds~~, ~~a lone giant oak on a hill~~ (done, see Done); still
+  open: waterfalls off mountain cliffs. Buildings (ruined towers, a longhouse with smoke) wait until the user brings
+  buildings back: the world stays virgin wilderness for now.
 - Water: translucent turquoise shallows, foam, caustics, reflections (roadmap item).
 - Weather: rolling morning mist, passing rain showers with wet sheen, rainbows after rain, wind gusts across grass.
 
@@ -121,6 +123,15 @@ In priority order: the first items are the user's requests for the next sessions
 - Nights are very dark without the torch, by design.
 
 ## Done
+
+- Lone giant oaks (user, 2026-11-01): worldgen picks two `oak` landmarks on the most prominent open, flattish crests
+  (height above a 60 m ring; one 110-320 m from the start, at (85, -180) in the default world, one further off).
+  Each is a ~24 m 'Oak Large' with a thick gnarled trunk and long sideways limbs (`giantOak`, `GIANTS` in
+  `trees.ts`) in a 14 m clearing that keeps other trees and boulders away (grass and flowers still grow under it).
+  Shots: `.playwright-mcp/wild/oak-3.jpg` (silhouette at sunset), `oak-5.jpg`.
+  Also: the cloud-ray field is marched the full 3 km whatever stands in front (sky gaps between leaves upsampled
+  the leaves' value as blocks), and the 3x screen-space shaft boost under broken cloud is gone (it made starbursts
+  through foliage; the world-space rays do that job).
 
 - Rowans and lichen (user, 2026-11-01):
   - **Rowans** (`rowan` in `src/trees.ts`): two slim ash-leaved species among the young trees (forest edges, lone on

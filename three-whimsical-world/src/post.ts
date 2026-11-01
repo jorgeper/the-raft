@@ -412,15 +412,12 @@ const AtmosphereShader = {
         for (int i = 0; i < SAMPLES; i++) {
           p += delta;
           shaft += skyLight(p) * decay;
-          decay *= 0.972;
+          decay *= 0.965;
         }
         shaft /= float(SAMPLES);
         float sunAlign = pow(max(dot(ray, uSunDir), 0.0), 3.0);
-        // Broken cloud over open land or sea: the gaps cut the glow into rays, so they can be much stronger without
-        // veiling the view (the clouds keep most of it dark).
-        float cloudRays = uCloudsOn * smoothstep(0.08, 0.35, uClouds) * (1.0 - uForest);
-        color += scatterColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest + 3.0 * cloudRays)
-          * (1.0 + 0.5 * uWhimsy) * clamp(uFogDensity / 0.00045, 0.0, 3.0);
+        color += scatterColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest) * (1.0 + 0.5 * uWhimsy)
+          * clamp(uFogDensity / 0.00045, 0.0, 3.0);
       }
 
       // Lens flare ghosts strung along the line from the sun through the screen center, when the sun is visible.

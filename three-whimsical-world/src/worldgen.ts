@@ -69,10 +69,10 @@ export interface WorldFns {
 }
 
 export interface Landmark {
-  kind: 'circle' | 'mound' | 'runestone';
+  kind: 'circle' | 'mound' | 'runestone' | 'oak';
   x: number;
   z: number;
-  /** Ring radius of a circle, footprint radius of a mound, ~1.5 m around a rune stone. */
+  /** Ring radius of a circle, footprint radius of a mound, ~1.5 m around a rune stone, an oak's crown. */
   radius: number;
   /** A mound's height above the land; unused otherwise. */
   height: number;
@@ -342,9 +342,31 @@ export function createWorld(params: WorldParams): WorldFns {
     const x = -750 + siteRand() * 850, z = -900 + siteRand() * 1800;
     if (site(x, z, 3, 0.5, 1.5)) (add('runestone', x, z, 1.5), n++);
   }
+  // Lone giant oaks on hilltops: the most prominent open, flattish crests (one within sight of the start). Scored
+  // by how far the crest stands above the land 60 m around it.
+  const oakSite = (x: number, z: number) => {
+    if (!site(x, z, 12, 0.08, 3.5)) return -Infinity;
+    const h0 = baseHeight(x, z);
+    let ring = 0;
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      ring += baseHeight(x + Math.cos(a) * 60, z + Math.sin(a) * 60) / 8;
+    }
+    return h0 - ring;
+  };
+  for (const [near, far] of [[110, 320], [200, 900]]) {
+    let best = { x: 0, z: 0, score: 2.5 };
+    for (let i = 0; i < 2500; i++) {
+      const a = siteRand() * Math.PI * 2, d = near + siteRand() * (far - near);
+      const x = -30 + Math.cos(a) * d, z = Math.sin(a) * d;
+      const score = oakSite(x, z);
+      if (score > best.score) best = { x, z, score };
+    }
+    if (best.score > 2.5) add('oak', best.x, best.z, 14);
+  }
   const clearing: FieldFn = (x, z) => {
     for (const l of landmarks) {
-      const reach = l.kind === 'circle' ? l.radius + 4 : l.kind === 'mound' ? l.radius * 0.9 : 2.5;
+      const reach = l.kind === 'circle' ? l.radius + 4 : l.kind === 'mound' ? l.radius * 0.9 : l.kind === 'oak' ? l.radius : 2.5;
       if (Math.abs(x - l.x) < reach && Math.abs(z - l.z) < reach && Math.hypot(x - l.x, z - l.z) < reach) return 1;
     }
     return 0;
