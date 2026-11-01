@@ -59,9 +59,8 @@ In priority order: the first items are the user's requests for the next sessions
    - Light: richer dappled light under canopies, sun glints on wet rocks after rain.
    - Done when: walking from beach through meadow into forest at three times of day looks dense and alive in
      screenshots, compared against the references, at a playable frame rate.
-7. **Procedural rocks with scanned textures** for outcrops, slabs and standing stones: sharp fracture-face
-   geometry plus triplanar Poly Haven/ambientCG rock textures (the scans alone repeat after ~17 shapes).
-   Through Blender MCP when it's connected.
+7. (Done, see below: fractured procedural rocks.) Follow-up: concave shapes (two hulls fused) and layered strata
+   for cliff bands.
 8. (Done, see below: two-cascade sun shadows.) Possible follow-up: three 0.187's `SunLight` addon (native CSM in
    the WebGL renderer) if more cascades are ever needed; it would mean porting the volumetrics' shadow lookups.
 9. **Temporal anti-aliasing**: landed as an opt-in (Display → "temporal AA", `src/taa.ts`): Halton jitter,
@@ -103,6 +102,13 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Fractured procedural rocks (`src/fractured-rocks.ts`): lumpy point clouds cut by random fracture planes and
+  wrapped in a convex hull, with creased normals, so split faces meet at sharp edges between weathered sides. Five
+  kinds (boulder, block, slab, crag, standing stone), two variants each, generated per world seed. Vertex colors
+  carry granite grain, a darker base and orange lichen on the sides. The scanned rock texture (ground layer 3) is
+  projected triplanar in world space with its normal map, under the scans' moss. They join the 17 scans in the same
+  instanced field. Outcrop cores lean on them, and the stone ring is now tall split slabs with broken tops. The
+  lumpy-sphere fallback is gone. Same fps. Shots: `.playwright-mcp/rocks/` (`g-r3.jpg`, `g-r4.jpg`).
 - Ground bounce in the ambient light: the lighting probe (only the PMREM that lights the scene; the haze and water
   keep the painted sky) now sees sunlit olive land below the horizon instead of blue haze, and a slightly less
   saturated sky above. Shaded white birch bark went from cobalt (50, 83, 128) to a muted steel grey-blue

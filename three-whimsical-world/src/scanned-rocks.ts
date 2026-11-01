@@ -46,47 +46,53 @@ function normalize(near: THREE.BufferGeometry, far: THREE.BufferGeometry) {
 export const rockMoss = { uMossAmount: { value: 0.5 } };
 
 function addMoss(material: THREE.MeshStandardMaterial) {
-  material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, rockMoss);
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vMossPos;')
-      .replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-        #ifdef USE_INSTANCING
-          vMossPos = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;
-        #else
-          vMossPos = (modelMatrix * vec4(position, 1.0)).xyz;
-        #endif`,
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-        varying vec3 vMossPos;
-        uniform float uMossAmount;
-        float mHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-        float mNoise(vec3 p) {
-          vec3 i = floor(p), f = fract(p);
-          f = f * f * (3.0 - 2.0 * f);
-          return mix(mix(mix(mHash(i), mHash(i + vec3(1, 0, 0)), f.x), mix(mHash(i + vec3(0, 1, 0)), mHash(i + vec3(1, 1, 0)), f.x), f.y),
-                     mix(mix(mHash(i + vec3(0, 0, 1)), mHash(i + vec3(1, 0, 1)), f.x), mix(mHash(i + vec3(0, 1, 1)), mHash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-        }`,
-      )
-      .replace(
-        '#include <normal_fragment_maps>',
-        `#include <normal_fragment_maps>
-        {
-          vec3 worldNormal = inverseTransformDirection(normal, viewMatrix);
-          float n = mNoise(vMossPos * 1.7) * 0.6 + mNoise(vMossPos * 6.0) * 0.4;
-          // Only on upward faces, never near the salty shoreline.
-          float moss = smoothstep(0.6, 0.92, worldNormal.y + (n - 0.5) * 0.5) * smoothstep(2.5, 6.0, vMossPos.y);
-          vec3 mossColor = vec3(0.075, 0.09, 0.035) * (0.75 + 0.5 * n);
-          diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, moss * uMossAmount);
-          roughnessFactor = mix(roughnessFactor, 0.95, moss);
-        }`,
-      );
-  };
+  material.onBeforeCompile = (shader) => patchMoss(shader);
+}
+
+/**
+ * Patches a lit rock shader with the moss. Also declares `vMossPos` (world position, instancing aware) in both
+ * stages, for other rock patches to reuse.
+ */
+export function patchMoss(shader: THREE.WebGLProgramParametersWithUniforms) {
+  Object.assign(shader.uniforms, rockMoss);
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vMossPos;')
+    .replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vMossPos = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;
+      #else
+        vMossPos = (modelMatrix * vec4(position, 1.0)).xyz;
+      #endif`,
+    );
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      '#include <common>',
+      `#include <common>
+      varying vec3 vMossPos;
+      uniform float uMossAmount;
+      float mHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+      float mNoise(vec3 p) {
+        vec3 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(mHash(i), mHash(i + vec3(1, 0, 0)), f.x), mix(mHash(i + vec3(0, 1, 0)), mHash(i + vec3(1, 1, 0)), f.x), f.y),
+                   mix(mix(mHash(i + vec3(0, 0, 1)), mHash(i + vec3(1, 0, 1)), f.x), mix(mHash(i + vec3(0, 1, 1)), mHash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+      }`,
+    )
+    .replace(
+      '#include <normal_fragment_maps>',
+      `#include <normal_fragment_maps>
+      {
+        vec3 worldNormal = inverseTransformDirection(normal, viewMatrix);
+        float n = mNoise(vMossPos * 1.7) * 0.6 + mNoise(vMossPos * 6.0) * 0.4;
+        // Only on upward faces, never near the salty shoreline.
+        float moss = smoothstep(0.6, 0.92, worldNormal.y + (n - 0.5) * 0.5) * smoothstep(2.5, 6.0, vMossPos.y);
+        vec3 mossColor = vec3(0.075, 0.09, 0.035) * (0.75 + 0.5 * n);
+        diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, moss * uMossAmount);
+        roughnessFactor = mix(roughnessFactor, 0.95, moss);
+      }`,
+    );
 }
 
 /**
