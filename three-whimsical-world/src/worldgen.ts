@@ -52,6 +52,8 @@ export interface WorldFns {
   dirt: FieldFn;
   /** 0..1 how close to a river channel (1 = in the water). */
   river: FieldFn;
+  /** Signed distance (m) from the river's water edge: negative in the channel, growing up the bank. */
+  riverEdge: FieldFn;
 }
 
 export function mulberry32(seed: number) {
@@ -108,15 +110,17 @@ export function createWorld(params: WorldParams): WorldFns {
     phase: rand() * 100,
     width: 7 + rand() * 6,
   }));
-  const riverField = (x: number, z: number) => {
-    let r = 0;
+  // Signed distance from the nearest river's water edge (negative in the channel). The edge wanders in and out
+  // at two scales, so the banks are bays and points instead of a ruled line.
+  const riverEdge = (x: number, z: number) => {
+    let d = Infinity;
     for (const rv of rivers) {
       const center = rv.z0 + 170 * fbm(x * 0.0016 + rv.phase, rv.phase, 3) + 30 * noise(x * 0.008, rv.phase);
-      const d = Math.abs(z - center);
-      r = Math.max(r, 1 - smoothstep(rv.width, rv.width + 45, d));
+      d = Math.min(d, Math.abs(z - center) - rv.width);
     }
-    return r;
+    return d + 4 * noise(x * 0.03 + 11, z * 0.03) + 1.5 * noise(x * 0.11, z * 0.11 - 5);
   };
+  const riverField = (x: number, z: number) => 1 - smoothstep(0, 45, riverEdge(x, z));
 
   const coastline = (z: number) => 220 + 110 * fbm(z * 0.0018, 4.2, 4);
 
@@ -133,9 +137,28 @@ export function createWorld(params: WorldParams): WorldFns {
     const peaks = smoothstep(0.45, 0.85, noise(x * 0.0011 + 7, z * 0.0011 - 3)) * smoothstep(80, -150, x);
     land += params.mountains * (backdrop * 70 + peaks * 90) * ridged(wx * 0.002, wz * 0.002, 5);
 
-    // Rivers: carve a channel just below sea level, with sloped banks.
-    const r = riverField(x, z);
-    if (r > 0) land = lerp(land, Math.min(land, -1.4), r * r * (3 - 2 * r));
+    // Rivers: a channel just below sea level, a low gravel shelf along the water, then the bank climbing back
+    // to the land in rock ledges (a single smooth ramp read as a fake, sculpted wall), with lumpy outcrops.
+    const edge = riverEdge(x, z);
+    if (edge < 70) {
+      const n1 = noise(x * 0.02 + 5, z * 0.02 - 9), n2 = noise(x * 0.013 - 21, z * 0.013 + 4);
+      const shelfW = 3 + 3 * (0.5 + 0.5 * n1);
+      const shelf = 0.35 + 0.35 * noise(x * 0.06, z * 0.06 + 3);
+      const bankW = 26 + 14 * (0.5 + 0.5 * n2);
+      // (Fading the shelf's floor out by 60 m keeps low land near the coast continuous where the carving ends.)
+      const top = Math.max(land, shelf * (1 - smoothstep(30, 60, edge)));
+      // Ledges: each step a flat tread and a steep riser, at least ~8 m wide so the 2.5 m mesh can hold them.
+      const steps = Math.max(1, Math.min((top - shelf) / 3.2, bankW / 8));
+      let t = smoothstep(shelfW, shelfW + bankW, edge);
+      const terraced = (Math.floor(t * steps) + smoothstep(0.45, 1, (t * steps) % 1)) / steps;
+      t = lerp(t, terraced, 0.75 * smoothstep(4, 10, top - shelf));
+      let bank = lerp(shelf, top, t);
+      // Outcrops and slumps on the bank face, none on the shelf or the land above.
+      const face = smoothstep(shelfW, shelfW + 5, edge) * (1 - smoothstep(shelfW + bankW, shelfW + bankW + 12, edge));
+      bank += face * (2.2 * ridged(x * 0.035, z * 0.035, 3) - 1.2 + 0.8 * noise(x * 0.09, z * 0.09));
+      // Into the channel: from the shelf down to the riverbed.
+      land = lerp(-1.4, bank, smoothstep(-3, 0.5, edge));
+    }
 
     // Wavy coastline running roughly north-south.
     const inland = coastline(z) - x;
@@ -162,5 +185,5 @@ export function createWorld(params: WorldParams): WorldFns {
     return smoothstep(0.42, 0.62, n);
   };
 
-  return { params, height, forest, dirt, river: riverField };
+  return { params, height, forest, dirt, river: riverField, riverEdge };
 }

@@ -145,6 +145,27 @@ export function createRocks(world: WorldFns, scanned: ScannedRock[] = []): Rocks
     }
   }
 
+  // River shores: boulders along the water's edge (some standing in the shallows), stones strewn over the gravel
+  // shelf, and blocks fallen from the ledges onto the bank face.
+  for (let i = 0; i < 150000 * params.rocks; i++) {
+    const x = (rand() * 2 - 1) * half, z = (rand() * 2 - 1) * half;
+    const edge = world.riverEdge(x, z);
+    if (edge < -3 || edge > 30) continue;
+    const h = height(x, z);
+    const clump = 0.5 + 0.5 * noise(x * 0.05 + 40, z * 0.05);
+    if (edge < 8) {
+      // Waterline and shelf.
+      if (rand() > 0.6 * clump + 0.1) continue;
+      const big = rand() < 0.18;
+      place(pickShape(), x, z, big ? 1.2 + rand() * 1.8 : 0.25 + rand() * 0.7, 0.25, 0.5);
+    } else {
+      // Bank face: blocks lodged on the steeper ground.
+      const slope = Math.hypot(height(x + 2, z) - h, height(x, z + 2) - h) / 2;
+      if (rand() > (0.04 + 0.25 * THREE.MathUtils.smoothstep(slope, 0.25, 0.8)) * clump) continue;
+      place(rand() < 0.4 ? pickCore() : pickShape(), x, z, 0.8 + rand() * 2.6, 0.35, 0.5);
+    }
+  }
+
   // Pebbles scattered everywhere on land, denser where boulders cluster.
   for (let i = 0; i < 14000 * params.rocks; i++) {
     const x = (rand() * 2 - 1) * half, z = (rand() * 2 - 1) * half;

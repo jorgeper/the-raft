@@ -4,6 +4,14 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Next
 
+0. **User's queue (2026-11-01), in this order:**
+   1. ~~River banks~~ (done, see Done).
+   2. Rest of the color pass: teal-blue shade on the forest floor (Valheim's), sunset glow over the sea bleaching
+      to white.
+   3. Flicker when moving, "specially in the grass" (suspect the TAA: jitter/reprojection on thin blades).
+   4. Small ponds: mossy surroundings, rocks and moss patches, floating plants (lily pads, duckweed), frogs and
+      fish peacefully hanging around.
+
 3. **Valheim look pass**: match the user's reference shots in `reference/`, not just generic realism.
    - First pass landed: painted sky (`src/sky.ts`), Neutral tone mapping, luminous sun-glowing haze, lime grass,
      golden light. Side-by-side grid: `.playwright-mcp/look/compare2.jpg` (regenerate with `.playwright-mcp/compare.js`).
@@ -127,6 +135,20 @@ In priority order: the first items are the user's requests for the next sessions
   visibility on two rings of taps around each pixel, and the beam scatter falls back to open air's thin glow as
   that turns lit. Washed views: 214 → 164-180; dark forests and the beam shots unchanged; same fps. Shots:
   `.playwright-mcp/bright2/` (`ab1.jpg`, `ab2.jpg`: before left, after right) and `.playwright-mcp/vol/g-nab.jpg`.
+- Rocky river banks (user report: "banks look super fake and simple", plus a glowing yellow sawtooth along the
+  water). The sawtooth was beach sand colored by height per vertex: on a steep bank the thin sand band zig-zagged
+  across the 2.5 m triangles. Now `riverEdge` (`src/worldgen.ts`) is a signed distance to a jagged water edge
+  (bays and points at two scales), and the bank is a low gravel shelf at the water, then ledges (flat treads, steep
+  rock risers, at least 8 m wide so the mesh holds them) climbing to the land, with ridged outcrops on the face.
+  River shores are colored gravel and wet stone, risers rock; sand stays on the sea beach and never on steep ground.
+  A boulder pass lines the waterline and shelf and lodges blocks on the bank faces (`src/rocks.ts`). Note: the
+  jagged edge reshuffles the random tree layout across the map (same seed, different world). Shots:
+  `.playwright-mcp/river/g-ab2.jpg` (old left, new right).
+- Gorge views no longer drown in haze. Two causes, both older than the banks: ground fog is measured from the
+  ground under the camera and allowed 20x its density below it, so a gorge or valley seen from its rim filled with
+  a wall of mist (now floored at 0.7 layer heights below, still pooling in hollows); and the forest's 7x haze ran
+  along the whole ray, now only its first 70 m. Forest beam shots unchanged. Shots: `.playwright-mcp/river/g-h2.jpg`,
+  `g-mist.jpg`, `.playwright-mcp/vol/g-ncd.jpg`.
 - Valheim's hue split (user request: "blue to purple to orange, more saturated sky"). Blending the cool sky or
   haze into the warm sun side in RGB passed through grey; now the middle of each blend is pushed toward violet-pink
   (green down, red and blue up), in the sky's horizon and vertical gradients (strongest at a low sun) and in the

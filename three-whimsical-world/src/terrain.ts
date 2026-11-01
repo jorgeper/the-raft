@@ -21,6 +21,9 @@ const COLORS = {
   sand: new THREE.Color('#c4a874'),
   wetSand: new THREE.Color('#7a6646'),
   seabed: new THREE.Color('#6f6448'),
+  // River shores: grey-brown gravel and stones, darker where the water wets them.
+  gravel: new THREE.Color('#7a746a'),
+  wetStone: new THREE.Color('#4c4842'),
 };
 
 /**
@@ -81,13 +84,21 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
     c.lerp(COLORS.moss, forest).lerp(COLORS.needles, forest * fine * 0.6);
     const steepDirt = smoothstep(0.12, 0.3, slope) * 0.85;
     c.lerp(COLORS.dirt, steepDirt);
-    const rock = smoothstep(0.3, 0.5, slope);
+    // River banks are cut rock: their ledges' risers show stone at a gentler slope than open hillsides.
+    const edge = world.riverEdge(x, z);
+    const riverBank = 1 - smoothstep(30, 55, edge);
+    const rock = Math.max(smoothstep(0.3, 0.5, slope), riverBank * smoothstep(0.1, 0.25, slope));
     c.lerp(COLORS.rock, rock);
 
-    // Beach and seabed by height.
-    const sandAmt = 1 - smoothstep(1.6, 3.2 + fine * 1.5, y);
+    // Beach and seabed by height. Sand belongs to the sea beach on gentle ground: on a steep bank the thin band
+    // of heights zig-zagged across the 2.5 m triangles as a glowing sawtooth, and river shores are stony.
+    const sandAmt = (1 - smoothstep(1.6, 3.2 + fine * 1.5, y)) * (1 - riverBank) * (1 - smoothstep(0.2, 0.4, slope));
     c.lerp(COLORS.sand, sandAmt);
-    c.lerp(COLORS.wetSand, 1 - smoothstep(-0.3, 0.7, y));
+    c.lerp(COLORS.wetSand, (1 - smoothstep(-0.3, 0.7, y)) * (1 - riverBank));
+    // The river's gravel shelf, and stones darkened by the water at its edge.
+    const gravel = riverBank * (1 - smoothstep(5, 10, edge)) * (1 - smoothstep(1.5, 3, y));
+    c.lerp(COLORS.gravel, gravel);
+    c.lerp(COLORS.wetStone, riverBank * (1 - smoothstep(-0.2, 0.8, y)));
     c.lerp(COLORS.seabed, 1 - smoothstep(-6, -1, y));
 
     w.fill(0);
@@ -95,7 +106,7 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
     toward(earth * 0.9, 2);
     toward(forest, 1);
     toward(steepDirt, 2);
-    toward(rock, 3);
+    toward(Math.max(rock, gravel), 3);
     toward(sandAmt, 4);
     splat.set([w[1], w[2], w[3], w[4]], i * 4);
 
@@ -210,13 +221,14 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         #else
           diffuseColor.rgb *= 0.82 + 0.36 * mottle;
         #endif
-        // Beach: wind ripples and grain on dry sand, a darker band where waves wet it.
-        float sand = 1.0 - smoothstep(2.0, 3.6, vWorld.y);
+        // Beach: wind ripples and grain on dry sand (only where the splat says sand, not on river stones), and a
+        // darker band where the water wets the shore.
+        float sand = (1.0 - smoothstep(2.0, 3.6, vWorld.y)) * min(vSplat.w * 1.5, 1.0);
         float warp = tNoise(vWorld.xz * 0.08) * 6.0;
         float ripple = 0.5 + 0.5 * sin(dot(vWorld.xz, vec2(0.83, 0.55)) * 4.5 + warp);
         float grain = tNoise(vWorld.xz * 23.0);
         diffuseColor.rgb *= mix(1.0, 0.84 + 0.18 * ripple + 0.12 * (grain - 0.5), sand);
-        wetSand = sand * (1.0 - smoothstep(0.2, 1.1, vWorld.y + 0.3 * tNoise(vWorld.xz * 0.5)));
+        wetSand = 1.0 - smoothstep(0.2, 1.1, vWorld.y + 0.3 * tNoise(vWorld.xz * 0.5));
         diffuseColor.rgb *= mix(1.0, 0.62, wetSand);`,
       )
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.35, wetSand);')
