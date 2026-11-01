@@ -6,7 +6,8 @@ import { createMeadowHeight, createTerrainMesh, createDepthTexture } from './ter
 import { createWater } from './water';
 import { Grass } from './grass';
 import { Trees } from './trees';
-import { wind } from './wind';
+import { wind, sunLight } from './wind';
+import { createPost } from './post';
 
 const MAX_WATER_DEPTH = 10;
 
@@ -20,7 +21,6 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2('#aebfcc', 0.0011);
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000);
 
@@ -62,6 +62,8 @@ scene.add(trees.group);
 const grass = new Grass(height);
 scene.add(grass.group);
 
+const post = createPost(renderer, scene, camera, cubeTarget.texture);
+
 // --- Sun and atmosphere settings (tweakable live)
 const settings = {
   elevation: 24,
@@ -69,8 +71,7 @@ const settings = {
   turbidity: 2,
   rayleigh: 3,
   exposure: renderer.toneMappingExposure,
-  fogDensity: (scene.fog as THREE.FogExp2).density,
-  fogColor: '#aebfcc',
+  fogDensity: 0.0011,
 };
 const sunDir = new THREE.Vector3();
 
@@ -103,11 +104,18 @@ gui.add(settings, 'azimuth', 0, 360, 1).onChange(updateSun);
 gui.add(settings, 'turbidity', 0, 20, 0.1).onChange(updateSun);
 gui.add(settings, 'rayleigh', 0, 4, 0.01).onChange(updateSun);
 gui.add(settings, 'exposure', 0.1, 2, 0.01).onChange((v: number) => (renderer.toneMappingExposure = v));
-gui.add(settings, 'fogDensity', 0, 0.005, 0.0001).onChange((v: number) => ((scene.fog as THREE.FogExp2).density = v));
+gui.add(settings, 'fogDensity', 0, 0.005, 0.0001).onChange((v: number) => (post.atmosphere.uFogDensity.value = v));
 gui.add(wind.uWindStrength, 'value', 0, 3, 0.01).name('wind');
-gui.addColor(settings, 'fogColor').onChange((v: string) => (scene.fog as THREE.FogExp2).color.set(v));
+const postGui = gui.addFolder('Post');
+postGui.add(post.atmosphere.uShaftStrength, 'value', 0, 3, 0.01).name('light shafts');
+postGui.add(post.bloom, 'strength', 0, 2, 0.01).name('bloom');
+postGui.add(post.bloom, 'threshold', 0, 8, 0.05).name('bloom threshold');
+postGui.add(post.grade.uSaturation, 'value', 0, 2, 0.01).name('saturation');
+postGui.add(post.grade.uContrast, 'value', 0.5, 1.5, 0.01).name('contrast');
+postGui.add(post.grade.uWarmth, 'value', 0, 0.3, 0.005).name('warmth');
+postGui.add(post.grade.uVignette, 'value', 0, 0.8, 0.01).name('vignette');
 
-// --- Fly camera
+// --- Camera controls
 const controls = new PointerLockControls(camera, renderer.domElement);
 const hint = document.getElementById('hint')!;
 renderer.domElement.addEventListener('click', () => controls.lock());
@@ -118,6 +126,8 @@ const keys = new Set<string>();
 window.addEventListener('keydown', (e) => keys.add(e.code));
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 
+const EYE_HEIGHT = 1.7;
+
 // Start on the meadow looking out to sea. ?cam=x,heightAboveGround,z,tx,ty,tz overrides (handy for screenshots).
 const camParam = new URLSearchParams(location.search).get('cam')?.split(',').map(Number);
 if (camParam?.length === 6 && camParam.every(Number.isFinite)) {
@@ -126,31 +136,51 @@ if (camParam?.length === 6 && camParam.every(Number.isFinite)) {
   camera.position.set(x, Math.max(height(x, z), 0) + Math.max(y, 1.7), z);
   camera.lookAt(camParam[3], camParam[4], camParam[5]);
 } else {
-  camera.position.set(-60, height(-60, 0) + 14, 0);
-  camera.lookAt(400, 0, 40);
+  camera.position.set(-30, height(-30, 0) + EYE_HEIGHT, 0);
+  camera.lookAt(400, 4, -60);
 }
+
+// Walk (default) or fly; F toggles. Walking follows the ground with gravity and jumping.
+let flying = false;
+let verticalSpeed = 0;
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyF') {
+    flying = !flying;
+    verticalSpeed = 0;
+  }
+});
 
 const move = new THREE.Vector3();
 function updateCamera(dt: number) {
-  const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 90 : 18;
-  move.set(
-    Number(keys.has('KeyD')) - Number(keys.has('KeyA')),
-    Number(keys.has('Space')) - Number(keys.has('KeyC')),
-    Number(keys.has('KeyW')) - Number(keys.has('KeyS')),
-  );
-  if (move.lengthSq() === 0) return;
-  move.normalize().multiplyScalar(speed * dt);
-  controls.moveRight(move.x);
-  controls.moveForward(move.z);
-  camera.position.y += move.y;
-  const ground = Math.max(height(camera.position.x, camera.position.z), 0) + 1.7;
-  camera.position.y = Math.max(camera.position.y, ground);
+  const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  const speed = flying ? (sprint ? 90 : 18) : sprint ? 10 : 4.5;
+  move.set(Number(keys.has('KeyD')) - Number(keys.has('KeyA')), 0, Number(keys.has('KeyW')) - Number(keys.has('KeyS')));
+  if (move.lengthSq() > 0) {
+    move.normalize().multiplyScalar(speed * dt);
+    controls.moveRight(move.x);
+    controls.moveForward(move.z);
+  }
+
+  const ground = Math.max(height(camera.position.x, camera.position.z), 0) + EYE_HEIGHT;
+  if (flying) {
+    camera.position.y += (Number(keys.has('Space')) - Number(keys.has('KeyC'))) * speed * dt;
+  } else {
+    const onGround = camera.position.y <= ground + 0.05;
+    if (onGround && keys.has('Space')) verticalSpeed = 6;
+    verticalSpeed -= 20 * dt;
+    camera.position.y += verticalSpeed * dt;
+  }
+  if (camera.position.y < ground) {
+    camera.position.y = ground;
+    verticalSpeed = 0;
+  }
 }
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  post.setSize(window.innerWidth, window.innerHeight);
 });
 
 const timer = new THREE.Timer();
@@ -168,11 +198,13 @@ renderer.setAnimationLoop(() => {
   sun.target.position.copy(camera.position);
   sun.position.copy(camera.position).addScaledVector(sunDir, 500);
 
-  renderer.render(scene, camera);
+  sunLight.uSunDirView.value.copy(sunDir).transformDirection(camera.matrixWorldInverse);
+  sunLight.uSunColor.value.copy(sun.color);
+  post.render(sunDir, sun.color);
 });
 
 // Fill all grass before the first frame so the opening view isn't bare.
 grass.update(camera.position, Infinity);
 
 // Debug handle for automated screenshots.
-Object.assign(window, { __app: { camera, scene, renderer, settings, updateSun, cubeTarget, skyScene, grass, trees, height } });
+Object.assign(window, { __app: { camera, scene, renderer, settings, updateSun, cubeTarget, skyScene, grass, trees, height, post } });

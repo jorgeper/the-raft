@@ -6,6 +6,12 @@ export const wind = {
   uWindStrength: { value: 1 },
 };
 
+/** Sun direction in view space and color, updated per frame, for effects that patch lighting (grass translucency). */
+export const sunLight = {
+  uSunDirView: { value: new THREE.Vector3(0, 1, 0) },
+  uSunColor: { value: new THREE.Color(1, 1, 1) },
+};
+
 /** GLSL: world-space displacement for a point rooted at `root`; `flex` is 0 at the base and 1 at the tip. */
 export const windGLSL = /* glsl */ `
   uniform float uTime;

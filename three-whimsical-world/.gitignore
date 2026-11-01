@@ -11,3 +11,4 @@ secrets*
 node_modules/
 .playwright-mcp/
 dist/
+reference/

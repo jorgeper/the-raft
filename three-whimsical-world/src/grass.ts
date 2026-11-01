@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
 import type { HeightFn } from './terrain';
-import { addWind } from './wind';
+import { addWind, sunLight } from './wind';
 
 const CHUNK = 24;
 const RADIUS = 120;
-const BLADES_PER_CHUNK = 9000;
+const BLADES_PER_CHUNK = 12000;
 const FULL_DENSITY_DIST = 30;
 const GRID = 2; // height sampling step inside a chunk, meters
 
@@ -17,7 +17,7 @@ function createBladeGeometry() {
   const indices: number[] = [];
   for (let i = 0; i < segments; i++) {
     const t = i / segments;
-    const halfWidth = 0.045 * (1 - 0.8 * t);
+    const halfWidth = 0.032 * (1 - 0.8 * t);
     const lean = 0.22 * t * t;
     positions.push(-halfWidth, t, lean, halfWidth, t, lean);
     const shade = 0.3 + 0.7 * t;
@@ -75,9 +75,26 @@ export class Grass {
         float bladeHeight = length(instanceMatrix[1].xyz);
         float flex = position.y * position.y * bladeHeight;
         p = root + local + windOffset(root, flex * 0.55) * fade;
+        vTip = position.y;
       `,
       { uFadeStart: { value: RADIUS * 0.65 }, uFadeEnd: { value: RADIUS } },
     );
+
+    // Translucency: blades glow warm yellow-green when the sun is behind them, strongest at the tips.
+    const patchVertex = this.material.onBeforeCompile;
+    this.material.onBeforeCompile = (shader, renderer) => {
+      patchVertex.call(this.material, shader, renderer);
+      Object.assign(shader.uniforms, sunLight);
+      shader.vertexShader = 'varying float vTip;\n' + shader.vertexShader;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vTip;\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;')
+        .replace(
+          '#include <emissivemap_fragment>',
+          `#include <emissivemap_fragment>
+          float backlit = pow(max(dot(normalize(-vViewPosition), uSunDirView), 0.0), 3.0);
+          totalEmissiveRadiance += uSunColor * diffuseColor.rgb * vec3(1.1, 1.25, 0.6) * backlit * vTip * vTip * 0.9;`,
+        );
+    };
   }
 
   /** Builds or drops chunks around the viewer. `budget` caps new chunks per call to avoid frame hitches. */
@@ -144,7 +161,7 @@ export class Grass {
       if (h < 2.4 + rand() * 1.2 || slope > 0.55 + rand() * 0.2) continue;
       if (dry > 0.8 && rand() < (dry - 0.8) * 3) continue;
 
-      const bladeHeight = (0.35 + rand() * 0.55) * (1.15 - 0.4 * dry);
+      const bladeHeight = (0.5 + rand() * 0.65) * (1.15 - 0.35 * dry);
       q.setFromAxisAngle(up, rand() * Math.PI * 2);
       s.set(0.8 + rand() * 0.6, bladeHeight, 1);
       p.set(x, h - 0.06, z);

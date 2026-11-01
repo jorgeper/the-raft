@@ -1,0 +1,199 @@
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import type { WebGLRenderTarget } from 'three';
+
+const fullscreenVertex = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+/**
+ * Aerial perspective + light shafts, in HDR before tone mapping.
+ * Fog takes its color from the sky itself (sampled at the horizon in the view direction), so haze turns
+ * golden toward the sun and cool away from it. Shafts are a radial blur of visible sky toward the sun.
+ */
+const AtmosphereShader = {
+  name: 'Atmosphere',
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    tDepth: { value: null as THREE.Texture | null },
+    tSky: { value: null as THREE.Texture | null },
+    uProjInv: { value: new THREE.Matrix4() },
+    uViewInv: { value: new THREE.Matrix4() },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uSunUv: { value: new THREE.Vector2() },
+    uSunFacing: { value: 0 },
+    uSunColor: { value: new THREE.Color(1, 0.9, 0.75) },
+    uFogDensity: { value: 0.0011 },
+    uFogHeightFalloff: { value: 0.012 },
+    uShaftStrength: { value: 0.5 },
+  },
+  vertexShader: fullscreenVertex,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tDepth;
+    uniform samplerCube tSky;
+    uniform mat4 uProjInv;
+    uniform mat4 uViewInv;
+    uniform vec3 uSunDir;
+    uniform vec2 uSunUv;
+    uniform float uSunFacing;
+    uniform vec3 uSunColor;
+    uniform float uFogDensity;
+    uniform float uFogHeightFalloff;
+    uniform float uShaftStrength;
+    varying vec2 vUv;
+
+    vec3 worldFromDepth(vec2 uv, float depth) {
+      vec4 ndc = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+      vec4 view = uProjInv * ndc;
+      return (uViewInv * vec4(view.xyz / view.w, 1.0)).xyz;
+    }
+
+    // Brightness of open sky near the sun at a screen position; geometry blocks it.
+    float skyLight(vec2 uv) {
+      if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
+      return texture2D(tDepth, uv).x >= 0.99999 ? 1.0 : 0.0;
+    }
+
+    void main() {
+      vec3 color = texture2D(tDiffuse, vUv).rgb;
+      float depth = texture2D(tDepth, vUv).x;
+      vec3 camPos = uViewInv[3].xyz;
+      vec3 world = worldFromDepth(vUv, min(depth, 0.999999));
+      vec3 ray = world - camPos;
+      float dist = length(ray);
+      ray /= dist;
+
+      if (depth < 0.99999) {
+        // Exponential haze, thinner higher up (integrated along the ray).
+        float h = max(camPos.y, 0.0);
+        float dy = ray.y * dist;
+        float heightTerm = abs(dy) > 0.01
+          ? (1.0 - exp(-uFogHeightFalloff * dy)) / (uFogHeightFalloff * dy)
+          : 1.0;
+        float optical = uFogDensity * dist * exp(-uFogHeightFalloff * h) * heightTerm;
+        float fog = 1.0 - exp(-optical);
+        vec3 horizonDir = normalize(vec3(ray.x, 0.04 + max(ray.y, 0.0) * 0.5, ray.z));
+        vec3 fogColor = textureCube(tSky, horizonDir).rgb;
+        color = mix(color, fogColor, fog);
+      }
+
+      // Light shafts: march from this pixel toward the sun, collecting unblocked sky.
+      if (uSunFacing > 0.0 && uShaftStrength > 0.0) {
+        const int SAMPLES = 48;
+        vec2 delta = (uSunUv - vUv) / float(SAMPLES);
+        vec2 p = vUv;
+        float decay = 1.0, shaft = 0.0;
+        for (int i = 0; i < SAMPLES; i++) {
+          p += delta;
+          shaft += skyLight(p) * decay;
+          decay *= 0.965;
+        }
+        shaft /= float(SAMPLES);
+        float sunAlign = pow(max(dot(ray, uSunDir), 0.0), 3.0);
+        color += uSunColor * shaft * sunAlign * uSunFacing * uShaftStrength;
+      }
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `,
+};
+
+/** Display-space grade after tone mapping: warm highlights, teal shadows, saturation, contrast, vignette. */
+const GradeShader = {
+  name: 'Grade',
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    uSaturation: { value: 1.12 },
+    uContrast: { value: 1.08 },
+    uWarmth: { value: 0.04 },
+    uVignette: { value: 0.28 },
+  },
+  vertexShader: fullscreenVertex,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uSaturation;
+    uniform float uContrast;
+    uniform float uWarmth;
+    uniform float uVignette;
+    varying vec2 vUv;
+    void main() {
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      // Split toning.
+      c += uWarmth * vec3(0.9, 0.45, -0.3) * smoothstep(0.45, 1.0, l);
+      c += uWarmth * vec3(-0.35, 0.1, 0.25) * (1.0 - smoothstep(0.0, 0.4, l));
+      c = mix(vec3(l), c, uSaturation);
+      c = (c - 0.5) * uContrast + 0.5;
+      float v = smoothstep(0.95, 0.3, length((vUv - 0.5) * vec2(1.0, 0.8)));
+      c *= mix(1.0 - uVignette, 1.0, v);
+      gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+    }
+  `,
+};
+
+/** ShaderPass that also hands the scene depth buffer to its shader. */
+class DepthShaderPass extends ShaderPass {
+  render(renderer: THREE.WebGLRenderer, writeBuffer: WebGLRenderTarget, readBuffer: WebGLRenderTarget, deltaTime: number, maskActive: boolean) {
+    this.uniforms.tDepth.value = readBuffer.depthTexture;
+    super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+  }
+}
+
+export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, sky: THREE.Texture) {
+  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  const target = new THREE.WebGLRenderTarget(size.x, size.y, {
+    type: THREE.HalfFloatType,
+    samples: 4,
+    depthTexture: new THREE.DepthTexture(size.x, size.y, THREE.FloatType),
+  });
+  const composer = new EffectComposer(renderer, target);
+  // A composer built around an explicit target assumes pixel ratio 1; restore the renderer's.
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(window.innerWidth, window.innerHeight);
+
+  composer.addPass(new RenderPass(scene, camera));
+  const atmosphere = new DepthShaderPass(AtmosphereShader);
+  atmosphere.uniforms.tSky.value = sky;
+  composer.addPass(atmosphere);
+  // High threshold: only the sun and sky glimpsed through leaves should bloom, not the whole sky.
+  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.4, 0.7, 4);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+  const grade = new ShaderPass(GradeShader);
+  composer.addPass(grade);
+
+  const sunWorld = new THREE.Vector3();
+  const camDir = new THREE.Vector3();
+
+  return {
+    composer,
+    atmosphere: atmosphere.uniforms,
+    bloom,
+    grade: grade.uniforms,
+    setSize(width: number, height: number) {
+      composer.setSize(width, height);
+    },
+    render(sunDir: THREE.Vector3, sunColor: THREE.Color) {
+      const u = atmosphere.uniforms;
+      u.uProjInv.value.copy(camera.projectionMatrixInverse);
+      u.uViewInv.value.copy(camera.matrixWorld);
+      u.uSunDir.value.copy(sunDir);
+      u.uSunColor.value.copy(sunColor);
+      sunWorld.copy(camera.position).addScaledVector(sunDir, 1000).project(camera);
+      u.uSunUv.value.set(sunWorld.x * 0.5 + 0.5, sunWorld.y * 0.5 + 0.5);
+      camera.getWorldDirection(camDir);
+      // Fade shafts out as the sun leaves the view instead of popping.
+      u.uSunFacing.value = THREE.MathUtils.smoothstep(camDir.dot(sunDir), 0.0, 0.5);
+      composer.render();
+    },
+  };
+}
