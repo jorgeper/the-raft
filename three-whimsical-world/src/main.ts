@@ -671,10 +671,12 @@ renderer.setAnimationLoop((now) => {
   post.atmosphere.uForest.value += (forestHere - post.atmosphere.uForest.value) * Math.min(dt * 1.5, 1);
   world.life.update(timer.getElapsed(), camera, daylight, post.atmosphere.uForest.value);
 
-  // Eye adaptation: looking into the sun stops the view down a little, so it glows instead of blinding;
-  // under a canopy most of it is hidden, so adapt less there.
+  // Eye adaptation: looking into the sun stops the view down a little, so it glows instead of blinding
+  // (under a canopy most of it is hidden, so adapt less there).
   const intoSun = THREE.MathUtils.smoothstep(camera.getWorldDirection(lookDir).dot(lightDir), 0.7, 0.97) * daylight;
-  const adaptTarget = 1 - 0.22 * intoSun * (1 - 0.6 * post.atmosphere.uForest.value);
+  // Under a dense canopy the eye opens up, so forests read as shaded rather than murky.
+  const forestOpen = 1 + 0.3 * post.atmosphere.uForest.value * daylight;
+  const adaptTarget = (1 - 0.22 * intoSun * (1 - 0.6 * post.atmosphere.uForest.value)) * forestOpen;
   eyeAdapt += (adaptTarget - eyeAdapt) * Math.min(dt * 1.5, 1);
   renderer.toneMappingExposure = baseExposure * eyeAdapt;
 

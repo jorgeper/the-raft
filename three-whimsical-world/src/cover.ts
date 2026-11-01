@@ -244,11 +244,12 @@ export class GroundCover {
             // Thin fronds glow when the sun is behind them, and pass some light through even in shade.
             `#include <emissivemap_fragment>
             float backlit = pow(max(dot(normalize(-vViewPosition), uSunDirView), 0.0), 2.0);
-            totalEmissiveRadiance += uSunColor * diffuseColor.rgb * vec3(1.0, 1.2, 0.55) * (0.08 + 0.7 * backlit);`,
+            totalEmissiveRadiance += uSunColor * diffuseColor.rgb * vec3(0.9, 1.05, 0.6) * (0.06 + 0.5 * backlit);`,
           );
       };
       // Brighter than the bare scan: it was shot in overcast light, the game's forest floor is sunnier.
-      const fernTints = ['#ffffff', '#eef4dc', '#f4f0d8', '#dfe9cc', '#e6eed2'].map((c) => new THREE.Color(c).multiplyScalar(1.45));
+      // Kept below neon: deep, slightly blue greens sit with the scanned rocks and the forest floor.
+      const fernTints = ['#f4f8ec', '#e2ecd6', '#e8eadc', '#d4e2cc', '#dce6d2'].map((c) => new THREE.Color(c).multiplyScalar(1.2));
       scanned.geometries.forEach((geometry, v) => {
         this.layers.push(
           new ScatterLayer(
