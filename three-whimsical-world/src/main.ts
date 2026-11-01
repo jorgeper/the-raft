@@ -21,6 +21,7 @@ import { FpsMeter } from './fps';
 import { SunShadows, seeFarCasters } from './cascades';
 import { Weather, weatherUniforms, type WeatherMode } from './weather';
 import { Rain, Snow, Splashes } from './rain';
+import { Soundscape } from './audio';
 import { SeedFluff } from './fluff';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
@@ -557,6 +558,17 @@ displayGui.add(display, 'showMinimap').name('minimap (M)').listen().onChange(app
 displayGui.add(display, 'minimapSize', 120, 480, 10).name('minimap size').onChange(applyDisplay);
 displayGui.close();
 
+// Sound: synthesized ambience, creatures and footsteps (src/audio.ts). Starts on the first click or key press.
+const sound = new Soundscape(world.fns);
+persist.bind('sound', sound.settings, ['on', 'volume']);
+const soundGui = gui.addFolder('Sound');
+soundGui.add(sound.settings, 'on').name('sound (N)').listen();
+soundGui.add(sound.settings, 'volume', 0, 1, 0.01).name('volume');
+for (const type of ['pointerdown', 'keydown'] as const) window.addEventListener(type, () => sound.unlock());
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyN') sound.settings.on = !sound.settings.on;
+});
+
 const perfGui = gui.addFolder('Performance');
 const perfNote = { text: 'ms per frame (16.7 = 60 fps)' };
 perfGui.add(perfNote, 'text').name('note').disable();
@@ -617,6 +629,7 @@ function regenerate() {
       scene.remove(world.group);
       world.dispose();
       world = new World(params, renderer, scannedRocks);
+      sound.setWorld(world.fns);
       water.setPonds(world.fns.ponds);
       water.setRivers(world.fns.riverCenters);
       setRockPonds(world.fns.ponds);
@@ -700,6 +713,7 @@ renderer.domElement.addEventListener('wheel', (e) => {
 }, { passive: true });
 
 const move = new THREE.Vector3();
+const soundFeet = new THREE.Vector3();
 /** Moves the player's eye; returns whether it stands on the ground and whether a jump started this frame. */
 function updateCamera(dt: number) {
   let jumped = false;
@@ -817,7 +831,7 @@ applyDisplay();
 // (which also catches the clock moving on its own).
 gui.onFinishChange(() => persist.save());
 window.addEventListener('keyup', (e) => {
-  if (['KeyT', 'KeyF', 'KeyM', 'KeyV', 'KeyH', 'KeyP'].includes(e.code)) persist.save();
+  if (['KeyT', 'KeyF', 'KeyM', 'KeyV', 'KeyH', 'KeyP', 'KeyN'].includes(e.code)) persist.save();
 });
 window.addEventListener('pagehide', () => persist.save());
 document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && persist.save());
@@ -969,6 +983,12 @@ renderer.setAnimationLoop((now) => {
     wind.uWindStrength.value, pixelsPerMeter);
   splashes.update(timer.getElapsed() % 10000, camera, weather.rain, perf.rain, sky.uniforms.uHorizon.value, pixelsPerMeter);
   snow.update(timer.getElapsed() % 10000, camera, weather.snow, perf.rain, sky.uniforms.uHorizon.value, pixelsPerMeter);
+  soundFeet.copy(player.position).y -= EYE_HEIGHT;
+  sound.update({
+    dt, camera, feet: soundFeet, grounded: motion.grounded && movement.mode === 'walk', footfalls: character ? character.footfalls() : null,
+    hours: settings.time, daylight, rain: weather.rain, snow: weather.snow, snowCover: weather.snowCover,
+    wind: wind.uWindStrength.value, torch: torch.on,
+  });
   minimap.update(camera, camera.getWorldDirection(lookDir));
   post.atmosphere.uTorchPos.value.copy(torch.flameWorld);
   post.atmosphere.uTorchColor.value.copy(torch.flameColor);
@@ -989,5 +1009,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
+  __app: { sound, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
 });

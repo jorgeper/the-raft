@@ -32,6 +32,8 @@ export class Character {
   private hold = 0;
   private airTime = 0;
   private facing = 0;
+  /** The gait clip's phase (0..1) at the last `footfalls()` call. */
+  private lastPhase = 0;
 
   private constructor(model: THREE.Object3D, clips: THREE.AnimationClip[]) {
     this.root.add(model);
@@ -131,6 +133,25 @@ export class Character {
       this.play(clip, 0.22, timeScale);
     }
     this.mixer.update(dt);
+  }
+
+  /**
+   * How many feet have come down since the last call: two footfalls per cycle of the walk, jog or sprint clip
+   * playing now (at its playback speed), so footstep sounds keep the legs' rhythm.
+   */
+  footfalls() {
+    const clip = this.current;
+    const action = clip && NATURAL_SPEED[clip] ? this.actions.get(clip) : undefined;
+    if (!action) {
+      this.lastPhase = 0;
+      return 0;
+    }
+    const phase = (action.time / action.getClip().duration) % 1;
+    const before = this.lastPhase;
+    this.lastPhase = phase;
+    // Half-cycle boundaries crossed (the clip wraps from 1 back to 0).
+    const half = (p: number) => Math.floor(p * 2);
+    return phase >= before ? half(phase) - half(before) : 2 - half(before) + half(phase);
   }
 
   /** Turns at once to face a horizontal direction (after spawning or teleporting). */

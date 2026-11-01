@@ -25,7 +25,7 @@ In priority order: the first items are the user's requests for the next sessions
    12. Look-pass candidates, reviewed: bluer shadows are the "teal shade" (done in the first queue), cloud shapes
        came with the volumetric clouds, and the sun already sits in a large warm glow with a pink halo
        (`.playwright-mcp/wild/sun0.jpg`); a bigger bloom would veil the frame. Left for the user's verdict.
-   13. Next: the soundscape.
+   13. ~~The soundscape~~ (done, see Done).
 
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
@@ -137,6 +137,20 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Soundscape (user, 2026-11-01): `src/audio.ts`, all synthesized with Web Audio (no sample files), starting on the
+  first click or key press. N toggles it (the context suspends while off); a Sound panel section has on/off and
+  volume. Beds of filtered noise: wind on the same gust rhythm as the grass (louder up high and in the open, hushed
+  in woods, a thin whistle when it blows hard), leaves rustling in the canopy, surf breaking every 5-9 s near the
+  sea, rivers babbling, rain (with patter on leaves and drips under the trees), the torch's flame and crackles, and
+  a positional roar at the foot of each waterfall. Creatures: birds by day with a dawn chorus (robin-like warbles,
+  chaffinch trills, a fluting blackbird, sparrow chirps, a skylark high over the meadows, a cuckoo and a woodpecker
+  in the woods, gulls by the sea), crickets on clear nights in the open, tawny owls from the forest, frogs at the
+  nearest pond (a chorus after dusk). Footsteps keep the character's legs' rhythm (`Character.footfalls()`: two per
+  gait cycle) and change with the ground: grass, leaf litter, dirt, sand, snow, stone and splashing water; a landing
+  thuds. Snow muffles the mix. Birds, owls, frogs and falls are placed in the world (equal-power panners on the
+  camera) with a generated reverb. No fps cost. Checked by measuring level and spectrum in six scenes
+  (`__app.sound`): nothing clips, crickets carry the night, rain the highs, birds the dawn forest.
+  Not yet: deer hooves when a herd bolts, splashes when jumping into water, thunder.
 - Deer grazing steps and ear flicks (2026-11-01): a grazing deer now and then takes a step or two to fresh grass, a
   slowed Walk blended under the Graze (the mixer averages weights, so the head stays mostly down). Ears flick on
   their own clocks (quicker while the deer looks or stares) without ear bones: `refine()` tags the ear vertices
