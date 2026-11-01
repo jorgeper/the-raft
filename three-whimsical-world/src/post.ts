@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { WebGLRenderTarget } from 'three';
 import { AOPass } from './ao';
+import { CLOUD_NOISE, CLOUD_HEIGHT } from './sky';
 import { WaterPass, type Water } from './water';
 
 const fullscreenVertex = /* glsl */ `
@@ -64,6 +65,10 @@ const AtmosphereShader = {
     /** Terrain height under the camera: the fog layer's base. */
     uGroundY: { value: 0 },
     uTime: { value: 0 },
+    // Cloud shadows: the sky's cloud field projected down the sun direction onto the land.
+    uClouds: { value: 0.38 },
+    uCloudOffset: { value: new THREE.Vector2() },
+    uCloudShadow: { value: 0.5 },
     /** Debug: 1 shows the volumetric sun-visibility term in gray. */
     uDebugVolumetric: { value: 0 },
   },
@@ -101,7 +106,21 @@ const AtmosphereShader = {
     uniform float uGroundY;
     uniform float uTime;
     uniform float uDebugVolumetric;
+    uniform float uClouds;
+    uniform vec2 uCloudOffset;
+    uniform float uCloudShadow;
     varying vec2 vUv;
+    ${CLOUD_NOISE}
+
+    // How much a cloud shades this point: follow the sun ray up to the cloud layer and read the cover there.
+    float cloudShade(vec3 p) {
+      if (uClouds <= 0.0 || uCloudShadow <= 0.0 || uSunDir.y <= 0.02) return 1.0;
+      vec3 q = p + uSunDir * ((${CLOUD_HEIGHT.toFixed(1)} - p.y) / max(uSunDir.y, 0.08));
+      vec2 uv = (q.xz - uViewInv[3].xz) / ${CLOUD_HEIGHT.toFixed(1)} * 0.9 + uCloudOffset;
+      // Shadows are softer than the clouds' edges: light wraps around them.
+      float cover = smoothstep(0.05, 0.6, cloudCover(uv, uClouds));
+      return 1.0 - uCloudShadow * cover * smoothstep(0.02, 0.15, uSunDir.y);
+    }
 
     float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     float gNoise(vec2 p) {
@@ -163,8 +182,10 @@ const AtmosphereShader = {
       #endif
       float sunUpV = smoothstep(-0.05, 0.08, uSunDir.y);
 
+      float shade = isSky ? 1.0 : cloudShade(world);
       if (!isSky) {
         color *= mix(1.0, texture2D(tAO, vUv).r, uAOStrength * uAOOn);
+        color *= shade;
         // Exponential haze, thinner higher up (integrated along the ray).
         float h = max(camPos.y, 0.0);
         float dy = ray.y * dist;
@@ -242,7 +263,7 @@ const AtmosphereShader = {
         float density = mix(0.0015, 0.024, uForest) * (1.0 + 0.5 * uWhimsy);
         float scatter = (1.0 - exp(-density * marchLen)) * phase * mix(3.0, 5.5, uForest);
         // Beams read from the contrast between lit and shadowed air: pow() deepens the shadowed stretches.
-        color += uSunColor * scatter * pow(vis, 1.6) * uVolumetric * sunUpV * (1.0 + 0.5 * uWhimsy);
+        color += uSunColor * scatter * pow(vis, 1.6) * uVolumetric * sunUpV * (1.0 + 0.5 * uWhimsy) * cloudShade(camPos);
         if (uDebugVolumetric > 0.5) { gl_FragColor = vec4(vec3(vis), 1.0); return; }
       }
       #endif

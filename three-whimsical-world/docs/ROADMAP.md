@@ -42,7 +42,9 @@ In priority order: the first items are the user's requests for the next sessions
    Through Blender MCP when it's connected.
 8. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
 9. **Temporal anti-aliasing**: grass and leaves shimmer in motion.
-10. **Volumetric clouds** with cloud shadows on the ground.
+10. **Volumetric clouds**. Cloud shadows landed: the sky's clouds are anchored to the world (layer at
+    `CLOUD_HEIGHT` 900 m) and the haze pass casts the same field down the sun ray onto land and sea ("cloud
+    shadows" slider). Still open: raymarched volumetric cloud shapes.
 11. Small: ferns read too neon next to the scanned rocks; grass blade textures, auto-exposure entering forests,
    caustics, textured shore foam.
 

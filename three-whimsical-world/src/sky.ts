@@ -161,29 +161,11 @@ function sample(stops: Stop[], e: number, key: (typeof KEYS)[number], out: THREE
   return out.fromArray(stops[stops.length - 1][key]);
 }
 
-const vertexShader = /* glsl */ `
-  varying vec3 vWorldPosition;
-  void main() {
-    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-    vWorldPosition = worldPosition.xyz;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    gl_Position.z = gl_Position.w; // on the far plane: depth exactly 1.0, which the haze pass reads as sky
-  }
-`;
+/** Height (m) of the cloud layer: sets how fast clouds parallax as you move and where their shadows fall. */
+export const CLOUD_HEIGHT = 900;
 
-const fragmentShader = /* glsl */ `
-  uniform vec3 uSunDir;
-  uniform vec3 uZenith;
-  uniform vec3 uHorizon;
-  uniform vec3 uSunHorizon;
-  uniform vec3 uGlow;
-  uniform vec3 uCloudLit;
-  uniform vec3 uCloudShade;
-  uniform float uSunDisc;
-  uniform float uClouds;
-  uniform float uTime;
-  varying vec3 vWorldPosition;
-
+/** Cloud noise, shared by the sky and the haze pass (which casts the clouds' shadows onto the land). */
+export const CLOUD_NOISE = /* glsl */ `
   vec2 hash2(vec2 i) {
     vec3 p = fract(i.xyx * vec3(0.1031, 0.1030, 0.0973));
     p += dot(p, p.yzx + 33.33);
@@ -208,6 +190,43 @@ const fragmentShader = /* glsl */ `
     return r;
   }
 
+  // Cloud cover at a cloud-layer coordinate (the same field the sky draws).
+  float cloudCover(vec2 uv, float clouds) {
+    float n = fbm(uv) * 0.5 + 0.5;
+    float region = noise(uv * 0.18 + 3.1) * 0.5 + 0.5;
+    float cov = clamp(clouds + (region - 0.5) * 0.7, 0.0, 1.0);
+    float thr = 1.0 - cov;
+    return smoothstep(thr, thr + 0.28, n);
+  }
+`;
+
+const vertexShader = /* glsl */ `
+  varying vec3 vWorldPosition;
+  void main() {
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = worldPosition.xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    gl_Position.z = gl_Position.w; // on the far plane: depth exactly 1.0, which the haze pass reads as sky
+  }
+`;
+
+const fragmentShader = /* glsl */ `
+  uniform vec3 uSunDir;
+  uniform vec3 uZenith;
+  uniform vec3 uHorizon;
+  uniform vec3 uSunHorizon;
+  uniform vec3 uGlow;
+  uniform vec3 uCloudLit;
+  uniform vec3 uCloudShade;
+  uniform float uSunDisc;
+  uniform float uClouds;
+  uniform float uTime;
+  /** Cloud drift plus the camera's position over the cloud layer, so clouds are anchored to the world. */
+  uniform vec2 uCloudOffset;
+  varying vec3 vWorldPosition;
+
+  ${CLOUD_NOISE}
+
   void main() {
     vec3 d = normalize(vWorldPosition - cameraPosition);
     float cosT = dot(d, uSunDir);
@@ -231,7 +250,7 @@ const fragmentShader = /* glsl */ `
 
     // Clouds: a flat layer projected onto the dome, soft and painterly.
     if (y > 0.0 && uClouds > 0.0) {
-      vec2 uv = d.xz / (y + 0.12) * 0.9 + vec2(uTime * 0.004, uTime * 0.0015);
+      vec2 uv = d.xz / (y + 0.12) * 0.9 + uCloudOffset;
       float n = fbm(uv) * 0.5 + 0.5;
       float region = noise(uv * 0.18 + 3.1) * 0.5 + 0.5;
       float cov = clamp(uClouds + (region - 0.5) * 0.7, 0.0, 1.0);
@@ -274,6 +293,7 @@ export function createSky() {
     uSunDisc: { value: 12 },
     uClouds: { value: 0.38 },
     uTime: { value: 0 },
+    uCloudOffset: { value: new THREE.Vector2() },
   };
   const material = new THREE.ShaderMaterial({
     name: 'ValheimSky',

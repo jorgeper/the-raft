@@ -10,7 +10,7 @@ import { Torch } from './torch';
 import { Minimap } from './minimap';
 import { loadScannedRocks, rockMoss } from './scanned-rocks';
 import { Persist } from './persist';
-import { createSky } from './sky';
+import { createSky, CLOUD_HEIGHT } from './sky';
 import { Character, type MotionState } from './character';
 import { loadGroundTextures, groundUniforms } from './ground';
 import { Motes } from './motes';
@@ -233,6 +233,7 @@ const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
 persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'fogDensity', 'whimsy', 'groundFog', 'groundFogHeight', 'groundFogPatchy']);
 post.setWhimsy(settings.whimsy);
 persist.bind('tint', post.atmosphere.uTintStrength, ['value']);
+persist.bind('cloudShadow', post.atmosphere.uCloudShadow, ['value']);
 persist.bind('wind', wind.uWindStrength, ['value']);
 persist.bind('torch', torch, ['on', 'brightness', 'embersOn', 'smokeOn']);
 persist.bind('volumetric', volumetric, ['value']);
@@ -283,6 +284,7 @@ const timeCtrl = timeGui.add(settings, 'time', 0, 24, 0.05).name('time of day').
 timeGui.add(settings, 'daySpeed', 0, 60, 0.5).name('day speed (h/min)');
 timeGui.add(settings, 'sunRotation', -180, 180, 1).name('sun direction').onChange(updateSun);
 timeGui.add(settings, 'clouds', 0, 1, 0.01).onChange(updateSun);
+timeGui.add(post.atmosphere.uCloudShadow, 'value', 0, 1, 0.01).name('cloud shadows');
 timeGui.add(settings, 'fogDensity', 0, 0.003, 0.0001).name('haze').onChange((v: number) => (post.atmosphere.uFogDensity.value = v));
 const applyGroundFog = () => {
   post.atmosphere.uGroundFog.value = settings.groundFog;
@@ -652,6 +654,11 @@ renderer.setAnimationLoop((now) => {
   water.uniforms.uHaze.value = settings.fogDensity;
   water.uniforms.uGlitter.value = 0.5 + settings.whimsy;
   sky.uniforms.uTime.value = timer.getElapsed();
+  // Clouds drift with the wind and stay put over the land as you move, so their shadows line up with them.
+  const t = timer.getElapsed();
+  sky.uniforms.uCloudOffset.value.set(t * 0.004 + (camera.position.x * 0.9) / CLOUD_HEIGHT, t * 0.0015 + (camera.position.z * 0.9) / CLOUD_HEIGHT);
+  post.atmosphere.uCloudOffset.value.copy(sky.uniforms.uCloudOffset.value);
+  post.atmosphere.uClouds.value = settings.clouds;
   post.atmosphere.uTime.value = timer.getElapsed();
   post.atmosphere.uGroundY.value = Math.max(world.height(camera.position.x, camera.position.z), 0);
   wind.uTime.value = timer.getElapsed();
