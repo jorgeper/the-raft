@@ -5,7 +5,7 @@ import { mulberry32, smoothstep, type WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
 import { plants } from './plants';
 import { quality } from './quality';
-import { createMushroomGeometry, createSpikeFlowerGeometry, createUmbelGeometry, createSeedGrassGeometry, createDandelionClockGeometry, createFluffTexture, createReedGeometry, createShrubGeometry, createShrubLeafTexture, headColored } from './undergrowth';
+import { createMossGeometry, createLitterGeometry, createLitterTexture, createMushroomGeometry, createSpikeFlowerGeometry, createUmbelGeometry, createSeedGrassGeometry, createDandelionClockGeometry, createFluffTexture, createReedGeometry, createShrubGeometry, createShrubLeafTexture, headColored } from './undergrowth';
 
 const CHUNK = 24;
 const GRID = 4;
@@ -440,6 +440,95 @@ export class GroundCover {
       ),
     );
     this.disposables.push(mushroomGeo, mushroomMat, reedGeo, reedMat, shrubGeo, shrubMat, shrubTex);
+
+    // Moss cushions on the forest floor, in damp patches between the ferns.
+    const mossGeo = createMossGeometry();
+    const mossMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
+    mossMat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vMossP;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvMossP = position;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+          varying vec3 vMossP;
+          float mossHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+          float mossNoise(vec3 p) {
+            vec3 i = floor(p), f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(mix(mossHash(i), mossHash(i + vec3(1, 0, 0)), f.x), mix(mossHash(i + vec3(0, 1, 0)), mossHash(i + vec3(1, 1, 0)), f.x), f.y),
+                       mix(mix(mossHash(i + vec3(0, 0, 1)), mossHash(i + vec3(1, 0, 1)), f.x), mix(mossHash(i + vec3(0, 1, 1)), mossHash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+          }`,
+        )
+        .replace(
+          '#include <color_fragment>',
+          // Fine speckle (individual sprigs) over coarser mottling, so a cushion reads as a carpet of tiny plants.
+          `#include <color_fragment>
+          float fine = mossNoise(vMossP * 90.0), coarse = mossNoise(vMossP * 14.0);
+          diffuseColor.rgb *= (0.55 + 0.6 * fine) * (0.75 + 0.45 * coarse);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.15, 1.05, 0.6), smoothstep(0.65, 0.9, coarse));`,
+        )
+        .replace(
+          '#include <normal_fragment_maps>',
+          // Bumpy: tilt the normal by the speckle's gradient so the light breaks up across the surface.
+          `#include <normal_fragment_maps>
+          vec3 mp = vMossP * 90.0;
+          float m0 = mossNoise(mp);
+          vec3 mg = vec3(mossNoise(mp + vec3(0.3, 0, 0)), mossNoise(mp + vec3(0, 0.3, 0)), mossNoise(mp + vec3(0, 0, 0.3))) - m0;
+          normal = normalize(normal + (mat3(viewMatrix) * mg) * 2.5);`,
+        )
+        .replace(
+          '#include <emissivemap_fragment>',
+          // Velvety rim, faint: cushions glow softly at their edges instead of looking like plastic lumps.
+          `#include <emissivemap_fragment>
+          float rim = pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 3.0);
+          totalEmissiveRadiance += diffuseColor.rgb * rim * 0.2;`,
+        );
+    };
+    const mossTints = ['#d8d8d8', '#c4d0b0', '#b0c49c', '#d0ccb0'].map((c) => new THREE.Color(c));
+    this.layers.push(
+      new ScatterLayer(
+        world,
+        {
+          radius: 70,
+          perChunk: 160,
+          geometry: mossGeo,
+          material: mossMat,
+          place: (x, z, h, forest, rand, color) => {
+            const damp = smoothstep(-0.1, 0.5, patchNoise(x * 0.06 - 13, z * 0.06 + 41));
+            if (h < 2 || rand() > smoothstep(0.35, 0.8, forest) * damp) return 0;
+            color.copy(mossTints[Math.floor(rand() * mossTints.length)]);
+            return 0.6 + rand() * rand() * 1.8;
+          },
+        },
+        28,
+      ),
+    );
+
+    // Fallen leaves and needles: thickest where broadleaf trees mix in at the forest edge, thinner deep inside.
+    const litterGeo = createLitterGeometry();
+    const litterTex = createLitterTexture();
+    const litterMat = new THREE.MeshStandardMaterial({ map: litterTex, alphaTest: 0.5, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2 });
+    this.layers.push(
+      new ScatterLayer(
+        world,
+        {
+          radius: 55,
+          perChunk: 220,
+          geometry: litterGeo,
+          material: litterMat,
+          place: (x, z, h, forest, rand, color) => {
+            const amount = smoothstep(0.15, 0.4, forest) * (1 - 0.5 * smoothstep(0.7, 1, forest));
+            if (h < 3 || rand() > amount * (0.4 + 0.6 * smoothstep(-0.4, 0.4, patchNoise(x * 0.05 + 8, z * 0.05 - 8)))) return 0;
+            color.setRGB(1, 1, 1).multiplyScalar(0.8 + rand() * 0.4);
+            return 0.8 + rand() * 0.8;
+          },
+        },
+        29,
+      ),
+    );
+    this.disposables.push(mossGeo, mossMat, litterGeo, litterMat, litterTex);
     this.addTallMeadow(world, patchNoise);
   }
 

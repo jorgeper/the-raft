@@ -402,3 +402,83 @@ export function createFluffTexture() {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+
+/** A cushion of moss: a low lumpy mound, bright yellow-green where it faces the sky, darker down its sides. */
+export function createMossGeometry() {
+  const geo = new THREE.IcosahedronGeometry(0.5, 3);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const top = new THREE.Color('#6a8a26'), side = new THREE.Color('#304616'), c = new THREE.Color();
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    // Lumps, then squash to a cushion that sinks a little into the ground.
+    const lump = 1 + 0.18 * Math.sin(x * 9.1 + z * 4.3) * Math.cos(z * 7.7 - x * 3.1) + 0.08 * Math.sin(y * 17 + x * 11);
+    x *= lump;
+    z *= lump;
+    y = Math.max(y * lump, -0.1) * 0.32 - 0.02;
+    pos.setXYZ(i, x, y, z);
+    c.copy(side).lerp(top, THREE.MathUtils.smoothstep(y, -0.02, 0.15));
+    c.multiplyScalar(0.9 + 0.2 * Math.sin(x * 23 + z * 19));
+    c.toArray(colors, i * 3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('aHead', new THREE.Float32BufferAttribute(new Array(pos.count).fill(0), 1));
+  geo.deleteAttribute('uv');
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** Fallen leaves and spruce needles, as an alpha texture with its own colors (warm browns, ochre, a few reds). */
+export function createLitterTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  const rand = seeded(29);
+  const leafColors = ['#8a5a2a', '#a8742e', '#6e4422', '#b88a3a', '#94401e', '#5e4a26', '#c09040'];
+  // Needles first, underneath: short thin strokes.
+  g.lineCap = 'round';
+  for (let i = 0; i < 700; i++) {
+    const x = 20 + rand() * 216, y = 20 + rand() * 216, a = rand() * Math.PI;
+    if (Math.hypot(x - 128, y - 128) > 110 + rand() * 10) continue;
+    g.strokeStyle = rand() < 0.5 ? '#6a4a2a' : '#8a6438';
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + Math.cos(a) * 9, y + Math.sin(a) * 9);
+    g.stroke();
+  }
+  // Leaves on top: rounded, pointed shapes with a midrib.
+  for (let i = 0; i < 70; i++) {
+    const x = 30 + rand() * 196, y = 30 + rand() * 196;
+    if (Math.hypot(x - 128, y - 128) > 100) continue;
+    const s = 7 + rand() * 7;
+    g.save();
+    g.translate(x, y);
+    g.rotate(rand() * Math.PI * 2);
+    g.fillStyle = leafColors[Math.floor(rand() * leafColors.length)];
+    g.beginPath();
+    g.moveTo(0, -s);
+    g.quadraticCurveTo(s * 0.8, 0, 0, s);
+    g.quadraticCurveTo(-s * 0.8, 0, 0, -s);
+    g.fill();
+    g.strokeStyle = 'rgba(40,24,10,0.5)';
+    g.lineWidth = 0.8;
+    g.beginPath();
+    g.moveTo(0, -s);
+    g.lineTo(0, s);
+    g.stroke();
+    g.restore();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+/** A flat card of litter lying just above the ground (instances add a slight tilt and any yaw). */
+export function createLitterGeometry() {
+  const geo = new THREE.PlaneGeometry(1.1, 1.1);
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, 0.06, 0);
+  return geo;
+}
