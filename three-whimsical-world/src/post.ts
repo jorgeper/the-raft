@@ -28,6 +28,8 @@ const AtmosphereShader = {
     tSky: { value: null as THREE.Texture | null },
     tAO: { value: null as THREE.Texture | null },
     uAOStrength: { value: 1 },
+    /** 0 when the quality preset turns AO off (its texture is then stale). */
+    uAOOn: { value: 1 },
     uProjInv: { value: new THREE.Matrix4() },
     uViewInv: { value: new THREE.Matrix4() },
     uSunDir: { value: new THREE.Vector3(0, 1, 0) },
@@ -69,6 +71,7 @@ const AtmosphereShader = {
     uniform samplerCube tSky;
     uniform sampler2D tAO;
     uniform float uAOStrength;
+    uniform float uAOOn;
     uniform mat4 uProjInv;
     uniform mat4 uViewInv;
     uniform vec3 uSunDir;
@@ -107,7 +110,7 @@ const AtmosphereShader = {
     // Compiled only once the sun's shadow map exists (a shadow sampler can't be bound to an empty texture).
     #ifdef HAS_SHADOW
     float sunVisibility(vec3 origin, vec3 dir, float len) {
-      const int STEPS = 40;
+      const int STEPS = VOL_STEPS;
       float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
       float stepLen = len / float(STEPS);
       float lit = 0.0;
@@ -157,7 +160,7 @@ const AtmosphereShader = {
       float sunUpV = smoothstep(-0.05, 0.08, uSunDir.y);
 
       if (!isSky) {
-        color *= mix(1.0, texture2D(tAO, vUv).r, uAOStrength);
+        color *= mix(1.0, texture2D(tAO, vUv).r, uAOStrength * uAOOn);
         // Exponential haze, thinner higher up (integrated along the ray).
         float h = max(camPos.y, 0.0);
         float dy = ray.y * dist;
@@ -377,6 +380,7 @@ export function createPost(
   const ao = new AOPass(camera);
   composer.addPass(ao);
   const atmosphere = new DepthShaderPass(AtmosphereShader);
+  atmosphere.material.defines.VOL_STEPS = 40;
   atmosphere.uniforms.tSky.value = sky;
   atmosphere.uniforms.tAO.value = ao.texture;
   // The sun's shadow map only exists after the first scene render, so hook it up from inside the pass.
@@ -408,6 +412,11 @@ export function createPost(
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
 
+  let whimsy = 0, glowAllowed = true;
+  const applyGlow = () => {
+    glow.enabled = glowAllowed && whimsy > 0.01;
+    glow.strength = 0.07 * whimsy;
+  };
   const sunWorld = new THREE.Vector3();
   const camDir = new THREE.Vector3();
 
@@ -423,8 +432,20 @@ export function createPost(
     setWhimsy(w: number) {
       atmosphere.uniforms.uWhimsy.value = w;
       grade.uniforms.uWhimsy.value = w;
-      glow.enabled = w > 0.01;
-      glow.strength = 0.07 * w;
+      whimsy = w;
+      applyGlow();
+    },
+    /** Quality preset knobs: volumetric march steps, AO resolution (0 = off) and whether the glow pass runs. */
+    setQuality(volumetricSteps: number, aoScale: number, glowOn: boolean) {
+      if (atmosphere.material.defines.VOL_STEPS !== volumetricSteps) {
+        atmosphere.material.defines.VOL_STEPS = volumetricSteps;
+        atmosphere.material.needsUpdate = true;
+      }
+      ao.enabled = aoScale > 0;
+      atmosphere.uniforms.uAOOn.value = aoScale > 0 ? 1 : 0;
+      if (aoScale > 0) ao.setScale(aoScale);
+      glowAllowed = glowOn;
+      applyGlow();
     },
     setSize(width: number, height: number) {
       composer.setPixelRatio(renderer.getPixelRatio());

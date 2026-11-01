@@ -5,7 +5,8 @@ import { createFarLand } from './far';
 import { createRocks, type Rocks } from './rocks';
 import type { ScannedRock } from './scanned-rocks';
 import { Trees } from './trees';
-import { Grass, GRASS_RADIUS } from './grass';
+import { Grass } from './grass';
+import { quality } from './quality';
 import { GroundCover } from './cover';
 
 export const MAX_WATER_DEPTH = 10;
@@ -30,7 +31,6 @@ export class World {
 
     this.trees = new Trees(this.fns, renderer);
     this.grass = new Grass(this.fns);
-    terrainUniforms.uGrassRadius.value = GRASS_RADIUS;
     this.cover = new GroundCover(this.fns);
     this.group.add(this.trees.group, this.grass.group, this.cover.group);
   }
@@ -41,6 +41,7 @@ export class World {
 
   /** Per-frame streaming of grass/cover chunks and tree detail levels. `fill` builds everything nearby at once. */
   update(camera: THREE.Camera, fill = false) {
+    terrainUniforms.uGrassRadius.value = quality.grassRadius;
     this.grass.update(camera.position, fill ? Infinity : 3);
     this.cover.update(camera.position, fill ? Infinity : 2);
     this.trees.update(camera);

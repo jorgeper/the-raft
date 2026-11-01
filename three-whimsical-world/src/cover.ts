@@ -4,6 +4,7 @@ import { TERRAIN_SIZE } from './terrain';
 import { mulberry32, smoothstep, type WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
 import { plants } from './plants';
+import { quality } from './quality';
 
 const CHUNK = 24;
 const GRID = 4;
@@ -126,7 +127,7 @@ class ScatterLayer {
   constructor(private world: WorldFns, private spec: LayerSpec, private salt: number) {}
 
   update(viewer: THREE.Vector3, budget: number) {
-    const { radius } = this.spec;
+    const radius = this.spec.radius * quality.coverRadius;
     const cx0 = Math.floor(viewer.x / CHUNK), cz0 = Math.floor(viewer.z / CHUNK);
     const span = Math.ceil(radius / CHUNK);
     const keep = new Set<string>();
@@ -144,7 +145,7 @@ class ScatterLayer {
           this.group.add(mesh);
         }
         const near = Math.max(0, d - CHUNK * 0.71);
-        mesh.count = Math.floor(mesh.userData.total * Math.max(0.1, (1 - Math.min(near / radius, 1)) ** 1.5));
+        mesh.count = Math.floor(mesh.userData.total * quality.coverDensity * Math.max(0.1, (1 - Math.min(near / radius, 1)) ** 1.5));
       }
     }
     for (const [key, mesh] of this.chunks) {

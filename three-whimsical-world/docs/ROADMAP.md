@@ -1,16 +1,9 @@
 # Roadmap
 
-In priority order: items 1–6 are the user's requests for the next sessions, the rest ranked by realism gained. Move items to "Done" with the commit hash when finished.
+In priority order: the first items are the user's requests for the next sessions, the rest ranked by realism gained. Move items to "Done" with the commit hash when finished.
 
 ## Next
 
-1. **Graphics quality presets + FPS counter** (user request, do first next session):
-   - A "quality" option in the Display panel (Low / Medium / High / Ultra, persisted) that scales the expensive
-     parts together: render scale, shadow map size and distance, grass and fern density and radius, volumetric
-     march steps, AO, glow pass, mote count. Name each preset's trade-off in the panel so the choice is clear.
-   - An always-visible FPS readout (corner overlay, smoothed over ~1 s, with frame time in ms), toggleable.
-   - Measure each preset in a meadow and a forest at 1280×720 and note the numbers here; this browser has
-     swung between ~60 and ~36 fps all session, so compare presets back to back, not against old numbers.
 2. **Less fog and sun glare** (user request: "looking at the sun blinds too much, seems way bright", then
    "just feels maybe too foggy?"):
    - The whole scene may be too hazy, and the glare is partly haze lit by the sun. Haze density is the "haze"
@@ -96,6 +89,10 @@ In priority order: items 1–6 are the user's requests for the next sessions, th
 
 ## Done
 
+- Graphics quality presets (Display → graphics quality: Low / Medium / High / Ultra, `src/quality.ts`) scale
+  render scale, sun shadow map and reach, grass and fern density and reach, volumetric steps, AO resolution,
+  glow pass and motes together; FPS counter bottom-left (P toggles). At 1280×720 in the headless browser, back to
+  back: Low 60, Medium 60, High 48, Ultra 37 fps, the same in meadow and forest.
 - Textured terrain: five CC0 Poly Haven scans (meadow soil, forest floor, earth, rock, sand) splatted by biome and
   slope as detail over the vertex-color palette, triplanar rock, normal maps (`src/ground.ts`). H toggles the panel.
 - Playable Viking (Quaternius CC0, assembled in Blender) with idle/walk/jog/sprint/jump clips, third-person

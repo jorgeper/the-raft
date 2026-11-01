@@ -15,6 +15,8 @@ import { Character, type MotionState } from './character';
 import { loadGroundTextures, groundUniforms } from './ground';
 import { Motes } from './motes';
 import { loadPlants } from './plants';
+import { QUALITY_PRESETS, quality, setQuality, type QualityLevel } from './quality';
+import { FpsMeter } from './fps';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
 const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
@@ -31,8 +33,14 @@ const display = {
   minimapSize: 220,
   /** The settings panel (H toggles). */
   showPanel: true,
+  /** Graphics preset: scales resolution, shadows, grass, ferns, beams, AO, glow and motes together. */
+  quality: 'high' as QualityLevel,
+  /** Frame-rate readout in the corner (P toggles). */
+  showFps: true,
 };
-persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize', 'showPanel']);
+persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize', 'showPanel', 'quality', 'showFps']);
+if (!(display.quality in QUALITY_PRESETS)) display.quality = 'high';
+setQuality(display.quality);
 const stage = document.getElementById('stage')!;
 const viewSize = () => ({ width: Math.min(window.innerWidth, display.maxWidth), height: Math.min(window.innerHeight, display.maxHeight) });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * display.renderScale);
@@ -65,9 +73,18 @@ let envTarget: THREE.WebGLRenderTarget | null = null;
 // One directional light plays the sun by day and the moon by night.
 const sun = new THREE.DirectionalLight('#fff1dc', 3.2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(4096, 4096);
-const shadowExtent = 160;
-Object.assign(sun.shadow.camera, { left: -shadowExtent, right: shadowExtent, top: shadowExtent, bottom: -shadowExtent, near: 1, far: 1200 });
+/** Sizes the sun's shadow map and frustum from the quality preset (the map is rebuilt on the next render). */
+function applyShadowQuality() {
+  const size = quality.shadowMapSize, extent = quality.shadowExtent;
+  if (sun.shadow.mapSize.x !== size) {
+    sun.shadow.mapSize.set(size, size);
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+  }
+  Object.assign(sun.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 1, far: 1200 });
+  sun.shadow.camera.updateProjectionMatrix();
+}
+applyShadowQuality();
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.6;
 scene.add(sun, sun.target);
@@ -112,6 +129,7 @@ water.uniforms.uDepth.value = world.depthTexture;
 // Glowing motes draw over the haze so it doesn't fog them out.
 const overlay = new THREE.Scene();
 const post = createPost(renderer, scene, camera, cubeTarget.texture, sun, overlay);
+post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow);
 
 // The player's eye: mouse look and WASD move this; the camera follows it in first person, or orbits behind the
 // character in third person.
@@ -334,8 +352,24 @@ function applyDisplay() {
   minimap.setSize(display.minimapSize);
   minimap.setVisible(display.showMinimap);
   gui.show(display.showPanel);
+  fps.setVisible(display.showFps);
+}
+/** Switches the graphics preset; `keepScale` leaves the render scale alone (on load, where it was persisted). */
+function applyQuality(keepScale = false) {
+  setQuality(display.quality);
+  if (!keepScale) display.renderScale = quality.renderScale;
+  applyShadowQuality();
+  post.setQuality(quality.volumetricSteps, quality.aoScale, quality.glow);
+  qualityInfo.text = QUALITY_PRESETS[display.quality].label;
+  applyDisplay();
+  world.update(camera, true);
+  displayGui.controllersRecursive().forEach((c) => c.updateDisplay());
 }
 const displayGui = gui.addFolder('Display');
+const qualityInfo = { text: QUALITY_PRESETS[display.quality].label };
+displayGui.add(display, 'quality', { Low: 'low', Medium: 'medium', High: 'high', Ultra: 'ultra' }).name('graphics quality').onChange(() => applyQuality());
+displayGui.add(qualityInfo, 'text').name('trade-off').disable();
+displayGui.add(display, 'showFps').name('FPS counter (P)').listen().onChange(applyDisplay);
 displayGui.add(display, 'maxWidth', 640, 3840, 10).name('max width (px)').onChange(applyDisplay);
 displayGui.add(display, 'maxHeight', 360, 2160, 10).name('max height (px)').onChange(applyDisplay);
 displayGui.add(display, 'renderScale', 0.25, 1.5, 0.05).name('render scale').onChange(applyDisplay);
@@ -347,6 +381,8 @@ displayGui.close();
 // --- Minimap: click to travel there.
 const minimap = new Minimap(display.minimapSize);
 stage.appendChild(minimap.element);
+const fps = new FpsMeter();
+stage.appendChild(fps.element);
 minimap.setWorld(world.fns);
 minimap.onNavigate = (x, z) => {
   const ground = Math.max(world.height(x, z), 0);
@@ -363,6 +399,10 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'KeyH') {
     display.showPanel = !display.showPanel;
+    applyDisplay();
+  }
+  if (e.code === 'KeyP') {
+    display.showFps = !display.showFps;
     applyDisplay();
   }
 });
@@ -563,13 +603,14 @@ applyDisplay();
 // (which also catches the clock moving on its own).
 gui.onFinishChange(() => persist.save());
 window.addEventListener('keyup', (e) => {
-  if (['KeyT', 'KeyF', 'KeyM', 'KeyV', 'KeyH'].includes(e.code)) persist.save();
+  if (['KeyT', 'KeyF', 'KeyM', 'KeyV', 'KeyH', 'KeyP'].includes(e.code)) persist.save();
 });
 window.addEventListener('pagehide', () => persist.save());
 document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && persist.save());
 
 function resetToDefaults() {
   persist.reset();
+  applyQuality(true);
   post.atmosphere.uFogDensity.value = settings.fogDensity;
   post.setWhimsy(settings.whimsy);
   applyGroundFog();
@@ -585,7 +626,8 @@ gui.add({ reset: resetToDefaults }, 'reset').name('↺ Reset to defaults');
 const lookDir = new THREE.Vector3();
 const timer = new THREE.Timer();
 let sinceSunUpdate = 0;
-renderer.setAnimationLoop(() => {
+renderer.setAnimationLoop((now) => {
+  fps.frame(now);
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.1);
   const motion = updateCamera(dt);
@@ -639,5 +681,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { camera, scene, renderer, settings, updateSun, sky, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, get world() { return world; } },
+  __app: { camera, scene, renderer, settings, updateSun, sky, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, fps, get world() { return world; } },
 });

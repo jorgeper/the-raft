@@ -114,10 +114,22 @@ export class AOPass extends Pass {
     return this.targetA.texture;
   }
 
+  /** AO resolution relative to the frame (quality presets use 0.5 to halve its cost). */
+  private scale = 1;
+  private fullSize = new THREE.Vector2(1, 1);
+
+  setScale(scale: number) {
+    if (scale === this.scale) return;
+    this.scale = scale;
+    this.setSize(this.fullSize.x, this.fullSize.y);
+  }
+
   setSize(width: number, height: number) {
-    this.targetA.setSize(width, height);
-    this.targetB.setSize(width, height);
-    this.texel.set(1 / width, 1 / height);
+    this.fullSize.set(width, height);
+    const w = Math.max(1, Math.round(width * this.scale)), h = Math.max(1, Math.round(height * this.scale));
+    this.targetA.setSize(w, h);
+    this.targetB.setSize(w, h);
+    this.texel.set(1 / w, 1 / h);
   }
 
   render(renderer: THREE.WebGLRenderer, _writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {

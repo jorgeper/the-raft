@@ -3,8 +3,10 @@ import { createNoise2D } from 'simplex-noise';
 import { coverageFrom } from './terrain';
 import type { WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
+import { quality } from './quality';
 
 const CHUNK = 24;
+/** Default reach; the quality preset sets the live one (`quality.grassRadius`). */
 export const GRASS_RADIUS = 120;
 // Many thin blades rather than fewer wide ones: Valheim's meadow reads as a full, soft field.
 const BLADES_PER_CHUNK = 44000;
@@ -105,6 +107,7 @@ export class Grass {
   private chunks = new Map<string, THREE.InstancedMesh>();
   private geometry = createBladeGeometry();
   private material: THREE.MeshPhysicalMaterial;
+  private fade = { uFadeStart: { value: GRASS_RADIUS * 0.6 }, uFadeEnd: { value: GRASS_RADIUS }, uWiden: { value: 1 } };
   private colorNoise = createNoise2D(hashSeed(11, 5));
   private lush = new THREE.Color('#74a01e');
   private deep = new THREE.Color('#58861e');
@@ -127,13 +130,14 @@ export class Grass {
         vec3 local = p - root;
         // Shrink into the ground at the edge of the grass radius, and widen distant blades to make up for thinning.
         local.y *= fade;
-        local.xz *= 1.0 + camDist / 25.0;
+        // Lower quality presets draw fewer, wider blades so the field still reads as full.
+        local.xz *= (1.0 + camDist / 25.0) * uWiden;
         float bladeHeight = length(instanceMatrix[1].xyz);
         float flex = position.y * position.y * bladeHeight;
         p = root + local + windOffset(root, flex * 0.6) * fade;
         vTip = position.y;
       `,
-      { uFadeStart: { value: GRASS_RADIUS * 0.6 }, uFadeEnd: { value: GRASS_RADIUS } },
+      this.fade,
     );
 
     const patchVertex = this.material.onBeforeCompile;
@@ -169,14 +173,18 @@ export class Grass {
 
   /** Builds or drops chunks around the viewer. `budget` caps new chunks per call to avoid frame hitches. */
   update(viewer: THREE.Vector3, budget = 3) {
+    const radius = quality.grassRadius;
+    this.fade.uFadeStart.value = radius * 0.6;
+    this.fade.uFadeEnd.value = radius;
+    this.fade.uWiden.value = 1 / Math.sqrt(quality.grassDensity);
     const cx0 = Math.floor(viewer.x / CHUNK), cz0 = Math.floor(viewer.z / CHUNK);
-    const span = Math.ceil(GRASS_RADIUS / CHUNK);
+    const span = Math.ceil(radius / CHUNK);
     const wanted: { key: string; cx: number; cz: number; d: number }[] = [];
 
     for (let cz = cz0 - span; cz <= cz0 + span; cz++) {
       for (let cx = cx0 - span; cx <= cx0 + span; cx++) {
         const d = Math.hypot((cx + 0.5) * CHUNK - viewer.x, (cz + 0.5) * CHUNK - viewer.z);
-        if (d < GRASS_RADIUS + CHUNK * 0.71) wanted.push({ key: `${cx},${cz}`, cx, cz, d });
+        if (d < radius + CHUNK * 0.71) wanted.push({ key: `${cx},${cz}`, cx, cz, d });
       }
     }
     wanted.sort((a, b) => a.d - b.d);
@@ -201,8 +209,8 @@ export class Grass {
       // Blades are stored in random order, so drawing a prefix thins the chunk evenly.
       // Distance to the chunk's nearest point, so the chunk you stand in is always full.
       const near = Math.max(0, w.d - CHUNK * 0.71);
-      const t = THREE.MathUtils.clamp((near - FULL_DENSITY_DIST) / (GRASS_RADIUS - FULL_DENSITY_DIST), 0, 1);
-      mesh.count = Math.floor(mesh.userData.total * Math.max(0.06, (1 - t) ** 2.2));
+      const t = THREE.MathUtils.clamp((near - FULL_DENSITY_DIST) / (radius - FULL_DENSITY_DIST), 0, 1);
+      mesh.count = Math.floor(mesh.userData.total * quality.grassDensity * Math.max(0.06, (1 - t) ** 2.2));
     }
   }
 

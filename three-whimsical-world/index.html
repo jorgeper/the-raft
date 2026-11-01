@@ -26,6 +26,10 @@
         padding: 6px 9px; border-radius: 5px; letter-spacing: .02em;
       }
       #menu-key kbd { font: 600 11px/1 system-ui, sans-serif; border: 1px solid rgba(255,255,255,.6); border-radius: 3px; padding: 1px 5px; margin-right: 5px; }
+      .fps {
+        position: absolute; left: 12px; bottom: 10px; pointer-events: none; user-select: none; line-height: 1;
+        font: 600 12px/1 ui-monospace, Menlo, monospace; background: rgba(0,0,0,.4); padding: 6px 8px; border-radius: 5px;
+      }
       #busy {
         position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
         background: rgba(10, 14, 12, .45); color: #fff; font: 600 18px/1 system-ui, sans-serif; letter-spacing: .02em;
@@ -36,7 +40,7 @@
     <div id="busy">Generating world…</div>
     <div id="menu-key"><kbd>H</kbd>menu</div>
     <div id="stage">
-      <div id="hint">Click to look around · WASD move · Shift run · Space jump · T torch · V first/third person (wheel zooms) · F fly (Space / C up / down) · M map · H menu · Esc release (then click the map to travel)</div>
+      <div id="hint">Click to look around · WASD move · Shift run · Space jump · T torch · V first/third person (wheel zooms) · F fly (Space / C up / down) · M map · H menu · P fps · Esc release (then click the map to travel)</div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

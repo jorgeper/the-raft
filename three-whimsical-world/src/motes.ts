@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { quality } from './quality';
 
 /**
  * Floating motes around the viewer: pollen and dust that catch the sun by day (brightest when you look toward
@@ -135,5 +136,6 @@ export class Motes {
     u.uAmount.value = amount;
     u.uPixelsPerMeter.value = pixelsPerMeter;
     this.points.visible = amount > 0.01;
+    this.points.geometry.setDrawRange(0, Math.round(COUNT * quality.motes));
   }
 }
