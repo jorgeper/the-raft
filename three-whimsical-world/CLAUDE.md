@@ -1,7 +1,8 @@
 # Meadows: a Valheim-like world in Three.js
 
-An experiment in how far Claude Code can push realistic real-time 3D. The target is Valheim's look (meadows,
-Black Forest, sea, cyan/gold light) but more realistic. Vite + TypeScript + vanilla Three.js (WebGL2, custom GLSL).
+An experiment in how far Claude Code can push real-time 3D. The user's bar is "amazing": rich, lush and beautiful
+first, with Valheim's look (meadows, Black Forest, sea, blue-pink-cyan skies, cyan/gold light) and realism wherever it
+helps. Be ambitious: when a pass looks merely fine, keep layering detail and atmosphere. Vite + TypeScript + vanilla Three.js (WebGL2, custom GLSL).
 
 Plans, open problems and ideas: read `docs/ROADMAP.md` when picking the next task or when the user asks
 what's left.

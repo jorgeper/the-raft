@@ -1,10 +1,10 @@
 # Roadmap
 
-In priority order: user requests first, then realism gained. Move items to "Done" with the commit hash when finished.
+In priority order: items 1–4 are the user's requests for the next sessions, the rest ranked by realism gained. Move items to "Done" with the commit hash when finished.
 
 ## Next
 
-1. **Playable character with first/third-person views** (requested for the next session).
+1. **Playable character with first/third-person views**.
    - A Viking-looking rigged character in Valheim's spirit: beard, tunic, cloak, boots. Valheim's own models are
      copyrighted, so source a lookalike: a CC0/CC-BY rigged character (Sketchfab, Quaternius), or generate one
      (Tripo or Rodin, auto-rigged) and refine it through Blender MCP. Present the options to the user and let them
@@ -19,16 +19,35 @@ In priority order: user requests first, then realism gained. Move items to "Done
    - In third person the torch moves to the character's hand bone, and its light and embers follow it.
    - Done when: both views work while walking, running and jumping on slopes, verified with screenshots in a
      meadow and a forest, and frame rate is checked with the character on screen.
-2. **Procedural rocks with scanned textures** for outcrops, slabs and standing stones: sharp fracture-face
+2. **Valheim look pass**: match the user's reference shots in `reference/`, not just generic realism.
+   - Sky: Valheim's painterly gradients (deep blue zenith → pink/peach near the sun → cyan horizon away from it),
+     shifting through the day: rose-gold mornings, warm afternoons, magenta-violet dusk, deep blue nights. Likely a
+     custom sky shader (or color grading layered on the physical sky) with per-time-of-day color stops.
+   - Strong cyan-shadow / gold-highlight split toning; haze that glows pink-orange toward a low sun.
+   - Done when: for each reference image, a matching screenshot (same time of day, similar framing) sits beside it
+     and the user agrees the palette reads as Valheim.
+3. **Persistent settings + reset**: every panel setting (world, time and weather, torch, effects, controls,
+   display) survives a reload via `localStorage` (wrap in try/catch; the page must work without it). A
+   "Reset to defaults" button restores everything and regenerates the world if world settings changed.
+4. **Beauty pass: rich, lush forests and meadows** ("throw everything at it"). Candidates, pick by impact:
+   - Undergrowth variety: berry bushes (raspberry, blueberry), thistles, mushrooms, dandelions and clover, tall
+     grass tufts, reeds by rivers, fallen leaves and needle litter, moss carpets on forest floors.
+   - Atmosphere: morning mist pooling in hollows and over rivers, drifting dust and pollen motes in sunbeams,
+     fireflies at dusk, falling leaves.
+   - Life: butterflies over flower drifts, birds circling, a deer or two at forest edges.
+   - Light: richer dappled light under canopies, sun glints on wet rocks after rain.
+   - Done when: walking from beach through meadow into forest at three times of day looks dense and alive in
+     screenshots, compared against the references, at a playable frame rate.
+5. **Procedural rocks with scanned textures** for outcrops, slabs and standing stones: sharp fracture-face
    geometry plus triplanar Poly Haven/ambientCG rock textures (the scans alone repeat after ~17 shapes).
    Through Blender MCP when it's connected.
-3. **Textured terrain**: splat scanned ground textures (grass soil, dirt, sand, forest floor, rock) by slope and
+6. **Textured terrain**: splat scanned ground textures (grass soil, dirt, sand, forest floor, rock) by slope and
    biome, triplanar on steep faces. Today the ground is vertex colors.
-4. **Water reflects the land**: planar reflection of terrain, trees and islands; refraction in the shallows.
-5. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
-6. **Temporal anti-aliasing**: grass and leaves shimmer in motion.
-7. **Volumetric clouds** with cloud shadows on the ground.
-8. Small: ferns read too neon next to the scanned rocks; grass blade textures, auto-exposure entering forests,
+7. **Water reflects the land**: planar reflection of terrain, trees and islands; refraction in the shallows.
+8. **Cascaded shadow maps** (three's CSM addon): sharp near shadows and shadows to the horizon. One 160 m map now.
+9. **Temporal anti-aliasing**: grass and leaves shimmer in motion.
+10. **Volumetric clouds** with cloud shadows on the ground.
+11. Small: ferns read too neon next to the scanned rocks; grass blade textures, auto-exposure entering forests,
    caustics, textured shore foam.
 
 ## Later
@@ -37,7 +56,6 @@ In priority order: user requests first, then realism gained. Move items to "Done
   built piece and terrain edit). Copy them in with the game closed. Building pieces need our own models
   (Blender MCP, or Tripo for props); Valheim's assets are copyrighted.
 - Tripo-generated props (huts, longship, rune stones) through Blender MCP Premium or manual GLB downloads.
-- Persist panel settings across reloads (only on request).
 
 ## Known issues
 
