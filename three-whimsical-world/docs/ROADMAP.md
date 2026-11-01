@@ -86,6 +86,9 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Known issues
 
+- White birch trunks in shade turn saturated cobalt: their shaded side gets almost only blue sky ambient (a red
+  tint shows nearly black there), and the cyan shadow grade pushes it further. Needs a less saturated diffuse
+  sky ambient (or a warmer bounce term from the ground), checked against the Valheim references.
 - ~35 fps deep in forest at night with the torch on (1280×720, headless). Lower render scale if needed.
 - Forest light beams are subtle by default; the "volumetric light" slider strengthens them.
 - Nights are very dark without the torch, by design.
