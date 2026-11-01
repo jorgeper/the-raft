@@ -20,7 +20,7 @@ import { QUALITY_PRESETS, quality, setQuality, type QualityLevel } from './quali
 import { FpsMeter } from './fps';
 import { SunShadows, seeFarCasters } from './cascades';
 import { Weather, weatherUniforms, type WeatherMode } from './weather';
-import { Rain } from './rain';
+import { Rain, Splashes } from './rain';
 
 // Panel settings persist across reloads; ?defaults ignores (and doesn't touch) the stored ones.
 const persist = new Persist(!new URLSearchParams(location.search).has('defaults'));
@@ -152,6 +152,10 @@ overlay.add(motes.points);
 const rain = new Rain();
 rain.setSceneDepth(post.sceneDepth);
 overlay.add(rain.lines);
+// Splashes where the drops land (follows regenerate through the closure).
+const splashes = new Splashes((x, z) => world.height(x, z));
+splashes.setSceneDepth(post.sceneDepth);
+overlay.add(splashes.points);
 const weather = new Weather();
 
 // Torch (T): the flame model rides on the camera (or in the character's hand), its lights live in the world.
@@ -935,6 +939,7 @@ renderer.setAnimationLoop((now) => {
   const pixelsPerMeter = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
   torch.update(camera, timer.getElapsed(), dt, pixelsPerMeter, torchAim);
   motes.update(timer.getElapsed(), camera, lightDir, daylight, Math.min(settings.whimsy, 1.2), pixelsPerMeter);
+  splashes.update(timer.getElapsed() % 10000, camera, weather.rain, perf.rain, sky.uniforms.uHorizon.value, pixelsPerMeter);
   minimap.update(camera, camera.getWorldDirection(lookDir));
   post.atmosphere.uTorchPos.value.copy(torch.flameWorld);
   post.atmosphere.uTorchColor.value.copy(torch.flameColor);

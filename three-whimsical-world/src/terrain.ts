@@ -161,6 +161,7 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
         uniform float uWeatherTime;
         float wetSand = 0.0;
         float puddle = 0.0;
+        float rainSheen = 0.0;
         ${RAIN_RIPPLES}
         vec3 groundN = vec3(0.0, 1.0, 0.0);
         float groundFade = 0.0;
@@ -258,15 +259,19 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
           // the blades, and a glossy floor there reflected the bright sky up between them as a white sheet.
           float open = 1.0 - smoothstep(0.1, 0.4, vGrass);
           puddle = smoothstep(0.62, 0.68, hollow + 0.12 * uWet - 0.12) * level * smoothstep(0.3, 0.8, uWet)
-            * open * smoothstep(0.6, 1.2, vWorld.y) * (1.0 - smoothstep(80.0, 160.0, camDist));
+            * open * smoothstep(0.6, 1.2, vWorld.y) * (1.0 - smoothstep(80.0, 160.0, camDist))
+            // Not on rock and gravel (vSplat.z): the flattish ledges of a stony hill all turned to mirrors of the sky.
+            * (1.0 - smoothstep(0.25, 0.55, vSplat.z));
           diffuseColor.rgb *= mix(1.0, 0.6, uWet * (1.0 - wetSand));
           diffuseColor.rgb *= mix(1.0, 0.35, puddle);
-          wetSand = max(wetSand, uWet * 0.6 * open);
+          // Only a whisper of sheen: the ground's strong normal map turned any real gloss (even roughness 0.6) into
+          // sparkling white over whole hillsides under a bright evening sky. Darkening carries the wet look.
+          rainSheen = uWet * open;
         }`,
       )
       .replace(
         '#include <roughnessmap_fragment>',
-        '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.35, wetSand);\nroughnessFactor = mix(roughnessFactor, 0.03, puddle);',
+        '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.35, wetSand);\nroughnessFactor = mix(roughnessFactor, 0.85, rainSheen);\nroughnessFactor = mix(roughnessFactor, 0.03, puddle);',
       )
       // Puddles reflect like water: a real F0 and a mirror-flat surface (rings while it rains).
       .replace(

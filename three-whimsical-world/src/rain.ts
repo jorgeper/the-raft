@@ -125,3 +125,152 @@ export class Rain {
     this.lines.geometry.setDrawRange(0, Math.round(COUNT * Math.min(density, 1)) * 2);
   }
 }
+
+const SPLASHES = 700;
+const SPLASH_LIFE = 0.32; // seconds
+
+const splashVertex = /* glsl */ `
+  uniform float uTime;
+  uniform float uPixelsPerMeter;
+  uniform sampler2D tDepth;
+  uniform float uNear;
+  uniform float uFar;
+  uniform vec3 uCam;
+  /** Birth time of the splash (seconds), and a random 0..1. */
+  attribute vec2 aBirth;
+  varying float vAge;
+  varying float vFlat;
+  varying float vSeed;
+  float viewZ(float d) { return uNear * uFar / (uFar - d * (uFar - uNear)); }
+  void main() {
+    vAge = (uTime - aBirth.x) / ${SPLASH_LIFE.toFixed(2)};
+    vSeed = aBirth.y;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    float dist = -mv.z;
+    // Seen from above a ring is round; from eye height it is a flat ellipse.
+    vFlat = clamp(abs(normalize(position - uCam).y) * 1.6, 0.18, 1.0);
+    vec3 ndc = gl_Position.xyz / gl_Position.w;
+    float hidden = 0.0;
+    if (all(lessThan(abs(ndc.xy), vec2(1.0))) && gl_Position.w > 0.0) {
+      float scene = viewZ(texture(tDepth, ndc.xy * 0.5 + 0.5).x);
+      // Sitting on the ground, so only something clearly in front (a blade, a stone) hides it.
+      hidden = step(scene, dist - 0.35);
+    }
+    if (vAge < 0.0 || vAge > 1.0 || hidden > 0.5) vAge = -1.0;
+    gl_PointSize = max(0.2 * uPixelsPerMeter / dist, 2.0);
+  }
+`;
+const splashFragment = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uAmount;
+  varying float vAge;
+  varying float vFlat;
+  varying float vSeed;
+  void main() {
+    if (vAge < 0.0) discard;
+    vec2 p = gl_PointCoord * 2.0 - 1.0;
+    p.y = -p.y;
+    // The ring spreading on the ground (an ellipse foreshortened by the view), from the lower part of the sprite.
+    vec2 r = vec2(p.x, (p.y + 0.55) / vFlat);
+    float radius = 0.15 + 0.75 * sqrt(vAge);
+    float ring = 1.0 - smoothstep(0.02, 0.14, abs(length(r) - radius));
+    // The crown: a few droplets thrown up and falling back in the first half of its life.
+    float crown = 0.0;
+    for (int i = 0; i < 4; i++) {
+      float a = (float(i) + vSeed) * 1.5708 + 0.4;
+      float h = 4.0 * vAge * (1.0 - vAge) * (0.7 + 0.3 * fract(vSeed * 7.0 + float(i) * 0.37));
+      vec2 dp = vec2(cos(a) * 0.55 * vAge, -0.55 + h * 1.1);
+      crown += (1.0 - smoothstep(0.0, 0.09, length(p - dp))) * 0.6;
+    }
+    float a = (ring * 0.35 * (1.0 - vAge) + min(crown, 1.0) * (1.0 - vAge * vAge)) * (1.0 - vAge) * uAmount;
+    if (a < 0.01) discard;
+    gl_FragColor = vec4(uColor, a * 0.3);
+  }
+`;
+
+/**
+ * Splashes where raindrops hit the ground: a small crown of droplets and a ring spreading out, for a third of a
+ * second, around and ahead of the viewer. Placed on the CPU at the terrain height (on land only: the water has its
+ * own rings) and hidden behind grass and stones by the scene depth.
+ */
+export class Splashes {
+  readonly points: THREE.Points;
+  private pos = new Float32Array(SPLASHES * 3);
+  private birth = new Float32Array(SPLASHES * 2);
+  private uniforms = {
+    uTime: { value: 0 },
+    uPixelsPerMeter: { value: 600 },
+    tDepth: { value: null as THREE.Texture | null },
+    uNear: { value: 0.1 },
+    uFar: { value: 1000 },
+    uCam: { value: new THREE.Vector3() },
+    uColor: { value: new THREE.Color() },
+    uAmount: { value: 0 },
+  };
+  private dir = new THREE.Vector3();
+
+  constructor(private height: (x: number, z: number) => number) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    geo.setAttribute('aBirth', new THREE.BufferAttribute(this.birth, 2));
+    for (let i = 0; i < SPLASHES; i++) this.birth[i * 2] = -10;
+    this.points = new THREE.Points(
+      geo,
+      new THREE.ShaderMaterial({
+        uniforms: this.uniforms,
+        vertexShader: splashVertex,
+        fragmentShader: splashFragment,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    );
+    this.points.frustumCulled = false;
+    this.points.renderOrder = 3;
+  }
+
+  setSceneDepth(depth: THREE.Texture) {
+    this.uniforms.tDepth.value = depth;
+  }
+
+  setHeight(height: (x: number, z: number) => number) {
+    this.height = height;
+  }
+
+  update(time: number, camera: THREE.PerspectiveCamera, amount: number, density: number, color: THREE.Color, pixelsPerMeter: number) {
+    const u = this.uniforms;
+    this.points.visible = amount > 0.05 && density > 0;
+    if (!this.points.visible) return;
+    u.uTime.value = time;
+    u.uAmount.value = Math.min(amount * 1.4, 1);
+    u.uNear.value = camera.near;
+    u.uFar.value = camera.far;
+    u.uCam.value.copy(camera.position);
+    u.uColor.value.copy(color);
+    u.uPixelsPerMeter.value = pixelsPerMeter;
+    camera.getWorldDirection(this.dir);
+    const fx = this.dir.x, fz = this.dir.z, fl = Math.hypot(fx, fz) || 1;
+    const count = Math.round(SPLASHES * Math.min(density, 1) * amount);
+    let changed = false;
+    for (let i = 0; i < count; i++) {
+      if (time - this.birth[i * 2] < SPLASH_LIFE * (1 + this.birth[i * 2 + 1])) continue;
+      // Respawn: mostly in front, from right at your feet out to ~14 m (denser near, like the drops themselves).
+      const r = 0.8 + Math.pow(Math.random(), 0.7) * 13;
+      const ang = Math.atan2(fz / fl, fx / fl) + (Math.random() - 0.5) * 2.2;
+      const x = camera.position.x + Math.cos(ang) * r, z = camera.position.z + Math.sin(ang) * r;
+      const h = this.height(x, z);
+      this.pos[i * 3] = x;
+      this.pos[i * 3 + 1] = h < 0.05 ? -1e4 : h + 0.03;
+      this.pos[i * 3 + 2] = z;
+      this.birth[i * 2] = time + Math.random() * 0.1;
+      this.birth[i * 2 + 1] = Math.random();
+      changed = true;
+    }
+    for (let i = count; i < SPLASHES; i++) this.birth[i * 2] = -10;
+    if (changed) {
+      (this.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+      (this.points.geometry.attributes.aBirth as THREE.BufferAttribute).needsUpdate = true;
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { weatherUniforms } from './weather';
 import { Tree } from '@dgreenheck/ez-tree';
 import { createNoise2D } from 'simplex-noise';
 import { TERRAIN_SIZE } from './terrain';
@@ -184,6 +185,15 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
     color: srcBark.color,
     roughness: 0.95,
   });
+  // Rain soaks the bark: darker, with a dull sheen.
+  barkMaterial.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, { uWet: weatherUniforms.uWet });
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uWet;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= 1.0 - 0.45 * uWet;')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.45, uWet);');
+  };
+  barkMaterial.customProgramCacheKey = () => 'tree-bark-wet';
 
   const srcLeaf = tree.leavesMesh.material as THREE.MeshPhongMaterial;
   const leafMaterial = new THREE.MeshPhysicalMaterial({

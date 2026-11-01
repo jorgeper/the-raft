@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { weatherUniforms } from './weather';
 
 /** One photoscanned rock, normalized to 1 unit across with its base at y = 0. */
 export interface ScannedRock {
@@ -69,7 +70,7 @@ function addMoss(material: THREE.MeshStandardMaterial) {
  * stages, for other rock patches to reuse.
  */
 export function patchMoss(shader: THREE.WebGLProgramParametersWithUniforms) {
-  Object.assign(shader.uniforms, rockMoss);
+  Object.assign(shader.uniforms, rockMoss, weatherUniforms);
   shader.vertexShader = shader.vertexShader
     .replace('#include <common>', '#include <common>\nvarying vec3 vMossPos;')
     .replace(
@@ -89,6 +90,7 @@ export function patchMoss(shader: THREE.WebGLProgramParametersWithUniforms) {
       varying vec3 vMossPos;
       uniform float uMossAmount;
       uniform vec4 uPonds[MAX_PONDS];
+      uniform float uWet;
       float mHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float mNoise(vec3 p) {
         vec3 i = floor(p), f = fract(p);
@@ -117,6 +119,13 @@ export function patchMoss(shader: THREE.WebGLProgramParametersWithUniforms) {
         vec3 mossColor = mix(vec3(0.075, 0.09, 0.035), vec3(0.085, 0.12, 0.035), wet) * (0.75 + 0.5 * n);
         diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, moss);
         roughnessFactor = mix(roughnessFactor, 0.95, moss);
+        // After rain the stone darkens and turns glossy (tops and faces to the sky first, the overhangs stay dry),
+        // so it glints when the sun comes back out. Moss soaks it up and stays matte.
+        if (uWet > 0.0) {
+          float soaked = uWet * smoothstep(-0.6, 0.3, worldNormal.y + (n - 0.5) * 0.6);
+          diffuseColor.rgb *= mix(1.0, 0.68, soaked * (1.0 - 0.5 * moss));
+          roughnessFactor = mix(roughnessFactor, 0.55, soaked * (1.0 - moss));
+        }
       }`,
     );
 }
