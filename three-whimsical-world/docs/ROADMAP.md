@@ -8,6 +8,7 @@ In priority order: the first items are the user's requests for the next sessions
    wilderness for now (no longhouses, towers, campfires or other built things; buildings come later). Then a
    **soundscape** (wind, birds, crickets and owls, frogs, surf, rain, torch crackle, footsteps by surface).
    1. ~~Moonlit nights~~ (done, see Done).
+   2. ~~God rays from clouds~~ (done, see Done).
 
 0. **User's second queue (2026-11-01), in this order:**
    1. ~~TAA artifacts while moving and fps~~ (first pass done, see Done).
@@ -119,6 +120,15 @@ In priority order: the first items are the user's requests for the next sessions
 - Nights are very dark without the torch, by design.
 
 ## Done
+
+- Crepuscular rays from broken cloud (user, 2026-11-01): the volumetric pass also marches each ray 3 km out (16
+  steps, squared spacing, below the cloud base) through the clouds' coarse shadow field (the sky's fbm, first three
+  octaves) and writes how much of that air sees the sun into its spare alpha channel (blurred and upsampled with the
+  rest). The atmosphere pass brightens lit shafts and dims shadowed ones (multiplied, hue kept) with a forward
+  phase, so rays fan from the sun through the gaps; only under broken cloud (0.08–0.9 cover), outside forests.
+  `__app.post.atmosphere.uDebugVolumetric.value = 2` shows the field. ~2 fps at medium (57 vs 59). Clouds also
+  block the screen-space sun shafts and flares now. The cyan cast of shallow water toward a low sun is gone (the
+  refracted seabed is capped at luma 1.1). Shots: `.playwright-mcp/wild/gr7-f.jpg` (rays), `gr5-*-dbg.jpg` (field).
 
 - Moonlit nights, and the black holes in the night sky (user, 2026-11-01):
   - **Black cloud-shaped holes at night** (older bug): in a dark navy sky the grade's teal shadow tint and saturation

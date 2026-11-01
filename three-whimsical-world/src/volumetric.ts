@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import type { SunShadows } from './cascades';
+import { CLOUD_NOISE, CLOUD_HEIGHT } from './sky';
 
 /**
  * Volumetric sunlight, marched at half resolution: for each view ray, the fraction of its first stretch that sees
@@ -9,7 +10,9 @@ import type { SunShadows } from './cascades';
  * beams strongly without them breaking into noise. That pass upsamples the result with depth weights (see
  * `VIS_UPSAMPLE`), so the shafts stay crisp along trunks.
  *
- * Output: R = sun visibility, G = the depth key (distance along the ray, clamped at the march length).
+ * Output: R = sun visibility, G = the depth key (distance along the ray, clamped at the march length), B = whether the
+ * visible surface sees the sun, A = how much of the air out to a few kilometers sees the sun past the clouds (the
+ * crepuscular rays: shafts of light and shadow fanning from gaps in broken cloud).
  */
 
 const vertexShader = /* glsl */ `
@@ -38,6 +41,11 @@ const marchMaterial = new THREE.ShaderMaterial({
     uShadowMatrixFar: { value: new THREE.Matrix4() },
     uForest: { value: 0 },
     uNoiseOffset: { value: 0 },
+    // For the cloud rays (post.ts copies them from the atmosphere pass each frame).
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uClouds: { value: 0 },
+    uCloudOffset: { value: new THREE.Vector2() },
+    uCloudRays: { value: 0 },
   },
   vertexShader,
   fragmentShader: /* glsl */ `
@@ -52,8 +60,53 @@ const marchMaterial = new THREE.ShaderMaterial({
     #endif
     uniform float uForest;
     uniform float uNoiseOffset;
+    uniform vec3 uSunDir;
+    uniform float uClouds;
+    uniform vec2 uCloudOffset;
+    uniform float uCloudRays;
     varying vec2 vUv;
     ${MARCH_GLSL}
+    ${CLOUD_NOISE}
+
+    // The cloud field's coarse shape (the first three octaves of the sky's fbm, same frequencies), enough for rays.
+    float coarseCover(vec2 uv) {
+      float r = 0.0, amp = 0.55;
+      vec2 p = uv;
+      for (int i = 0; i < 3; i++) {
+        r += amp * noise(p);
+        p = mat2(1.6, 1.2, -1.2, 1.6) * p + 7.3;
+        amp *= 0.5;
+      }
+      float n = r * 0.5 + 0.5;
+      float region = noise(uv * 0.18 + 3.1) * 0.5 + 0.5;
+      float cov = clamp(uClouds + (region - 0.5) * 0.7, 0.0, 1.0);
+      float thr = 1.0 - cov;
+      return smoothstep(thr, thr + 0.28, n);
+    }
+
+    // Air along the ray (out to 3 km, below the cloud base) that sees the sun past the clouds, weighted by the
+    // haze's transmittance back to the eye.
+    float cloudLitAir(vec3 origin, vec3 dir, float len) {
+      const float H = ${CLOUD_HEIGHT.toFixed(1)};
+      const int N = 16;
+      if (dir.y > 0.0) len = min(len, (H - 120.0 - origin.y) / dir.y);
+      if (len <= 1.0) return 1.0;
+      float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + uNoiseOffset + 0.5);
+      float lit = 0.0, wSum = 0.0;
+      for (int i = 0; i < N; i++) {
+        // Denser steps near the eye, where the shafts are wide on screen.
+        float f = (float(i) + jitter) / float(N);
+        float t = len * f * f;
+        vec3 p = origin + dir * t;
+        vec3 q = p + uSunDir * ((H - p.y) / max(uSunDir.y, 0.08));
+        vec2 uv = (q.xz - origin.xz) / H * 0.9 + uCloudOffset;
+        float w = exp(-0.0007 * t) * (0.2 + f);
+        // A harder edge than the ground's cloud shadows: crisp-sided shafts.
+        lit += w * (1.0 - smoothstep(0.12, 0.55, coarseCover(uv)));
+        wSum += w;
+      }
+      return lit / wSum;
+    }
 
     float sunVisibility(vec3 origin, vec3 dir, float len) {
       const int STEPS = VOL_STEPS;
@@ -112,7 +165,8 @@ const marchMaterial = new THREE.ShaderMaterial({
       vec3 ray = world - camPos;
       float dist = length(ray);
       float len = marchLength(isSky, dist);
-      gl_FragColor = vec4(sunVisibility(camPos, ray / dist, len), len, isSky ? 1.0 : surfaceSun(world - ray / dist * 0.3), 1.0);
+      float rays = uCloudRays > 0.0 ? cloudLitAir(camPos, ray / dist, isSky ? 3000.0 : min(dist, 3000.0)) : 1.0;
+      gl_FragColor = vec4(sunVisibility(camPos, ray / dist, len), len, isSky ? 1.0 : surfaceSun(world - ray / dist * 0.3), rays);
     }
   `,
   depthTest: false,
@@ -132,21 +186,23 @@ const blurMaterial = new THREE.ShaderMaterial({
     uniform vec2 uDirection;
     varying vec2 vUv;
     void main() {
-      vec3 c = texture2D(tVis, vUv).rgb;
-      // R (air) is blurred wide; B (the surface's own sun) only by its nearest neighbours, to keep shadow edges.
-      float sum = c.r, wSum = 1.0, sumB = c.b, wB = 1.0;
+      vec4 c = texture2D(tVis, vUv);
+      // R (air) and A (cloud rays) are blurred wide; B (the surface's own sun) only by its nearest neighbours, to
+      // keep shadow edges.
+      float sum = c.r, wSum = 1.0, sumB = c.b, wB = 1.0, sumA = c.a;
       for (int i = -4; i <= 4; i++) {
         if (i == 0) continue;
-        vec3 s = texture2D(tVis, vUv + uDirection * float(i)).rgb;
+        vec4 s = texture2D(tVis, vUv + uDirection * float(i));
         float wd = exp(-abs(s.g - c.g) / (0.08 * c.g + 0.3));
         float w = exp(-float(i * i) / 12.0) * wd;
         sum += s.r * w;
+        sumA += s.a * w;
         wSum += w;
         float w2 = exp(-float(i * i) / 1.5) * wd;
         sumB += s.b * w2;
         wB += w2;
       }
-      gl_FragColor = vec4(sum / wSum, c.g, sumB / wB, 1.0);
+      gl_FragColor = vec4(sum / wSum, c.g, sumB / wB, sumA / wSum);
     }
   `,
   depthTest: false,
@@ -161,21 +217,21 @@ export const VIS_UPSAMPLE = /* glsl */ `
   uniform sampler2D tVis;
   uniform vec2 uVisTexel;
   ${MARCH_GLSL}
-  // x = the air's sun visibility, y = the visible surface's own.
-  vec2 upsampleVis(vec2 uv, float key) {
+  // x = the air's sun visibility, y = the visible surface's own, z = the air's light past the clouds (cloud rays).
+  vec3 upsampleVis(vec2 uv, float key) {
     vec2 pos = uv / uVisTexel - 0.5;
     vec2 base = floor(pos), f = pos - base;
-    vec2 sum = vec2(0.0);
+    vec3 sum = vec3(0.0);
     float wSum = 0.0;
     for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
-      vec3 s = texture2D(tVis, (base + vec2(i, j) + 0.5) * uVisTexel).rgb;
+      vec4 s = texture2D(tVis, (base + vec2(i, j) + 0.5) * uVisTexel);
       float bw = (i == 0 ? 1.0 - f.x : f.x) * (j == 0 ? 1.0 - f.y : f.y);
       float w = (bw + 1e-3) * exp(-abs(s.g - key) / (0.05 * key + 0.15));
-      sum += s.rb * w;
+      sum += s.rba * w;
       wSum += w;
     }
     // No texel at a matching depth (a thin twig): take the plain bilinear value.
-    return wSum > 1e-4 ? sum / wSum : texture2D(tVis, uv).rb;
+    return wSum > 1e-4 ? sum / wSum : texture2D(tVis, uv).rba;
   }
   // How much of the air around this pixel sees the sun: two rings of taps across a good part of the screen.
   // Beams are the contrast between lit and shaded air; where nearly all of it is lit there are no beams to draw.

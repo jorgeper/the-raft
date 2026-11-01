@@ -173,12 +173,15 @@ const AtmosphereShader = {
       return (uViewInv * vec4(view.xyz / view.w, 1.0)).xyz;
     }
 
-    // Open sky near the sun at a screen position; geometry blocks it. Only sky close to the sun
-    // emits, so shafts radiate from the sun rather than washing the whole view.
+    // Open sky near the sun at a screen position; geometry and clouds block it. Only sky close to the sun
+    // emits, so shafts radiate from the sun rather than washing the whole view. Through the gaps in broken cloud
+    // they fan out as crepuscular rays (the clouds' transmittance, raised to sharpen the gaps).
     float skyLight(vec2 uv) {
       if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
       float nearSun = 1.0 - smoothstep(0.0, 0.35, length((uv - uSunUv) * vec2(1.0, 0.6)));
-      return texture2D(tDepth, uv).x >= 1.0 ? nearSun : 0.0;
+      if (texture2D(tDepth, uv).x < 1.0) return 0.0;
+      float clear = uCloudsOn > 0.5 ? pow(texture2D(tClouds, uv).a, 1.5) : 1.0;
+      return nearSun * clear;
     }
 
     void main() {
@@ -196,7 +199,9 @@ const AtmosphereShader = {
       // How much of the air along this ray sees the sun (1 without a shadow map). Used twice: shadowed air keeps
       // the haze darker, and lit air adds in-scattered sunlight, so the gaps between crowns become beams.
       float marchLen = marchLength(isSky, dist);
-      vec2 visPair = uVisOn > 0.5 && uVolumetric > 0.0 ? upsampleVis(vUv, marchLen) : vec2(1.0);
+      vec3 visTriple = uVisOn > 0.5 && uVolumetric > 0.0 ? upsampleVis(vUv, marchLen) : vec3(1.0);
+      vec2 visPair = visTriple.xy;
+      float cloudLit = visTriple.z;
       float vis = visPair.x;
       float sunUpV = smoothstep(-0.05, 0.08, uSunDir.y);
       // Sunlight scattered by the haze has come a long way through it, so it reaches the eye orange rather than
@@ -367,6 +372,24 @@ const AtmosphereShader = {
         const float BEAM_MAX = 0.8;
         beam = BEAM_MAX * (1.0 - exp(-beam / BEAM_MAX));
         color += scatterColor * beam * uVolumetric * sunUpV * cloudShade(camPos);
+
+        // Crepuscular rays: under broken cloud the long stretch of air out to the horizon is lit in shafts and
+        // shadowed in others. Lit air glows a little more, shadowed air a little less, around the haze's average,
+        // so rays fan from the gaps (strongest toward the sun, faint from the side).
+        float rayK = smoothstep(0.08, 0.3, uClouds) * (1.0 - smoothstep(0.75, 0.95, uClouds)) * (1.0 - uForest);
+        if (rayK > 0.0) {
+          float gR = 0.7;
+          float hgR = (1.0 - gR * gR) / (4.0 * 3.14159 * pow(1.0 + gR * gR - 2.0 * gR * cosT, 1.5)) + 0.04;
+          float L = isSky ? 3000.0 : min(dist, 3000.0);
+          float godFog = 1.0 - exp(-uFogDensity * (1.0 + 0.5 * uWhimsy) * 1.5 * L);
+          float shaft = smoothstep(0.25, 0.9, cloudLit) - 0.5;
+          float k = min(hgR, 1.2) * godFog * rayK * uVolumetric * sunUpV * (1.0 + 0.5 * uWhimsy);
+          // Lit shafts add sunlight; shadowed ones dim what's behind them, hue kept (subtracting the orange scatter
+          // color left saturated blue holes).
+          color += scatterColor * max(shaft, 0.0) * 5.0 * k;
+          color *= 1.0 - min(-min(shaft, 0.0) * 1.6 * k, 0.55);
+        }
+        if (uDebugVolumetric > 1.5) { gl_FragColor = vec4(vec3(cloudLit), 1.0); return; }
         if (uDebugVolumetric > 0.5) { gl_FragColor = vec4(vec3(vis), 1.0); return; }
       }
 
@@ -389,12 +412,15 @@ const AtmosphereShader = {
         for (int i = 0; i < SAMPLES; i++) {
           p += delta;
           shaft += skyLight(p) * decay;
-          decay *= 0.965;
+          decay *= 0.972;
         }
         shaft /= float(SAMPLES);
         float sunAlign = pow(max(dot(ray, uSunDir), 0.0), 3.0);
-        color += scatterColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest) * (1.0 + 0.5 * uWhimsy)
-          * clamp(uFogDensity / 0.00045, 0.0, 3.0);
+        // Broken cloud over open land or sea: the gaps cut the glow into rays, so they can be much stronger without
+        // veiling the view (the clouds keep most of it dark).
+        float cloudRays = uCloudsOn * smoothstep(0.08, 0.35, uClouds) * (1.0 - uForest);
+        color += scatterColor * shaft * sunAlign * uSunFacing * uShaftStrength * (1.0 + 1.5 * uForest + 3.0 * cloudRays)
+          * (1.0 + 0.5 * uWhimsy) * clamp(uFogDensity / 0.00045, 0.0, 3.0);
       }
 
       // Lens flare ghosts strung along the line from the sun through the screen center, when the sun is visible.
@@ -645,6 +671,11 @@ export function createPost(
       volumetric.uniforms.uNoiseOffset.value = noise;
       if (clouds) clouds.noiseOffset = noise;
       volumetric.uniforms.uForest.value = u.uForest.value;
+      volumetric.uniforms.uSunDir.value.copy(sunDir);
+      volumetric.uniforms.uClouds.value = u.uClouds.value;
+      volumetric.uniforms.uCloudOffset.value.copy(u.uCloudOffset.value);
+      // Cloud rays need broken cloud (clear skies have none, overcast is all shadow) and a sun up to cast them.
+      volumetric.uniforms.uCloudRays.value = u.uCloudShadow.value > 0 && u.uClouds.value > 0.08 && sunDir.y > 0.02 ? 1 : 0;
       // Nothing to march while the volumetric slider is off (or at night, when main sets it to 0).
       volumetric.enabled = beamsAllowed && u.uVolumetric.value > 0;
       ao.uniforms.uFrame.value = noise;
