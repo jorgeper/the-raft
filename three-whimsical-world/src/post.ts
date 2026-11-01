@@ -700,6 +700,10 @@ export function createPost(
         vibe.uniforms.uNear.value = camera.near;
         vibe.uniforms.uFar.value = camera.far;
         vibe.uniforms.uTime.value = performance.now() / 1000;
+        vibe.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse);
+        vibe.uniforms.uViewInv.value.copy(camera.matrixWorld);
+        vibe.uniforms.uViewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+        vibe.uniforms.uSunDir.value.copy(sunDir);
       }
       composer.render();
       taa.endFrame();

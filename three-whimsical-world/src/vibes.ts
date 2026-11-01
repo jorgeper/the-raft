@@ -9,6 +9,19 @@ import * as THREE from 'three';
 
 export interface Vibe {
   label: string;
+  /** Pixel art: the frame in chunky pixels this big (at 720p), colors in `levels` steps per channel, dithered. */
+  pixel?: number;
+  levels?: number;
+  dither?: number;
+  /**
+   * Low poly: the ground as flat triangles this many meters across, anchored in the world, each one color and lit by
+   * its own slope (`facet`: how strongly). Pairs with `paint` to simplify the trees and rocks above it.
+   */
+  lowPoly?: number;
+  facet?: number;
+  /** An old projector's flicker, and color fringes toward the corners of a cheap lens. */
+  flicker?: number;
+  aberration?: number;
   /** Soft glow from the bright parts, in this color (halation, dreamy haze). */
   glow?: number;
   glowColor?: number;
@@ -121,6 +134,39 @@ export const VIBES = {
     vignette: 0.25,
     vignetteColor: 0x10002a,
   },
+  horror: {
+    label: 'Horror film (bleak, flickering)',
+    saturation: 0.22,
+    map: { low: 0x000000, mid: 0x323e2c, high: 0xd4dac0, amount: 0.5 },
+    lift: [-0.035, -0.03, -0.035],
+    gain: [0.9, 0.97, 0.86],
+    contrast: 1.32,
+    flicker: 0.09,
+    aberration: 0.6,
+    grain: 0.09,
+    vignette: 0.75,
+    vignetteColor: 0x000000,
+  },
+  lowpoly: {
+    label: 'Low poly (flat facets)',
+    lowPoly: 7,
+    facet: 1,
+    paint: 1,
+    saturation: 1.12,
+    contrast: 1.05,
+    vignette: 0.18,
+    vignetteColor: 0x101820,
+  },
+  pixel: {
+    label: 'Pixel art (chunky, dithered)',
+    pixel: 4,
+    levels: 6,
+    dither: 0.7,
+    saturation: 1.25,
+    contrast: 1.08,
+    ink: 0.55,
+    inkColor: 0x1a1024,
+  },
 } satisfies Record<string, Vibe>;
 
 export type VibeName = keyof typeof VIBES;
@@ -136,6 +182,21 @@ export const VibeShader = {
     uNear: { value: 0.1 },
     uFar: { value: 1000 },
     uTime: { value: 0 },
+    /** For low poly: the camera (to find each pixel in the world and project points back), the terrain's heights
+     * (`bakeHeights`) and the sun's direction. */
+    uProjInv: { value: new THREE.Matrix4() },
+    uViewInv: { value: new THREE.Matrix4() },
+    uViewProj: { value: new THREE.Matrix4() },
+    tHeight: { value: null as THREE.Texture | null },
+    uTerrainSize: { value: 2000 },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uLowPoly: { value: 0 },
+    uPixel: { value: 0 },
+    uLevels: { value: 0 },
+    uDither: { value: 0 },
+    uFacet: { value: 0 },
+    uFlicker: { value: 0 },
+    uAberration: { value: 0 },
     /** 0 = the whimsical look, 1 = the vibe as designed, up to 1.5 to push it. */
     uStrength: { value: 1 },
     uGlow: { value: 0 },
@@ -171,6 +232,10 @@ export const VibeShader = {
     uniform sampler2D tDiffuse;
     uniform sampler2D tDepth;
     uniform float uNear, uFar, uTime, uStrength;
+    uniform mat4 uProjInv, uViewInv, uViewProj;
+    uniform sampler2D tHeight;
+    uniform float uTerrainSize; uniform vec3 uSunDir;
+    uniform float uPixel, uLevels, uDither, uLowPoly, uFacet, uFlicker, uAberration;
     uniform float uGlow; uniform vec3 uGlowColor;
     uniform float uHue, uSaturation;
     uniform float uMapAmount; uniform vec3 uMapLow, uMapMid, uMapHigh;
@@ -190,15 +255,101 @@ export const VibeShader = {
       float d = texture2D(tDepth, uv).r;
       return uNear * uFar / (uFar - d * (uFar - uNear));
     }
+    vec3 worldAt(vec2 uv) {
+      vec4 v = uProjInv * vec4(uv * 2.0 - 1.0, texture2D(tDepth, uv).r * 2.0 - 1.0, 1.0);
+      return (uViewInv * vec4(v.xyz / v.w, 1.0)).xyz;
+    }
+    float groundAt(vec2 xz) { return texture2D(tHeight, xz / uTerrainSize + 0.5).r; }
+    vec3 groundPoint(vec2 xz) { return vec3(xz.x, groundAt(xz), xz.y); }
+    // The low-poly lattice, in coordinates sheared so its triangles are the halves of unit squares; back to meters.
+    vec2 unshear(vec2 sh, float row, float size) {
+      return vec2(sh.x + 0.5 * row + 0.5 * sh.y, row + sh.y) * vec2(size, size * 0.8660254);
+    }
+    // Adds the scene's color at world point p to sum (w = 1) if p is what the camera sees there; w = 0 when it's
+    // hidden or off screen. Either way seen takes the color found there, when on screen.
+    float colorAt(vec3 p, float slack, inout vec3 sum, inout vec3 seen) {
+      vec4 clip = uViewProj * vec4(p, 1.0);
+      if (clip.w <= 0.0) return 0.0;
+      vec2 suv = clip.xy / clip.w * 0.5 + 0.5;
+      if (any(lessThan(suv, vec2(0.0))) || any(greaterThan(suv, vec2(1.0)))) return 0.0;
+      vec3 col = texture2D(tDiffuse, suv).rgb;
+      seen = col;
+      if (abs(linearDepth(suv) - clip.w) > max(clip.w * 0.1, slack)) return 0.0;
+      sum += col;
+      return 1.0;
+    }
+    const float BAYER[16] = float[](0., 8., 2., 10., 12., 4., 14., 6., 3., 11., 1., 9., 15., 7., 13., 5.);
 
     void main() {
       vec2 res = vec2(textureSize(tDiffuse, 0));
       vec3 base = texture2D(tDiffuse, vUv).rgb;
       vec3 c = base;
+      // Where depth-based effects look: snapped to the chunky pixel in pixel art.
+      vec2 uv = vUv;
+      float block = 1.0;
+      float facet = 1.0;
+
+      // Pixel art: one color per chunky pixel (the mean of four samples inside it, so it doesn't sparkle).
+      if (uPixel > 0.0) {
+        block = max(floor(uPixel * res.y / 720.0 + 0.5), 1.0);
+        uv = (floor(vUv * res / block) + 0.5) * block / res;
+        vec2 o = block * 0.25 / res;
+        c = 0.25 * (texture2D(tDiffuse, uv - o).rgb + texture2D(tDiffuse, uv + o).rgb
+          + texture2D(tDiffuse, uv + vec2(o.x, -o.y)).rgb + texture2D(tDiffuse, uv + vec2(-o.x, o.y)).rgb);
+      }
+
+      // Low poly, anchored in the world so it holds still as you move. The ground (and the grass on it) becomes flat
+      // triangles: each takes one color, from the scene where its middle is seen, and the light of its own slope in
+      // place of the smooth one.
+      bool flatGround = false;
+      if (uLowPoly > 0.0 && texture2D(tDepth, vUv).r < 1.0) {
+        vec3 w = worldAt(vUv);
+        float ground = groundAt(w.xz);
+        if (w.y - ground < 1.3 && ground > -0.6) {
+          flatGround = true;
+          float size = uLowPoly;
+          vec2 q = w.xz / vec2(size, size * 0.8660254);
+          float row = floor(q.y), fy = fract(q.y);
+          float xs = q.x - 0.5 * row - 0.5 * fy;
+          float cx = floor(xs);
+          bool upper = fract(xs) + fy > 1.0;
+          vec3 a = groundPoint(unshear(upper ? vec2(cx + 1.0, 0.0) : vec2(cx, 0.0), row, size));
+          vec3 b = groundPoint(unshear(upper ? vec2(cx, 1.0) : vec2(cx + 1.0, 0.0), row, size));
+          vec3 e = groundPoint(unshear(upper ? vec2(cx + 1.0, 1.0) : vec2(cx, 1.0), row, size));
+          // Sampled at grass-top height: the middle and three points toward the corners, averaging those in view
+          // (a trunk or a rise can hide some). With none in view, the middle's color anyway, so the facet stays one.
+          vec3 mid = (a + b + e) / 3.0 + vec3(0.0, 0.6, 0.0);
+          vec3 sum = vec3(0.0), seen = c;
+          float hits = colorAt(mid, 1.5, sum, seen);
+          vec3 fallback = seen;
+          hits += colorAt(mix(mid, a + vec3(0.0, 0.6, 0.0), 0.5), 1.5, sum, seen);
+          hits += colorAt(mix(mid, b + vec3(0.0, 0.6, 0.0), 0.5), 1.5, sum, seen);
+          hits += colorAt(mix(mid, e + vec3(0.0, 0.6, 0.0), 0.5), 1.5, sum, seen);
+          c = hits > 0.0 ? sum / hits : fallback;
+          vec3 n = normalize(cross(b - a, e - a));
+          n *= sign(n.y);
+          float h = 4.0;
+          vec3 smoothN = normalize(vec3(groundAt(w.xz - vec2(h, 0.0)) - groundAt(w.xz + vec2(h, 0.0)), 2.0 * h,
+                                        groundAt(w.xz - vec2(0.0, h)) - groundAt(w.xz + vec2(0.0, h))));
+          float sunUp = smoothstep(-0.05, 0.15, uSunDir.y);
+          float lf = 0.4 + 0.8 * max(dot(n, uSunDir), 0.0), ls = 0.4 + 0.8 * max(dot(smoothN, uSunDir), 0.0);
+          facet = clamp(mix(1.0, lf / ls, uFacet * sunUp), 0.5, 1.8);
+          facet *= 1.0 + 0.07 * (vHash(vec2(cx, row) + (upper ? 0.37 : 0.0)) - 0.5);
+        }
+      }
+
+      // A cheap lens: red and blue drift apart toward the corners.
+      if (uAberration > 0.0 && uPixel == 0.0 && uLowPoly == 0.0) {
+        vec2 off = (vUv - 0.5) * uAberration * 0.012;
+        c.r = texture2D(tDiffuse, vUv + off).r;
+        c.b = texture2D(tDiffuse, vUv - off).b;
+      }
+      c *= facet;
 
       // Brush strokes: of the four 4x4 neighborhoods around the pixel, take the mean of the one with least
       // variance, so flat areas smear into dabs while edges stay crisp.
-      if (uPaint > 0.0) {
+      // (In low poly, trees and rocks get the strokes; the ground is already flat.)
+      if (uPaint > 0.0 && !flatGround) {
         vec3 best = c;
         float bestVar = 1e9;
         for (int q = 0; q < 4; q++) {
@@ -263,10 +414,10 @@ export const VibeShader = {
 
       // Ink where depth jumps: silhouettes against the sky and ridges in front of what's behind them.
       if (uInk > 0.0) {
-        vec2 px = 1.25 / res;
-        float d0 = linearDepth(vUv);
-        float dl = linearDepth(vUv - vec2(px.x, 0.0)), dr = linearDepth(vUv + vec2(px.x, 0.0));
-        float dd = linearDepth(vUv - vec2(0.0, px.y)), du = linearDepth(vUv + vec2(0.0, px.y));
+        vec2 px = max(1.25, block) / res;
+        float d0 = linearDepth(uv);
+        float dl = linearDepth(uv - vec2(px.x, 0.0)), dr = linearDepth(uv + vec2(px.x, 0.0));
+        float dd = linearDepth(uv - vec2(0.0, px.y)), du = linearDepth(uv + vec2(0.0, px.y));
         float nearest = min(min(min(dl, dr), min(dd, du)), d0);
         float jump = (max(max(max(dl, dr), max(dd, du)), d0) - nearest) / nearest;
         // Only edges whose near side is close enough to draw; the far landscape stays a painted backdrop.
@@ -282,13 +433,46 @@ export const VibeShader = {
       c += uGrain * (vHash(pix + fract(uTime * 7.3) * 113.0) - 0.5) * (1.2 - luma(c));
       c *= 1.0 - uPaper * (vHash(floor(pix / 2.0)) * 0.6 + vHash(floor(pix / 7.0)) * 0.4);
 
+      // The projector's lamp: a constant unsteady flutter, and now and then a deeper dip.
+      if (uFlicker > 0.0) {
+        float frame = floor(uTime * 18.0);
+        c *= 1.0 - uFlicker * (0.5 * vHash(vec2(frame, 1.7)) + step(0.94, vHash(vec2(frame, 9.1))) * 1.5);
+      }
+
       float v = smoothstep(0.95, 0.3, length((vUv - 0.5) * vec2(1.0, 0.8)));
       c = mix(uVignetteColor, c, mix(1.0 - uVignette, 1.0, v));
+
+      // A small palette: each channel in a few steps, ordered dithering (per chunky pixel) blending between them.
+      if (uLevels > 1.0) {
+        vec2 cell = floor(vUv * res / block);
+        int bi = int(mod(cell.x, 4.0)) + int(mod(cell.y, 4.0)) * 4;
+        float threshold = (BAYER[bi] + 0.5) / 16.0 - 0.5;
+        float steps = uLevels - 1.0;
+        c = floor(clamp(c, 0.0, 1.0) * steps + 0.5 + threshold * uDither) / steps;
+      }
 
       gl_FragColor = vec4(clamp(mix(base, c, uStrength), 0.0, 1.0), 1.0);
     }
   `,
 };
+
+/**
+ * The terrain's heights as a texture covering the whole map (`size` meters across, centered on the origin), for the
+ * low-poly facets. About 0.2 s for a world; done when low poly is first picked and after each new world.
+ */
+export function bakeHeights(height: (x: number, z: number) => number, size: number, res = 512) {
+  const data = new Uint16Array(res * res);
+  for (let j = 0; j < res; j++) {
+    for (let i = 0; i < res; i++) {
+      data[j * res + i] = THREE.DataUtils.toHalfFloat(height(((i + 0.5) / res - 0.5) * size, ((j + 0.5) / res - 0.5) * size));
+    }
+  }
+  const tex = new THREE.DataTexture(data, res, res, THREE.RedFormat, THREE.HalfFloatType);
+  tex.magFilter = tex.minFilter = THREE.LinearFilter;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
 
 /** Sets the vibe pass's uniforms for `name`; returns false for the whimsical look (the pass should be off). */
 export function applyVibe(u: typeof VibeShader.uniforms, name: VibeName) {
@@ -306,6 +490,13 @@ export function applyVibe(u: typeof VibeShader.uniforms, name: VibeName) {
   u.uContrast.value = v.contrast ?? 1;
   u.uFade.value = v.fade ?? 0;
   u.uFadeColor.value.copy(color(v.fadeColor, 0));
+  u.uPixel.value = v.pixel ?? 0;
+  u.uLevels.value = v.levels ?? 0;
+  u.uDither.value = v.dither ?? 0;
+  u.uLowPoly.value = v.lowPoly ?? 0;
+  u.uFacet.value = v.facet ?? 0;
+  u.uFlicker.value = v.flicker ?? 0;
+  u.uAberration.value = v.aberration ?? 0;
   u.uPaint.value = v.paint ?? 0;
   u.uBands.value = v.bands ?? 0;
   u.uInk.value = v.ink ?? 0;
