@@ -192,6 +192,7 @@ class ScatterLayer {
     const x0 = cx * CHUNK, z0 = cz * CHUNK, n = CHUNK / GRID + 1;
     const half = CHUNK / 2;
     const nearPond = this.world.ponds.some((p) => Math.abs(p.x - x0 - half) < half + p.radius * 2.5 && Math.abs(p.z - z0 - half) < half + p.radius * 2.5);
+    const nearStream = this.world.waterfalls.some((w) => w.stream.some((p) => Math.abs(p.x - x0 - half) < half + 12 && Math.abs(p.z - z0 - half) < half + 12));
     const heights = new Float32Array(n * n), forests = new Float32Array(n * n);
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
@@ -214,6 +215,7 @@ class ScatterLayer {
       color.setRGB(1, 1, 1);
       // Nothing grows in a pond except what's meant to (reeds at the shore).
       if (nearPond && !this.spec.wet && this.world.pondEdge(x0 + lx, z0 + lz) < 0.3) continue;
+      if (nearStream && this.world.streamEdge(x0 + lx, z0 + lz) < 0.3) continue;
       const scale = this.spec.place(x0 + lx, z0 + lz, h, forest, rand, color);
       if (scale <= 0) continue;
       e.set((rand() - 0.5) * 0.2, rand() * Math.PI * 2, (rand() - 0.5) * 0.2);
@@ -551,8 +553,9 @@ export class GroundCover {
           material: mossMat,
           place: (x, z, h, forest, rand, color) => {
             const damp = smoothstep(-0.1, 0.5, patchNoise(x * 0.06 - 13, z * 0.06 + 41));
-            // Pond margins stay damp enough for moss even out in the meadow: cushions from the waterline up the shore.
-            const pe = world.pondEdge(x, z);
+            // Pond and stream margins stay damp enough for moss even out in the meadow: cushions from the waterline up
+            // the shore.
+            const pe = Math.min(world.pondEdge(x, z), world.streamEdge(x, z));
             const pondside = pe < 7 ? (1 - smoothstep(1.5, 6, pe)) * smoothstep(-0.3, 0.3, pe) * (0.35 + 0.65 * damp) : 0;
             if (h < 2 || rand() > Math.max(smoothstep(0.35, 0.8, forest) * damp, pondside)) return 0;
             color.copy(mossTints[Math.floor(rand() * mossTints.length)]);
@@ -764,7 +767,7 @@ export class GroundCover {
       const forest = world.forest(x, z);
       if (rand() > forest * 0.12) continue;
       const h = height(x, z);
-      if (h < 3 || world.pondEdge(x, z) < 4) continue;
+      if (h < 3 || world.pondEdge(x, z) < 4 || world.streamEdge(x, z) < 4) continue;
       const k = 0.7 + rand() * 0.6;
       if (rand() < 0.5) {
         // Settle the log onto the slope along its length.

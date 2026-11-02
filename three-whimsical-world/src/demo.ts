@@ -548,7 +548,7 @@ export class Demo {
         weather: 'clear',
         clearance: 2.5,
         title: 'Waterfalls',
-        line: 'Rivers spill off the gorge rims, and the low sun paints a rainbow in the spray.',
+        line: 'A forest stream pours over the gorge rim, and the low sun paints a rainbow in the spray.',
         path: () => [
           { pos: gat(62, 0, 6), look: lip },
           { pos: gat(42, 2, 4.5), look: lip },

@@ -66,19 +66,31 @@ export interface WorldFns {
   clearing: FieldFn;
   /** 0..1 heath: drifts of heather on open, higher ground, where the grass grows thin and short. */
   heath: FieldFn;
-  /** Waterfalls spilling off gorge rims into the rivers below. */
+  /** Waterfalls: streams running off the hills and over gorge rims into the rivers below. */
   waterfalls: Waterfall[];
+  /** Signed distance (m) from the nearest waterfall stream's waterline: negative in the water, large far away. */
+  streamEdge: FieldFn;
+}
+
+/** A point on a stream's centerline: where, its water surface, and its half-width. */
+export interface StreamPoint {
+  x: number;
+  z: number;
+  y: number;
+  w: number;
 }
 
 export interface Waterfall {
   /** The lip, on the rim. */
   x: number;
   z: number;
-  /** Ground height at the lip. */
+  /** The stream's water surface at the lip. */
   top: number;
   /** Horizontal unit direction the water leaves in (toward the river). */
   dirX: number;
   dirZ: number;
+  /** The stream feeding the fall, from its spring down to the lip (the last point). */
+  stream: StreamPoint[];
 }
 
 export interface Landmark {
@@ -277,7 +289,36 @@ export function createWorld(params: WorldParams): WorldFns {
     return add;
   };
 
-  const height: HeightFn = (x, z) => {
+  // Waterfall streams (traced below, once the land is known): their channels are cut into the land here.
+  const streams: { pts: StreamPoint[]; x0: number; x1: number; z0: number; z1: number }[] = [];
+  /** Nearest point on a stream: distance from its centerline, the water there, and its half-width. */
+  const near = { d: Infinity, y: 0, w: 0, end: false };
+  const streamNear = (x: number, z: number) => {
+    near.d = Infinity;
+    for (const s of streams) {
+      if (x < s.x0 || x > s.x1 || z < s.z0 || z > s.z1) continue;
+      const P = s.pts;
+      for (let i = 0; i < P.length - 1; i++) {
+        const a = P[i], b = P[i + 1];
+        const ex = b.x - a.x, ez = b.z - a.z;
+        const l2 = ex * ex + ez * ez;
+        const t = Math.min(Math.max(((x - a.x) * ex + (z - a.z) * ez) / l2, 0), 1);
+        const d = Math.hypot(x - a.x - ex * t, z - a.z - ez * t);
+        if (d < near.d) {
+          near.d = d;
+          near.y = lerp(a.y, b.y, t);
+          near.w = lerp(a.w, b.w, t);
+          // Past either end (the spring, or out over the rim) the channel only digs, never builds up.
+          near.end = (i === 0 && t === 0) || (i === P.length - 2 && t === 1);
+        }
+      }
+    }
+    return near;
+  };
+  /** Banks this far beyond the water blend the channel back into the land. */
+  const STREAM_BANK = 5;
+
+  const landHeight: HeightFn = (x, z) => {
     const h = baseHeight(x, z) + moundHeight(x, z);
     const [e, p] = pondAt(x, z);
     if (!p) return h;
@@ -286,6 +327,47 @@ export function createWorld(params: WorldParams): WorldFns {
     const bed = p.level - 0.12 - p.depth * Math.pow(Math.min(inside * 1.6, 1), 0.8) + 0.15 * noise(x * 0.5, z * 0.5);
     const shore = smoothstep(0, p.radius * 0.6 + 2.5, e);
     return e < 0 ? Math.min(h, bed) : Math.min(h, lerp(p.level - 0.12, h, shore) + 0.12 * shore * noise(x * 0.3, z * 0.3));
+  };
+
+  // The alcoves the falls have cut back into the gorge walls: a capsule from the river to the foot of the headwall,
+  // floored below sea level (the river fills it), with sheer walls.
+  const cirques: { qx: number; qz: number; px: number; pz: number; r: number; x0: number; x1: number; z0: number; z1: number }[] = [];
+  const cirqueCut = (x: number, z: number, h: number) => {
+    for (const c of cirques) {
+      if (x < c.x0 || x > c.x1 || z < c.z0 || z > c.z1) continue;
+      const ex = c.px - c.qx, ez = c.pz - c.qz;
+      const t = Math.min(Math.max(((x - c.qx) * ex + (z - c.qz) * ez) / (ex * ex + ez * ez), 0), 1);
+      const d = Math.hypot(x - c.qx - ex * t, z - c.qz - ez * t);
+      // A ragged wall line, wider toward the river (and true at the head, so the lip sits right on its edge).
+      const r = c.r * (1 + 0.25 * t) * (1 + 0.1 * t * noise(x * 0.15, z * 0.15));
+      if (d < r + 3.5) h = Math.min(h, lerp(-3 + 0.6 * noise(x * 0.2, z * 0.2), h, smoothstep(r, r + 3.5, d)));
+    }
+    return h;
+  };
+
+  const height: HeightFn = (x, z) => {
+    let h = landHeight(x, z);
+    if (cirques.length) h = cirqueCut(x, z, h);
+    if (!streams.length) return h;
+    const n = streamNear(x, z);
+    if (n.d > n.w + STREAM_BANK) return h;
+    // The channel: a rounded bed about a meter deep under the water, then banks rising back to the land (or a
+    // low levee, where the land beside it falls away below the water).
+    const k = n.d / n.w;
+    const cut = n.d < n.w
+      ? n.y - (0.2 + 0.5 * (1 - k * k)) * Math.min(n.w / 2.5, 1) + 0.12 * noise(x * 0.4, z * 0.4)
+      : Math.max(
+          lerp(n.y + 0.05, h, smoothstep(n.w, n.w + STREAM_BANK, n.d)),
+          // A firm bank: half a meter above the water within a meter and a half of it, so the coarse terrain mesh
+          // can't dip under the water's edge.
+          n.y + 0.6 * smoothstep(n.w - 0.3, n.w + 1.5, n.d),
+        ) + 0.25 * smoothstep(n.w, n.w + 2, n.d) * (0.5 + 0.5 * noise(x * 0.3, z * 0.3));
+    return n.end ? Math.min(h, cut) : cut;
+  };
+  const streamEdge: FieldFn = (x, z) => {
+    if (!streams.length) return 1e3;
+    const n = streamNear(x, z);
+    return n.d === Infinity ? 1e3 : n.d - n.w;
   };
 
   // forest = 0 → threshold above any noise value (no forest); forest = 1 → below all (all forest).
@@ -377,37 +459,128 @@ export function createWorld(params: WorldParams): WorldFns {
     }
     if (best.score > 2.5) add('oak', best.x, best.z, 14);
   }
-  // Waterfalls: where a gorge wall drops a long way into a river, a spring spills over the rim. The steepest drops,
-  // kept well apart. (A coarse scan: the gorges are in the mountains, far inland.)
+  /**
+   * The stream behind a fall whose lip is at (x, z), pouring out along angle `a`: walked upstream from the rim in 6 m
+   * steps, up the lowest ground ahead (the valley floor), its water a meter or so below the land and only ever rising
+   * upstream. Its water at the lip is `notch` below the rim. Ends where the land turns downhill (the water would run
+   * off another way) or climbs too steeply, near a river, or after ~250 m. Returned from the spring down to the lip,
+   * smoothed, its width growing downstream; null when there's no room for a stream of some length.
+   */
+  function traceStream(x: number, z: number, a: number, notch: number) {
+    const STEP = 6;
+    let y = landHeight(x, z) - notch;
+    let heading = a + Math.PI;
+    const up: { x: number; z: number; y: number }[] = [{ x, z, y }];
+    // The last few meters run straight at the edge, the way the water leaves it.
+    x -= Math.cos(a) * STEP;
+    z -= Math.sin(a) * STEP;
+    if (landHeight(x, z) < y + 0.7) return null;
+    y += 0.12;
+    up.push({ x, z, y });
+    for (let i = 0; i < 42; i++) {
+      let best: { x: number; z: number; g: number; a: number; score: number } | null = null;
+      const wander = 0.3 * noise(i * 0.21 + x * 0.01, z * 0.01);
+      // The first bend may be sharp; after that the stream bends gently.
+      const turns = i === 0 ? [-1.2, -0.8, -0.4, 0, 0.4, 0.8, 1.2] : [-0.6, -0.3, 0, 0.3, 0.6];
+      for (const turn of turns) {
+        const ca = heading + turn + (i ? wander : 0);
+        const nx = x + Math.cos(ca) * STEP, nz = z + Math.sin(ca) * STEP;
+        // Away from the rim, never back toward it.
+        if (Math.hypot(nx - up[0].x, nz - up[0].z) < Math.hypot(x - up[0].x, z - up[0].z) + 2.5) continue;
+        if (riverEdge(nx, nz) < 15) continue;
+        const g = landHeight(nx, nz);
+        // The land must stand above the water (or it spills), and not climb so fast it's a cliff.
+        if (g < y + 0.7 || g > y + notch + 1 + STEP * 0.6) continue;
+        const score = -(g - y) - Math.abs(turn) * 1.2;
+        if (!best || score > best.score) best = { x: nx, z: nz, g, a: ca, score };
+      }
+      if (!best) break;
+      heading = best.a;
+      x = best.x;
+      z = best.z;
+      // The water rises with the land, a meter or so under it, gently: a steeper climb is a cut gully.
+      y = Math.min(Math.max(y + 0.12, best.g - 1.2), y + STEP * 0.14);
+      up.push({ x, z, y });
+    }
+    if (up.length < 13) return null;
+    // Smooth the line (twice: Chaikin's corner cutting), keeping both ends.
+    let pts = up.reverse();
+    for (let pass = 0; pass < 2; pass++) {
+      const out = [pts[0]];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p = pts[i], q = pts[i + 1];
+        out.push({ x: p.x * 0.75 + q.x * 0.25, z: p.z * 0.75 + q.z * 0.25, y: p.y * 0.75 + q.y * 0.25 });
+        out.push({ x: p.x * 0.25 + q.x * 0.75, z: p.z * 0.25 + q.z * 0.75, y: p.y * 0.25 + q.y * 0.75 });
+      }
+      out.push(pts[pts.length - 1]);
+      pts = out;
+    }
+    // Downstream the water may only fall.
+    for (let i = 1; i < pts.length; i++) pts[i].y = Math.min(pts[i].y, pts[i - 1].y);
+    const n = pts.length;
+    return pts.map((p, i) => ({ ...p, w: lerp(1.5, 3.4, Math.pow(i / (n - 1), 0.7)) * (1 + 0.15 * noise(p.x * 0.05, p.z * 0.05)) }));
+  }
+
+  // Waterfalls: a stream comes off the hills and over the rim of a river gorge, into an alcove it has cut back into
+  // the gorge wall: a sheer headwall over a plunge pool open to the river. Sites: along the river's edge, the
+  // highest rims that a stream of some length can reach, kept well apart.
   const waterfalls: Waterfall[] = [];
   {
-    const cands: { x: number; z: number; top: number; a: number; drop: number }[] = [];
+    const cands: { lx: number; lz: number; px: number; pz: number; top: number; a: number }[] = [];
     for (let x = -860; x < 100; x += 8) {
       for (let z = -960; z < 960; z += 8) {
-        if (riverEdge(x, z) < 1.5) continue;
-        const top = height(x, z);
-        if (top < 10) continue;
-        let drop = 0, dir = 0;
-        for (let k = 0; k < 16; k++) {
-          const a = (k / 16) * Math.PI * 2;
-          const bx = x + Math.cos(a) * 12, bz = z + Math.sin(a) * 12;
-          if (riverEdge(bx, bz) > -0.5) continue;
-          const d = top - Math.max(height(bx, bz), 0);
-          if (d > drop) (drop = d), (dir = a);
+        const e = riverEdge(x, z);
+        if (e < -2 || e > 1) continue;
+        // Up the bank, straight away from the water, to the rim: where the climb levels off.
+        let ux = riverEdge(x + 2, z) - riverEdge(x - 2, z), uz = riverEdge(x, z + 2) - riverEdge(x, z - 2);
+        const ul = Math.hypot(ux, uz);
+        if (ul < 1e-3) continue;
+        (ux /= ul), (uz /= ul);
+        let top = -1e9, rim = 0;
+        for (let d = 10; d <= 60; d += 2) {
+          const g = landHeight(x + ux * d, z + uz * d);
+          if (g > top + 1.5) (top = g), (rim = d);
+          else if (g > top) top = g;
         }
-        if (drop > 11) cands.push({ x, z, top, a: dir, drop });
+        if (top < 22 || rim < 16 || rim > 56) continue;
+        cands.push({ lx: x + ux * rim, lz: z + uz * rim, px: x, pz: z, top, a: Math.atan2(-uz, -ux) });
       }
     }
-    cands.sort((p, q) => q.drop - p.drop);
+    cands.sort((p, q) => q.top - p.top);
     for (const c of cands) {
-      if (waterfalls.length >= 5) break;
-      if (waterfalls.some((w) => Math.hypot(w.x - c.x, w.z - c.z) < 160)) continue;
-      waterfalls.push({ x: c.x, z: c.z, top: c.top, dirX: Math.cos(c.a), dirZ: Math.sin(c.a) });
+      if (waterfalls.length >= 4) break;
+      if (waterfalls.some((w) => Math.hypot(w.x - c.lx, w.z - c.lz) < 220)) continue;
+      // The shallowest notch in the rim that lets a stream reach it.
+      let stream: StreamPoint[] | null = null;
+      for (const notch of [1.1, 2.5, 4, 6]) if ((stream = traceStream(c.lx, c.lz, c.a, notch))) break;
+      if (!stream) continue;
+      const lip = stream[stream.length - 1];
+      waterfalls.push({ x: lip.x, z: lip.z, top: lip.y, dirX: Math.cos(c.a), dirZ: Math.sin(c.a), stream });
+      // The alcove: from just in front of the headwall out to the river.
+      const R = 9;
+      // (The headwall's top edge passes a few decimeters in front of the lip: the stream runs to the very edge.)
+      const qx = lip.x + Math.cos(c.a) * (R + 3.8), qz = lip.z + Math.sin(c.a) * (R + 3.8);
+      const pad = R * 1.4 + 5;
+      cirques.push({
+        qx, qz, px: c.px, pz: c.pz, r: R,
+        x0: Math.min(qx, c.px) - pad, x1: Math.max(qx, c.px) + pad, z0: Math.min(qz, c.pz) - pad, z1: Math.max(qz, c.pz) + pad,
+      });
+    }
+    for (const w of waterfalls) {
+      const pad = 3.5 + STREAM_BANK + 2;
+      streams.push({
+        pts: w.stream,
+        x0: Math.min(...w.stream.map((p) => p.x)) - pad,
+        x1: Math.max(...w.stream.map((p) => p.x)) + pad,
+        z0: Math.min(...w.stream.map((p) => p.z)) - pad,
+        z1: Math.max(...w.stream.map((p) => p.z)) + pad,
+      });
     }
   }
 
   const clearing: FieldFn = (x, z) => {
     for (const w of waterfalls) if (Math.abs(x - w.x) < 6 && Math.abs(z - w.z) < 6) return 1;
+    if (streamEdge(x, z) < 2.5) return 1;
     for (const l of landmarks) {
       const reach = l.kind === 'circle' ? l.radius + 4 : l.kind === 'mound' ? l.radius * 0.9 : l.kind === 'oak' ? l.radius : 2.5;
       if (Math.abs(x - l.x) < reach && Math.abs(z - l.z) < reach && Math.hypot(x - l.x, z - l.z) < reach) return 1;
@@ -424,5 +597,5 @@ export function createWorld(params: WorldParams): WorldFns {
     return drift * smoothstep(4, 7, h) * (0.2 + 0.8 * smoothstep(8, 22, h)) * (1 - smoothstep(0.12, 0.35, forest(x, z)));
   };
 
-  return { params, height, forest, dirt, river: riverField, riverEdge, riverCenters, ponds, pondEdge, landmarks, clearing, heath, waterfalls };
+  return { params, height, forest, dirt, river: riverField, riverEdge, riverCenters, ponds, pondEdge, landmarks, clearing, heath, waterfalls, streamEdge };
 }

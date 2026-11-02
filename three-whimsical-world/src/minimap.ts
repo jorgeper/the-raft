@@ -4,15 +4,16 @@ import type { WorldFns } from './worldgen';
 
 const RESOLUTION = 256;
 
-export type Biome = 'Ocean' | 'River' | 'Pond' | 'Beach' | 'Meadows' | 'Black Forest' | 'Mountain';
+export type Biome = 'Ocean' | 'River' | 'Pond' | 'Stream' | 'Beach' | 'Meadows' | 'Deep Forest' | 'Mountain';
 
 export function biomeAt(world: WorldFns, x: number, z: number): Biome {
   const h = world.height(x, z);
   if (h < 0) return world.river(x, z) > 0.5 ? 'River' : 'Ocean';
   if (world.pondEdge(x, z) < 0) return 'Pond';
+  if (world.streamEdge(x, z) < 0) return 'Stream';
   if (h < 2.5) return 'Beach';
   if (h > 45) return 'Mountain';
-  return world.forest(x, z) > 0.5 ? 'Black Forest' : 'Meadows';
+  return world.forest(x, z) > 0.5 ? 'Deep Forest' : 'Meadows';
 }
 
 /** Hill-shaded top-down map of the world, with the player marker. Click to travel. */
@@ -80,7 +81,7 @@ export class Minimap {
         const h = heights[j * n + i];
         if (h < 0) {
           c.copy(shallow).lerp(deep, Math.min(-h / 18, 1));
-        } else if (world.pondEdge(x, z) < 0) {
+        } else if (world.pondEdge(x, z) < 0 || world.streamEdge(x, z) < 0) {
           c.copy(shallow);
         } else {
           const f = world.forest(x, z);

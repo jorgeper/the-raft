@@ -132,6 +132,8 @@ await Promise.all([groundLoad, plantsLoad]);
 let world = new World(params, renderer, scannedRocks);
 water.setPonds(world.fns.ponds);
 water.setRivers(world.fns.riverCenters);
+water.setStreams(world.fns.waterfalls);
+water.setPlunges(world.waterfalls.plunges);
 setRockPonds(world.fns.ponds);
 /** The world settings the current world was built from, to tell whether a reset needs a regenerate. */
 let builtParams = JSON.stringify(params);
@@ -692,6 +694,8 @@ function regenerate() {
       sound.setWorld(world.fns);
       water.setPonds(world.fns.ponds);
       water.setRivers(world.fns.riverCenters);
+      water.setStreams(world.fns.waterfalls);
+      water.setPlunges(world.waterfalls.plunges);
       setRockPonds(world.fns.ponds);
       builtParams = JSON.stringify(params);
       scene.add(world.group);

@@ -706,7 +706,7 @@ export class Soundscape {
   private surface(x: number, z: number, snowCover: number): Surface {
     const w = this.world;
     const h = w.height(x, z);
-    if (h < 0.15 || w.pondEdge(x, z) < 0.2) return 'water';
+    if (h < 0.15 || w.pondEdge(x, z) < 0.2 || w.streamEdge(x, z) < 0.2) return 'water';
     if (snowCover > 0.35) return 'snow';
     const slope = Math.hypot(w.height(x + 1, z) - w.height(x - 1, z), w.height(x, z + 1) - w.height(x, z - 1)) / 2;
     if (slope > 0.55) return 'stone';

@@ -31,7 +31,16 @@ const FLOW_RES = 512;
 const vertexShader = /* glsl */ `
   varying vec3 vWorld;
   varying vec3 vView;
+  #ifdef STREAM
+    // A stream's flow: direction (xz), speed (m/s), and how broken (white, > 0) or glassy (< 0, the smooth tongue
+    // of water speeding over the lip) it runs.
+    attribute vec4 aFlow;
+    varying vec4 vFlow;
+  #endif
   void main() {
+    #ifdef STREAM
+      vFlow = aFlow;
+    #endif
     vec4 wp = modelMatrix * vec4(position, 1.0);
     vWorld = wp.xyz;
     vec4 mv = viewMatrix * wp;
@@ -58,6 +67,11 @@ const fragmentShader = /* glsl */ `
   uniform sampler2D tFlow;
   uniform float uRain;
   uniform vec4 uRipples[${MAX_RIPPLES}];
+  // Where waterfalls hit the water: x, z, radius of the churn, strength (0 = unused).
+  uniform vec4 uPlunges[4];
+  #ifdef STREAM
+    varying vec4 vFlow;
+  #endif
   varying vec3 vWorld;
   ${RAIN_RIPPLES}
   varying vec3 vView;
@@ -180,17 +194,34 @@ const fragmentShader = /* glsl */ `
 
     // Rivers flow: their ripples drift downstream (two flow-map phases, cross-faded so the drift never snaps back)
     // instead of rolling ashore like the sea's.
-    vec4 flowTex = texture2D(tFlow, vWorld.xz / ${TERRAIN_SIZE.toFixed(1)} + 0.5);
-    float river = flowTex.b * (1.0 - pond);
-    vec2 flowDir = flowTex.rg * 2.0 - 1.0;
+    #ifdef STREAM
+      // A waterfall's stream: running water all across, clearer than a pond, quickening toward the lip.
+      float river = 1.0;
+      vec2 flowDir = vFlow.xy;
+      float flowSpeed = vFlow.z;
+      pond = 0.45;
+    #else
+      vec4 flowTex = texture2D(tFlow, vWorld.xz / ${TERRAIN_SIZE.toFixed(1)} + 0.5);
+      float river = flowTex.b * (1.0 - pond);
+      vec2 flowDir = flowTex.rg * 2.0 - 1.0;
+      float flowSpeed = 1.0;
+    #endif
     if (river > 0.01) {
       const float PERIOD = 2.5;
       float p0 = fract(uTime / PERIOD), p1 = fract(uTime / PERIOD + 0.5);
-      vec2 drift = flowDir * 1.6 * PERIOD;
+      vec2 drift = flowDir * 1.6 * PERIOD * flowSpeed;
       vec2 q = vWorld.xz * vec2(0.8, 1.6);
+      #ifdef STREAM
+        // A small stream's riffles are finer than a river's swell.
+        q *= 2.2;
+      #endif
       vec2 ga = rippleGrad(q - drift * p0 * vec2(0.8, 1.6));
       vec2 gb = rippleGrad(q - drift * p1 * vec2(0.8, 1.6) + 7.3);
       vec2 gr = mix(ga, gb, abs(p0 * 2.0 - 1.0)) * 0.09 * fade;
+      #ifdef STREAM
+        // Livelier than the river: riffles over the stones, steeper where it runs fast; smooth over the lip.
+        gr *= (1.6 + 1.2 * max(vFlow.w, 0.0)) * (1.0 - 0.85 * max(-vFlow.w, 0.0));
+      #endif
       g = mix(g, gr, river);
     }
     // Rain: rings spreading where the drops land (close by; further out they're too fine to see).
@@ -209,6 +240,27 @@ const fragmentShader = /* glsl */ `
       float packet = exp(-x * x * 28.0) * (1.0 - age / 4.0) / (1.0 + rr * 2.0);
       g += rd / max(rr, 1e-3) * cos(x * 30.0) * packet * rp.w * 0.65;
       plop += exp(-rr * rr * 120.0) * max(0.0, 1.0 - age / 0.5) * rp.w;
+    }
+    // Under a waterfall: the pool churned white where it lands, foam spreading out from it in lace that drifts
+    // away (two cross-faded phases, as for the river), and the surface chopped up.
+    float plungeFoam = 0.0;
+    for (int i = 0; i < 4; i++) {
+      vec4 pl = uPlunges[i];
+      // (Only on the pools at sea level: not up on the stream feeding the same fall.)
+      if (pl.w <= 0.0 || surfaceY > 0.3) continue;
+      vec2 pd = vWorld.xz - pl.xy;
+      float pr = length(pd);
+      if (pr > pl.z * 4.0) continue;
+      vec2 out2 = pd / max(pr, 1e-3);
+      float q0 = fract(uTime / 2.2), q1 = fract(uTime / 2.2 + 0.5);
+      float la = vnoise(vWorld.xz * 1.2 - out2 * q0 * 3.5) * 0.6 + vnoise(vWorld.xz * 3.4 - out2 * q0 * 3.5 + 4.0) * 0.4;
+      float lb = vnoise(vWorld.xz * 1.2 - out2 * q1 * 3.5 + 9.0) * 0.6 + vnoise(vWorld.xz * 3.4 - out2 * q1 * 3.5 + 2.0) * 0.4;
+      float lace2 = mix(la, lb, abs(q0 * 2.0 - 1.0));
+      float core = 1.0 - smoothstep(pl.z * 0.35, pl.z * 1.1, pr);
+      float reach = 1.0 - smoothstep(pl.z * 0.7, pl.z * 4.0, pr);
+      plungeFoam = max(plungeFoam, max(core * (0.75 + 0.25 * lace2), smoothstep(0.55, 0.85, lace2 * 0.75 + reach * 0.45) * reach) * pl.w);
+      vec2 chop = vec2(vnoise(vWorld.xz * 2.5 + uTime * 3.0) - 0.5, vnoise(vWorld.xz * 2.5 - uTime * 3.0 + 7.0) - 0.5);
+      g += chop * (core * 0.6 + reach * 0.15) * pl.w;
     }
     vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
 
@@ -239,10 +291,18 @@ const fragmentShader = /* glsl */ `
     // Absorption (red first, then green) and in-scattering toward a teal-blue body color.
     // Ponds: murkier than the sea, a deep teal-blue (red fades out fastest).
     vec3 absorb = mix(vec3(0.42, 0.085, 0.06), vec3(1.6, 0.6, 0.7), pond);
+    vec3 scatterBase = mix(vec3(0.012, 0.085, 0.13), vec3(0.012, 0.06, 0.075), pond);
+    #ifdef STREAM
+      // A forest stream: clear, tea-and-moss tinted, a little darker than its stones.
+      absorb = vec3(0.8, 0.38, 0.55);
+      scatterBase = vec3(0.012, 0.035, 0.026);
+    #endif
     vec3 T = exp(-absorb * path);
-    vec3 scatter = mix(vec3(0.012, 0.085, 0.13), vec3(0.012, 0.06, 0.075), pond) * (0.35 + 0.65 * max(uSunDir.y, 0.0)) * (0.1 + 0.9 * light);
+    vec3 scatter = scatterBase * (0.35 + 0.65 * max(uSunDir.y, 0.0)) * (0.1 + 0.9 * light);
     // Shallow water picks up a brighter turquoise from the lit sand beneath it.
-    scatter = mix(scatter * vec3(1.6, 2.4, 1.7), scatter, smoothstep(0.5, 6.0, depthV));
+    #ifndef STREAM
+      scatter = mix(scatter * vec3(1.6, 2.4, 1.7), scatter, smoothstep(0.5, 6.0, depthV));
+    #endif
     vec3 below = seabed * T + scatter * (1.0 - T);
 
     // --- Reflection: the scene where the reflected ray hits it, else the sky. The reflection uses a calmer normal
@@ -316,7 +376,7 @@ const fragmentShader = /* glsl */ `
     if (river > 0.01) {
       const float FP = 3.0;
       float f0 = fract(uTime / FP), f1 = fract(uTime / FP + 0.5);
-      vec2 adv = flowDir * 1.4 * FP;
+      vec2 adv = flowDir * 1.4 * FP * flowSpeed;
       vec2 wp = vWorld.xz * 0.9;
       float fa = vnoise(wp - adv * f0 * 0.9) * 0.6 + vnoise(wp * 2.7 - adv * f0 * 2.43 + 3.1) * 0.4;
       float fb = vnoise(wp - adv * f1 * 0.9 + 5.2) * 0.6 + vnoise(wp * 2.7 - adv * f1 * 2.43 + 8.7) * 0.4;
@@ -324,8 +384,18 @@ const fragmentShader = /* glsl */ `
       float shallow = 1.0 - smoothstep(0.08, 0.45, depthV);
       float white = smoothstep(0.58, 0.82, flecks) * shallow * smoothstep(0.02, 0.06, depthV);
       foam = max(foam, white * (0.4 + 0.6 * lace) * river * 0.75);
+      #ifdef STREAM
+        // Riffles: small flecks and threads of white water where the stream quickens over its bed.
+        float ra = vnoise(wp * 2.6 - adv * f0 * 2.34) * 0.55 + vnoise(wp * 6.1 - adv * f0 * 5.49 + 2.0) * 0.45;
+        float rb = vnoise(wp * 2.6 - adv * f1 * 2.34 + 6.0) * 0.55 + vnoise(wp * 6.1 - adv * f1 * 5.49 + 9.0) * 0.45;
+        float rushN = mix(ra, rb, abs(f0 * 2.0 - 1.0));
+        float whiteW = max(vFlow.w, 0.0);
+        foam = max(foam, smoothstep(0.72 - 0.2 * whiteW, 0.9, rushN) * (0.25 + 0.75 * whiteW) * 0.8);
+        foam *= 1.0 - max(-vFlow.w, 0.0);
+      #endif
     }
     foam = max(foam, min(plop, 1.0) * 0.8);
+    foam = max(foam, plungeFoam);
     vec3 foamColor = vec3(0.85, 0.88, 0.88) * (0.5 + 0.5 * max(uSunDir.y, 0.2)) * (0.08 + 0.92 * light) * 1.6;
     col = mix(col, foamColor, foam * 0.8);
 
@@ -404,6 +474,55 @@ function bakeFlow(riverCenters: (x: number) => { z: number; width: number }[]) {
   return tex;
 }
 
+/**
+ * A stream's water surface: a ribbon down its centerline (spring to lip), each row level across, carrying the flow
+ * (direction, speed, and white water) for the shader. The flow quickens and breaks white over the last stretch to the
+ * lip, and wherever the stream drops faster.
+ */
+function streamGeometry(all: { x: number; z: number; y: number; w: number }[]) {
+  const COLS = 5;
+  // It stops short of the lip (the coarse terrain mesh may put the edge a meter or two back); the falling sheet
+  // starts on the water there and carries it over.
+  let cut = all.length - 1, back = 0;
+  while (cut > 1 && back < 1) back += Math.hypot(all[cut].x - all[cut - 1].x, all[cut].z - all[cut - 1].z), cut--;
+  const pts = all.slice(0, cut + 1);
+  const position: number[] = [], flow: number[] = [], index: number[] = [];
+  let toLip = 0;
+  const rest: number[] = new Array(pts.length).fill(back);
+  for (let i = pts.length - 2; i >= 0; i--) rest[i] = rest[i + 1] + Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z);
+  pts.forEach((p, i) => {
+    const a = pts[Math.max(i - 1, 0)], b = pts[Math.min(i + 1, pts.length - 1)];
+    let dx = b.x - a.x, dz = b.z - a.z;
+    const run = Math.hypot(dx, dz) || 1;
+    (dx /= run), (dz /= run);
+    const drop = Math.max(a.y - b.y, 0) / run;
+    toLip = rest[i];
+    const lip = 1 - THREE.MathUtils.smoothstep(toLip, 2, 22);
+    const tongue = 1 - THREE.MathUtils.smoothstep(toLip, 1.5, 7);
+    const speed = 0.8 + 6 * drop + 1.6 * lip;
+    const white = Math.min(1, 0.1 + 6 * drop) * (1 - tongue) - tongue;
+    // Tucked into the banks, except over the lip, where there are none.
+    const half = p.w * (1.2 - 0.2 * (1 - THREE.MathUtils.smoothstep(toLip, 0, 5)));
+    for (let c = 0; c < COLS; c++) {
+      const u = c / (COLS - 1) - 0.5;
+      position.push(p.x - dz * u * 2 * half, p.y, p.z + dx * u * 2 * half);
+      flow.push(dx, dz, speed, white);
+    }
+  });
+  for (let r = 0; r < pts.length - 1; r++) {
+    for (let c = 0; c < COLS - 1; c++) {
+      const a = r * COLS + c, b = a + COLS;
+      index.push(a, a + 1, b, a + 1, b + 1, b);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+  g.setAttribute('aFlow', new THREE.Float32BufferAttribute(flow, 4));
+  g.setIndex(index);
+  g.computeBoundingSphere();
+  return g;
+}
+
 export function createWater(env: THREE.Texture) {
   const uniforms = {
     uTime: { value: 0 },
@@ -423,6 +542,7 @@ export function createWater(env: THREE.Texture) {
     tFlow: { value: emptyFlow },
     uRain: weatherUniforms.uRain,
     uRipples: ripples,
+    uPlunges: { value: Array.from({ length: 4 }, () => new THREE.Vector4()) },
   };
   const material = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader, defines: { SSR_STEPS: 32 } });
   const geo = new THREE.PlaneGeometry(20000, 20000, 1, 1);
@@ -431,10 +551,23 @@ export function createWater(env: THREE.Texture) {
   mesh.frustumCulled = false;
   /** One disc per pond at its water level (the shore terrain hides what reaches past the waterline). */
   const ponds = new THREE.Group();
+  /** The waterfalls' streams: a ribbon down each, a little wider than the water (the banks hide the rest). */
+  const streams = new THREE.Group();
+  const streamMaterial = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader, defines: { SSR_STEPS: 32, STREAM: 1 } });
   return {
     mesh,
     ponds,
+    streams,
     uniforms,
+    /** Where the waterfalls land, for the foam on their pools (up to 4). */
+    setPlunges(list: THREE.Vector4[]) {
+      uniforms.uPlunges.value.forEach((v, i) => (list[i] ? v.copy(list[i]) : v.set(0, 0, 0, 0)));
+    },
+    setStreams(falls: { stream: { x: number; z: number; y: number; w: number }[] }[]) {
+      for (const c of streams.children) (c as THREE.Mesh).geometry.dispose();
+      streams.clear();
+      for (const f of falls) streams.add(new THREE.Mesh(streamGeometry(f.stream), streamMaterial));
+    },
     setPonds(list: { x: number; z: number; radius: number; level: number }[]) {
       for (const c of ponds.children) (c as THREE.Mesh).geometry.dispose();
       ponds.clear();
@@ -454,8 +587,10 @@ export function createWater(env: THREE.Texture) {
     /** Reflection march steps (0 = sky reflections only). */
     setReflectionSteps(steps: number) {
       if (material.defines.SSR_STEPS === steps) return;
-      material.defines.SSR_STEPS = steps;
-      material.needsUpdate = true;
+      for (const m of [material, streamMaterial]) {
+        m.defines.SSR_STEPS = steps;
+        m.needsUpdate = true;
+      }
     },
   };
 }
@@ -483,7 +618,7 @@ export class WaterPass extends Pass {
       type: THREE.HalfFloatType,
       depthTexture: new THREE.DepthTexture(1, 1, THREE.FloatType),
     });
-    this.scene.add(water.mesh, water.ponds);
+    this.scene.add(water.mesh, water.ponds, water.streams);
   }
 
   setSize(width: number, height: number) {

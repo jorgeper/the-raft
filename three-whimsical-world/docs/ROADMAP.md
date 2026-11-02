@@ -277,14 +277,20 @@ In priority order: the first items are the user's requests for the next sessions
   cells, off the moss) get their own tilted normals and near-mirror roughness, so points flash as the sun or the
   eye moves; the soaked stone around them is glossier than before (roughness 0.4). Shots:
   `.playwright-mcp/wild/wetA0.jpg` (dry), `wetB2.jpg` (wet, into the sun).
-- Waterfalls (user, 2026-11-01): worldgen (`waterfalls` in `worldgen.ts`) scans the gorge rims for the highest drops
-  straight into a river (lip on land at least 10 m up, water within 12 m, drop over 11 m, sites 160 m apart, kept
-  off the world's edge); the default world has two, at (-732, -576) and (-676, 640). `src/waterfall.ts` hangs a
-  ribbon off each lip along a parabola that clings to the face, shaded with ropes of streaks, tumbling foam slugs,
-  frayed edges and white water at the lip and the plunge; spray puffs rise from the base and rings spread on the
-  river while the player is near. The blend leaves the target's alpha (TAA motion) alone. Shots:
-  `.playwright-mcp/wild/wfe0.jpg` (day), `wfe3.jpg` (moonlit). Not yet: a stream feeding the lip, the roar (sound
-  queue).
+- Waterfalls (user, 2026-11-01; reworked 2026-11-02: "it seems to be coming out of the rock, i'd prefer if it comes
+  out of a river"): worldgen (`waterfalls` in `worldgen.ts`) walks up from the river's edge to the true rim of each
+  gorge and keeps the highest rims a stream can reach. `traceStream` walks upstream from the lip along the lowest
+  ground (valley floors), its water rising only upstream, for 80-250 m. Its channel is cut into `height` (a rounded
+  bed, firm banks, levees where the land falls away), with a notch in the rim. Each fall drops into an alcove cut
+  back into the gorge wall (`cirques`: sheer walls, a plunge pool below sea level open to the river). The default
+  world has four, two dropping ~50 m. The stream's water is a ribbon in the water pass (`STREAM` define of the water
+  shader: flow from a vertex attribute, riffles, white flecks where it drops, a glassy tongue over the lip). The
+  sheet (`src/waterfall.ts`) starts on the stream's surface, as wide as the stream: glassy green over the lip,
+  tearing within a few meters into ropes and strands of white water with gaps, plus a fainter veil of spray. Its
+  texture follows the water's travel time, so it stretches as the water accelerates; the old fixed scroll sheared a
+  little more every second the app ran. The water shader churns foam on the plunge pool (`setPlunges`). Grass,
+  cover, deer and logs keep out of the streams; the terrain gives them stony beds; the minimap names them.
+  Not yet: rocks in the stream bed, and a spring or pool at its head.
 - Lone giant oaks (user, 2026-11-01): worldgen picks two `oak` landmarks on the most prominent open, flattish crests
   (height above a 60 m ring; one 110-320 m from the start, at (85, -180) in the default world, one further off).
   Each is a ~24 m 'Oak Large' with a thick gnarled trunk and long sideways limbs (`giantOak`, `GIANTS` in

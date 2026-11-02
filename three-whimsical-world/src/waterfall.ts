@@ -4,9 +4,11 @@ import { addRipple } from './water';
 import { RAINBOW } from './weather';
 
 /**
- * Waterfalls spilling off gorge rims into the rivers below (sites from worldgen). Each is a ribbon that leaves the
- * lip in a parabola and, where the rock juts out, slides down the face instead; a shader scrolls streaks of white
- * water down it, foamy at the lip and where it hits. Mist puffs rise from the plunge and rings spread on the river.
+ * Waterfalls: each stream (worldgen) pours over the rim of a river gorge into the alcove it has cut. The water is a
+ * ribbon that leaves the lip in a parabola (sliding down the face where the rock juts out), as wide as the stream:
+ * glassy green where it curls over the lip, breaking up as it falls into ropes and strands of white water with
+ * gaps between, a fainter veil of spray around it. Mist billows from the plunge, foam spreads on the pool (the water
+ * shader's `setPlunges`) and rings run out across it.
  *
  * Drawn in the main scene, blended over what's behind it. The blend leaves the target's alpha alone: that channel
  * carries wind motion to the TAA (see wind.ts), and a translucent sheet would read as motion.
@@ -24,11 +26,17 @@ const keepAlpha = {
   blendDstAlpha: THREE.OneFactor,
 } as const;
 
+/** How fast the stream leaves the lip (m/s). */
+const V0 = 2.8;
+/** The sheet starts this far back from the lip, on the stream's surface. */
+const BACK = 2.5;
+
 /** The fall's centerline: a parabola off the lip, clinging to the face where the ground is higher. */
 function fallPath(w: Waterfall, height: WorldFns['height']) {
-  const pts: THREE.Vector3[] = [];
-  const v0 = 2.6;
-  let y = w.top + 0.25;
+  // From a few meters back on the stream (where its water surface stops short of the lip), along its surface.
+  const pts: THREE.Vector3[] = [new THREE.Vector3(w.x - w.dirX * BACK, w.top + 0.03, w.z - w.dirZ * BACK)];
+  const v0 = V0;
+  let y = w.top + 0.02;
   let vy = 0;
   let s = 0;
   const dt = 0.04;
@@ -49,8 +57,9 @@ function fallPath(w: Waterfall, height: WorldFns['height']) {
   return pts;
 }
 
-function fallGeometry(w: Waterfall, pts: THREE.Vector3[]) {
-  const COLS = 9;
+/** The sheet: `width` at the lip, spreading as it falls; `out` pushes it off the centerline (for the veil). */
+function fallGeometry(w: Waterfall, pts: THREE.Vector3[], width0: number, spread: number, out0 = 0) {
+  const COLS = 11;
   const side = new THREE.Vector3(-w.dirZ, 0, w.dirX);
   const out = new THREE.Vector3(w.dirX, 0, w.dirZ);
   const positions: number[] = [], fall: number[] = [], index: number[] = [];
@@ -60,11 +69,11 @@ function fallGeometry(w: Waterfall, pts: THREE.Vector3[]) {
     if (i) along += p.distanceTo(pts[i - 1]);
     const t = along / total;
     // The sheet spreads as it falls.
-    const width = 4.5 + 4.5 * t;
+    const width = width0 * (1 + spread * Math.sqrt(t));
     for (let c = 0; c < COLS; c++) {
       const u = c / (COLS - 1);
-      // A rounded front: the middle of the sheet stands a little proud of its edges.
-      const bulge = Math.sin(Math.PI * u) * 0.7;
+      // A rounded front: the middle of the sheet stands a little proud of its edges, more as it falls.
+      const bulge = Math.sin(Math.PI * u) * (0.2 + 0.8 * t) + out0 * t;
       const q = p.clone().addScaledVector(side, (u - 0.5) * width).addScaledVector(out, bulge);
       positions.push(q.x, q.y, q.z);
       fall.push(u, along, t);
@@ -86,7 +95,13 @@ function fallGeometry(w: Waterfall, pts: THREE.Vector3[]) {
 
 const sheetUniforms = { uTime: { value: 0 } };
 
-function sheetMaterial() {
+/**
+ * The falling water. Its texture moves with the water: each point on the sheet is looked up by how long the water
+ * took to fall there (so the pattern scrolls at the water's own speed, stretching as it accelerates), never by a
+ * fixed scroll speed, which sheared the pattern further every second the app ran. `VEIL` is the faint spray around
+ * the sheet.
+ */
+function sheetMaterial(veil: boolean) {
   const m = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.6,
@@ -95,6 +110,7 @@ function sheetMaterial() {
     side: THREE.DoubleSide,
     ...keepAlpha,
   });
+  if (veil) m.defines = { VEIL: 1 };
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, sheetUniforms);
     shader.vertexShader = shader.vertexShader
@@ -111,35 +127,67 @@ function sheetMaterial() {
           vec2 i = floor(p), f = fract(p);
           f = f * f * (3.0 - 2.0 * f);
           return mix(mix(wHash(i), wHash(i + vec2(1, 0)), f.x), mix(wHash(i + vec2(0, 1)), wHash(i + vec2(1, 1)), f.x), f.y);
-        }`,
+        }
+        float glassy;`,
       )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
         {
-          float u = vFall.x, along = vFall.y, t = vFall.z;
-          // Streaks stretched down the fall, scrolling faster the further the water has dropped.
-          float scroll = along - uTime * (5.0 + 5.0 * t);
-          // Ropes of water side by side, each with its own pace, frayed by finer streaks.
-          float rope = wNoise(vec2(u * 14.0, 0.0));
-          float s2 = scroll * (0.8 + 0.4 * rope);
-          float streak = wNoise(vec2(u * 30.0, s2 * 0.2)) * 0.55 + wNoise(vec2(u * 75.0 + 7.0, s2 * 0.45)) * 0.45;
-          float clumps = wNoise(vec2(u * 8.0 - 3.0, s2 * 0.22)) * 0.6 + wNoise(vec2(u * 17.0 + 5.0, s2 * 0.6)) * 0.4;
-          // Ragged edges: the sheet frays most at its sides and breaks up as it falls.
-          float fray = 0.12 + 0.12 * t + 0.12 * clumps;
+          // (along: meters from the lip, negative on the stream behind it.)
+          float u = vFall.x, along = vFall.y - ${BACK.toFixed(1)}, t = vFall.z;
+          // Travel time from the lip (s): along ≈ v0 τ + g τ² / 2.
+          float tau = (sqrt(${V0.toFixed(2)} * ${V0.toFixed(2)} + 2.0 * 9.8 * max(along, 0.0)) - ${V0.toFixed(2)}) / 9.8;
+          float ph = tau - uTime;
+          #ifdef VEIL
+            ph *= 0.8;
+            u = u * 1.7 + 3.0;
+          #endif
+          // Ropes: columns of water side by side, some thick and some thin, each wandering a little as it falls.
+          float wander = (wNoise(vec2(u * 3.0, tau * 1.5)) - 0.5) * 0.08 * t;
+          float uu = u + wander;
+          float rope = wNoise(vec2(uu * 11.0, 0.5)) * 0.6 + wNoise(vec2(uu * 23.0, 3.5)) * 0.4;
+          // Streaks along the fall, at the water's pace; finer ones inside them.
+          float streak = wNoise(vec2(uu * 34.0, ph * 5.0)) * 0.55 + wNoise(vec2(uu * 80.0 + 7.0, ph * 11.0)) * 0.45;
+          // Slugs of white water tumbling down the ropes.
+          float slugs = wNoise(vec2(uu * 7.0 + 11.0, ph * 3.2)) * 0.6 + wNoise(vec2(uu * 15.0, ph * 6.5)) * 0.4;
+          // Over the lip the water is one smooth, glassy sheet; within a few meters it tears into ropes and spray.
+          glassy = 1.0 - smoothstep(0.2, 3.0, along);
+          float torn = smoothstep(0.6, 7.0, along);
+          float body = rope * 0.75 + streak * 0.5 + slugs * 0.45 - 0.8 * torn - 0.1;
+          float dense = mix(1.0, smoothstep(0.02, 0.22, body), torn);
+          // Ragged sides: the sheet frays most at its edges, and more the further it falls.
+          float fray = 0.08 + 0.2 * t + 0.1 * slugs;
           float edge = smoothstep(0.0, fray, u) * smoothstep(1.0, 1.0 - fray, u);
-          // Slugs of white water tumbling down inside the sheet.
-          float slugs = smoothstep(0.55, 0.85, wNoise(vec2(u * 6.0 + 11.0, s2 * 0.9)) * 0.6 + wNoise(vec2(u * 13.0, s2 * 1.7)) * 0.4);
-          float body = clamp(streak * 0.7 + clumps * 0.6 + rope * 0.2 - 0.35 + slugs * 0.5, 0.0, 1.0);
-          // Mostly churned white, with darker glassy gaps where the sheet runs thin.
-          float foam = clamp(smoothstep(0.2, 0.55, body) + smoothstep(0.7, 1.0, t) * 0.7 + (1.0 - smoothstep(0.0, 0.1, t)) * 0.3, 0.0, 1.0);
-          diffuseColor.rgb = mix(vec3(0.2, 0.36, 0.38), vec3(0.88, 0.92, 0.94), foam);
-          float gaps = smoothstep(0.1, 0.45, body);
-          diffuseColor.a = edge * mix(0.15, 0.95, gaps) * (1.0 - smoothstep(0.97, 1.0, t) * 0.5);
+          #ifdef VEIL
+            dense = smoothstep(0.35, 0.75, streak * 0.5 + slugs * 0.6) * smoothstep(1.0, 8.0, along);
+            edge = smoothstep(0.0, 0.3, vFall.x) * smoothstep(1.0, 0.7, vFall.x);
+          #endif
+          // Air beaten into it turns the water white; glassy water is a clear bottle green with the stream's bed
+          // colors in it.
+          float white = clamp(torn * (0.55 + 0.5 * slugs) + smoothstep(0.85, 1.0, t) * 0.5, 0.0, 1.0);
+          vec3 glass = vec3(0.07, 0.16, 0.13);
+          // Shaded where it's thick: the inside of a rope is in its own shadow.
+          diffuseColor.rgb = mix(glass, vec3(0.82, 0.86, 0.88) * (0.75 + 0.25 * streak), white);
+          // Even the glassy tongue shows the flow in faint lines.
+          float alpha = mix(0.7 + 0.2 * streak, 0.08 + 0.85 * dense, torn) * edge;
+          #ifdef VEIL
+            diffuseColor.rgb = vec3(0.9, 0.93, 0.96);
+            alpha = dense * edge * 0.22;
+          #endif
+          // Into the spray at the foot; and fading in on the stream behind the lip, under the stream's own surface.
+          alpha *= (1.0 - smoothstep(0.92, 1.0, t) * 0.7) * smoothstep(-${BACK.toFixed(1)}, -0.8, along);
+          diffuseColor.a = alpha;
         }`,
+      )
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+        // Glassy water mirrors the sky; white water is matte.
+        roughnessFactor = mix(roughnessFactor, 0.08, glassy);`,
       );
   };
-  m.customProgramCacheKey = () => 'waterfall-sheet';
+  m.customProgramCacheKey = () => (veil ? 'waterfall-veil' : 'waterfall-sheet');
   return m;
 }
 
@@ -147,7 +195,7 @@ const mistUniforms = { uTime: { value: 0 }, uLight: { value: 1 } };
 
 /** Puffs of spray rising and spreading from the plunge, each on its own loop. */
 function mistPoints(base: THREE.Vector3, rand: () => number) {
-  const N = 140;
+  const N = 480;
   const seed = new Float32Array(N * 4);
   for (let i = 0; i < N; i++) seed.set([rand(), rand(), rand(), rand()], i * 4);
   const g = new THREE.BufferGeometry();
@@ -165,14 +213,15 @@ function mistPoints(base: THREE.Vector3, rand: () => number) {
       attribute vec4 aSeed;
       varying float vFade;
       void main() {
-        float life = fract(uTime / (3.0 + aSeed.w * 2.5) + aSeed.z);
+        float life = fract(uTime / (2.5 + aSeed.w * 3.0) + aSeed.z);
         float a = aSeed.x * 6.2831853;
-        float r = (0.8 + aSeed.y * 5.0) * (0.4 + life);
-        vec3 p = uBase + vec3(cos(a) * r, 0.2 + life * (3.0 + aSeed.y * 6.0), sin(a) * r);
-        vFade = sin(3.14159 * life) * (0.6 + 0.4 * aSeed.y);
+        // Billowing out from the plunge, fast at first, then drifting up and away (the gorge's draft).
+        float r = (0.5 + aSeed.y * 8.0) * (1.0 - exp(-life * 3.0)) * 1.4;
+        vec3 p = uBase + vec3(cos(a) * r, 0.3 + life * life * (4.0 + aSeed.y * 10.0), sin(a) * r);
+        vFade = sin(3.14159 * sqrt(life)) * (0.6 + 0.4 * aSeed.y);
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = (3.0 + 7.0 * life) * 300.0 / max(-mv.z, 1.0);
+        gl_PointSize = (3.0 + 9.0 * life) * 300.0 / max(-mv.z, 1.0);
       }
     `,
     fragmentShader: /* glsl */ `
@@ -181,7 +230,7 @@ function mistPoints(base: THREE.Vector3, rand: () => number) {
       void main() {
         float d = length(gl_PointCoord - 0.5) * 2.0;
         float a = smoothstep(1.0, 0.0, d);
-        gl_FragColor = vec4(vec3(0.85, 0.9, 0.95) * uLight, a * a * vFade * 0.22);
+        gl_FragColor = vec4(vec3(0.85, 0.9, 0.95) * uLight, a * a * vFade * 0.11);
       }
     `,
   });
@@ -288,20 +337,26 @@ export class Waterfalls {
   /** The spray rainbows, for the overlay scene (drawn after the haze); see `setSceneDepth`. */
   readonly overlay = new THREE.Group();
   private bases: THREE.Vector3[] = [];
+  /** Where each fall hits the water (x, z, radius of its foam, strength), for the water shader. */
+  readonly plunges: THREE.Vector4[] = [];
   private nextRipple = 0;
   private rand: () => number;
 
   constructor(private world: WorldFns) {
     let s = world.params.seed * 31 + 7;
     this.rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-    const sheet = sheetMaterial();
+    const sheet = sheetMaterial(false), veil = sheetMaterial(true);
     for (const w of world.waterfalls) {
       const pts = fallPath(w, world.height);
-      const mesh = new THREE.Mesh(fallGeometry(w, pts), sheet);
+      const lipWidth = 2 * w.stream[w.stream.length - 1].w;
+      const mesh = new THREE.Mesh(fallGeometry(w, pts, lipWidth, 0.7), sheet);
       mesh.renderOrder = 2;
-      this.group.add(mesh);
+      const spray = new THREE.Mesh(fallGeometry(w, pts, lipWidth * 1.3, 1.4, 0.8), veil);
+      spray.renderOrder = 3;
+      this.group.add(mesh, spray);
       const base = pts[pts.length - 1].clone().setY(WATER_Y);
       this.bases.push(base);
+      this.plunges.push(new THREE.Vector4(base.x, base.z, lipWidth * 1.2, 1));
       this.group.add(mistPoints(base, this.rand));
       this.overlay.add(sprayBow(base));
     }

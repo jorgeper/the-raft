@@ -119,6 +119,15 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
       grass[i] *= smoothstep(0.5, 3, pe) * (1 - 0.6 * pondMoss);
     }
 
+    // The waterfalls' streams: a stony bed, wet dark stones at the water's edge, no grass in the water.
+    const se = world.streamEdge(x, z);
+    let streamBed = 0;
+    if (se < 4) {
+      streamBed = 1 - smoothstep(-0.2, 1.5 + 1.5 * fine, se);
+      c.lerp(COLORS.gravel, streamBed * 0.6).lerp(COLORS.wetStone, (1 - smoothstep(-0.3, 0.8, se)) * 0.9);
+      grass[i] *= smoothstep(0.2, 2.5, se);
+    }
+
     w.fill(0);
     w[0] = 1;
     toward(earth * 0.9, 2);
@@ -128,6 +137,7 @@ export function createTerrainMesh(world: WorldFns): THREE.Mesh {
     toward(sandAmt, 4);
     toward(pondMoss, 1);
     toward(silt, 2);
+    toward(streamBed, 3);
     splat.set([w[1], w[2], w[3], w[4]], i * 4);
 
     // Subtle brightness jitter so flat areas aren't one tone.

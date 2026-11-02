@@ -304,6 +304,8 @@ export class Grass {
     // Ponds: no blades in the water, thinning to the shore.
     const half = CHUNK / 2;
     const nearPond = this.world.ponds.some((p) => Math.abs(p.x - x0 - half) < half + p.radius * 2.5 && Math.abs(p.z - z0 - half) < half + p.radius * 2.5);
+    // Nor in the waterfalls' streams.
+    const nearStream = this.world.waterfalls.some((w) => w.stream.some((p) => Math.abs(p.x - x0 - half) < half + 12 && Math.abs(p.z - z0 - half) < half + 12));
 
     for (let k = 0; k < BLADES_PER_CHUNK; k++) {
       const lx = rand() * CHUNK, lz = rand() * CHUNK;
@@ -318,6 +320,7 @@ export class Grass {
       const forest = bilerp(forests, gx, gz, fx, fz);
       if (rand() > coverageFrom(h, slope, forest, bilerp(dirts, gx, gz, fx, fz))) continue;
       if (nearPond && this.world.pondEdge(x, z) < 0.4 + rand() * 1.6) continue;
+      if (nearStream && this.world.streamEdge(x, z) < 0.2 + rand() * 1.2) continue;
       const dry = 0.5 + 0.5 * this.colorNoise(x * 0.012, z * 0.012);
       // Sparse, short patches where it's dry, and on the heath, where heather takes over.
       if (dry > 0.78 && rand() < (dry - 0.78) * 2.5) continue;

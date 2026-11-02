@@ -76,7 +76,7 @@ function init(msg: CliffInit) {
           const dx = x - f.x, dz = z - f.z;
           const along = Math.min(Math.max(dx * f.dirX + dz * f.dirZ, 0), 8);
           const d = Math.hypot(dx - f.dirX * along, dz - f.dirZ * along);
-          a *= smoothstep(5, 13, d);
+          a *= smoothstep(4.5, 9, d);
         }
       }
       amp[k] = a;
