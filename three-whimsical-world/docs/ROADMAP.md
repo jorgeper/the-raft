@@ -148,6 +148,13 @@ In priority order: the first items are the user's requests for the next sessions
   clear of), so they fit any seed. Optional captions sit in the lower cinema bar. Sound is on while it plays;
   everything it changes is put back after, and nothing is saved. Esc or J stops it. `__app.demo.seek(seconds)` jumps
   into it for review (`.playwright-mcp/demo.js` grabs a frame from each shot).
+  Four more shots (user, 2026-11-01), up front for now until the user places them (the film runs about 6½ minutes):
+  a drone run off the tallest fall, down its gorge and out over the sea, banking into the bends (`Key.roll`); a day
+  in thirty seconds from a clear headland (sunset over the sea, aurora, dawn; `setTime` wraps past 24); the pond at
+  evening on a 50 mm lens with its dragonflies lured into frame (`PondLife.lure`); and the seasons along a front-lit
+  broadleaf wood edge (searched from the tree spots, away from the oak), turning spring to winter on cues with no
+  fades: tree colors ease (`Trees.setSeason(s, false)`). "demo: lens throughout" in the Cinematic panel films every
+  shot without its own lens through your play lens settings.
 
 - Seasons picker (user, 2026-11-01; Time & weather panel, or `?season=autumn`): spring, summer, autumn, winter, eased
   over a few seconds (`src/season.ts`). Spring: fresh yellow-green meadow and blossom on hawthorn-like bushes and a
@@ -192,6 +199,9 @@ In priority order: the first items are the user's requests for the next sessions
   length sets the view" is off), f-stop and extra dreaminess. Focus follows the character in third person, whose
   camera steps back as the lens narrows so the framing holds, and the middle of the frame in first person. The
   gather now stops at each pixel's own blur (or the background's), which brought the cost from about 6 fps to none.
+  Default lens since 2026-11-01: 35 mm at f/1.4 with 3× dreaminess (was 48 mm f/1.2, 1×).
+- Taller person (user, 2026-11-01): Display → "taller (first person eye, m)" lifts the first-person eye up to 1.2 m
+  above the walking eye height (`display.eyeLift`; not in fly mode or the demo).
 - Spray rainbows (user, 2026-11-01): each waterfall's plunge carries a soft cloud of spray (an ellipsoid drawn
   out downstream), and each pixel adds up the spray its view ray crosses, stopping at the scene's depth, then takes
   the bow's color from its angle off the antisolar point (`RAINBOW` in `weather.ts`, 42° primary, faint 51°

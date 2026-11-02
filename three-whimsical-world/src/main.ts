@@ -42,6 +42,8 @@ const display = {
   /** Multiplier on the screen's pixel density (capped at 2); lower is faster, higher is sharper. */
   renderScale: 0.85,
   fov: 60,
+  /** First person: the eye this much higher than an average walker's (m), for a taller person's view. */
+  eyeLift: 0,
   showMinimap: true,
   minimapSize: 220,
   /** The settings panel (H toggles). */
@@ -55,7 +57,7 @@ const display = {
    * ghosts (the user's call, 2026-11-01); grass edges fall back to alpha-to-coverage MSAA. */
   taa: false,
 };
-persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'showMinimap', 'minimapSize', 'showPanel', 'quality', 'showFps', 'taa']);
+persist.bind('display', display, ['maxWidth', 'maxHeight', 'renderScale', 'fov', 'eyeLift', 'showMinimap', 'minimapSize', 'showPanel', 'quality', 'showFps', 'taa']);
 if (!(display.quality in QUALITY_PRESETS)) display.quality = 'medium';
 setQuality(display.quality);
 const stage = document.getElementById('stage')!;
@@ -190,7 +192,7 @@ const weather = new Weather();
 const seasons = new Seasons();
 function applySeason(snap = false) {
   seasons.season = settings.season;
-  world.setSeason(seasons.season);
+  world.setSeason(seasons.season, snap);
   if (snap) {
     seasons.update(0, true);
     weather.heldSnow = seasons.heldSnow;
@@ -611,6 +613,7 @@ displayGui.add(display, 'maxWidth', 640, 3840, 10).name('max width (px)').onChan
 displayGui.add(display, 'maxHeight', 360, 2160, 10).name('max height (px)').onChange(applyDisplay);
 displayGui.add(display, 'renderScale', 0.25, 1.5, 0.05).name('render scale').onChange(applyDisplay);
 displayGui.add(display, 'fov', 30, 100, 1).name('field of view').onChange(applyDisplay);
+displayGui.add(display, 'eyeLift', 0, 1.2, 0.05).name('taller (first person eye, m)');
 displayGui.add(display, 'showMinimap').name('minimap (M)').listen().onChange(applyDisplay);
 displayGui.add(display, 'minimapSize', 120, 480, 10).name('minimap size').onChange(applyDisplay);
 displayGui.close();
@@ -822,8 +825,8 @@ photoGui.add({ save: () => (photoPending = true) }, 'save').name('💾 save phot
 
 // --- Demo mode (J, or ?demo): a scripted five-minute film of the world (src/demo.ts), with optional captions. It
 // drives the clock, weather, season, vibe and lens; everything is put back when it ends, and nothing it sets is saved.
-const demoSettings = { captions: true };
-persist.bind('demo', demoSettings, ['captions']);
+const demoSettings = { captions: true, lens: false };
+persist.bind('demo', demoSettings, ['captions', 'lens']);
 let demoCapture = false;
 /** The demo's forest mood brightens the motes (spores and pollen in the light) by this much. */
 let demoMotes = 1;
@@ -849,17 +852,20 @@ const demoHost: DemoHost = {
   sunDir,
   trees: () => world.treeSpots(),
   setTime(hours, relight) {
-    settings.time = hours;
+    settings.time = ((hours % 24) + 24) % 24;
     if (relight) updateSun();
   },
   weather(kind, now) {
     if (now) jumpWeather(kind);
     else weather.pick(kind);
   },
-  season(s) {
+  season(s, snap = true) {
     if (settings.season === s) return;
     settings.season = s;
-    applySeason(true);
+    applySeason(snap);
+  },
+  dragonflies(at) {
+    world.pondLife.lure(at);
   },
   vibe(v) {
     if (settings.vibe === v) return;
@@ -869,6 +875,8 @@ const demoHost: DemoHost = {
   lens(l) {
     lensSettings.on = !!l;
     if (l) Object.assign(lensSettings, { focal: l.focal, fStop: l.fStop, dreamy: 1, setsFov: true });
+    // "Lens throughout": every other shot through your own lens settings.
+    else if (demoSettings.lens && beforeDemo) Object.assign(lensSettings, beforeDemo.lens, { on: true, setsFov: true });
     applyLens();
   },
   freeze(on) {
@@ -971,6 +979,7 @@ window.addEventListener('pagehide', () => {
 });
 cinemaGui.add({ go: toggleDemo }, 'go').name('✨ demo film (J)');
 cinemaGui.add(demoSettings, 'captions').name('demo captions').onChange((v: boolean) => (demo.captions = v));
+cinemaGui.add(demoSettings, 'lens').name('demo: lens throughout (your lens settings)');
 
 // --- The lens while playing: the photo mode's depth of field, with a lens of your choosing (?lens=48,1.2).
 const playLens = new PlayLens();
@@ -1125,6 +1134,8 @@ const pivot = new THREE.Vector3();
 const desired = new THREE.Vector3();
 const armDir = new THREE.Vector3();
 const probe = new THREE.Vector3();
+/** Where the first-person camera sits: the player's eye, raised for a taller walker. */
+const eyePos = new THREE.Vector3();
 const tilted = new THREE.Quaternion();
 const feet = new THREE.Vector3();
 const lastFeet = new THREE.Vector3();
@@ -1142,8 +1153,10 @@ function updateView(dt: number, snap = false) {
   const third = thirdPerson();
   viewBlend = snap ? Number(third) : THREE.MathUtils.clamp(viewBlend + (third ? dt : -dt) * 4, 0, 1);
   camera.quaternion.copy(player.quaternion);
+  eyePos.copy(player.position);
+  if (movement.mode === 'walk' && !demo.active) eyePos.y += display.eyeLift;
   if (viewBlend <= 0) {
-    camera.position.copy(player.position);
+    camera.position.copy(eyePos);
   } else {
     // Orbit a point just above the shoulders, so looking around swings the camera around the character.
     pivot.copy(player.position).y -= EYE_HEIGHT - 1.6;
@@ -1164,7 +1177,7 @@ function updateView(dt: number, snap = false) {
     smoothArm = snap ? length : length < smoothArm ? length : smoothArm + (length - smoothArm) * Math.min(dt * 3, 1);
     desired.copy(pivot).addScaledVector(armDir, smoothArm * viewBlend);
     camera.quaternion.slerp(tilted.copy(player.quaternion).multiply(TILT), viewBlend);
-    camera.position.lerpVectors(player.position, desired, viewBlend);
+    camera.position.lerpVectors(eyePos, desired, viewBlend);
     const floor = Math.max(world.height(camera.position.x, camera.position.z), 0) + 0.35;
     if (camera.position.y < floor) camera.position.y = floor;
   }

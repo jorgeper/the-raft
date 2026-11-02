@@ -22,9 +22,10 @@ export const photoSettings = {
 export const lensSettings = {
   on: false,
   /** Focal length (mm). */
-  focal: 48,
-  fStop: 1.2,
-  dreamy: 1,
+  focal: 35,
+  fStop: 1.4,
+  /** Dreamier than a real lens: a 35 mm lens alone barely blurs a landscape. */
+  dreamy: 3,
   setsFov: true,
 };
 

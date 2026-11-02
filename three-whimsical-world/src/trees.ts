@@ -412,6 +412,8 @@ interface Placement {
   /** The tree's own tint, and its color in summer (a few turning early, in drifts). */
   natural: THREE.Color;
   summer: THREE.Color;
+  /** The color for the current season, which `color` eases toward. */
+  target: THREE.Color;
 }
 
 export class Trees {
@@ -473,6 +475,7 @@ export class Trees {
         color: new THREE.Color().setRGB(0.85 + rand() * 0.25, 0.88 + rand() * 0.22, 0.8 + rand() * 0.2),
         natural: new THREE.Color(),
         summer: new THREE.Color(),
+        target: new THREE.Color(),
       });
       const placed = this.placements[this.placements.length - 1];
       placed.natural.copy(placed.color);
@@ -545,6 +548,7 @@ export class Trees {
         color: new THREE.Color(0.95, 1, 0.92),
         natural: new THREE.Color(0.95, 1, 0.92),
         summer: new THREE.Color(0.95, 1, 0.92),
+        target: new THREE.Color(0.95, 1, 0.92),
       });
     }
 
@@ -614,10 +618,12 @@ export class Trees {
    * and a share of the ash, aspen and rowan; in autumn every broadleaf tree turned (a few late ones still green); in winter all of
    * them, withered (src/season.ts). Evergreens keep their color. The instance colors refresh on the next update.
    */
-  setSeason(season: Season) {
+  /** `snap`: at once; otherwise each tree's color eases there over a couple of seconds (see `update`). */
+  setSeason(season: Season, snap = true) {
     // Rowans flower in spring; the berries ripen by late summer and hang on into winter.
     this.fruiting = season !== 'spring';
     for (const pl of this.placements) {
+      const was = pl.color.clone();
       const v = this.all[pl.variant];
       const kind = leafKind(v);
       const h = Math.abs(Math.sin(pl.center.x * 12.9898 + pl.center.z * 78.233) * 43758.5453) % 1;
@@ -635,12 +641,19 @@ export class Trees {
         const gold = { aspen: 0.92 + 0.08 * k, ash: 0.7 + 0.22 * k, rowan: 0.5 + 0.08 * k, oak: 0.55 + 0.14 * k, bush: 0.55 + 0.35 * k, needles: 1 }[kind];
         pl.color.setRGB(1, gold, 0.3);
       }
+      pl.target.copy(pl.color);
+      if (!snap) pl.color.copy(was);
     }
+    this.easeUntil = snap ? 0 : performance.now() + 6000;
   }
+  /** While set (a time in ms), tree colors are still easing toward their season's. */
+  private easeUntil = 0;
+  private easedAt = 0;
 
-  /** Where each tree stands, with the radius of its crown (m): for laying out camera moves that miss them. */
+  /** Where each tree stands, with the radius of its crown (m) and whether it turns with the seasons (broadleaf):
+   * for laying out camera moves that miss them. */
   spots() {
-    return this.placements.map((p) => ({ x: p.center.x, z: p.center.z, r: p.radius * 0.5 }));
+    return this.placements.map((p) => ({ x: p.center.x, z: p.center.z, r: p.radius * 0.5, broad: leafKind(this.all[p.variant]) !== 'needles' }));
   }
 
   /** Frees this world's instance buffers; species geometry and impostors stay cached for the next world. */
@@ -653,6 +666,16 @@ export class Trees {
   /** Re-buckets every tree into a detail level by distance, skipping ones outside the (padded) view. */
   update(camera: THREE.Camera) {
     if (this.impostors.length === 0) this.tryBakeImpostors();
+    // A season turning: every tree's color eases toward its new one (the leaf shader reads the turning from it).
+    const now = performance.now();
+    if (this.easeUntil > now) {
+      const k = Math.min((now - (this.easedAt || now - 16)) / 1600, 1);
+      for (const pl of this.placements) pl.color.lerp(pl.target, k);
+    } else if (this.easeUntil) {
+      for (const pl of this.placements) pl.color.copy(pl.target);
+      this.easeUntil = 0;
+    }
+    this.easedAt = now;
     this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projView);
     for (const pair of this.meshes.flat()) pair[0].count = pair[1].count = 0;

@@ -69,8 +69,8 @@ export class World {
   }
 
   /** Re-marks the trees for a season (the rest follows the season uniforms). */
-  setSeason(season: Season) {
-    this.trees.setSeason(season);
+  setSeason(season: Season, snap = true) {
+    this.trees.setSeason(season, snap);
   }
 
   update(camera: THREE.Camera, fill = false) {

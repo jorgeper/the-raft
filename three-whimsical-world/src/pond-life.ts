@@ -386,12 +386,49 @@ export class PondLife {
     return mesh;
   }
 
+  /** Where the dragonflies are drawn to (the demo's pond shot), and on which pond. */
+  private lurePoint: THREE.Vector3 | null = null;
+  private lurePond: Pond | null = null;
+
+  /**
+   * Draws the nearest pond's dragonflies (and a few more) to hover and dart around `at`, a little over the water, so
+   * a close shot can hold them; null lets them go back to roaming their pond.
+   */
+  lure(at: THREE.Vector3 | null) {
+    this.lurePoint = at?.clone() ?? null;
+    this.lurePond = null;
+    if (!at) return;
+    let best = Infinity;
+    for (const p of this.world.ponds) {
+      const d = Math.hypot(p.x - at.x, p.z - at.z) - p.radius;
+      if (d < best) (best = d), (this.lurePond = p);
+    }
+    const pond = this.lurePond;
+    if (!pond) return;
+    // Bring them in close (they keep their own colors), each at its own spot around the lure.
+    const near = this.flies.filter((f) => f.pond === pond);
+    for (const [i, f] of near.entries()) {
+      const a = (i / near.length) * Math.PI * 2;
+      f.x = f.tx = at.x + Math.cos(a) * 0.9;
+      f.z = f.tz = at.z + Math.sin(a) * 0.9;
+      f.y = f.ty = at.y + (this.rand() - 0.5) * 0.3;
+      f.hover = this.rand() * 1.5;
+    }
+  }
+
   /** Dragonflies hover, dart a metre or two to a new spot, and sometimes dip to touch the water. */
   private stepFly(f: Dragonfly, time: number, dt: number) {
     const p = f.pond;
     if (f.hover > 0) {
       f.hover -= dt;
-      if (f.hover <= 0) {
+      if (f.hover <= 0 && this.lurePoint && p === this.lurePond) {
+        // Lured: short darts around the lure, between hovers.
+        const L = this.lurePoint, a = this.rand() * Math.PI * 2, d = 0.3 + this.rand() * 1.3;
+        f.tx = L.x + Math.cos(a) * d;
+        f.tz = L.z + Math.sin(a) * d;
+        f.dip = this.world.pondEdge(f.tx, f.tz) < -0.4 && this.rand() < 0.12;
+        f.ty = f.dip ? p.level + 0.015 : L.y + (this.rand() - 0.5) * 0.5;
+      } else if (f.hover <= 0) {
         // Next spot: over the water or along the margin, near where it is.
         const a = this.rand() * Math.PI * 2, d = 0.8 + this.rand() * 2.2;
         let tx = f.x + Math.cos(a) * d, tz = f.z + Math.sin(a) * d;

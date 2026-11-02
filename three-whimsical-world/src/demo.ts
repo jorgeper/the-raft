@@ -20,12 +20,15 @@ export interface DemoHost {
   /** Toward the sun, for the time last set. */
   readonly sunDir: THREE.Vector3;
   /** The trees: where they stand and how wide their crowns are. */
-  trees(): { x: number; z: number; r: number }[];
+  trees(): { x: number; z: number; r: number; broad: boolean }[];
   /** Sets the clock; `relight` re-lights the sky and land (a few times a second is plenty). */
   setTime(hours: number, relight: boolean): void;
   /** `now`: there at once (on a cut); otherwise it rolls in over a few seconds. */
   weather(kind: WeatherKind, now: boolean): void;
-  season(season: Season): void;
+  /** `snap`: at once (at a cut); otherwise the land turns over a few seconds. */
+  season(season: Season, snap?: boolean): void;
+  /** Draws a pond's dragonflies to hover around a point (null: let them roam). */
+  dragonflies(at: THREE.Vector3 | null): void;
   vibe(name: VibeName): void;
   /** A lens for the shot, or null for the usual view. */
   lens(lens: { focal: number; fStop: number } | null): void;
@@ -60,6 +63,8 @@ const DUSK_OFF = (50 * Math.PI) / 180;
 interface Key {
   pos: THREE.Vector3;
   look: THREE.Vector3;
+  /** Banking (radians, + rolls right), for fast moves through turns. */
+  roll?: number;
 }
 
 interface Cue {
@@ -110,6 +115,7 @@ export class Demo {
   private t = 0;
   private posCurve!: THREE.CatmullRomCurve3;
   private lookCurve!: THREE.CatmullRomCurve3;
+  private rollCurve: THREE.CatmullRomCurve3 | null = null;
   private lift = 0;
   private done = new Set<Cue>();
   private sinceLight = 0;
@@ -174,6 +180,7 @@ export class Demo {
     this.host.freeze(false);
     this.host.sprayBow(true);
     this.host.mood(null);
+    this.host.dragonflies(null);
   }
 
   /** Jumps to `seconds` into the film (for reviewing a shot), running the cues before it. */
@@ -226,11 +233,13 @@ export class Demo {
     h.aurora(shot.aurora ?? null);
     h.sprayBow(!shot.noSprayBow);
     h.mood(shot.mood ?? null);
+    h.dragonflies(null);
     this.el.vf.style.display = shot.viewfinder ? 'block' : 'none';
     this.el.vfInfo.textContent = shot.viewfinder ?? '';
     const keys = shot.path();
     this.posCurve = new THREE.CatmullRomCurve3(keys.map((k) => k.pos), false, 'centripetal');
     this.lookCurve = new THREE.CatmullRomCurve3(keys.map((k) => k.look), false, 'centripetal');
+    this.rollCurve = keys.some((k) => k.roll) ? new THREE.CatmullRomCurve3(keys.map((k) => V(k.roll ?? 0, 0, 0))) : null;
     this.el.title.textContent = shot.title ?? '';
     this.el.line.textContent = shot.line ?? '';
     this.captionAge = 0;
@@ -282,6 +291,7 @@ export class Demo {
     eye.position.copy(p);
     this.m.lookAt(p, this.lookCurve.getPoint(u), this.up);
     eye.quaternion.setFromRotationMatrix(this.m);
+    if (this.rollCurve) eye.rotateZ(-this.rollCurve.getPoint(u).x);
     if (cut) this.host.cut();
 
     // Fades at the cuts and dips at the cues.
@@ -361,7 +371,7 @@ export class Demo {
     // Directions toward (and away from) the sun across the ground, for the time a shot has just set.
     const sunFlat = () => new THREE.Vector2(h.sunDir.x, h.sunDir.z).normalize();
     // The trees on a 10 m grid, to keep camera lines out of trunks and crowns.
-    const grid = new Map<string, { x: number; z: number; r: number }[]>();
+    const grid = new Map<string, { x: number; z: number; r: number; broad: boolean }[]>();
     for (const tr of h.trees()) {
       const k = `${Math.floor(tr.x / 10)},${Math.floor(tr.z / 10)}`;
       (grid.get(k) ?? grid.set(k, []).get(k)!).push(tr);
@@ -397,6 +407,189 @@ export class Demo {
 
     const wood0 = () => woods[0] ?? start;
     const shots: Shot[] = [];
+
+    // --- New shots, up front for review (to be moved to their places in the film).
+
+    // A drone run: off the highest fall, down its gorge at full speed and out over the sea, banking through the bends.
+    const tallFall = [...f.waterfalls].sort((a, b) => b.top - a.top)[0];
+    if (tallFall) {
+      shots.push({
+        duration: 20,
+        hours: [18.3, 18.45],
+        weather: 'fair',
+        fadeIn: 2,
+        clearance: 6,
+        title: 'Drone run',
+        line: 'Off the falls and down the gorge at full throttle, out over the sea.',
+        path: () => {
+          const w = tallFall;
+          const plunge = { x: w.x + w.dirX * 14, z: w.z + w.dirZ * 14 };
+          // The river the fall pours into, followed by its centerline.
+          const rivers = f.riverCenters(plunge.x);
+          let ri = 0;
+          rivers.forEach((r, i) => Math.abs(r.z - plunge.z) < Math.abs(rivers[ri].z - plunge.z) && (ri = i));
+          const mid = (x: number) => f.riverCenters(x)[ri].z;
+          // Easing away from the falls, then faster and faster: the keys are evenly spaced in time.
+          const xs = [plunge.x + 10, plunge.x + 22, plunge.x + 45, plunge.x + 80];
+          for (let x = plunge.x + 125; xs.length < 40; x += 46) {
+            xs.push(x);
+            if (x > 0 && f.height(x, mid(x)) < -5) break;
+          }
+          const keys: Key[] = xs.map((x, i) => {
+            const up = i === 0 ? 16 : 12;
+            return {
+              pos: at(x, up, mid(x)),
+              look: i === 0 ? V(w.x, w.top * 0.6, w.z) : at(x + 90, up - 3, mid(x + 90)),
+            };
+          });
+          // Out over the sea, climbing.
+          const last = xs[xs.length - 1], z = mid(last);
+          keys.push({ pos: V(last + 120, 22, z), look: V(last + 600, 18, z) }, { pos: V(last + 230, 34, z), look: V(last + 800, 22, z) });
+          // Bank into the bends: roll with the change of heading.
+          const heading = (i: number) => Math.atan2(keys[i + 1].pos.z - keys[i].pos.z, keys[i + 1].pos.x - keys[i].pos.x);
+          for (let i = 2; i < keys.length - 1; i++) {
+            let turn = heading(i) - heading(i - 1);
+            turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+            keys[i].roll = Math.max(-0.45, Math.min(0.45, turn * 3));
+          }
+          return keys;
+        },
+      });
+    }
+
+    // A day in thirty seconds, from a headland over the coast: the sun sets over the sea, the northern lights come
+    // out, dawn lights the land from behind, and it's afternoon again.
+    shots.push({
+      duration: 30,
+      hours: [15, 39],
+      weather: 'fair',
+      aurora: 1.2,
+      clearance: 8,
+      title: 'A day',
+      line: 'Twenty-four hours in thirty seconds.',
+      path: () => {
+        // A high, open spot a little back from the shore, near the start.
+        let best = { x: shore - 60, z: 0, score: -1e9 };
+        for (let z = -320; z <= 320; z += 20) {
+          const sx = shoreAt(z);
+          for (const back of [35, 55, 80, 110]) {
+            const x = sx - back;
+            if (f.forest(x, z) > 0.3) continue;
+            // No crown in front of the lens: the drift and the first stretch of the view must miss every tree.
+            if (clearLine(x - 2, z + 2, x + 12, z - 8, 3) < 1) continue;
+            const lx = 320, lz = -260, ll = Math.hypot(lx, lz);
+            if (clearLine(x + 5, z - 3, x + 5 + (lx / ll) * 45, z - 3 + (lz / ll) * 45, 2.5) < 1) continue;
+            const score = f.height(x, z) - Math.abs(z) * 0.03;
+            if (score > best.score) best = { x, z, score };
+          }
+        }
+        const look = (x: number, z: number) => at(x + 320, 12, z - 260);
+        return [0, 0.5, 1].map((k) => {
+          const x = best.x + 10 * k, z = best.z - 6 * k;
+          return { pos: at(x, 9, z), look: look(x, z) };
+        });
+      },
+    });
+
+    // The pond in the evening: low over the water, dragonflies hunting in the light, the far shore soft.
+    const pond = [...f.ponds].sort((a, b) => dist(a, start) - dist(b, start))[0];
+    if (pond) {
+      shots.push({
+        duration: 16,
+        hours: [17.7, 17.8],
+        weather: 'clear',
+        lens: { focal: 50, fStop: 1.8 },
+        clearance: 0.2,
+        title: 'The pond',
+        line: 'Dragonflies hunting over the water in the evening light.',
+        path: () => {
+          // From the shore away from the sun, looking across the water into the light.
+          const s = sunFlat();
+          let d = 0;
+          while (d < pond.radius * 2.5 && f.pondEdge(pond.x - s.x * d, pond.z - s.y * d) < 0) d += 0.25;
+          const sx = pond.x - s.x * d, sz = pond.z - s.y * d;
+          const lure = V(sx + s.x * 3.2, pond.level + 0.45, sz + s.y * 3.2);
+          h.dragonflies(lure);
+          const px = -s.y, pz = s.x;
+          return [-1, 0, 1].map((k) => ({
+            pos: V(sx + s.x * 0.7 + px * k * 0.9, pond.level + 0.55, sz + s.y * 0.7 + pz * k * 0.9),
+            look: V(lure.x + px * k * 0.3, lure.y, lure.z + pz * k * 0.3),
+          }));
+        },
+      });
+    }
+
+    // The seasons at a woodland edge: the land turns through the year as we drift along it, with no cuts.
+    const seasonLine: Record<Season, string> = {
+      spring: 'Blossom on the thorn and the wild cherry, fresh green in the meadow.',
+      summer: 'Long days, and here and there a tree already turning.',
+      autumn: 'Gold, copper and red, and the meadow gone to seed.',
+      winter: 'Snow on the boughs, and bare branches.',
+    };
+    const seasonTitle: Record<Season, string> = { spring: 'Spring', summer: 'Summer', autumn: 'Autumn', winter: 'Winter' };
+    const turnTo = (at: number, s: Season): Cue => ({
+      at,
+      run: () => {
+        h.season(s, false);
+        this.say(seasonTitle[s], seasonLine[s]);
+      },
+    });
+    shots.push({
+      duration: 32,
+      hours: [14.6, 14.9],
+      weather: 'clear',
+      season: 'spring',
+      clearance: 2,
+      title: seasonTitle.spring,
+      line: seasonLine.spring,
+      path: () => {
+        // A meadow facing the edge of a broadleaf wood, with the sun over our shoulder so the leaves show
+        // their colors: the blossom, the turning, the snow. Scored by broadleaf crowns in a wedge ahead.
+        const s = sunFlat();
+        const sunA = Math.atan2(s.y, s.x);
+        let best: { x: number; z: number; a: number; score: number } | null = null;
+        for (let x = -700; x <= 500; x += 16) {
+          for (let z = -600; z <= 600; z += 16) {
+            if (dist({ x, z }, start) > 650 || dist({ x, z }, mark) < 90) continue;
+            if (f.height(x, z) < 2 || f.forest(x, z) > 0.25 || f.clearing(x, z) > 0.3) continue;
+            if (!clearAt(x, z, 6)) continue;
+            for (const off of [-0.4, -0.2, 0, 0.2, 0.4]) {
+              const a = sunA + Math.PI + off;
+              const ux = Math.cos(a), uz = Math.sin(a);
+              // The camera crabs 24 m across the view: that line must be open, and so must 35 m of meadow ahead.
+              const px = -uz, pz = ux;
+              if (clearLine(x - px * 14, z - pz * 14, x + px * 14, z + pz * 14, 2.5) < 1) continue;
+              if (clearLine(x, z, x + ux * 35, z + uz * 35, 2) < 1) continue;
+              let broad = 0, needles = 0;
+              const ix = Math.floor(x / 10), iz = Math.floor(z / 10);
+              for (let gi = ix - 12; gi <= ix + 12; gi++) {
+                for (let gk = iz - 12; gk <= iz + 12; gk++) {
+                  for (const tr of grid.get(`${gi},${gk}`) ?? []) {
+                    const dx = tr.x - x, dz = tr.z - z;
+                    const along = dx * ux + dz * uz, across = Math.abs(dx * px + dz * pz);
+                    if (along < 40 || along > 120 || across > along * 0.6) continue;
+                    if (tr.broad) broad++;
+                    else needles++;
+                  }
+                }
+              }
+              // Mostly broadleaf, the light square behind us, and not too far from the start.
+              const score = broad - 2.5 * needles - Math.abs(off) * 3 - dist({ x, z }, start) * 0.004;
+              if (broad >= 8 && (!best || score > best.score)) best = { x, z, a, score };
+            }
+          }
+        }
+        const o = best ?? { x: mark.x - 40, z: mark.z, a: 0 };
+        const ux = Math.cos(o.a), uz = Math.sin(o.a), px = -uz, pz = ux;
+        const focus = at(o.x + ux * 70, 7, o.z + uz * 70);
+        return [-1, -0.5, 0, 0.5, 1].map((k) => ({
+          pos: at(o.x + px * k * 12, 3.5 + (k + 1) * 1.2, o.z + pz * k * 12),
+          look: V(focus.x + px * k * 4, focus.y, focus.z + pz * k * 4),
+        }));
+      },
+      cues: [turnTo(8, 'summer'), turnTo(16, 'autumn'), turnTo(24, 'winter')],
+    });
+
 
     // Dawn over the sea, low over the swell toward the land, the sun coming up behind it.
     shots.push({
@@ -614,44 +807,6 @@ export class Demo {
         { at: 9, run: () => h.weather('clear', false) },
         { at: 11, run: () => this.say('Weather', 'When the sun breaks through behind you: a rainbow.') },
       ],
-    });
-
-    // The seasons, over the same stretch of land.
-    const seasonLine: Record<Season, string> = {
-      spring: 'Blossom on the thorn and the wild cherry, fresh green in the meadow.',
-      summer: 'Long days, and here and there a tree already turning.',
-      autumn: 'Gold, copper and red, and the meadow gone to seed.',
-      winter: 'Snow on the boughs, and bare branches.',
-    };
-    const seasonTitle: Record<Season, string> = { spring: 'Spring', summer: 'Summer', autumn: 'Autumn', winter: 'Winter' };
-    const seasonCue = (at: number, s: Season): Cue => ({
-      at,
-      dip: true,
-      run: () => {
-        h.season(s);
-        h.cut();
-        this.el.title.textContent = seasonTitle[s];
-        this.el.line.textContent = seasonLine[s];
-        this.captionAge = 0.4;
-      },
-    });
-    shots.push({
-      duration: 28,
-      hours: [10, 10.2],
-      weather: 'clear',
-      season: 'spring',
-      clearance: 20,
-      title: seasonTitle.spring,
-      line: seasonLine.spring,
-      path: () => {
-        const s = sunFlat();
-        const o = { x: 0, z: -60 };
-        return [0, 1, 2].map((k) => {
-          const x = o.x - s.x * k * 16, z = o.z - s.y * k * 16;
-          return { pos: at(x, 45 - k * 4, z), look: at(x - s.x * 140, 0, z - s.y * 140) };
-        });
-      },
-      cues: [seasonCue(7, 'summer'), seasonCue(14, 'autumn'), seasonCue(21, 'winter')],
     });
 
     // The vibes: one golden-hour orbit, a color mood every couple of seconds.
