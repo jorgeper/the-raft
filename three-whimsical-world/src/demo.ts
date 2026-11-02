@@ -7,10 +7,10 @@ import { VIBES, type VibeName } from './vibes';
 /**
  * Demo mode (J, or `?demo`): a scripted five-minute film of the world, for showing it off or recording it. A run of
  * shots, each with its own camera move, time of day, weather, season, color vibe and lens, joined by fades that hide
- * the jumps: dawn over the sea, the meadow, an 85 mm lens wide open, the standing stones, the forest's light shafts,
- * a waterfall's rainbow, the cliffs, the high mountains, a whale off the coast, a passing shower and its rainbow, the
+ * the jumps: dawn over the sea, the meadow, an 85 mm lens wide open, mist and light shafts in the deep forest,
+ * a waterfall's rainbow, the cliffs, a whale off the coast, a passing shower and its rainbow, the
  * four seasons, the vibes, photo mode freezing a wave, sunset and the northern lights. Optional captions name what's
- * on screen. The shots are laid out from the world itself (its coast, landmarks, falls, peaks and forests), so they
+ * on screen. The shots are laid out from the world itself (its coast, landmarks, falls and forests), so they
  * fit any seed. main.ts plays it like the flythrough and puts everything back when it ends.
  */
 
@@ -36,11 +36,26 @@ export interface DemoHost {
   whale(at: { x: number; z: number }, kind: 'blow' | 'breach'): void;
   /** Whether the waterfalls' spray throws a rainbow. */
   sprayBow(on: boolean): void;
+  /** The forest's mood: low fog (strength, height in m), brighter motes (spores and pollen), stronger light shafts. */
+  mood(mood: Mood | null): void;
   /** Asks for the next rendered frame, handed back through `Demo.develop`. */
   capture(): void;
   /** After a jump: fill the streamed detail around the new view and drop the old frame's history. */
   cut(): void;
 }
+
+export interface Mood {
+  fog: number;
+  fogHeight: number;
+  motes: number;
+  light: number;
+}
+
+/** Under the trees: mist low between the trunks, spores glittering in the beams. */
+const FOREST: Mood = { fog: 0.95, fogHeight: 4.5, motes: 2.6, light: 2.2 };
+/** Dusk: thinner mist, so the sky through the trunks keeps its colors. */
+const DUSK: Mood = { fog: 0.5, fogHeight: 3, motes: 2.2, light: 1.8 };
+const DUSK_OFF = (50 * Math.PI) / 180;
 
 interface Key {
   pos: THREE.Vector3;
@@ -68,6 +83,7 @@ interface Shot {
   aurora?: number;
   /** No rainbow in the falls' spray. */
   noSprayBow?: boolean;
+  mood?: Mood;
   /** The camera stays this far above the ground (m). */
   clearance?: number;
   fadeIn?: number;
@@ -157,6 +173,7 @@ export class Demo {
     this.el.print.style.opacity = '0';
     this.host.freeze(false);
     this.host.sprayBow(true);
+    this.host.mood(null);
   }
 
   /** Jumps to `seconds` into the film (for reviewing a shot), running the cues before it. */
@@ -208,6 +225,7 @@ export class Demo {
     h.freeze(!!shot.freeze);
     h.aurora(shot.aurora ?? null);
     h.sprayBow(!shot.noSprayBow);
+    h.mood(shot.mood ?? null);
     this.el.vf.style.display = shot.viewfinder ? 'block' : 'none';
     this.el.vfInfo.textContent = shot.viewfinder ?? '';
     const keys = shot.path();
@@ -322,24 +340,24 @@ export class Demo {
       f.landmarks.filter((l) => l.kind === kind && f.forest(l.x, l.z) < 0.3).sort((a, b) => dist(a, start) - dist(b, start))[0];
     const circle = byNear('circle');
     const oak = byNear('oak');
-    const stones = circle ?? oak ?? { x: -200, z: -100, radius: 12, kind: 'circle' as const };
+    // What the meadow shots head for: the giant oak, else a stone circle.
+    const mark = oak ?? circle ?? { x: -200, z: -100, radius: 12, kind: 'oak' as const };
     const fall = [...f.waterfalls].sort((a, b) => dist(a, start) - dist(b, start))[0];
-    // The highest ground, and a deep, level stretch of forest near the start.
-    let peak = { x: 0, z: 0, h: -1e9 };
-    let woods: { x: number; z: number } | null = null;
+    // Deep, level stretches of forest near the start, well apart (a different wood for each forest shot).
+    const deepWoods: { x: number; z: number }[] = [];
     for (let x = -980; x < 980; x += 20) {
       for (let z = -980; z < 980; z += 20) {
-        const y = f.height(x, z);
-        if (y > peak.h) peak = { x, z, h: y };
-        if (dist({ x, z }, start) > 700 || y < 3) continue;
-        if (woods && dist({ x, z }, start) > dist(woods, start)) continue;
+        if (dist({ x, z }, start) > 700 || f.height(x, z) < 3) continue;
         let deep = true;
         for (const [dx, dz] of [[0, 0], [20, 0], [-20, 0], [0, 20], [0, -20], [35, 35], [-35, 35], [35, -35], [-35, -35]]) {
           if (f.forest(x + dx, z + dz) < 0.8 || f.clearing(x + dx, z + dz) > 0.02) deep = false;
         }
-        if (deep && Math.abs(f.height(x + 10, z) - f.height(x - 10, z)) < 3 && Math.abs(f.height(x, z + 10) - f.height(x, z - 10)) < 3) woods = { x, z };
+        if (deep && Math.abs(f.height(x + 10, z) - f.height(x - 10, z)) < 3 && Math.abs(f.height(x, z + 10) - f.height(x, z - 10)) < 3) deepWoods.push({ x, z });
       }
     }
+    deepWoods.sort((a, b) => dist(a, start) - dist(b, start));
+    const woods: { x: number; z: number }[] = [];
+    for (const c of deepWoods) if (woods.length < 3 && woods.every((w) => dist(w, c) > 120)) woods.push(c);
     // Directions toward (and away from) the sun across the ground, for the time a shot has just set.
     const sunFlat = () => new THREE.Vector2(h.sunDir.x, h.sunDir.z).normalize();
     // The trees on a 10 m grid, to keep camera lines out of trunks and crowns.
@@ -366,9 +384,21 @@ export class Demo {
       return ok / (n + 1);
     };
 
+    /** A line of `half` m each side of `o` along (dx, dz), shifted sideways until it misses every trunk. */
+    const clearWalk = (o: { x: number; z: number }, dx: number, dz: number, half: number) => {
+      for (let side = 0; side <= 24; side += 2) {
+        for (const sgn of [1, -1]) {
+          const cx = o.x - dz * side * sgn, cz = o.z + dx * side * sgn;
+          if (clearLine(cx - dx * half, cz - dz * half, cx + dx * half, cz + dz * half, 1.2, true) === 1) return { x: cx, z: cz };
+        }
+      }
+      return o;
+    };
+
+    const wood0 = () => woods[0] ?? start;
     const shots: Shot[] = [];
 
-    // 1. Dawn over the sea, low over the swell toward the land, the sun coming up behind it.
+    // Dawn over the sea, low over the swell toward the land, the sun coming up behind it.
     shots.push({
       duration: 24,
       hours: [5.6, 6.2],
@@ -380,11 +410,72 @@ export class Demo {
         { pos: V(shore + 330, 7, 40), look: V(shore - 300, 18, 10) },
         { pos: V(shore + 210, 5, 28), look: V(shore - 300, 15, 0) },
         { pos: V(shore + 100, 4, 14), look: V(shore - 300, 12, -10) },
-        { pos: at(shore + 12, 3.5, 6), look: at(stones.x, 10, stones.z) },
+        { pos: at(shore + 12, 3.5, 6), look: at(mark.x, 10, mark.z) },
       ],
     });
 
-    // 2. Skimming the meadow grass toward the standing stones in the morning light.
+    // Into the deep forest at sunrise: the sun low through the trunks, the sky orange to blue beyond them, mist
+    // on the ground and spores glittering in the beams.
+    if (woods.length) {
+      const wood = (i: number) => woods[Math.min(i, woods.length - 1)];
+      // Walking toward the sun.
+      shots.push({
+        duration: 16,
+        hours: [6.35, 6.5],
+        weather: 'clear',
+        mood: FOREST,
+        clearance: 1.6,
+        title: 'The deep forest',
+        line: 'Morning mist between the trunks, and the low sun cutting through in beams.',
+        path: () => {
+          const s = sunFlat();
+          const o = clearWalk(wood(0), s.x, s.y, 8);
+          return [0, 0.5, 1].map((k) => {
+            const x = o.x + s.x * (k * 14 - 7), z = o.z + s.y * (k * 14 - 7);
+            return { pos: at(x, 1.8, z), look: at(x + s.x * 30, 4 + 2 * k, z + s.y * 30) };
+          });
+        },
+      });
+      // Rising out of the ferns, into the light.
+      shots.push({
+        duration: 14,
+        hours: [6.6, 6.7],
+        weather: 'clear',
+        mood: FOREST,
+        clearance: 0.35,
+        title: 'Spores and pollen',
+        line: 'Motes drift and glitter where the light falls, over ferns and moss.',
+        path: () => {
+          const s = sunFlat();
+          const o = clearWalk(wood(1), s.x, s.y, 4);
+          return [0, 0.5, 1].map((k) => {
+            const x = o.x + s.x * (k * 6 - 3), z = o.z + s.y * (k * 6 - 3);
+            return { pos: at(x, 0.5 + 3 * k * k, z), look: at(x + s.x * 18, 1.2 + 5 * k, z + s.y * 18) };
+          });
+        },
+      });
+      // Tracking sideways past the trunks, the beams slanting toward us between them.
+      shots.push({
+        duration: 14,
+        hours: [6.85, 6.95],
+        weather: 'clear',
+        mood: FOREST,
+        clearance: 1.4,
+        title: 'Under the canopy',
+        line: 'Every trunk throws its own shadow through the haze.',
+        path: () => {
+          const s = sunFlat();
+          const px = -s.y, pz = s.x;
+          const o = clearWalk(wood(2), px, pz, 8);
+          return [0, 0.5, 1].map((k) => {
+            const x = o.x + px * (k * 16 - 8), z = o.z + pz * (k * 16 - 8);
+            return { pos: at(x, 1.7, z), look: at(x + s.x * 30 + px * 4, 5, z + s.y * 30 + pz * 4) };
+          });
+        },
+      });
+    }
+
+    // Skimming the meadow grass toward the giant oak in the morning light.
     shots.push({
       duration: 20,
       hours: [8.1, 8.5],
@@ -393,24 +484,24 @@ export class Demo {
       title: 'The meadows',
       line: 'Every blade of grass is real geometry, swaying in the wind and wet with dew. Turn the sound up: wind, birdsong, the surf.',
       path: () => {
-        // In toward the stones from 130 m out, along a line clear of trees over open meadow, the sun at our back.
+        // In toward it from 130 m out, along a line clear of trees over open meadow, the sun at our back.
         const s = sunFlat();
-        const near = Math.max(stones.radius * 3, 30), far = 130;
+        const near = Math.max(mark.radius * 3, 30), far = 130;
         let best = { score: -1e9, ox: 1, oz: 0 };
         for (let a = 0; a < Math.PI * 2; a += Math.PI / 18) {
           const ox = Math.cos(a), oz = Math.sin(a);
           let open = 0;
-          for (let d = near; d <= far; d += 10) open += f.height(stones.x + ox * d, stones.z + oz * d) > 1.5 && f.forest(stones.x + ox * d, stones.z + oz * d) < 0.4 ? 1 : 0;
-          const clear = clearLine(stones.x + ox * near, stones.z + oz * near, stones.x + ox * far, stones.z + oz * far, 3);
+          for (let d = near; d <= far; d += 10) open += f.height(mark.x + ox * d, mark.z + oz * d) > 1.5 && f.forest(mark.x + ox * d, mark.z + oz * d) < 0.4 ? 1 : 0;
+          const clear = clearLine(mark.x + ox * near, mark.z + oz * near, mark.x + ox * far, mark.z + oz * far, 3);
           const score = clear * 4 + open / 12 + (ox * s.x + oz * s.y);
           if (score > best.score) best = { score, ox, oz };
         }
-        const along = (d: number, up: number) => at(stones.x + best.ox * d, up, stones.z + best.oz * d);
-        return [far, far * 0.7 + near * 0.3, far * 0.35 + near * 0.65, near].map((d, i) => ({ pos: along(d, 1.9 - 0.15 * i), look: at(stones.x, 3, stones.z) }));
+        const along = (d: number, up: number) => at(mark.x + best.ox * d, up, mark.z + best.oz * d);
+        return [far, far * 0.7 + near * 0.3, far * 0.35 + near * 0.65, near].map((d, i) => ({ pos: along(d, 1.9 - 0.15 * i), look: at(mark.x, 3, mark.z) }));
       },
     });
 
-    // 3. A real lens: 85 mm wide open, crabbing low past the meadow flowers with the stones soft behind.
+    // A real lens: 85 mm wide open, crabbing low past the meadow flowers with the oak soft behind.
     shots.push({
       duration: 16,
       hours: [9, 9.1],
@@ -420,72 +511,26 @@ export class Demo {
       title: 'A real lens',
       line: '85 mm at f/1.4: depth of field and bokeh while you play, not only in photo mode.',
       path: () => {
-        // Looking at the stones from the sea side, 45 m out; sliding sideways 7 m.
-        const ax = shore - stones.x, az = -stones.z, al = Math.hypot(ax, az) || 1;
-        const ux = ax / al, uz = az / al, sx = -uz, sz = ux;
-        const base = { x: stones.x + ux * 45, z: stones.z + uz * 45 };
+        // Looking at it from 45 m out on its most meadowy side (high grassy ground, no trees between); sliding sideways 7 m.
+        let best = { score: -1e9, ux: 1, uz: 0 };
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 18) {
+          const ux = Math.cos(a), uz = Math.sin(a);
+          let grass = 0;
+          for (let d = 30; d <= 60; d += 5) {
+            const x = mark.x + ux * d, z = mark.z + uz * d;
+            grass += f.height(x, z) > 3 && f.forest(x, z) < 0.3 ? 1 : 0;
+          }
+          const score = grass + 4 * clearLine(mark.x + ux * 15, mark.z + uz * 15, mark.x + ux * 50, mark.z + uz * 50, 2);
+          if (score > best.score) best = { score, ux, uz };
+        }
+        const { ux, uz } = best, sx = -uz, sz = ux;
+        const base = { x: mark.x + ux * 45, z: mark.z + uz * 45 };
         return [-1, 0, 1].map((k) => {
           const cx = base.x + sx * 3.5 * k, cz = base.z + sz * 3.5 * k;
           return { pos: at(cx, 0.9, cz), look: at(cx - ux * 9, 0.45, cz - uz * 9) };
         });
       },
     });
-
-    // 4. Round the standing stones (or the giant oak) in the afternoon.
-    const isCircle = stones.kind === 'circle';
-    shots.push({
-      duration: 18,
-      hours: [16, 16.5],
-      weather: 'fair',
-      clearance: 2,
-      title: isCircle ? 'Standing stones' : 'The old oak',
-      line: isCircle
-        ? 'Stone circles, rune stones and burial mounds keep their ground open in the wild.'
-        : 'A lone giant oak on the hill, five centuries old.',
-      path: () => {
-        const r = isCircle ? Math.max(stones.radius * 2.6, 22) : Math.max(stones.radius * 3.5, 50);
-        const a0 = Math.atan2(-stones.z, shore - stones.x) + 0.6;
-        return [0, 1, 2, 3, 4].map((i) => {
-          const a = a0 - i * 0.42;
-          return {
-            pos: at(stones.x + Math.cos(a) * r, (isCircle ? 2.5 : 7) + i * 1.2, stones.z + Math.sin(a) * r),
-            look: at(stones.x, isCircle ? 1.6 : 10, stones.z),
-          };
-        });
-      },
-    });
-
-    // 5. Walking into the forest toward the light.
-    if (woods) {
-      const w = woods;
-      shots.push({
-        duration: 20,
-        hours: [9.8, 10.1],
-        weather: 'clear',
-        clearance: 1.6,
-        title: 'The Black Forest',
-        line: 'Shafts of light through the canopy, onto ferns, moss and fallen logs.',
-        path: () => {
-          // Toward the sun (the shafts slant toward us), on a line that misses the trunks.
-          const s = sunFlat();
-          let o = { x: w.x, z: w.z };
-          for (let side = 0; side <= 24; side += 2) {
-            for (const sgn of [1, -1]) {
-              const cx = w.x - s.y * side * sgn, cz = w.z + s.x * side * sgn;
-              if (clearLine(cx - s.x * 8, cz - s.y * 8, cx + s.x * 8, cz + s.y * 8, 1.2, true) === 1) {
-                o = { x: cx, z: cz };
-                side = 99;
-                break;
-              }
-            }
-          }
-          return [0, 0.5, 1].map((k) => {
-            const x = o.x + s.x * (k * 14 - 7), z = o.z + s.y * (k * 14 - 7);
-            return { pos: at(x, 1.8, z), look: at(x + s.x * 25, 5 + 2 * k, z + s.y * 25) };
-          });
-        },
-      });
-    }
 
     if (fall) {
       // Along the gorge: u downstream from the plunge pool, v across.
@@ -496,7 +541,7 @@ export class Demo {
         return at(q.x, up, q.z);
       };
       const lip = V(fall.x, fall.top * 0.55, fall.z);
-      // 6. Up the river to the falls, the low sun behind, a rainbow in the spray.
+      // Up the river to the falls, the low sun behind, a rainbow in the spray.
       shots.push({
         duration: 18,
         hours: [18.15, 18.35],
@@ -510,7 +555,7 @@ export class Demo {
           { pos: gat(30, 3, 3.5), look: lip.clone().setY(fall.top * 0.42) },
         ],
       });
-      // 7. Rising along the gorge wall.
+      // Rising along the gorge wall.
       shots.push({
         duration: 14,
         hours: [15, 15.15],
@@ -527,24 +572,7 @@ export class Demo {
       });
     }
 
-    // 8. The high mountains: climbing past the highest peak.
-    shots.push({
-      duration: 20,
-      hours: [13, 13.4],
-      weather: 'fair',
-      clearance: 10,
-      title: 'The high mountains',
-      line: 'Bare rock above the forests, under drifting cloud shadows.',
-      path: () => {
-        const a0 = Math.atan2(-peak.z, shore - peak.x);
-        return [0, 1, 2, 3].map((i) => {
-          const a = a0 + 0.9 - i * 0.55, r = 240 - i * 45;
-          return { pos: V(peak.x + Math.cos(a) * r, peak.h - 20 + i * 22, peak.z + Math.sin(a) * r), look: V(peak.x, peak.h - 15 + i * 5, peak.z) };
-        });
-      },
-    });
-
-    // 9. The coast in the afternoon: gulls over the surf, and a whale breaching offshore.
+    // The coast in the afternoon: gulls over the surf, and a whale breaching offshore.
     const whaleZ = 10, whaleX = shoreAt(whaleZ) + 130;
     shots.push({
       duration: 22,
@@ -566,7 +594,7 @@ export class Demo {
       ],
     });
 
-    // 10. A shower passes over the land; the sun breaks through behind, a rainbow.
+    // A shower passes over the land; the sun breaks through behind, a rainbow.
     shots.push({
       duration: 26,
       hours: [17.85, 18.05],
@@ -588,7 +616,7 @@ export class Demo {
       ],
     });
 
-    // 11. The seasons, over the same stretch of land.
+    // The seasons, over the same stretch of land.
     const seasonLine: Record<Season, string> = {
       spring: 'Blossom on the thorn and the wild cherry, fresh green in the meadow.',
       summer: 'Long days, and here and there a tree already turning.',
@@ -626,9 +654,9 @@ export class Demo {
       cues: [seasonCue(7, 'summer'), seasonCue(14, 'autumn'), seasonCue(21, 'winter')],
     });
 
-    // 12. The vibes: one golden-hour orbit, a color mood every couple of seconds.
+    // The vibes: one golden-hour orbit, a color mood every couple of seconds.
     const vibes = Object.keys(VIBES) as VibeName[];
-    const vibeAt = (oak ?? stones) as { x: number; z: number; radius: number };
+    const vibeAt = mark as { x: number; z: number; radius: number };
     const per = 25 / vibes.length;
     shots.push({
       duration: 25,
@@ -653,7 +681,7 @@ export class Demo {
       })),
     });
 
-    // 13. Photo mode: time stops mid-wave; the camera glides through the frozen surf and takes the shot.
+    // Photo mode: time stops mid-wave; the camera glides through the frozen surf and takes the shot.
     shots.push({
       duration: 16,
       hours: [18.7, 18.7],
@@ -672,7 +700,30 @@ export class Demo {
       cues: [{ at: 10.5, run: () => h.capture() }],
     });
 
-    // 14. Sunset: climbing out over the land toward the sea.
+    // Dusk from inside the forest: the low sun off to one side through the trunks, so the sky between the crowns runs
+    // from orange around it to blue away from it.
+    shots.push({
+      duration: 16,
+      hours: [19.05, 19.2],
+      weather: 'clear',
+      mood: DUSK,
+      clearance: 1.5,
+      title: 'Dusk in the woods',
+      line: 'Through the crowns the sky runs from burning orange to evening blue.',
+      path: () => {
+        const s = sunFlat();
+        // Looking 50 degrees off the sun, drifting slowly the other way.
+        const a = DUSK_OFF;
+        const lx = s.x * Math.cos(a) - s.y * Math.sin(a), lz = s.x * Math.sin(a) + s.y * Math.cos(a);
+        const o = clearWalk(wood0(), -lz, lx, 6);
+        return [0, 0.5, 1].map((k) => {
+          const x = o.x - lz * (k * 12 - 6), z = o.z + lx * (k * 12 - 6);
+          return { pos: at(x, 1.7, z), look: at(x + lx * 30, 9 + 2 * k, z + lz * 30) };
+        });
+      },
+    });
+
+    // Sunset: climbing out over the land toward the sea.
     shots.push({
       duration: 22,
       hours: [19, 19.4],
@@ -685,7 +736,7 @@ export class Demo {
       ],
     });
 
-    // 15. Night: the northern lights over the meadow, and the end card.
+    // Night: the northern lights over the meadow, and the end card.
     shots.push({
       duration: 26,
       hours: [22.8, 23],

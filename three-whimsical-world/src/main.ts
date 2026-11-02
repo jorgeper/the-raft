@@ -821,9 +821,12 @@ photoGui.add({ save: () => (photoPending = true) }, 'save').name('💾 save phot
 const demoSettings = { captions: true };
 persist.bind('demo', demoSettings, ['captions']);
 let demoCapture = false;
+/** The demo's forest mood brightens the motes (spores and pollen in the light) by this much. */
+let demoMotes = 1;
 let beforeDemo: {
   pos: THREE.Vector3; quat: THREE.Quaternion; mode: typeof movement.mode; view: typeof movement.view; sound: boolean;
-  settings: Pick<typeof settings, 'time' | 'daySpeed' | 'season' | 'vibe' | 'aurora'>;
+  settings: Pick<typeof settings, 'time' | 'daySpeed' | 'season' | 'vibe' | 'aurora' | 'groundFog' | 'groundFogHeight' | 'groundFogPatchy'>;
+  volumetric: number;
   weather: Pick<Weather, 'mode' | 'clouds' | 'overcast' | 'rain' | 'snow' | 'snowCover' | 'wetness' | 'rainbow'>;
   lens: typeof lensSettings;
 } | null = null;
@@ -882,6 +885,17 @@ const demoHost: DemoHost = {
   sprayBow(on) {
     sprayBowControl.on = on;
   },
+  mood(m) {
+    const b = beforeDemo?.settings;
+    if (!b) return;
+    settings.groundFog = m?.fog ?? b.groundFog;
+    settings.groundFogHeight = m?.fogHeight ?? b.groundFogHeight;
+    settings.groundFogPatchy = m ? 0.7 : b.groundFogPatchy;
+    volumetric.value = m?.light ?? beforeDemo!.volumetric;
+    demoMotes = m?.motes ?? 1;
+    applyGroundFog();
+    updateSun();
+  },
   cut() {
     snapView();
     world.update(camera, true);
@@ -896,7 +910,11 @@ function startDemo() {
   if (photo.active) exitPhoto();
   beforeDemo = {
     pos: player.position.clone(), quat: player.quaternion.clone(), mode: movement.mode, view: movement.view, sound: sound.settings.on,
-    settings: { time: settings.time, daySpeed: settings.daySpeed, season: settings.season, vibe: settings.vibe, aurora: settings.aurora },
+    settings: {
+      time: settings.time, daySpeed: settings.daySpeed, season: settings.season, vibe: settings.vibe, aurora: settings.aurora,
+      groundFog: settings.groundFog, groundFogHeight: settings.groundFogHeight, groundFogPatchy: settings.groundFogPatchy,
+    },
+    volumetric: volumetric.value,
     weather: {
       mode: weather.mode, clouds: weather.clouds, overcast: weather.overcast, rain: weather.rain, snow: weather.snow,
       snowCover: weather.snowCover, wetness: weather.wetness, rainbow: weather.rainbow,
@@ -926,6 +944,9 @@ function endDemo() {
   movement.view = b.view;
   sound.settings.on = b.sound;
   Object.assign(settings, b.settings);
+  volumetric.value = b.volumetric;
+  demoMotes = 1;
+  applyGroundFog();
   Object.assign(lensSettings, b.lens);
   applySeason(true);
   Object.assign(weather, b.weather);
@@ -1375,7 +1396,7 @@ renderer.setAnimationLoop((now) => {
   const pixelsPerMeter = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
   torch.update(camera, timer.getElapsed(), dt, pixelsPerMeter, torchAim);
   // Without pollen the motes fade out by day; the fireflies still come out at night.
-  motes.update(timer.getElapsed(), camera, lightDir, daylight, Math.min(settings.whimsy, 1.2) * (settings.pollen ? 1 : 1 - daylight), pixelsPerMeter);
+  motes.update(timer.getElapsed(), camera, lightDir, daylight, Math.min(settings.whimsy, 1.2) * (settings.pollen ? 1 : 1 - daylight) * demoMotes, pixelsPerMeter);
   fluff.update(timer.getElapsed() % 10000, dt, camera, lightDir, scatterSun, sky.uniforms.uHorizon.value, daylight,
     1 - world.fns.forest(camera.position.x, camera.position.z), (1 - weather.rain) * (1 - 0.6 * weather.overcast) * (settings.pollen ? 1 : 0),
     wind.uWindStrength.value, pixelsPerMeter);
