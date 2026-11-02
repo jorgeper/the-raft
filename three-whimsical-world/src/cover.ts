@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { seasonUniforms, SEASON_GLSL } from './season';
 import { createNoise2D } from 'simplex-noise';
 import { TERRAIN_SIZE } from './terrain';
 import { mulberry32, smoothstep, type WorldFns } from './worldgen';
@@ -347,12 +348,14 @@ export class GroundCover {
     flowerMat.onBeforeCompile = (shader, renderer) => {
       prevCompile.call(flowerMat, shader, renderer);
       // Stems stay green; only petals take the per-instance flower color.
+      Object.assign(shader.uniforms, seasonUniforms);
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float aHead;\nvarying vec3 vFlower;')
+        .replace('#include <common>', '#include <common>\nattribute float aHead;\nvarying vec3 vFlower;\nvarying float vKeep;')
         .replace(
           '#include <begin_vertex>',
           // Chunks where no flowers landed have no per-instance colors at all.
           `#include <begin_vertex>
+          vKeep = fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
           #ifdef USE_INSTANCING_COLOR
             vFlower = mix(vec3(0.18, 0.32, 0.08), instanceColor.rgb * 0.85, min(aHead, 1.0));
             // The center: golden, a deeper orange in yellow flowers.
@@ -362,8 +365,10 @@ export class GroundCover {
           #endif`,
         );
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vFlower;')
-        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = vFlower;');
+        .replace('#include <common>', `#include <common>\nvarying vec3 vFlower;\nvarying float vKeep;\n${SEASON_GLSL}`)
+        // Autumn: most flowers have gone, the rest are fading to seed; winter takes nearly all.
+        .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (vKeep < max(uAutumn * 0.8, uWither * 0.97)) discard;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix(vFlower, vFlower * vec3(0.8, 0.62, 0.42), uAutumn * 0.6);');
     };
     const flowerColors = ['#f2c419', '#f2c419', '#f4f1e6', '#9b6cc7'].map((c) => new THREE.Color(c));
     this.layers.push(
@@ -590,10 +595,38 @@ export class GroundCover {
    */
   private addTallMeadow(world: WorldFns, patchNoise: (x: number, y: number) => number) {
     const meadow = (h: number, forest: number) => (h < 3 ? 0 : 1 - smoothstep(0.25, 0.55, forest));
-    const make = (geometry: THREE.BufferGeometry, sway: number, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => {
+    /**
+     * `season`: the share of plants gone by full autumn and by winter, and how far their heads fade (to seed brown,
+     * rust for heather). Gone plants collapse in the vertex shader, which is cheaper than discarding their pixels.
+     */
+    const make = (
+      geometry: THREE.BufferGeometry,
+      sway: number,
+      extra: Partial<THREE.MeshStandardMaterialParameters> = {},
+      season = { autumn: 0.6, winter: 0.95, fade: 0.7, rust: false },
+    ) => {
       const material = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.75, ...extra });
       addWind(material, `p += windOffset(root, max(p.y - root.y, 0.0) * ${sway.toFixed(2)}) * 0.5;`);
       headColored(material);
+      const prev = material.onBeforeCompile;
+      material.onBeforeCompile = (shader, renderer) => {
+        prev.call(material, shader, renderer);
+        Object.assign(shader.uniforms, seasonUniforms);
+        const seed = season.rust ? 'vec3(0.34, 0.2, 0.14)' : 'vec3(0.4, 0.31, 0.2)';
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', `#include <common>\n${SEASON_GLSL}`)
+          .replace(
+            '#include <begin_vertex>',
+            `#include <begin_vertex>
+            #if defined(USE_COLOR)
+              vColor.rgb = mix(vColor.rgb, ${seed} * (0.8 + 0.4 * fract(instanceMatrix[3].x * 1.37)), aHead * max(uAutumn, uWither) * ${season.fade.toFixed(2)});
+            #endif
+            #ifdef USE_INSTANCING
+              if (fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453)
+                  < max(uAutumn * ${season.autumn.toFixed(2)}, uWither * ${season.winter.toFixed(2)})) transformed = vec3(0.0);
+            #endif`,
+          );
+      };
       this.disposables.push(geometry, material);
       return material;
     };
@@ -607,7 +640,7 @@ export class GroundCover {
         radius: 110,
         perChunk: 320,
         geometry: spikeGeo,
-        material: make(spikeGeo, 1.0),
+        material: make(spikeGeo, 1.0, {}, { autumn: 0.55, winter: 0.97, fade: 0.75, rust: false }),
         place: (x, z, h, forest, rand, color) => {
           const drift = smoothstep(0.15, 0.6, patchNoise(x * 0.012 + 120, z * 0.012));
           const edge = smoothstep(0.1, 0.3, forest) * (1 - smoothstep(0.45, 0.6, forest));
@@ -627,7 +660,7 @@ export class GroundCover {
         radius: 90,
         perChunk: 900,
         geometry: heatherGeo,
-        material: make(heatherGeo, 0.3),
+        material: make(heatherGeo, 0.3, {}, { autumn: 0, winter: 0.25, fade: 0.8, rust: true }),
         place: (x, z, h, forest, rand, color) => {
           if (rand() > world.heath(x, z) * 0.95) return 0;
           color.copy(mauves[Math.floor(rand() * mauves.length)]);
@@ -664,7 +697,7 @@ export class GroundCover {
         radius: 100,
         perChunk: 260,
         geometry: seedGeo,
-        material: make(seedGeo, 0.9),
+        material: make(seedGeo, 0.9, {}, { autumn: 0, winter: 0.6, fade: 0.6, rust: false }),
         place: (x, z, h, forest, rand, color) => {
           const patch = smoothstep(-0.3, 0.6, patchNoise(x * 0.03 + 77, z * 0.03 - 21));
           if (rand() > patch * meadow(h, forest)) return 0;
@@ -684,7 +717,7 @@ export class GroundCover {
         radius: 60,
         perChunk: 70,
         geometry: clockGeo,
-        material: make(clockGeo, 1.1, { map: fluff, alphaTest: 0.35, alphaToCoverage: true, roughness: 0.95 }),
+        material: make(clockGeo, 1.1, { map: fluff, alphaTest: 0.35, alphaToCoverage: true, roughness: 0.95 }, { autumn: 0.75, winter: 1, fade: 0, rust: false }),
         place: (x, z, h, forest, rand, color) => {
           const drift = smoothstep(0.0, 0.5, patchNoise(x * 0.02 + 50, z * 0.02));
           if (rand() > drift * meadow(h, forest)) return 0;

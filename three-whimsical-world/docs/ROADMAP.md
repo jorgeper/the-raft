@@ -137,6 +137,16 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Seasons picker (user, 2026-11-01; Time & weather panel, or `?season=autumn`): spring, summer, autumn, winter, eased
+  over a few seconds (`src/season.ts`). Spring: fresh yellow-green meadow and blossom on hawthorn-like bushes and a
+  share of the ash, aspen and rowan (no berries yet). Autumn: every broadleaf turns (aspens gold, ash amber, oaks
+  copper, rowans red, a few late ones green) and starts to shed; the grass goes tawny, most flowers and fireweed go to
+  seed, heather rusts. Winter: snow lies whatever the weather, broadleaf trees go bare (oaks keep some withered brown
+  leaves), stalks are pale straw, no flowers or butterflies. Trees shed through `BARE_K` (per species) by discarding
+  leaf clumps, shadows included; far impostors use a baked leaf mask, since species tints warmed their leaves past
+  any color test. Fixed on the way: the leaf shaders tested `USE_INSTANCING_COLOR`, which three only defines in the
+  vertex shader, so the summer's early-autumn drifts (built two sessions ago) never showed; they do now.
+
 - Real rock on the cliffs (user, 2026-11-01: "too unrealistic, too flat"): the 2.5 m heightfield drew a 30 m gorge
   wall as a couple of long flat triangles. `src/cliffs.ts` now has a worker (`src/cliff-worker.ts`) re-tessellate the
   steep cells near the camera (40 m tiles within ~200 m) and push them out into rock: broad buttresses, vertical

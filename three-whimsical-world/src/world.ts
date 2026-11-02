@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createWorld, type WorldFns, type WorldParams } from './worldgen';
 import { createTerrainMesh, terrainMaterial, terrainUniforms, TERRAIN_SIZE, TERRAIN_SEGMENTS } from './terrain';
 import { Cliffs } from './cliffs';
+import type { Season } from './season';
 import { createFarLand } from './far';
 import { createRocks, type Rocks } from './rocks';
 import type { ScannedRock } from './scanned-rocks';
@@ -62,6 +63,11 @@ export class World {
   }
 
   /** Per-frame streaming of grass/cover chunks and tree detail levels. `fill` builds everything nearby at once. */
+  /** Re-marks the trees for a season (the rest follows the season uniforms). */
+  setSeason(season: Season) {
+    this.trees.setSeason(season);
+  }
+
   update(camera: THREE.Camera, fill = false) {
     terrainUniforms.uGrassRadius.value = quality.grassRadius;
     this.grass.update(camera.position, fill ? Infinity : 3);

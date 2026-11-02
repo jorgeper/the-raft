@@ -5,6 +5,7 @@ import { groundUniforms } from './ground';
 import { weatherUniforms, RAIN_RIPPLES } from './weather';
 import { trampleUniforms, PRINT_RES } from './trample';
 import { STRATA_GLSL } from './strata';
+import { seasonUniforms, SEASON_GLSL } from './season';
 import { CLIFF_FADE } from './cliffs';
 
 export type { HeightFn } from './worldgen';
@@ -160,7 +161,7 @@ export function terrainMaterial(shell = false) {
     mat.polygonOffsetUnits = -2;
   }
   mat.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, terrainUniforms, groundUniforms, weatherUniforms, trampleUniforms);
+    Object.assign(shader.uniforms, terrainUniforms, groundUniforms, weatherUniforms, trampleUniforms, seasonUniforms);
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -202,6 +203,7 @@ export function terrainMaterial(shell = false) {
           varying float vShell;
         #endif
         ${STRATA_GLSL}
+        ${SEASON_GLSL}
         uniform float uGrassRadius;
         uniform float uWet;
         uniform float uSnow;
@@ -328,6 +330,16 @@ export function terrainMaterial(shell = false) {
             float mossy = ledge * smoothstep(0.4, 0.65, tNoise(vWorld.xz * 0.35 + vWorld.y * 0.3));
             diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.22, 0.27, 0.12) * (0.8 + 0.4 * mottle), mossy * 0.7);
           #endif
+        }
+        // Seasons on the meadow, the same tints as the blades (past the grass the ground stands in for them), and
+        // fallen leaves on the forest floor in autumn.
+        {
+          float meadow = smoothstep(0.1, 0.5, vGrass);
+          diffuseColor.rgb *= mix(vec3(1.0), vec3(1.06, 1.12, 0.78), uSpring * meadow);
+          float tl = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
+          diffuseColor.rgb = mix(diffuseColor.rgb, tl * vec3(1.6, 1.12, 0.42), uAutumn * meadow * 0.7);
+          float litter = uAutumn * smoothstep(0.3, 0.8, vSplat.x) * smoothstep(0.5, 0.75, tNoise(vWorld.xz * 1.3) * 0.6 + tNoise(vWorld.xz * 5.1) * 0.4);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.5, 0.26, 0.08) * (0.7 + 0.6 * mottle), litter * 0.6);
         }
         // Beach: wind ripples and grain on dry sand (only where the splat says sand, not on river stones), and a
         // darker band where the water wets the shore.

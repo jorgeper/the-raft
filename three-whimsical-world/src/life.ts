@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import type { WorldFns } from './worldgen';
 import { quality } from './quality';
+import { seasonUniforms } from './season';
+import { weatherUniforms } from './weather';
 
 /**
  * Small life that makes the land feel inhabited: butterflies over the meadow flowers, birds wheeling high
@@ -290,7 +292,8 @@ export class Life {
       this.butterflies.instanceMatrix.needsUpdate = true;
     }
     this.butterflies.count = count;
-    this.butterflies.visible = enabled && daylight > 0.5;
+    // None in winter or over snow.
+    this.butterflies.visible = enabled && daylight > 0.5 && seasonUniforms.uWither.value < 0.5 && weatherUniforms.uSnow.value < 0.3;
 
     // Birds: two flocks wheel high over the land near you, drifting off and on every minute or so.
     for (let f = 0; f < this.flocks.length; f++) {

@@ -6,7 +6,8 @@ import { createNoise2D } from 'simplex-noise';
 import { TERRAIN_SIZE } from './terrain';
 import type { WorldFns } from './worldgen';
 import { addWind, sunLight } from './wind';
-import { AUTUMN_LEAVES, bakeImpostor, createImpostorMesh, textureReady } from './impostor';
+import { AUTUMN_LEAVES, BARE_DECLS, BARE_FRAGMENT, BARE_VERTEX, bakeImpostor, createImpostorMesh, textureReady } from './impostor';
+import { seasonUniforms, type Season } from './season';
 import { FAR_CASTERS } from './cascades';
 import { quality } from './quality';
 
@@ -23,7 +24,22 @@ interface Variant {
   tint?: string;
   /** Clusters of berries among the outer leaves (rowan), in this color. */
   berries?: string;
+  /** Evergreen (needles): keeps its color all year. */
+  needles?: boolean;
 }
+
+/** How a species' leaves go through the year. */
+type LeafKind = 'needles' | 'aspen' | 'ash' | 'oak' | 'rowan' | 'bush';
+function leafKind(v: Variant): LeafKind {
+  if (v.needles || v.preset.startsWith('Pine')) return 'needles';
+  if (v.berries) return 'rowan';
+  if (v.preset.startsWith('Aspen')) return 'aspen';
+  if (v.preset.startsWith('Oak')) return 'oak';
+  if (v.preset.startsWith('Ash')) return 'ash';
+  return 'bush';
+}
+/** How bare a species gets in winter (oaks hold on to some withered leaves; evergreens none). */
+const BARE: Record<LeafKind, number> = { needles: 0, aspen: 0.95, ash: 0.95, rowan: 0.92, oak: 0.72, bush: 0.85 };
 
 interface BuiltVariant {
   branches: THREE.BufferGeometry;
@@ -102,8 +118,8 @@ const MEADOW_BUSHES: Variant[] = [
 ];
 // Forest undergrowth: juniper-like evergreen shrubs.
 const FOREST_BUSHES: Variant[] = [
-  { preset: 'Bush 3', seed: 717, height: 1.6, tweak: bushLeaves('pine', 2, 1.4) },
-  { preset: 'Bush 1', seed: 727, height: 1.1, tweak: bushLeaves('pine', 2.2, 1.3), tint: '#c0d8a8' },
+  { preset: 'Bush 3', seed: 717, height: 1.6, tweak: bushLeaves('pine', 2, 1.4), needles: true },
+  { preset: 'Bush 1', seed: 727, height: 1.1, tweak: bushLeaves('pine', 2.2, 1.3), tint: '#c0d8a8', needles: true },
 ];
 // Forest biome: tall Black Forest spruce with thick, bare lower trunks and dense layered boughs.
 const spruce = (o: TreeOptions) => {
@@ -266,12 +282,34 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
     `,
   );
   leafDepth.customProgramCacheKey = () => 'tree-leaf-depth';
+  // Broadleaf species shed their leaves through autumn into winter (src/season.ts), shadows and all.
+  const bareK = BARE[leafKind(v)];
+  if (bareK > 0) {
+    leafMaterial.defines = { ...leafMaterial.defines, BARE_K: bareK.toFixed(2) };
+    leafDepth.defines = { ...leafDepth.defines, BARE_K: bareK.toFixed(2) };
+    const depthWind = leafDepth.onBeforeCompile;
+    leafDepth.onBeforeCompile = (shader, renderer) => {
+      depthWind.call(leafDepth, shader, renderer);
+      shader.uniforms.uBare = seasonUniforms.uBare;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>\n${BARE_DECLS}`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>\n${BARE_VERTEX}`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>\n${BARE_DECLS}`)
+        .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${BARE_FRAGMENT}`);
+    };
+  }
   // Leaves glow when backlit, but only on the sunlit outer shell (vertex AO stands in for depth in the crown).
   const patchVertex = leafMaterial.onBeforeCompile;
   leafMaterial.onBeforeCompile = (shader, renderer) => {
     patchVertex.call(leafMaterial, shader, renderer);
-    Object.assign(shader.uniforms, sunLight, { uSnow: weatherUniforms.uSnow });
+    Object.assign(shader.uniforms, sunLight, { uSnow: weatherUniforms.uSnow }, seasonUniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${BARE_DECLS}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${BARE_VERTEX}`);
     shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${BARE_DECLS}`)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${BARE_FRAGMENT}`)
       .replace('#include <common>', '#include <common>\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;\nuniform float uSnow;')
       // Snow on the crown's outer shell, on leaves lying flat enough to hold it.
       .replace(
@@ -287,9 +325,10 @@ function buildVariant(v: Variant, lod: number): BuiltVariant {
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-        #ifdef USE_INSTANCING_COLOR
+        // (USE_COLOR, not USE_INSTANCING_COLOR: three defines that one only in the vertex shader.)
+        #ifdef USE_COLOR
           // Autumn trees (see the placement): vColor is the instance color times the vertex AO (grey).
-          diffuseColor.rgb = autumnLeaves(diffuseColor.rgb, vColor, 1.0);
+          diffuseColor.rgb = autumnLeaves(diffuseColor.rgb, vColor.rgb, 1.0);
         #endif`,
       )
       .replace(
@@ -368,8 +407,11 @@ interface Placement {
   matrix: THREE.Matrix4;
   center: THREE.Vector3;
   radius: number;
-  /** Per-tree leaf tint so neighbors aren't identical. */
+  /** Per-tree leaf tint so neighbors aren't identical (and marks for autumn and blossom; see autumnLeaves). */
   color: THREE.Color;
+  /** The tree's own tint, and its color in summer (a few turning early, in drifts). */
+  natural: THREE.Color;
+  summer: THREE.Color;
 }
 
 export class Trees {
@@ -380,6 +422,7 @@ export class Trees {
   private meshes: [THREE.InstancedMesh, THREE.InstancedMesh][][] = [];
   /** berries[variant][lod], for species that bear them (rowan) at the nearer levels. */
   private berries: (THREE.InstancedMesh | null)[][] = [];
+  private fruiting = true;
   /** impostors[variant]; empty until the bark/leaf textures have loaded and been baked. */
   private impostors: THREE.InstancedMesh[] = [];
   private counts: number[] = [];
@@ -428,7 +471,11 @@ export class Trees {
         center: new THREE.Vector3(x, y + all[variant].height * k * 0.5, z),
         radius: all[variant].height * k * 0.6,
         color: new THREE.Color().setRGB(0.85 + rand() * 0.25, 0.88 + rand() * 0.22, 0.8 + rand() * 0.2),
+        natural: new THREE.Color(),
+        summer: new THREE.Color(),
       });
+      const placed = this.placements[this.placements.length - 1];
+      placed.natural.copy(placed.color);
       // A first touch of autumn, in drifts: birches turning gold, young broadleaf and the odd big tree copper-red.
       // The leaf shader reads a low blue/red ratio in the instance color as "autumn" and its green/red as the hue.
       const preset = all[variant].preset;
@@ -441,6 +488,7 @@ export class Trees {
           this.placements[this.placements.length - 1].color.setRGB(1, gold, 0.3);
         }
       }
+      placed.summer.copy(placed.color);
       // Landmarks keep their ground open. Dropped after the draws, so the rest of the forest stays where it was.
       if (world.clearing(x, z) > 0.5) this.placements.pop();
     };
@@ -495,6 +543,8 @@ export class Trees {
         center: new THREE.Vector3(l.x, y + v.height * 0.5, l.z),
         radius: v.height * 0.7,
         color: new THREE.Color(0.95, 1, 0.92),
+        natural: new THREE.Color(0.95, 1, 0.92),
+        summer: new THREE.Color(0.95, 1, 0.92),
       });
     }
 
@@ -551,12 +601,41 @@ export class Trees {
         );
         impostorCache.set(key, impostor);
       }
-      const mesh = createImpostorMesh(impostor, this.counts[vi]);
+      const mesh = createImpostorMesh(impostor, this.counts[vi], BARE[leafKind(this.all[vi])]);
       mesh.castShadow = true;
       mesh.layers.set(FAR_CASTERS);
       this.group.add(mesh);
       return mesh;
     });
+  }
+
+  /**
+   * Marks each tree for the season (the leaf shaders read the marks, see autumnLeaves): spring blossom on many bushes
+   * and a share of the ash, aspen and rowan; in autumn every broadleaf tree turned (a few late ones still green); in winter all of
+   * them, withered (src/season.ts). Evergreens keep their color. The instance colors refresh on the next update.
+   */
+  setSeason(season: Season) {
+    // Rowans flower in spring; the berries ripen by late summer and hang on into winter.
+    this.fruiting = season !== 'spring';
+    for (const pl of this.placements) {
+      const v = this.all[pl.variant];
+      const kind = leafKind(v);
+      const h = Math.abs(Math.sin(pl.center.x * 12.9898 + pl.center.z * 78.233) * 43758.5453) % 1;
+      if (kind === 'needles' || season === 'summer') {
+        pl.color.copy(pl.summer);
+      } else if (season === 'spring') {
+        pl.color.copy(pl.natural);
+        // Blossom: hawthorn and blackthorn among the bushes, wild cherry-like among the slimmer trees; oaks leaf out.
+        const share = kind === 'bush' ? 0.45 : kind === 'oak' ? 0 : /Small|Medium/.test(v.preset) ? 0.4 : 0.25;
+        if (h < share) pl.color.setRGB(pl.natural.r, pl.natural.r * 0.3, pl.natural.r * 0.9);
+      } else if (season === 'autumn' && kind !== 'aspen' && h > 0.88) {
+        pl.color.copy(pl.natural);
+      } else {
+        const k = (h * 7.31) % 1;
+        const gold = { aspen: 0.92 + 0.08 * k, ash: 0.7 + 0.22 * k, rowan: 0.5 + 0.08 * k, oak: 0.55 + 0.14 * k, bush: 0.55 + 0.35 * k, needles: 1 }[kind];
+        pl.color.setRGB(1, gold, 0.3);
+      }
+    }
   }
 
   /** Frees this world's instance buffers; species geometry and impostors stay cached for the next world. */
@@ -598,7 +677,7 @@ export class Trees {
       leaves.setColorAt(leaves.count, pl.color);
       branches.count++;
       leaves.count++;
-      const bm = this.berries[pl.variant][lod];
+      const bm = this.fruiting ? this.berries[pl.variant][lod] : null;
       if (bm) bm.setMatrixAt(bm.count++, pl.matrix);
     }
     for (const bm of this.berries.flat()) {

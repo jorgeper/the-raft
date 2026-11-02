@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import { seasonUniforms } from './season';
 import { weatherUniforms } from './weather';
 
 const TEXTURE_HEIGHT = 512;
 
 export interface Impostor {
   texture: THREE.Texture;
+  /** White where the bake shows leaves, black on bark: what turns and falls with the seasons. */
+  leafMask: THREE.Texture;
   geometry: THREE.BufferGeometry;
 }
 
@@ -34,13 +37,12 @@ export function bakeImpostor(
   const bottom = box.min.y, top = box.max.y;
 
   const scene = new THREE.Scene();
-  scene.add(new THREE.Mesh(branches, new THREE.MeshBasicMaterial({ map: bark.map, color: bark.color })));
-  scene.add(
-    new THREE.Mesh(
-      leaves,
-      new THREE.MeshBasicMaterial({ map: leaf.map, color: leaf.color, vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide }),
-    ),
+  const barkMesh = new THREE.Mesh(branches, new THREE.MeshBasicMaterial({ map: bark.map, color: bark.color }));
+  const leafMesh = new THREE.Mesh(
+    leaves,
+    new THREE.MeshBasicMaterial({ map: leaf.map, color: leaf.color, vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide }),
   );
+  scene.add(barkMesh, leafMesh);
   const camera = new THREE.OrthographicCamera(-halfWidth, halfWidth, top, bottom, 0.1, 1000);
   camera.position.set(0, 0, 500);
   camera.lookAt(0, 0, 0);
@@ -59,12 +61,29 @@ export function bakeImpostor(
   renderer.setClearColor(0x000000, 0);
   renderer.clear();
   renderer.render(scene, camera);
+  // The leaf mask: the same view with the bark black and the leaves white (cut out by their texture's alpha). A
+  // color test on the bake can't tell them apart once species tints warm the leaves toward the bark's browns.
+  const maskTarget = new THREE.WebGLRenderTarget(width, TEXTURE_HEIGHT, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+  const black = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  const white = new THREE.MeshBasicMaterial({ map: leaf.map, alphaTest: 0.5, side: THREE.DoubleSide });
+  white.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', 'diffuseColor.a *= texture2D(map, vMapUv).a;');
+  };
+  const barkMat = barkMesh.material, leafMat = leafMesh.material;
+  barkMesh.material = black;
+  leafMesh.material = white;
+  renderer.setRenderTarget(maskTarget);
+  renderer.clear();
+  renderer.render(scene, camera);
+  barkMesh.material = barkMat;
+  leafMesh.material = leafMat;
+  for (const m of [black, white, barkMat, leafMat]) m.dispose();
   renderer.setRenderTarget(prevTarget);
   renderer.setClearColor(prevClear, prevAlpha);
 
   const geometry = new THREE.PlaneGeometry(2 * halfWidth, top - bottom);
   geometry.translate(0, (top + bottom) / 2, 0);
-  return { texture: target.texture, geometry };
+  return { texture: target.texture, leafMask: maskTarget.texture, geometry };
 }
 
 /** Turns the quad about its trunk to face the camera (needs `bbRoot` and `toCam`). */
@@ -82,18 +101,48 @@ const BILLBOARD = /* glsl */ `
  * turned by brightness.
  */
 export const AUTUMN_LEAVES = /* glsl */ `
+  uniform float uWither;
   vec3 autumnLeaves(vec3 c, vec3 inst, float mask) {
+    float lum = dot(c / max(inst, vec3(1e-3)), vec3(0.3, 0.59, 0.11));
+    // Blossom (spring): very little green in the instance color.
+    float blossom = (1.0 - smoothstep(0.35, 0.45, inst.g / max(inst.r, 1e-3))) * mask;
+    if (blossom > 0.0) return mix(c, vec3(2.3, 1.85, 1.95) * lum * inst.r, blossom * 0.88);
     float autumn = (1.0 - smoothstep(0.4, 0.6, inst.b / max(inst.r, 1e-3))) * mask;
     if (autumn <= 0.0) return c;
-    float lum = dot(c / max(inst, vec3(1e-3)), vec3(0.3, 0.59, 0.11));
     float hue = smoothstep(0.55, 1.0, inst.g / max(inst.r, 1e-3));
     vec3 turned = mix(vec3(2.6, 0.72, 0.2), vec3(2.8, 1.95, 0.26), hue) * lum * inst.r;
+    // Winter: what's left on the tree has withered brown.
+    turned = mix(turned, vec3(1.15, 0.72, 0.4) * lum * inst.r, uWither);
     return mix(c, turned, autumn * 0.9);
   }
 `;
 
+/**
+ * Leaves falling (GLSL, for broadleaf species: \`BARE_K\` defined to how bare they get): leaves drop in clumps by a
+ * hash of where they sit on the tree (\`vLeafCell\`, from the vertex shader) as \`uBare\` rises.
+ */
+export const BARE_VERTEX = /* glsl */ `
+  #ifdef BARE_K
+    vLeafCell = position * 2.2;
+    #ifdef USE_INSTANCING
+      vLeafCell += fract(instanceMatrix[3].xyz * 0.0173) * 61.0;
+    #endif
+  #endif
+`;
+export const BARE_FRAGMENT = /* glsl */ `
+  #ifdef BARE_K
+    if (fract(sin(dot(floor(vLeafCell), vec3(12.9898, 78.233, 37.719))) * 43758.5453) < uBare * BARE_K) discard;
+  #endif
+`;
+export const BARE_DECLS = /* glsl */ `
+  #ifdef BARE_K
+    varying vec3 vLeafCell;
+    uniform float uBare;
+  #endif
+`;
+
 /** Instanced, cylindrically billboarded quads using a baked impostor texture. */
-export function createImpostorMesh(impostor: Impostor, capacity: number) {
+export function createImpostorMesh(impostor: Impostor, capacity: number, bareK = 0) {
   const material = new THREE.MeshStandardMaterial({
     map: impostor.texture,
     // The bake includes crown AO and lacks the leaves' backlit glow; lift it to match nearby trees.
@@ -103,17 +152,26 @@ export function createImpostorMesh(impostor: Impostor, capacity: number) {
     side: THREE.DoubleSide,
     roughness: 0.9,
   });
+  if (bareK > 0) material.defines = { BARE_K: bareK.toFixed(2) };
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uSnow = weatherUniforms.uSnow;
-    // Autumn trees turn only their leaves: the green pixels of the bake, not the trunk.
+    shader.uniforms.tLeafMask = { value: impostor.leafMask };
+    Object.assign(shader.uniforms, seasonUniforms);
+    // Autumn trees turn only their leaves (the bake's leaf mask), not the trunk.
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${AUTUMN_LEAVES}\nuniform float uSnow;`)
+      .replace('#include <common>', `#include <common>\n${AUTUMN_LEAVES}\nuniform float uSnow;\nuniform float uBare;\nuniform sampler2D tLeafMask;`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-        float leafy = smoothstep(0.0, 0.04, diffuseColor.g - diffuseColor.r * 0.95);
-        #ifdef USE_INSTANCING_COLOR
-          diffuseColor.rgb = autumnLeaves(diffuseColor.rgb, vColor, leafy);
+        float leafy = smoothstep(0.3, 0.7, texture2D(tLeafMask, vMapUv).r);
+        #ifdef BARE_K
+          // Fallen leaves: far crowns thin out in clumps of the bake, down to the branches.
+          if (leafy > 0.5 && fract(sin(dot(floor(vMapUv * 34.0), vec2(12.9898, 78.233))) * 43758.5453) < uBare * BARE_K) discard;
+        #endif
+        // (Fragment shaders see the instance color only as USE_COLOR: three defines USE_INSTANCING_COLOR in the vertex
+        // shader alone, so an #ifdef on it here never ran and the autumn drifts never showed.)
+        #ifdef USE_COLOR
+          diffuseColor.rgb = autumnLeaves(diffuseColor.rgb, vColor.rgb, leafy);
         #endif
         // Snow: far crowns speckled white, more toward their tops, like the near trees' outer shell.
         if (uSnow > 0.0) {

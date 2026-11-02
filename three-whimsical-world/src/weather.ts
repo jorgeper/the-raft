@@ -111,6 +111,8 @@ export class Weather {
   /** Snow falling now, and how much lies on the ground. */
   snow = 0;
   snowCover = 0;
+  /** Snow that lies whatever the weather (the season: winter), settling in over a few seconds. */
+  heldSnow = 0;
   rainbow = 0;
   mist = 0;
   dew = 0;
@@ -173,10 +175,11 @@ export class Weather {
     this.snow += ((target.snow ?? 0) * THREE.MathUtils.smoothstep(this.overcast, 0.5, 0.75) - this.snow) * Math.min(dt / (fast ? 1.2 : 12), 1);
     const melt = THREE.MathUtils.smoothstep(sunElevation, 0, 25) * (1 - this.overcast);
     if (this.snow > 0.05) this.snowCover = Math.min(1, this.snowCover + this.snow * dt / 50);
-    else if (this.snowCover > 0) {
-      this.snowCover = Math.max(0, this.snowCover - dt / (420 - 300 * melt));
-      this.wetness = Math.max(this.wetness, Math.min(1, this.snowCover * 2));
+    else if (this.snowCover > this.heldSnow) {
+      this.snowCover = Math.max(this.heldSnow, this.snowCover - dt / (420 - 300 * melt));
+      this.wetness = Math.max(this.wetness, Math.min(1, (this.snowCover - this.heldSnow) * 2));
     }
+    if (this.snowCover < this.heldSnow) this.snowCover = Math.min(this.heldSnow, this.snowCover + dt / 4);
 
     // The ground soaks up quickly in rain and dries over a few minutes (faster in sun).
     const sun = THREE.MathUtils.smoothstep(sunElevation, 0, 25) * (1 - this.overcast);

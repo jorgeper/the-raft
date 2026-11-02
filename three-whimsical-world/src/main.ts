@@ -17,6 +17,7 @@ import { Persist } from './persist';
 import { createSky, CLOUD_HEIGHT } from './sky';
 import { Character, type MotionState } from './character';
 import { loadGroundTextures, groundUniforms } from './ground';
+import { Seasons, SEASONS, type Season } from './season';
 import { CloudPass } from './clouds';
 import { Motes } from './motes';
 import { loadPlants } from './plants';
@@ -181,6 +182,17 @@ overlay.add(world.waterfalls.overlay);
 world.coast.setSceneDepth(post.sceneDepth);
 overlay.add(world.coast.overlay);
 const weather = new Weather();
+// The time of year (season.ts). `snap`: at once, snow included (on load and for shots), instead of washing over.
+const seasons = new Seasons();
+function applySeason(snap = false) {
+  seasons.season = settings.season;
+  world.setSeason(seasons.season);
+  if (snap) {
+    seasons.update(0, true);
+    weather.heldSnow = seasons.heldSnow;
+    weather.snowCover = Math.max(weather.snowCover, seasons.heldSnow);
+  }
+}
 
 // Torch (T): the flame model rides on the camera (or in the character's hand), its lights live in the world.
 const torch = new Torch();
@@ -214,6 +226,8 @@ const settings = {
   vibe: 'whimsical' as VibeName,
   /** How far the vibe goes: 0 = the whimsical look, 1 = as designed, 1.5 = pushed. */
   vibeStrength: 1,
+  /** The time of year (season.ts): spring blossom, summer, autumn colors, winter snow and bare trees. */
+  season: 'summer' as Season,
   /** Valheim's dreamy side: two-tone haze, stronger beams, lens flares, soft glow, floating motes and fireflies. */
   whimsy: 0.9,
   /** Pollen and dust motes by day, and seed fluff on the wind (fireflies at night stay). */
@@ -339,7 +353,7 @@ function updateSun() {
   scene.environmentIntensity = 0.34 * (1 + 0.6 * overcast);
 }
 const shaftStrength = { value: post.atmosphere.uShaftStrength.value };
-persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'nightVisionOn', 'fogDensity', 'whimsy', 'pollen', 'groundFog', 'groundFogHeight', 'groundFogPatchy', 'weather', 'aurora', 'moonPhase', 'vibe', 'vibeStrength']);
+persist.bind('time', settings, ['time', 'sunRotation', 'daySpeed', 'clouds', 'exposure', 'nightVision', 'nightVisionOn', 'fogDensity', 'whimsy', 'pollen', 'groundFog', 'groundFogHeight', 'groundFogPatchy', 'weather', 'aurora', 'moonPhase', 'vibe', 'vibeStrength', 'season']);
 weather.mode = settings.weather;
 applyNightVision();
 post.setWhimsy(settings.whimsy);
@@ -417,6 +431,10 @@ timeGui
   .add(settings, 'weather', { 'Auto (changes by itself)': 'auto', Clear: 'clear', Fair: 'fair', Cloudy: 'cloudy', Overcast: 'overcast', Rain: 'rain', Snow: 'snow', 'Manual (cloud slider)': 'manual' })
   .name('weather')
   .onChange((m: WeatherMode) => weather.pick(m));
+timeGui
+  .add(settings, 'season', { '🌸 Spring': 'spring', '☀️ Summer': 'summer', '🍂 Autumn': 'autumn', '❄️ Winter': 'winter' })
+  .name('season')
+  .onChange(() => applySeason());
 timeGui.add(settings, 'clouds', 0, 1, 0.01).name('clouds (manual weather)').onChange(updateSun);
 timeGui.add(settings, 'aurora', 0, 1.5, 0.01).name('northern lights').onChange(updateSun);
 timeGui.add(settings, 'moonPhase', 0, 1, 0.01).name('moon phase (0.5 full)').onChange(updateSun);
@@ -664,6 +682,7 @@ function regenerate() {
       scene.remove(world.group);
       world.dispose();
       world = new World(params, renderer, scannedRocks);
+      world.setSeason(seasons.season);
       world.waterfalls.setSceneDepth(post.sceneDepth);
       overlay.add(world.waterfalls.overlay);
       world.coast.setSceneDepth(post.sceneDepth);
@@ -847,6 +866,9 @@ if (query.has('weather')) {
 }
 // ?vibe=name picks a color mood (see VIBES in vibes.ts).
 if (query.has('vibe')) settings.vibe = query.get('vibe') as VibeName;
+// ?season=spring|summer|autumn|winter.
+if (SEASONS.includes(query.get('season') as Season)) settings.season = query.get('season') as Season;
+applySeason(true);
 applyVibe();
 // ?wind=strength holds the wind steady at that strength (for screenshots).
 if (query.has('wind')) {
@@ -1034,6 +1056,7 @@ function resetToDefaults() {
   updateSun();
   applyDisplay();
   applyLens();
+  applySeason(true);
   gui.controllersRecursive().forEach((c) => c.updateDisplay());
   if (JSON.stringify(params) !== builtParams) regenerate();
 }
@@ -1127,6 +1150,8 @@ renderer.setAnimationLoop((now) => {
   // Weather: the sky, light and haze follow it; re-light a couple of times a second while it changes.
   const elevationNow = sunPath(settings.time).elevation;
   const prevOvercast = weather.overcast, prevClouds = weather.clouds;
+  seasons.update(dt);
+  weather.heldSnow = seasons.heldSnow;
   weather.update(dt, settings.clouds, settings.time, elevationNow);
   windDrift.update(dt, weather.rain);
   cloudDrift += dt * (0.4 + 0.6 * wind.uWindStrength.value);
@@ -1256,5 +1281,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { trample, sound, windControl, windDrift, applyVibe, startTour, endTour, photo, enterPhoto, exitPhoto, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
+  __app: { seasons, sunDir, applySeason, trample, sound, windControl, windDrift, applyVibe, startTour, endTour, photo, enterPhoto, exitPhoto, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
 });
