@@ -638,6 +638,11 @@ export class Trees {
     }
   }
 
+  /** Where each tree stands, with the radius of its crown (m): for laying out camera moves that miss them. */
+  spots() {
+    return this.placements.map((p) => ({ x: p.center.x, z: p.center.z, r: p.radius * 0.5 }));
+  }
+
   /** Frees this world's instance buffers; species geometry and impostors stay cached for the next world. */
   dispose() {
     for (const mesh of this.group.children as THREE.InstancedMesh[]) mesh.dispose();

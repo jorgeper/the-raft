@@ -47,6 +47,33 @@
       #photo .reticle.locked { border-color: rgba(130, 255, 160, .95); }
       #photo .info { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); white-space: nowrap; font: 12px/1 ui-monospace, Menlo, monospace; color: rgba(255,255,255,.9); text-shadow: 0 1px 2px #000; }
       body.photo.clean #photo { display: none; }
+      /* Demo film: fades, captions (in the lower cinema bar when it's on), a title card, a viewfinder, the print. */
+      .demo { position: absolute; inset: 0; pointer-events: none; line-height: 1.35; display: none; }
+      body.demo-on .demo { display: block; }
+      .demo-fade, .demo-flash { position: absolute; inset: 0; opacity: 0; }
+      .demo-fade { background: #000; }
+      .demo-flash { background: #fff; }
+      .demo-caption {
+        position: absolute; left: 50%; bottom: 3.4%; transform: translateX(-50%); width: min(82%, 980px); text-align: center;
+        font-family: Georgia, 'Times New Roman', serif; color: #f4ecd8; text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 18px rgba(0,0,0,.5); opacity: 0;
+      }
+      .demo-title { font-size: 13px; letter-spacing: .32em; text-transform: uppercase; color: #e6c98a; margin-bottom: 5px; }
+      .demo-line { font-size: 18px; font-style: italic; }
+      .demo-card {
+        position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); width: 90%; text-align: center; opacity: 0;
+        font-family: Georgia, 'Times New Roman', serif; color: #f7efdc; text-shadow: 0 2px 14px rgba(0,0,0,.55), 0 0 2px rgba(0,0,0,.6);
+      }
+      .demo-card-title { font-size: 76px; letter-spacing: .34em; text-transform: uppercase; margin-right: -.34em; }
+      .demo-card-line { font-size: 19px; font-style: italic; margin-top: 10px; opacity: .92; }
+      .demo-vf { position: absolute; inset: 15.5% 5% 15.5% 5%; display: none; }
+      .demo-corner { position: absolute; width: 34px; height: 34px; border: 0 solid rgba(255,255,255,.8); }
+      .demo-corner.tl { left: 0; top: 0; border-left-width: 2px; border-top-width: 2px; }
+      .demo-corner.tr { right: 0; top: 0; border-right-width: 2px; border-top-width: 2px; }
+      .demo-corner.bl { left: 0; bottom: 0; border-left-width: 2px; border-bottom-width: 2px; }
+      .demo-corner.br { right: 0; bottom: 0; border-right-width: 2px; border-bottom-width: 2px; }
+      .demo-vf-info { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); white-space: nowrap; font: 12px/1 ui-monospace, Menlo, monospace; color: rgba(255,255,255,.9); text-shadow: 0 1px 2px #000; }
+      .demo-print { position: absolute; right: 7%; bottom: 19%; width: 24%; padding: 9px 9px 30px; background: #f6f2e8; box-shadow: 0 10px 28px rgba(0,0,0,.55); opacity: 0; }
+      .demo-print img { display: block; width: 100%; }
       #busy {
         position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
         background: rgba(10, 14, 12, .45); color: #fff; font: 600 18px/1 system-ui, sans-serif; letter-spacing: .02em;
@@ -57,7 +84,7 @@
     <div id="busy">Generating world…</div>
     <div id="menu-key"><kbd>H</kbd>menu</div>
     <div id="stage">
-      <div id="hint">Click to look around · WASD move · Shift run · Space jump · T torch · V first/third person (wheel zooms) · F fly (Space / C up / down) · M map · N sound · H menu · P fps · K flythrough · O photo mode · Esc release (then click the map to travel)</div>
+      <div id="hint">Click to look around · WASD move · Shift run · Space jump · T torch · V first/third person (wheel zooms) · F fly (Space / C up / down) · M map · N sound · H menu · P fps · K flythrough · J demo film · O photo mode · Esc release (then click the map to travel)</div>
       <div class="bar top"></div><div class="bar bottom"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

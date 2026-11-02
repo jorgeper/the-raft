@@ -63,6 +63,11 @@ export class World {
   }
 
   /** Per-frame streaming of grass/cover chunks and tree detail levels. `fill` builds everything nearby at once. */
+  /** Where the trees stand (see `Trees.spots`). */
+  treeSpots() {
+    return this.trees.spots();
+  }
+
   /** Re-marks the trees for a season (the rest follows the season uniforms). */
   setSeason(season: Season) {
     this.trees.setSeason(season);

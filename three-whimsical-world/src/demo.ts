@@ -1,0 +1,707 @@
+import * as THREE from 'three';
+import type { WorldFns } from './worldgen';
+import type { WeatherKind } from './weather';
+import type { Season } from './season';
+import { VIBES, type VibeName } from './vibes';
+
+/**
+ * Demo mode (J, or `?demo`): a scripted five-minute film of the world, for showing it off or recording it. A run of
+ * shots, each with its own camera move, time of day, weather, season, color vibe and lens, joined by fades that hide
+ * the jumps: dawn over the sea, the meadow, an 85 mm lens wide open, the standing stones, the forest's light shafts,
+ * a waterfall's rainbow, the cliffs, the high mountains, a whale off the coast, a passing shower and its rainbow, the
+ * four seasons, the vibes, photo mode freezing a wave, sunset and the northern lights. Optional captions name what's
+ * on screen. The shots are laid out from the world itself (its coast, landmarks, falls, peaks and forests), so they
+ * fit any seed. main.ts plays it like the flythrough and puts everything back when it ends.
+ */
+
+/** What the demo drives; main.ts implements it. */
+export interface DemoHost {
+  readonly fns: WorldFns;
+  /** Toward the sun, for the time last set. */
+  readonly sunDir: THREE.Vector3;
+  /** The trees: where they stand and how wide their crowns are. */
+  trees(): { x: number; z: number; r: number }[];
+  /** Sets the clock; `relight` re-lights the sky and land (a few times a second is plenty). */
+  setTime(hours: number, relight: boolean): void;
+  /** `now`: there at once (on a cut); otherwise it rolls in over a few seconds. */
+  weather(kind: WeatherKind, now: boolean): void;
+  season(season: Season): void;
+  vibe(name: VibeName): void;
+  /** A lens for the shot, or null for the usual view. */
+  lens(lens: { focal: number; fStop: number } | null): void;
+  /** Stops the world's clock (waves, wind, rain) while the camera keeps moving. */
+  freeze(on: boolean): void;
+  /** Northern lights strength (null: the panel's). */
+  aurora(strength: number | null): void;
+  whale(at: { x: number; z: number }, kind: 'blow' | 'breach'): void;
+  /** Whether the waterfalls' spray throws a rainbow. */
+  sprayBow(on: boolean): void;
+  /** Asks for the next rendered frame, handed back through `Demo.develop`. */
+  capture(): void;
+  /** After a jump: fill the streamed detail around the new view and drop the old frame's history. */
+  cut(): void;
+}
+
+interface Key {
+  pos: THREE.Vector3;
+  look: THREE.Vector3;
+}
+
+interface Cue {
+  /** Seconds into the shot. */
+  at: number;
+  /** Dip to black around it (a quick cut on the same move). */
+  dip?: boolean;
+  run: () => void;
+}
+
+interface Shot {
+  duration: number;
+  /** Time of day at its start and end. */
+  hours: [number, number];
+  weather?: WeatherKind;
+  season?: Season;
+  vibe?: VibeName;
+  lens?: { focal: number; fStop: number };
+  freeze?: boolean;
+  viewfinder?: string;
+  aurora?: number;
+  /** No rainbow in the falls' spray. */
+  noSprayBow?: boolean;
+  /** The camera stays this far above the ground (m). */
+  clearance?: number;
+  fadeIn?: number;
+  fadeOut?: number;
+  title?: string;
+  line?: string;
+  /** A title card in the middle of the frame, shown between two times. */
+  card?: { title: string; line: string; from: number; to: number };
+  /** The camera's keys, evenly spaced in time; built as the shot starts (so it can follow the sun). */
+  path: () => Key[];
+  cues?: Cue[];
+}
+
+const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+const clamp01 = (x: number) => Math.min(Math.max(x, 0), 1);
+/** Half linear, half smoothstep: moving at the cuts, a little ease in between. */
+const ease = (x: number) => 0.5 * x + 0.5 * x * x * (3 - 2 * x);
+
+export class Demo {
+  active = false;
+  captions = true;
+  private shots: Shot[] = [];
+  private index = 0;
+  private t = 0;
+  private posCurve!: THREE.CatmullRomCurve3;
+  private lookCurve!: THREE.CatmullRomCurve3;
+  private lift = 0;
+  private done = new Set<Cue>();
+  private sinceLight = 0;
+  private captionAge = 0;
+  private pending: { title: string; line: string } | null = null;
+  private pendingAge = 0;
+  private flashAge = 1e9;
+  private printAge = 1e9;
+  private readonly el: Record<'fade' | 'caption' | 'title' | 'line' | 'card' | 'cardTitle' | 'cardLine' | 'vf' | 'vfInfo' | 'print' | 'flash', HTMLElement>;
+  private readonly img: HTMLImageElement;
+  private readonly m = new THREE.Matrix4();
+  private readonly up = V(0, 1, 0);
+
+  constructor(private host: DemoHost, stage: HTMLElement) {
+    const div = (cls: string, parent: HTMLElement = stage) => {
+      const d = document.createElement('div');
+      d.className = cls;
+      parent.appendChild(d);
+      return d;
+    };
+    const root = div('demo');
+    const vf = div('demo-vf', root);
+    for (const c of ['tl', 'tr', 'bl', 'br']) div(`demo-corner ${c}`, vf);
+    const print = div('demo-print', root);
+    this.img = document.createElement('img');
+    print.appendChild(this.img);
+    const caption = div('demo-caption', root);
+    const card = div('demo-card', root);
+    this.el = {
+      fade: div('demo-fade', root),
+      flash: div('demo-flash', root),
+      caption,
+      title: div('demo-title', caption),
+      line: div('demo-line', caption),
+      card,
+      cardTitle: div('demo-card-title', card),
+      cardLine: div('demo-card-line', card),
+      vf,
+      vfInfo: div('demo-vf-info', vf),
+      print,
+    };
+  }
+
+  /** Total running time (s). */
+  get duration() {
+    return this.shots.reduce((s, x) => s + x.duration, 0);
+  }
+
+  start() {
+    this.shots = this.plan();
+    this.active = true;
+    document.body.classList.add('demo-on');
+    this.begin(0);
+  }
+
+  stop() {
+    this.active = false;
+    document.body.classList.remove('demo-on');
+    this.el.vf.style.display = 'none';
+    this.printAge = 1e9;
+    this.el.print.style.opacity = '0';
+    this.host.freeze(false);
+    this.host.sprayBow(true);
+  }
+
+  /** Jumps to `seconds` into the film (for reviewing a shot), running the cues before it. */
+  seek(seconds: number) {
+    if (!this.active) return;
+    let i = 0;
+    while (i < this.shots.length - 1 && seconds >= this.shots[i].duration) seconds -= this.shots[i++].duration;
+    this.begin(i);
+    this.t = Math.max(seconds - 1e-3, 0);
+    for (const cue of this.shots[i].cues ?? []) {
+      if (cue.at > this.t) continue;
+      this.done.add(cue);
+      cue.run();
+    }
+    this.host.cut();
+  }
+
+  /** Where each shot starts (s), for reviewing. */
+  get starts() {
+    let t = 0;
+    return this.shots.map((s) => (t += s.duration) - s.duration);
+  }
+
+  /** The frame asked for by `host.capture()`: it develops as a print in the corner. */
+  develop(canvas: HTMLCanvasElement) {
+    this.img.src = canvas.toDataURL('image/jpeg', 0.85);
+    this.flashAge = 0;
+    this.printAge = 0;
+  }
+
+  /** Changes the caption mid-shot (the old one fades out first). */
+  private say(title: string, line: string) {
+    this.pending = { title, line };
+    this.pendingAge = 0;
+  }
+
+  private begin(i: number) {
+    const h = this.host;
+    const shot = this.shots[i];
+    this.index = i;
+    this.t = 0;
+    this.done.clear();
+    this.lift = 0;
+    h.setTime(shot.hours[0], true);
+    h.weather(shot.weather ?? 'clear', true);
+    h.season(shot.season ?? 'summer');
+    h.vibe(shot.vibe ?? 'whimsical');
+    h.lens(shot.lens ?? null);
+    h.freeze(!!shot.freeze);
+    h.aurora(shot.aurora ?? null);
+    h.sprayBow(!shot.noSprayBow);
+    this.el.vf.style.display = shot.viewfinder ? 'block' : 'none';
+    this.el.vfInfo.textContent = shot.viewfinder ?? '';
+    const keys = shot.path();
+    this.posCurve = new THREE.CatmullRomCurve3(keys.map((k) => k.pos), false, 'centripetal');
+    this.lookCurve = new THREE.CatmullRomCurve3(keys.map((k) => k.look), false, 'centripetal');
+    this.el.title.textContent = shot.title ?? '';
+    this.el.line.textContent = shot.line ?? '';
+    this.captionAge = 0;
+    this.pending = null;
+    this.el.cardTitle.textContent = shot.card?.title ?? '';
+    this.el.cardLine.textContent = shot.card?.line ?? '';
+  }
+
+  /** Advances the film by `dt` real seconds and places `eye`; false once it's over. */
+  update(dt: number, eye: THREE.Object3D): boolean {
+    if (!this.active) return false;
+    this.t += dt;
+    let shot = this.shots[this.index];
+    let cut = false;
+    if (this.t >= shot.duration) {
+      if (this.index + 1 >= this.shots.length) {
+        this.stop();
+        return false;
+      }
+      this.begin(this.index + 1);
+      shot = this.shots[this.index];
+      cut = true;
+    }
+    const t = this.t, d = shot.duration;
+    for (const cue of shot.cues ?? []) {
+      if (!this.done.has(cue) && t >= cue.at) {
+        this.done.add(cue);
+        cue.run();
+      }
+    }
+
+    // The clock.
+    const hours = THREE.MathUtils.lerp(shot.hours[0], shot.hours[1], t / d);
+    this.sinceLight += dt;
+    const relight = this.sinceLight > 0.15 && shot.hours[0] !== shot.hours[1];
+    if (relight) this.sinceLight = 0;
+    this.host.setTime(hours, relight);
+
+    // The camera: along the shot's spline, kept clear of the ground (looking a little ahead, so it rises early),
+    // aimed along the look spline.
+    const u = ease(clamp01(t / d));
+    const p = this.posCurve.getPoint(u);
+    const ahead = this.posCurve.getPoint(ease(clamp01((t + 0.8) / d)));
+    const f = this.host.fns;
+    const ground = Math.max(f.height(p.x, p.z), f.height(ahead.x, ahead.z), 0);
+    const need = ground + (shot.clearance ?? 1.5) - p.y;
+    this.lift = Math.max(need, this.lift - dt * 1.5, 0);
+    p.y += this.lift;
+    eye.position.copy(p);
+    this.m.lookAt(p, this.lookCurve.getPoint(u), this.up);
+    eye.quaternion.setFromRotationMatrix(this.m);
+    if (cut) this.host.cut();
+
+    // Fades at the cuts and dips at the cues.
+    let black = Math.max(
+      shot.fadeIn === 0 ? 0 : 1 - t / (shot.fadeIn ?? 0.8),
+      shot.fadeOut === 0 ? 0 : 1 - (d - t) / (shot.fadeOut ?? 0.8),
+      0,
+    );
+    for (const cue of shot.cues ?? []) if (cue.dip) black = Math.max(black, 1 - Math.abs(t - cue.at) / 0.45);
+    this.el.fade.style.opacity = clamp01(black).toFixed(3);
+
+    // The caption: in after a beat, out before the cut; a new one waits for the old to fade.
+    this.captionAge += dt;
+    let alpha = clamp01((this.captionAge - 0.9) / 0.8) * clamp01((d - t - 1.0) / 0.6);
+    if (this.pending) {
+      this.pendingAge += dt;
+      alpha *= 1 - clamp01(this.pendingAge / 0.4);
+      if (this.pendingAge >= 0.4) {
+        this.el.title.textContent = this.pending.title;
+        this.el.line.textContent = this.pending.line;
+        this.pending = null;
+        this.captionAge = 0.5;
+      }
+    }
+    const card = shot.card;
+    const cardAlpha = card ? clamp01((t - card.from) / 1.2) * clamp01((card.to - t) / 1.2) : 0;
+    this.el.card.style.opacity = cardAlpha.toFixed(3);
+    // (The caption steps aside for the title card.)
+    const shown = this.captions && !!(this.el.title.textContent || this.el.line.textContent);
+    this.el.caption.style.opacity = shown ? (alpha * (1 - cardAlpha)).toFixed(3) : '0';
+
+    // The shutter: a white flash, then the print slides into the corner and fades away.
+    this.flashAge += dt;
+    this.el.flash.style.opacity = (0.85 * (1 - clamp01(this.flashAge / 0.45))).toFixed(3);
+    this.printAge += dt;
+    const pIn = clamp01((this.printAge - 0.3) / 0.6), pOut = clamp01((this.printAge - 4.2) / 0.8);
+    this.el.print.style.opacity = (pIn * (1 - pOut)).toFixed(3);
+    this.el.print.style.transform = `translate(${(1 - pIn) * 40}px, ${(1 - pIn) * 30}px) rotate(${-4 + 2 * pIn}deg)`;
+    return true;
+  }
+
+  /** The shots, laid out from this world. */
+  private plan(): Shot[] {
+    const h = this.host;
+    const f = h.fns;
+    const ground = (x: number, z: number) => Math.max(f.height(x, z), 0);
+    const at = (x: number, up: number, z: number) => V(x, ground(x, z) + up, z);
+    const shoreAt = (z: number) => {
+      for (let x = -100; x < 900; x += 2) if (f.height(x, z) < -0.4) return x;
+      return 300;
+    };
+    const shore = shoreAt(0);
+    const start = { x: -30, z: 0 };
+    const dist = (a: { x: number; z: number }, b: { x: number; z: number }) => Math.hypot(a.x - b.x, a.z - b.z);
+    const byNear = (kind: string) =>
+      f.landmarks.filter((l) => l.kind === kind && f.forest(l.x, l.z) < 0.3).sort((a, b) => dist(a, start) - dist(b, start))[0];
+    const circle = byNear('circle');
+    const oak = byNear('oak');
+    const stones = circle ?? oak ?? { x: -200, z: -100, radius: 12, kind: 'circle' as const };
+    const fall = [...f.waterfalls].sort((a, b) => dist(a, start) - dist(b, start))[0];
+    // The highest ground, and a deep, level stretch of forest near the start.
+    let peak = { x: 0, z: 0, h: -1e9 };
+    let woods: { x: number; z: number } | null = null;
+    for (let x = -980; x < 980; x += 20) {
+      for (let z = -980; z < 980; z += 20) {
+        const y = f.height(x, z);
+        if (y > peak.h) peak = { x, z, h: y };
+        if (dist({ x, z }, start) > 700 || y < 3) continue;
+        if (woods && dist({ x, z }, start) > dist(woods, start)) continue;
+        let deep = true;
+        for (const [dx, dz] of [[0, 0], [20, 0], [-20, 0], [0, 20], [0, -20], [35, 35], [-35, 35], [35, -35], [-35, -35]]) {
+          if (f.forest(x + dx, z + dz) < 0.8 || f.clearing(x + dx, z + dz) > 0.02) deep = false;
+        }
+        if (deep && Math.abs(f.height(x + 10, z) - f.height(x - 10, z)) < 3 && Math.abs(f.height(x, z + 10) - f.height(x, z - 10)) < 3) woods = { x, z };
+      }
+    }
+    // Directions toward (and away from) the sun across the ground, for the time a shot has just set.
+    const sunFlat = () => new THREE.Vector2(h.sunDir.x, h.sunDir.z).normalize();
+    // The trees on a 10 m grid, to keep camera lines out of trunks and crowns.
+    const grid = new Map<string, { x: number; z: number; r: number }[]>();
+    for (const tr of h.trees()) {
+      const k = `${Math.floor(tr.x / 10)},${Math.floor(tr.z / 10)}`;
+      (grid.get(k) ?? grid.set(k, []).get(k)!).push(tr);
+    }
+    /** Nothing within `margin` of a crown (or of a trunk, with `trunks`) at (x, z). */
+    const clearAt = (x: number, z: number, margin: number, trunks = false) => {
+      const ix = Math.floor(x / 10), iz = Math.floor(z / 10);
+      for (let a = ix - 2; a <= ix + 2; a++) {
+        for (let b = iz - 2; b <= iz + 2; b++) {
+          for (const tr of grid.get(`${a},${b}`) ?? []) if (Math.hypot(tr.x - x, tr.z - z) < (trunks ? 0.6 : tr.r) + margin) return false;
+        }
+      }
+      return true;
+    };
+    /** The share of points along a line (every 3 m) that are clear. */
+    const clearLine = (x0: number, z0: number, x1: number, z1: number, margin: number, trunks = false) => {
+      const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 3));
+      let ok = 0;
+      for (let i = 0; i <= n; i++) if (clearAt(x0 + ((x1 - x0) * i) / n, z0 + ((z1 - z0) * i) / n, margin, trunks)) ok++;
+      return ok / (n + 1);
+    };
+
+    const shots: Shot[] = [];
+
+    // 1. Dawn over the sea, low over the swell toward the land, the sun coming up behind it.
+    shots.push({
+      duration: 24,
+      hours: [5.6, 6.2],
+      weather: 'fair',
+      fadeIn: 2.5,
+      clearance: 3,
+      card: { title: 'Meadows', line: 'A northern wilderness, grown from a single seed and drawn live in your browser', from: 2.5, to: 11 },
+      path: () => [
+        { pos: V(shore + 330, 7, 40), look: V(shore - 300, 18, 10) },
+        { pos: V(shore + 210, 5, 28), look: V(shore - 300, 15, 0) },
+        { pos: V(shore + 100, 4, 14), look: V(shore - 300, 12, -10) },
+        { pos: at(shore + 12, 3.5, 6), look: at(stones.x, 10, stones.z) },
+      ],
+    });
+
+    // 2. Skimming the meadow grass toward the standing stones in the morning light.
+    shots.push({
+      duration: 20,
+      hours: [8.1, 8.5],
+      weather: 'fair',
+      clearance: 1.3,
+      title: 'The meadows',
+      line: 'Every blade of grass is real geometry, swaying in the wind and wet with dew. Turn the sound up: wind, birdsong, the surf.',
+      path: () => {
+        // In toward the stones from 130 m out, along a line clear of trees over open meadow, the sun at our back.
+        const s = sunFlat();
+        const near = Math.max(stones.radius * 3, 30), far = 130;
+        let best = { score: -1e9, ox: 1, oz: 0 };
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 18) {
+          const ox = Math.cos(a), oz = Math.sin(a);
+          let open = 0;
+          for (let d = near; d <= far; d += 10) open += f.height(stones.x + ox * d, stones.z + oz * d) > 1.5 && f.forest(stones.x + ox * d, stones.z + oz * d) < 0.4 ? 1 : 0;
+          const clear = clearLine(stones.x + ox * near, stones.z + oz * near, stones.x + ox * far, stones.z + oz * far, 3);
+          const score = clear * 4 + open / 12 + (ox * s.x + oz * s.y);
+          if (score > best.score) best = { score, ox, oz };
+        }
+        const along = (d: number, up: number) => at(stones.x + best.ox * d, up, stones.z + best.oz * d);
+        return [far, far * 0.7 + near * 0.3, far * 0.35 + near * 0.65, near].map((d, i) => ({ pos: along(d, 1.9 - 0.15 * i), look: at(stones.x, 3, stones.z) }));
+      },
+    });
+
+    // 3. A real lens: 85 mm wide open, crabbing low past the meadow flowers with the stones soft behind.
+    shots.push({
+      duration: 16,
+      hours: [9, 9.1],
+      weather: 'fair',
+      lens: { focal: 85, fStop: 1.4 },
+      clearance: 0.6,
+      title: 'A real lens',
+      line: '85 mm at f/1.4: depth of field and bokeh while you play, not only in photo mode.',
+      path: () => {
+        // Looking at the stones from the sea side, 45 m out; sliding sideways 7 m.
+        const ax = shore - stones.x, az = -stones.z, al = Math.hypot(ax, az) || 1;
+        const ux = ax / al, uz = az / al, sx = -uz, sz = ux;
+        const base = { x: stones.x + ux * 45, z: stones.z + uz * 45 };
+        return [-1, 0, 1].map((k) => {
+          const cx = base.x + sx * 3.5 * k, cz = base.z + sz * 3.5 * k;
+          return { pos: at(cx, 0.9, cz), look: at(cx - ux * 9, 0.45, cz - uz * 9) };
+        });
+      },
+    });
+
+    // 4. Round the standing stones (or the giant oak) in the afternoon.
+    const isCircle = stones.kind === 'circle';
+    shots.push({
+      duration: 18,
+      hours: [16, 16.5],
+      weather: 'fair',
+      clearance: 2,
+      title: isCircle ? 'Standing stones' : 'The old oak',
+      line: isCircle
+        ? 'Stone circles, rune stones and burial mounds keep their ground open in the wild.'
+        : 'A lone giant oak on the hill, five centuries old.',
+      path: () => {
+        const r = isCircle ? Math.max(stones.radius * 2.6, 22) : Math.max(stones.radius * 3.5, 50);
+        const a0 = Math.atan2(-stones.z, shore - stones.x) + 0.6;
+        return [0, 1, 2, 3, 4].map((i) => {
+          const a = a0 - i * 0.42;
+          return {
+            pos: at(stones.x + Math.cos(a) * r, (isCircle ? 2.5 : 7) + i * 1.2, stones.z + Math.sin(a) * r),
+            look: at(stones.x, isCircle ? 1.6 : 10, stones.z),
+          };
+        });
+      },
+    });
+
+    // 5. Walking into the forest toward the light.
+    if (woods) {
+      const w = woods;
+      shots.push({
+        duration: 20,
+        hours: [9.8, 10.1],
+        weather: 'clear',
+        clearance: 1.6,
+        title: 'The Black Forest',
+        line: 'Shafts of light through the canopy, onto ferns, moss and fallen logs.',
+        path: () => {
+          // Toward the sun (the shafts slant toward us), on a line that misses the trunks.
+          const s = sunFlat();
+          let o = { x: w.x, z: w.z };
+          for (let side = 0; side <= 24; side += 2) {
+            for (const sgn of [1, -1]) {
+              const cx = w.x - s.y * side * sgn, cz = w.z + s.x * side * sgn;
+              if (clearLine(cx - s.x * 8, cz - s.y * 8, cx + s.x * 8, cz + s.y * 8, 1.2, true) === 1) {
+                o = { x: cx, z: cz };
+                side = 99;
+                break;
+              }
+            }
+          }
+          return [0, 0.5, 1].map((k) => {
+            const x = o.x + s.x * (k * 14 - 7), z = o.z + s.y * (k * 14 - 7);
+            return { pos: at(x, 1.8, z), look: at(x + s.x * 25, 5 + 2 * k, z + s.y * 25) };
+          });
+        },
+      });
+    }
+
+    if (fall) {
+      // Along the gorge: u downstream from the plunge pool, v across.
+      const px = fall.x + fall.dirX * 8, pz = fall.z + fall.dirZ * 8;
+      const g = (u: number, v: number) => ({ x: px + fall.dirX * u - fall.dirZ * v, z: pz + fall.dirZ * u + fall.dirX * v });
+      const gat = (u: number, v: number, up: number) => {
+        const q = g(u, v);
+        return at(q.x, up, q.z);
+      };
+      const lip = V(fall.x, fall.top * 0.55, fall.z);
+      // 6. Up the river to the falls, the low sun behind, a rainbow in the spray.
+      shots.push({
+        duration: 18,
+        hours: [18.15, 18.35],
+        weather: 'clear',
+        clearance: 2.5,
+        title: 'Waterfalls',
+        line: 'Rivers spill off the gorge rims, and the low sun paints a rainbow in the spray.',
+        path: () => [
+          { pos: gat(62, 0, 6), look: lip },
+          { pos: gat(42, 2, 4.5), look: lip },
+          { pos: gat(30, 3, 3.5), look: lip.clone().setY(fall.top * 0.42) },
+        ],
+      });
+      // 7. Rising along the gorge wall.
+      shots.push({
+        duration: 14,
+        hours: [15, 15.15],
+        weather: 'clear',
+        noSprayBow: true,
+        clearance: 2,
+        title: 'Real rock',
+        line: 'Close up, the cliffs are rebuilt at half-meter detail: buttresses, ledges and layered beds of stone.',
+        path: () => [
+          { pos: gat(18, -8, 3), look: gat(8, 14, 12) },
+          { pos: gat(24, -5, 6), look: gat(14, 15, 12) },
+          { pos: gat(31, -2, 10), look: gat(22, 16, 10) },
+        ],
+      });
+    }
+
+    // 8. The high mountains: climbing past the highest peak.
+    shots.push({
+      duration: 20,
+      hours: [13, 13.4],
+      weather: 'fair',
+      clearance: 10,
+      title: 'The high mountains',
+      line: 'Bare rock above the forests, under drifting cloud shadows.',
+      path: () => {
+        const a0 = Math.atan2(-peak.z, shore - peak.x);
+        return [0, 1, 2, 3].map((i) => {
+          const a = a0 + 0.9 - i * 0.55, r = 240 - i * 45;
+          return { pos: V(peak.x + Math.cos(a) * r, peak.h - 20 + i * 22, peak.z + Math.sin(a) * r), look: V(peak.x, peak.h - 15 + i * 5, peak.z) };
+        });
+      },
+    });
+
+    // 9. The coast in the afternoon: gulls over the surf, and a whale breaching offshore.
+    const whaleZ = 10, whaleX = shoreAt(whaleZ) + 130;
+    shots.push({
+      duration: 22,
+      hours: [15.5, 15.8],
+      weather: 'fair',
+      // A long lens stopped down: the whale fills the frame and the sea stays sharp.
+      lens: { focal: 70, fStop: 11 },
+      clearance: 1.2,
+      title: 'The coast',
+      line: 'Gulls wheel over the surf, and out at sea a whale breaches.',
+      path: () => [
+        { pos: at(shore - 14, 2.6, -8), look: V(whaleX, 5, whaleZ) },
+        { pos: at(shore - 10, 2.4, -4), look: V(whaleX, 4, whaleZ) },
+        { pos: at(shore - 6, 2.2, 0), look: V(whaleX, 4, whaleZ + 4) },
+      ],
+      cues: [
+        { at: 2.5, run: () => h.whale({ x: whaleX, z: whaleZ }, 'breach') },
+        { at: 12.5, run: () => h.whale({ x: whaleX + 20, z: whaleZ + 12 }, 'blow') },
+      ],
+    });
+
+    // 10. A shower passes over the land; the sun breaks through behind, a rainbow.
+    shots.push({
+      duration: 26,
+      hours: [17.85, 18.05],
+      weather: 'rain',
+      clearance: 3,
+      title: 'Weather',
+      line: 'Showers roll in off the sea; the land goes dark and wet.',
+      path: () => {
+        const s = sunFlat();
+        const base = { x: shore - 70, z: 20 };
+        return [0, 1, 2].map((k) => ({
+          pos: at(base.x - s.x * k * 15, 14 - k * 2, base.z - s.y * k * 15),
+          look: V(base.x - s.x * 400, 45, base.z - s.y * 400),
+        }));
+      },
+      cues: [
+        { at: 9, run: () => h.weather('clear', false) },
+        { at: 11, run: () => this.say('Weather', 'When the sun breaks through behind you: a rainbow.') },
+      ],
+    });
+
+    // 11. The seasons, over the same stretch of land.
+    const seasonLine: Record<Season, string> = {
+      spring: 'Blossom on the thorn and the wild cherry, fresh green in the meadow.',
+      summer: 'Long days, and here and there a tree already turning.',
+      autumn: 'Gold, copper and red, and the meadow gone to seed.',
+      winter: 'Snow on the boughs, and bare branches.',
+    };
+    const seasonTitle: Record<Season, string> = { spring: 'Spring', summer: 'Summer', autumn: 'Autumn', winter: 'Winter' };
+    const seasonCue = (at: number, s: Season): Cue => ({
+      at,
+      dip: true,
+      run: () => {
+        h.season(s);
+        h.cut();
+        this.el.title.textContent = seasonTitle[s];
+        this.el.line.textContent = seasonLine[s];
+        this.captionAge = 0.4;
+      },
+    });
+    shots.push({
+      duration: 28,
+      hours: [10, 10.2],
+      weather: 'clear',
+      season: 'spring',
+      clearance: 20,
+      title: seasonTitle.spring,
+      line: seasonLine.spring,
+      path: () => {
+        const s = sunFlat();
+        const o = { x: 0, z: -60 };
+        return [0, 1, 2].map((k) => {
+          const x = o.x - s.x * k * 16, z = o.z - s.y * k * 16;
+          return { pos: at(x, 45 - k * 4, z), look: at(x - s.x * 140, 0, z - s.y * 140) };
+        });
+      },
+      cues: [seasonCue(7, 'summer'), seasonCue(14, 'autumn'), seasonCue(21, 'winter')],
+    });
+
+    // 12. The vibes: one golden-hour orbit, a color mood every couple of seconds.
+    const vibes = Object.keys(VIBES) as VibeName[];
+    const vibeAt = (oak ?? stones) as { x: number; z: number; radius: number };
+    const per = 25 / vibes.length;
+    shots.push({
+      duration: 25,
+      hours: [17, 17.3],
+      weather: 'fair',
+      clearance: 3,
+      title: 'Vibes',
+      line: VIBES[vibes[0]].label,
+      path: () => {
+        const r = Math.max(vibeAt.radius * 3.2, 40);
+        return [0, 1, 2, 3, 4].map((i) => {
+          const a = 0.4 + i * 0.35;
+          return { pos: at(vibeAt.x + Math.cos(a) * r, 8 + i, vibeAt.z + Math.sin(a) * r), look: at(vibeAt.x, 8, vibeAt.z) };
+        });
+      },
+      cues: vibes.slice(1).map((v, i) => ({
+        at: per * (i + 1),
+        run: () => {
+          h.vibe(v);
+          this.el.line.textContent = VIBES[v].label;
+        },
+      })),
+    });
+
+    // 13. Photo mode: time stops mid-wave; the camera glides through the frozen surf and takes the shot.
+    shots.push({
+      duration: 16,
+      hours: [18.7, 18.7],
+      weather: 'fair',
+      freeze: true,
+      viewfinder: '35 mm · f/2 · 1/500 s · time frozen',
+      lens: { focal: 35, fStop: 2 },
+      clearance: 0.9,
+      title: 'Photo mode',
+      line: 'Freeze time, choose a lens, frame the shot, and keep it.',
+      path: () => {
+        // On the wet sand at the water's edge (the beach's rocks lie higher up), looking along the surf line.
+        const p = [-16, -4, 8].map((z) => ({ x: shoreAt(z) - 3, z }));
+        return p.map((q) => ({ pos: at(q.x, 1.1, q.z), look: V(shoreAt(q.z + 30) + 4, 0.2, q.z + 30) }));
+      },
+      cues: [{ at: 10.5, run: () => h.capture() }],
+    });
+
+    // 14. Sunset: climbing out over the land toward the sea.
+    shots.push({
+      duration: 22,
+      hours: [19, 19.4],
+      weather: 'fair',
+      clearance: 3,
+      path: () => [
+        { pos: at(-60, 4, 10), look: V(shore + 1200, 40, 0) },
+        { pos: at(-100, 40, 0), look: V(shore + 1500, 10, 0) },
+        { pos: at(-150, 150, -10), look: V(shore + 1500, 0, 0) },
+      ],
+    });
+
+    // 15. Night: the northern lights over the meadow, and the end card.
+    shots.push({
+      duration: 26,
+      hours: [22.8, 23],
+      weather: 'clear',
+      aurora: 1.3,
+      clearance: 2,
+      fadeOut: 3,
+      title: 'Night',
+      line: 'Moonlight, a sky full of stars, and the northern lights.',
+      card: { title: 'Meadows', line: 'Real-time in the browser · Three.js and WebGL2', from: 15, to: 25.5 },
+      path: () => [
+        { pos: at(shore - 40, 2.2, 40), look: V(shore - 160, 50, -300) },
+        { pos: at(shore - 45, 2.4, 30), look: V(shore - 20, 70, -320) },
+        { pos: at(shore - 50, 2.6, 20), look: V(shore + 140, 80, -300) },
+      ],
+    });
+    return shots;
+  }
+}

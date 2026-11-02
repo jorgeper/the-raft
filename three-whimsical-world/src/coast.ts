@@ -624,12 +624,15 @@ export class CoastLife {
 
   // Whale ----------------------------------------------------------------------------------------------------------
 
-  /** Starts a whale surfacing (or breaching) offshore in view of the coast near the camera. */
-  surfaceWhale(camera: THREE.Vector3, kind: WhaleKind = Math.random() < 0.25 ? 'breach' : 'blow') {
-    const z = camera.z + (Math.random() - 0.5) * 300;
+  /**
+   * Starts a whale surfacing (or breaching) offshore in view of the coast near the camera, or at `at` (the demo
+   * frames its shot on it).
+   */
+  surfaceWhale(camera: THREE.Vector3, kind: WhaleKind = Math.random() < 0.25 ? 'breach' : 'blow', at?: { x: number; z: number }) {
+    const z = at ? at.z : camera.z + (Math.random() - 0.5) * 300;
     const sx = this.shoreX(z);
     if (sx === null) return false;
-    let x = Math.max(sx + 120 + Math.random() * 200, camera.x + 120);
+    let x = at ? at.x : Math.max(sx + 120 + Math.random() * 200, camera.x + 120);
     for (let k = 0; k < 10 && this.fns.height(x, z) > -10; k++) x += 60;
     // Heading out to sea on a slant: the back rolls by side-on enough, and the flukes rise nearly face-on.
     const a = (0.45 + Math.random() * 0.45) * (Math.random() < 0.5 ? 1 : -1);

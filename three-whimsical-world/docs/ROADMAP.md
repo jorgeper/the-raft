@@ -137,6 +137,17 @@ In priority order: the first items are the user's requests for the next sessions
 
 ## Done
 
+- Demo film (user, 2026-11-01: "a demo mode... to blow someone's mind"): J, the Cinematic panel, or `?demo`
+  (`&captions=0` without captions). A scripted 5¼-minute film (`src/demo.ts`) in 15 shots joined by fades: title card
+  over the sea at dawn, skimming the meadow, an 85 mm f/1.4 lens shot, the standing stones, light shafts in the forest,
+  a waterfall's spray rainbow, the cliffs' rock, the high mountains, a whale breaching on a 70 mm lens, a shower and
+  its rainbow, the four seasons, the ten vibes, photo mode freezing the surf (the shot develops as a print), sunset,
+  and the northern lights under the end card. Each shot sets its own time, weather, season, vibe and lens; camera lines
+  are laid out from the world (coast, landmarks, falls, the highest peak, a deep stretch of forest, tree positions to
+  fly clear of), so they fit any seed. Optional captions sit in the lower cinema bar. Sound is on while it plays;
+  everything it changes is put back after, and nothing is saved. Esc or J stops it. `__app.demo.seek(seconds)` jumps
+  into it for review (`.playwright-mcp/demo.js` grabs a frame from each shot).
+
 - Seasons picker (user, 2026-11-01; Time & weather panel, or `?season=autumn`): spring, summer, autumn, winter, eased
   over a few seconds (`src/season.ts`). Spring: fresh yellow-green meadow and blossom on hawthorn-like bushes and a
   share of the ash, aspen and rowan (no berries yet). Autumn: every broadleaf turns (aspens gold, ash amber, oaks

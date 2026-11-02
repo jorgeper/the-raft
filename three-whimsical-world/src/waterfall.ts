@@ -190,6 +190,9 @@ function mistPoints(base: THREE.Vector3, rand: () => number) {
   return pts;
 }
 
+/** The spray's rainbow can be held off (the demo's cliff shot stands in the spray, and is about the rock). */
+export const sprayBowControl = { on: true };
+
 const bowUniforms = {
   uSunDir: { value: new THREE.Vector3(0, 1, 0) },
   uBow: { value: 0 },
@@ -313,7 +316,7 @@ export class Waterfalls {
   update(time: number, camera: THREE.Vector3, light: number, sunDir: THREE.Vector3, sunny: number) {
     bowUniforms.uSunDir.value.copy(sunDir);
     // A bow needs direct sun: none at night, nor once the sun is down.
-    bowUniforms.uBow.value = light * sunny * THREE.MathUtils.smoothstep(sunDir.y, -0.02, 0.05);
+    bowUniforms.uBow.value = sprayBowControl.on ? light * sunny * THREE.MathUtils.smoothstep(sunDir.y, -0.02, 0.05) : 0;
     sheetUniforms.uTime.value = time;
     mistUniforms.uTime.value = time;
     mistUniforms.uLight.value = 0.15 + 1.6 * light;

@@ -5,6 +5,8 @@ import { createWater, addRipple } from './water';
 import { wind, sunLight, windControl, WindDrift } from './wind';
 import { VIBES, type VibeName } from './vibes';
 import { Tour } from './tour';
+import { Demo, type DemoHost } from './demo';
+import { sprayBowControl } from './waterfall';
 import { Trample, type Walker } from './trample';
 import { PhotoMode, PlayLens, fovFor, lensSettings, photoSettings, savePhoto } from './photo';
 import { createPost } from './post';
@@ -24,7 +26,7 @@ import { loadPlants } from './plants';
 import { QUALITY_PRESETS, quality, setQuality, type QualityLevel } from './quality';
 import { FpsMeter } from './fps';
 import { SunShadows, seeFarCasters } from './cascades';
-import { Weather, weatherUniforms, type WeatherMode } from './weather';
+import { Weather, weatherUniforms, type WeatherKind, type WeatherMode } from './weather';
 import { Rain, Snow, Splashes } from './rain';
 import { Soundscape } from './audio';
 import { SeedFluff } from './fluff';
@@ -710,6 +712,7 @@ let tour: Tour | null = null;
 let beforeTour: { pos: THREE.Vector3; quat: THREE.Quaternion; time: number; daySpeed: number; mode: typeof movement.mode; view: typeof movement.view } | null = null;
 let sinceTourLight = 0;
 function startTour() {
+  if (demo.active) endDemo();
   // Built for the current world (the waypoints come from its coast, oak, river and falls).
   if (!tour || tour.fns !== world.fns) tour = new Tour(world.fns);
   beforeTour = {
@@ -761,6 +764,7 @@ let beforePhoto: { mode: typeof movement.mode; view: typeof movement.view } | nu
 let photoPending = false;
 function enterPhoto() {
   if (tour?.active) endTour();
+  if (demo.active) endDemo();
   beforePhoto = { mode: movement.mode, view: movement.view };
   movement.mode = 'fly';
   movement.view = 'first';
@@ -811,6 +815,137 @@ photoGui.add(photoSettings, 'fStop', 1.2, 22, 0.1).name('f-stop (lower = more bl
 photoGui.add(photoSettings, 'dreamy', 1, 8, 0.1).name('extra dreaminess ×');
 photoGui.add(photoSettings, 'freeze').name('freeze time').onChange((v: boolean) => photo.active && timer.setTimescale(v ? 0 : 1));
 photoGui.add({ save: () => (photoPending = true) }, 'save').name('💾 save photo (Enter)');
+
+// --- Demo mode (J, or ?demo): a scripted five-minute film of the world (src/demo.ts), with optional captions. It
+// drives the clock, weather, season, vibe and lens; everything is put back when it ends, and nothing it sets is saved.
+const demoSettings = { captions: true };
+persist.bind('demo', demoSettings, ['captions']);
+let demoCapture = false;
+let beforeDemo: {
+  pos: THREE.Vector3; quat: THREE.Quaternion; mode: typeof movement.mode; view: typeof movement.view; sound: boolean;
+  settings: Pick<typeof settings, 'time' | 'daySpeed' | 'season' | 'vibe' | 'aurora'>;
+  weather: Pick<Weather, 'mode' | 'clouds' | 'overcast' | 'rain' | 'snow' | 'snowCover' | 'wetness' | 'rainbow'>;
+  lens: typeof lensSettings;
+} | null = null;
+/** Puts the weather straight into a state (no build-up). */
+function jumpWeather(kind: WeatherKind) {
+  weather.mode = kind;
+  weather.clouds = { clear: 0.12, fair: 0.38, cloudy: 0.62, overcast: 0.85, rain: 0.95, snow: 0.9 }[kind];
+  weather.overcast = { clear: 0, fair: 0, cloudy: 0.25, overcast: 0.7, rain: 1, snow: 0.8 }[kind];
+  weather.rain = weather.wetness = kind === 'rain' ? 1 : 0;
+  weather.snow = weather.snowCover = kind === 'snow' ? 1 : 0;
+  weather.rainbow = 0;
+  updateSun();
+}
+const demoHost: DemoHost = {
+  get fns() { return world.fns; },
+  sunDir,
+  trees: () => world.treeSpots(),
+  setTime(hours, relight) {
+    settings.time = hours;
+    if (relight) updateSun();
+  },
+  weather(kind, now) {
+    if (now) jumpWeather(kind);
+    else weather.pick(kind);
+  },
+  season(s) {
+    if (settings.season === s) return;
+    settings.season = s;
+    applySeason(true);
+  },
+  vibe(v) {
+    if (settings.vibe === v) return;
+    settings.vibe = v;
+    applyVibe();
+  },
+  lens(l) {
+    lensSettings.on = !!l;
+    if (l) Object.assign(lensSettings, { focal: l.focal, fStop: l.fStop, dreamy: 1, setsFov: true });
+    applyLens();
+  },
+  freeze(on) {
+    timer.setTimescale(on ? 0 : 1);
+  },
+  aurora(strength) {
+    const v = strength ?? beforeDemo?.settings.aurora ?? settings.aurora;
+    if (v === settings.aurora) return;
+    settings.aurora = v;
+    updateSun();
+  },
+  whale(at, kind) {
+    world.coast.surfaceWhale(camera.position, kind, at);
+  },
+  capture() {
+    demoCapture = true;
+  },
+  sprayBow(on) {
+    sprayBowControl.on = on;
+  },
+  cut() {
+    snapView();
+    world.update(camera, true);
+    post.taa.reset();
+    sunShadows.refresh();
+  },
+};
+const demo = new Demo(demoHost, stage);
+demo.captions = demoSettings.captions;
+function startDemo() {
+  if (tour?.active) endTour();
+  if (photo.active) exitPhoto();
+  beforeDemo = {
+    pos: player.position.clone(), quat: player.quaternion.clone(), mode: movement.mode, view: movement.view, sound: sound.settings.on,
+    settings: { time: settings.time, daySpeed: settings.daySpeed, season: settings.season, vibe: settings.vibe, aurora: settings.aurora },
+    weather: {
+      mode: weather.mode, clouds: weather.clouds, overcast: weather.overcast, rain: weather.rain, snow: weather.snow,
+      snowCover: weather.snowCover, wetness: weather.wetness, rainbow: weather.rainbow,
+    },
+    lens: { ...lensSettings },
+  };
+  controls.unlock();
+  settings.daySpeed = 0;
+  movement.mode = 'fly';
+  movement.view = 'first';
+  sound.settings.on = true;
+  document.body.classList.add('cinema');
+  document.body.classList.toggle('letterbox', cinema.letterbox);
+  demo.start();
+  demo.update(0, player);
+  demoHost.cut();
+}
+function endDemo() {
+  demo.stop();
+  document.body.classList.remove('cinema', 'letterbox');
+  const b = beforeDemo;
+  if (!b) return;
+  beforeDemo = null;
+  player.position.copy(b.pos);
+  player.quaternion.copy(b.quat);
+  movement.mode = b.mode;
+  movement.view = b.view;
+  sound.settings.on = b.sound;
+  Object.assign(settings, b.settings);
+  Object.assign(lensSettings, b.lens);
+  applySeason(true);
+  Object.assign(weather, b.weather);
+  timer.setTimescale(1);
+  applyVibe();
+  applyLens();
+  timeCtrl.updateDisplay();
+  updateSun();
+  demoHost.cut();
+}
+const toggleDemo = () => (demo.active ? endDemo() : startDemo());
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyJ' && !e.repeat) toggleDemo();
+  if (e.code === 'Escape' && demo.active) endDemo();
+});
+window.addEventListener('pagehide', () => {
+  if (demo.active) endDemo();
+});
+cinemaGui.add({ go: toggleDemo }, 'go').name('✨ demo film (J)');
+cinemaGui.add(demoSettings, 'captions').name('demo captions').onChange((v: boolean) => (demo.captions = v));
 
 // --- The lens while playing: the photo mode's depth of field, with a lens of your choosing (?lens=48,1.2).
 const playLens = new PlayLens();
@@ -889,8 +1024,11 @@ if (camParam?.length === 6 && camParam.every(Number.isFinite)) {
   player.position.set(-30, world.height(-30, 0) + EYE_HEIGHT, 0);
   lookAt(player, 400, 4, -60);
 }
-// ?tour starts the flythrough once the world has settled (for recording).
+// ?tour starts the flythrough once the world has settled (for recording); ?demo the demo film (&captions=0 without
+// captions).
 if (query.has('tour')) setTimeout(startTour, 1500);
+if (query.get('captions') === '0') demo.captions = false;
+if (query.has('demo')) setTimeout(startDemo, 1500);
 // ?view=first|third picks the view for a shot.
 if (query.get('view') === 'first' || query.get('view') === 'third') movement.view = query.get('view') as 'first' | 'third';
 
@@ -1037,12 +1175,14 @@ applyDisplay();
 
 // Save whenever a panel edit is committed, after the keyboard toggles (T, F, M, V, H), and when leaving the page
 // (which also catches the clock moving on its own).
-gui.onFinishChange(() => persist.save());
+// (Not while the demo plays: it ends itself on pagehide, before this saves.)
+const save = () => !demo.active && persist.save();
+gui.onFinishChange(save);
 window.addEventListener('keyup', (e) => {
-  if (['KeyT', 'KeyF', 'KeyM', 'KeyV', 'KeyH', 'KeyP', 'KeyN'].includes(e.code)) persist.save();
+  if (['KeyT', 'KeyF', 'KeyM', 'KeyV', 'KeyH', 'KeyP', 'KeyN'].includes(e.code)) save();
 });
-window.addEventListener('pagehide', () => persist.save());
-document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && persist.save());
+window.addEventListener('pagehide', save);
+document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && save());
 
 function resetToDefaults() {
   persist.reset();
@@ -1102,9 +1242,13 @@ renderer.setAnimationLoop((now) => {
     photo.update(realDt, post.dof.distanceAt, camera.far, renderer.domElement.height, post.dof.uniforms);
   }
   // The flythrough flies the eye and runs the clock; re-light a few times a second as the sun moves.
-  const touring = tour?.active ?? false;
+  const demoing = demo.active;
+  const touring = (tour?.active ?? false) || demoing;
   let motion = { grounded: false, jumped: false };
-  if (touring) {
+  if (demoing) {
+    // Real time: the photo shot freezes the world's clock, not the camera.
+    if (!demo.update(realDt, player)) endDemo();
+  } else if (touring) {
     const hours = tour!.update(dt, player);
     if (hours === null) endTour();
     else {
@@ -1116,7 +1260,7 @@ renderer.setAnimationLoop((now) => {
       }
     }
   } else motion = updateCamera(photo.active ? realDt : dt);
-  updateView(photo.active ? realDt : dt);
+  updateView(photo.active || demoing ? realDt : dt);
   if (lensSettings.on && !photo.active) {
     // Third person focuses on the character; first person on whatever is in the middle of the frame.
     let subject: number | null = null;
@@ -1125,7 +1269,7 @@ renderer.setAnimationLoop((now) => {
       lensHead.copy(character.root.position).y += 1.5;
       subject = -lensHead.applyMatrix4(camera.matrixWorldInverse).z;
     }
-    playLens.update(dt, subject, post.dof.distanceAt, camera.far, camera.fov, renderer.domElement.height, post.dof.uniforms);
+    playLens.update(demoing ? realDt : dt, subject, post.dof.distanceAt, camera.far, camera.fov, renderer.domElement.height, post.dof.uniforms);
   }
   const torchAim = updateCharacter(dt, motion);
 
@@ -1271,6 +1415,10 @@ renderer.setAnimationLoop((now) => {
     photoPending = false;
     savePhoto(renderer.domElement);
   }
+  if (demoCapture) {
+    demoCapture = false;
+    demo.develop(renderer.domElement);
+  }
 });
 
 // Apply the preset with the performance switches, then fill grass and ground cover before the first frame so the
@@ -1281,5 +1429,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { seasons, sunDir, applySeason, trample, sound, windControl, windDrift, applyVibe, startTour, endTour, photo, enterPhoto, exitPhoto, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
+  __app: { demo, startDemo, endDemo, seasons, sunDir, applySeason, trample, sound, windControl, windDrift, applyVibe, startTour, endTour, photo, enterPhoto, exitPhoto, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
 });
