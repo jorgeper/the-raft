@@ -49,6 +49,17 @@ export interface DemoHost {
   cut(): void;
 }
 
+/** A photo session's settings for the shot it borrows (its place and framing), in place of the shot's own. */
+export interface DemoOverride {
+  hours: number;
+  weather: WeatherKind;
+  season: Season;
+  vibe: VibeName;
+  /** undefined: the shot's own lens; null: none. */
+  lens: { focal: number; fStop: number } | null | undefined;
+  aurora: number | null;
+}
+
 export interface Mood {
   fog: number;
   fogHeight: number;
@@ -116,6 +127,8 @@ const ease = (x: number) => 0.5 * x + 0.5 * x * x * (3 - 2 * x);
 export class Demo {
   active = false;
   captions = true;
+  /** Set by a photo session: its time, weather, season, vibe and lens win over the shot's (and its cues'). */
+  override: DemoOverride | null = null;
   private shots: Shot[] = [];
   private index = 0;
   private t = 0;
@@ -134,8 +147,20 @@ export class Demo {
   private readonly img: HTMLImageElement;
   private readonly m = new THREE.Matrix4();
   private readonly up = V(0, 1, 0);
+  /** What the shots' paths and cues drive: the host, except what an override holds. */
+  private readonly guard: DemoHost;
 
   constructor(private host: DemoHost, stage: HTMLElement) {
+    const held = <A extends unknown[]>(f: (...a: A) => void) => (...a: A) => {
+      if (!this.override) f(...a);
+    };
+    this.guard = Object.assign(Object.create(host) as DemoHost, {
+      weather: held(host.weather.bind(host)),
+      season: held(host.season.bind(host)),
+      vibe: held(host.vibe.bind(host)),
+      aurora: held(host.aurora.bind(host)),
+      capture: held(host.capture.bind(host)),
+    });
     const div = (cls: string, parent: HTMLElement = stage) => {
       const d = document.createElement('div');
       d.className = cls;
@@ -210,6 +235,11 @@ export class Demo {
     this.host.cut();
   }
 
+  /** The shots, for a photo session to borrow. */
+  get catalog() {
+    return this.shots.map((s) => ({ label: s.name ?? s.title ?? 'shot', duration: s.duration, ownLens: !!s.lens }));
+  }
+
   /** Where each shot starts (s), for reviewing. */
   get starts() {
     let t = 0;
@@ -236,13 +266,14 @@ export class Demo {
     this.t = 0;
     this.done.clear();
     this.lift = 0;
-    h.setTime(shot.hours[0], true);
-    h.weather(shot.weather ?? 'clear', true);
-    h.season(shot.season ?? 'spring');
-    h.vibe(shot.vibe ?? 'whimsical');
-    h.lens(shot.lens ?? null);
+    const o = this.override;
+    h.setTime(o?.hours ?? shot.hours[0], true);
+    h.weather(o?.weather ?? shot.weather ?? 'clear', true);
+    h.season(o?.season ?? shot.season ?? 'spring');
+    h.vibe(o?.vibe ?? shot.vibe ?? 'whimsical');
+    h.lens((o?.lens === undefined ? shot.lens : o.lens) ?? null);
     h.freeze(!!shot.freeze);
-    h.aurora(shot.aurora ?? null);
+    h.aurora(o ? o.aurora : shot.aurora ?? null);
     h.sprayBow(!shot.noSprayBow);
     h.mood(shot.mood ?? null);
     h.dragonflies(null);
@@ -285,9 +316,9 @@ export class Demo {
     }
 
     // The clock.
-    const hours = THREE.MathUtils.lerp(shot.hours[0], shot.hours[1], t / d);
+    const hours = this.override?.hours ?? THREE.MathUtils.lerp(shot.hours[0], shot.hours[1], t / d);
     this.sinceLight += dt;
-    const relight = this.sinceLight > 0.15 && shot.hours[0] !== shot.hours[1];
+    const relight = this.sinceLight > 0.15 && shot.hours[0] !== shot.hours[1] && !this.override;
     if (relight) this.sinceLight = 0;
     this.host.setTime(hours, relight);
 
@@ -349,7 +380,7 @@ export class Demo {
 
   /** The shots, laid out from this world. */
   private plan(): Shot[] {
-    const h = this.host;
+    const h = this.guard;
     const f = h.fns;
     const ground = (x: number, z: number) => Math.max(f.height(x, z), 0);
     const at = (x: number, up: number, z: number) => V(x, ground(x, z) + up, z);

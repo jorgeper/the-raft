@@ -157,16 +157,3 @@ export class PhotoMode {
       + `${photoSettings.freeze ? ' · time frozen' : ''}   —   wheel zoom · right-click focus · Enter save · O exit`;
   }
 }
-
-/** Saves the canvas as a PNG download. Call right after rendering, in the same frame. */
-export function savePhoto(canvas: HTMLCanvasElement) {
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const a = document.createElement('a');
-    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
-    a.download = `meadows-${stamp}.png`;
-    a.href = URL.createObjectURL(blob);
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  }, 'image/png');
-}

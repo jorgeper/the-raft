@@ -53,6 +53,28 @@
       .demo-fade, .demo-flash { position: absolute; inset: 0; opacity: 0; }
       .demo-fade { background: #000; }
       .demo-flash { background: #fff; }
+      .photo-note { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 30; padding: 8px 16px;
+        border-radius: 8px; background: rgba(10,12,16,.62); color: #f4ecd8; font: 14px/1.4 Georgia, 'Times New Roman', serif;
+        white-space: nowrap; opacity: 0; transition: opacity .5s; pointer-events: none; }
+      .session-hud { position: absolute; left: 50%; bottom: 22px; transform: translate(-50%, 12px); z-index: 30; display: flex; gap: 14px;
+        align-items: center; width: min(560px, calc(100% - 32px)); padding: 12px 14px; border-radius: 12px; box-sizing: border-box;
+        background: rgba(12,14,20,.72); backdrop-filter: blur(8px); color: #f4ecd8; line-height: 1.35;
+        font-family: Georgia, 'Times New Roman', serif; box-shadow: 0 6px 30px rgba(0,0,0,.35);
+        opacity: 0; transition: opacity .4s, transform .4s; pointer-events: none; }
+      .session-hud.on { opacity: 1; transform: translate(-50%, 0); }
+      .session-thumb { width: 112px; height: 63px; object-fit: cover; border-radius: 6px; flex: none; background: rgba(255,255,255,.08);
+        box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+      .session-body { flex: 1; min-width: 0; }
+      .session-head { display: flex; justify-content: space-between; align-items: baseline; }
+      .session-title { font-size: 12px; letter-spacing: .22em; text-transform: uppercase; color: #e6c98a; }
+      .session-count { font-size: 15px; font-variant-numeric: tabular-nums; }
+      .session-bar { height: 5px; margin: 7px 0 6px; border-radius: 3px; background: rgba(255,255,255,.14); overflow: hidden; }
+      .session-fill { height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, #7fd6d0, #e6c98a); transition: width .5s; }
+      .session-what { font-size: 14px; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .session-hint { font-size: 12px; opacity: .7; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .session-flash { position: absolute; inset: 0; z-index: 29; background: #fff; opacity: 0; pointer-events: none; }
+      .session-flash.go { animation: session-flash .35s ease-out; }
+      @keyframes session-flash { from { opacity: .35; } to { opacity: 0; } }
       .demo-caption {
         position: absolute; left: 50%; bottom: 3.4%; transform: translateX(-50%); width: min(82%, 980px); text-align: center;
         font-family: Georgia, 'Times New Roman', serif; color: #f4ecd8; text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 18px rgba(0,0,0,.5); opacity: 0;

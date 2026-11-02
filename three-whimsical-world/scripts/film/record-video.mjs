@@ -34,6 +34,8 @@ page.on('response', (r) => { if (r.status() >= 400) console.log('http', r.status
 await page.addInitScript(shim);
 await page.goto('http://localhost:5173/?defaults&view=first', { waitUntil: 'load' });
 await page.waitForFunction(() => window.__app, null, { timeout: 120000 });
+// The demo's snapshot would otherwise be saved to ~/Downloads on every recording.
+await page.evaluate(() => { __app.demoSettings.savePrint = false; });
 await page.evaluate((q) => { __app.display.quality = q; __app.applyQuality(); }, QUALITY);
 await page.waitForTimeout(8000); // let workers, textures and models settle
 const starts = await page.evaluate(() => { __app.startDemo(); return __app.demo.starts; });

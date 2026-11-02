@@ -50,6 +50,8 @@ page.on('pageerror', (e) => console.log('pageerror:', e.message));
 await page.addInitScript(tap);
 await page.goto('http://localhost:5173/?defaults&view=first', { waitUntil: 'load' });
 await page.waitForFunction(() => window.__app, null, { timeout: 120000 });
+// The demo's snapshot would otherwise be saved to ~/Downloads on every recording.
+await page.evaluate(() => { __app.demoSettings.savePrint = false; });
 await page.evaluate(() => { __app.display.quality = 'low'; __app.applyQuality(); __app.sound.settings.volume = 1; __app.sound.unlock(); });
 await page.waitForFunction(() => window.__rec.ready, null, { timeout: 30000 });
 await page.waitForTimeout(8000);

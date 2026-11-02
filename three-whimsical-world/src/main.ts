@@ -8,7 +8,10 @@ import { Tour } from './tour';
 import { Demo, type DemoHost } from './demo';
 import { sprayBowControl } from './waterfall';
 import { Trample, type Walker } from './trample';
-import { PhotoMode, PlayLens, fovFor, lensSettings, photoSettings, savePhoto } from './photo';
+import { PhotoMode, PlayLens, fovFor, lensSettings, photoSettings } from './photo';
+import { grab, pickFolder, savePng, saveSettings, stamp } from './photo-save';
+import { planSession, type PhotoPlan } from './photo-session';
+import { SessionHud } from './photo-hud';
 import { createPost } from './post';
 import { World } from './world';
 import { DEFAULT_PARAMS, type WorldParams } from './worldgen';
@@ -796,7 +799,11 @@ function exitPhoto() {
 const togglePhoto = () => (photo.active ? exitPhoto() : enterPhoto());
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyO' && !e.repeat) togglePhoto();
-  if (e.code === 'Enter' && photo.active) photoPending = true;
+  // Enter: a photo session (random places, light, weather and vibes); Shift+Enter: just this view.
+  if (e.code === 'Enter' && photo.active && !e.repeat) {
+    if (e.shiftKey) photoPending = true;
+    else startPhotoSession();
+  }
 });
 renderer.domElement.addEventListener('contextmenu', (e) => {
   if (!photo.active) return;
@@ -821,11 +828,117 @@ photoGui.add({ go: togglePhoto }, 'go').name('📷 photo mode (O)');
 photoGui.add(photoSettings, 'fStop', 1.2, 22, 0.1).name('f-stop (lower = more blur)');
 photoGui.add(photoSettings, 'dreamy', 1, 8, 0.1).name('extra dreaminess ×');
 photoGui.add(photoSettings, 'freeze').name('freeze time').onChange((v: boolean) => photo.active && timer.setTimescale(v ? 0 : 1));
-photoGui.add({ save: () => (photoPending = true) }, 'save').name('💾 save photo (Enter)');
+photoGui.add({ save: () => (photoPending = true) }, 'save').name('💾 save this view (Shift+Enter)');
+
+// --- Photo sessions: N photos of the world, each a different place, time of day, weather, season, vibe and lens,
+// planned for coverage (src/photo-session.ts) and saved into a new folder inside the photo folder. The places and
+// their framing are the demo film's shots: the session plays the demo with its own settings in place of each shot's.
+persist.bind('photoSave', saveSettings, ['folder']);
+const sessionSettings = { count: 10 };
+persist.bind('photoSession', sessionSettings, ['count']);
+/** Snap the exposure and the forest haze to the view instead of easing them (a photo session's cuts). */
+let snapLook = false;
+let session: {
+  plans: PhotoPlan[]; i: number; wait: number; frames: number; folder: string; saved: number; where: string; busy: boolean;
+  /** Started from photo mode: go back to it (where you were) afterwards. */
+  fromPhoto: boolean;
+} | null = null;
+const hud = new SessionHud(stage);
+const noteEl = document.createElement('div');
+noteEl.className = 'photo-note';
+stage.appendChild(noteEl);
+let noteTimer = 0;
+/** A line at the bottom of the view (hold 0: until replaced). */
+function note(text: string, hold = 4000) {
+  noteEl.textContent = text;
+  noteEl.style.opacity = '1';
+  clearTimeout(noteTimer);
+  if (hold > 0) noteTimer = window.setTimeout(() => (noteEl.style.opacity = '0'), hold);
+}
+function startPhotoSession() {
+  if (session) return;
+  const fromPhoto = photo.active;
+  if (photo.active) exitPhoto();
+  if (demo.active) endDemo();
+  startDemo();
+  demo.captions = false;
+  document.body.classList.remove('letterbox');
+  const n = Math.round(THREE.MathUtils.clamp(sessionSettings.count, 1, 100));
+  const plans = planSession(n, demo.catalog, Date.now() % 1e9);
+  session = { plans, i: -1, wait: 0, frames: 0, folder: `meadows-photos-${stamp('folder')}`, saved: 0, where: '', busy: false, fromPhoto };
+  hud.start(n);
+  nextPhoto();
+}
+function nextPhoto() {
+  const s = session!;
+  s.i++;
+  if (s.i >= s.plans.length) return endPhotoSession(true);
+  const p = s.plans[s.i];
+  demo.override = { hours: p.time.hours, weather: p.weather, season: p.season, vibe: p.vibe, lens: p.lens, aurora: p.aurora };
+  demo.seek(demo.starts[p.shot] + p.at);
+  demo.update(0, player);
+  demoHost.cut();
+  s.wait = 0;
+  s.frames = 0;
+  hud.progress(s.i, s.plans.length, p.caption);
+}
+/** After each rendered frame while a session runs: let the view settle, then take the photo. */
+function sessionFrame(dt: number) {
+  const s = session!;
+  if (!demo.active) return endPhotoSession(false);
+  if (s.busy) return;
+  s.wait += dt;
+  s.frames++;
+  snapLook = s.wait < 0.6;
+  // Grass and cover stream in around the new view, the shadows and the lens's focus settle; then the shot.
+  if (s.wait < 1.6 || s.frames < 40) return;
+  s.busy = true;
+  const p = s.plans[s.i];
+  grab(renderer.domElement)
+    .then(async (png) => {
+      if (!png || session !== s) return;
+      const path = await savePng(png, `${p.name}.png`, s.folder);
+      s.where = path.slice(0, path.lastIndexOf('/'));
+      s.saved++;
+      hud.shot(png);
+    })
+    .catch((e) => console.warn('Photo session:', e))
+    .finally(() => {
+      if (session !== s) return;
+      s.busy = false;
+      nextPhoto();
+    });
+}
+function endPhotoSession(done: boolean) {
+  const s = session;
+  if (!s) return;
+  session = null;
+  snapLook = false;
+  demo.override = null;
+  if (demo.active) endDemo();
+  demo.captions = demoSettings.captions;
+  hud.finish(s.saved, s.plans.length, s.where, !done);
+  if (s.fromPhoto) enterPhoto();
+}
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && session) endPhotoSession(false);
+});
+photoGui.add(saveSettings, 'folder').name('save photos to');
+photoGui.add({
+  pick: async () => {
+    const dir = await pickFolder();
+    if (!dir) return;
+    saveSettings.folder = dir;
+    photoGui.controllersRecursive().forEach((c) => c.updateDisplay());
+    save();
+  },
+}, 'pick').name('📁 choose folder…');
+photoGui.add(sessionSettings, 'count', 1, 100, 1).name('photos per session');
+photoGui.add({ go: startPhotoSession }, 'go').name('🎞 photo session (Enter in photo mode)');
 
 // --- Demo mode (J, or ?demo): a scripted five-minute film of the world (src/demo.ts), with optional captions. It
 // drives the clock, weather, season, vibe and lens; everything is put back when it ends, and nothing it sets is saved.
-const demoSettings = { captions: true, lens: false };
+const demoSettings = { captions: true, lens: false, savePrint: true };
 persist.bind('demo', demoSettings, ['captions', 'lens']);
 let demoCapture = false;
 /** The demo's forest mood brightens the motes (spores and pollen in the light) by this much. */
@@ -1383,7 +1496,7 @@ renderer.setAnimationLoop((now) => {
   // Inside a forest the haze thickens; ease toward it so walking in and out doesn't pop.
   const altitude = camera.position.y - world.height(camera.position.x, camera.position.z);
   const forestHere = canopyAround(camera.position.x, camera.position.z) * (1 - THREE.MathUtils.smoothstep(altitude, 5, 40));
-  post.atmosphere.uForest.value += (forestHere - post.atmosphere.uForest.value) * Math.min(dt * 1.5, 1);
+  post.atmosphere.uForest.value += (forestHere - post.atmosphere.uForest.value) * (snapLook ? 1 : Math.min(dt * 1.5, 1));
   world.life.update(timer.getElapsed(), camera, daylight, post.atmosphere.uForest.value);
   if (demo.active) world.deer.stampedeTime = demo.shotTime;
   world.deer.update(timer.getElapsed(), player.position);
@@ -1401,13 +1514,13 @@ renderer.setAnimationLoop((now) => {
   // toward a floor, partly (a night should still look like night), up to a limit set by `nightVision`.
   // The meter is smoothed over ~1.5 s, so glancing at a bright gap or a dark trunk doesn't pump the exposure.
   const reading = Math.log2(post.luminance.average);
-  if (Number.isFinite(reading)) meteredLog = Number.isFinite(meteredLog) ? meteredLog + (reading - meteredLog) * Math.min(dt / 1.5, 1) : reading;
+  if (Number.isFinite(reading)) meteredLog = Number.isFinite(meteredLog) && !snapLook ? meteredLog + (reading - meteredLog) * Math.min(dt / 1.5, 1) : reading;
   const metered = 2 ** meteredLog * baseExposure;
   const maxLift = 1 + 3.5 * nightVision() * darkHours;
   const darkLift = Number.isFinite(metered) && metered > 0 ? THREE.MathUtils.clamp(Math.pow(0.05 / metered, 0.6), 1, maxLift) : 1;
   const adaptTarget = (1 - 0.22 * intoSun * (1 - 0.6 * post.atmosphere.uForest.value)) * forestOpen * darkLift;
   // Stopping down is quick; opening up in the dark takes a couple of seconds, like an eye.
-  eyeAdapt += (adaptTarget - eyeAdapt) * Math.min(dt * (adaptTarget < eyeAdapt ? 1.5 : 0.8), 1);
+  eyeAdapt += (adaptTarget - eyeAdapt) * (snapLook ? 1 : Math.min(dt * (adaptTarget < eyeAdapt ? 1.5 : 0.8), 1));
   renderer.toneMappingExposure = baseExposure * eyeAdapt;
 
   // Keep the shadow frustum centered on the viewer.
@@ -1455,12 +1568,16 @@ renderer.setAnimationLoop((now) => {
   post.render(lightDir, scatterSun);
   if (photoPending) {
     photoPending = false;
-    savePhoto(renderer.domElement);
+    const name = `meadows-${stamp('file')}.png`;
+    void grab(renderer.domElement).then((png) => png && savePng(png, name)).then((where) => where && note(`Saved ${where}`));
   }
   if (demoCapture) {
     demoCapture = false;
     demo.develop(renderer.domElement);
+    // The demo's snapshot is kept too (the film recorder turns this off).
+    if (demoSettings.savePrint) void grab(renderer.domElement).then((png) => png && savePng(png, `meadows-demo-${stamp('file')}.png`));
   }
+  if (session) sessionFrame(realDt);
 });
 
 // Apply the preset with the performance switches, then fill grass and ground cover before the first frame so the
@@ -1471,5 +1588,5 @@ world.update(camera, true);
 
 // Debug handle for automated screenshots.
 Object.assign(window, {
-  __app: { demo, startDemo, endDemo, seasons, sunDir, applySeason, trample, sound, windControl, windDrift, applyVibe, startTour, endTour, photo, enterPhoto, exitPhoto, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
+  __app: { demo, startDemo, endDemo, startPhotoSession, endPhotoSession, saveSettings, sessionSettings, demoSettings, seasons, sunDir, applySeason, trample, sound, windControl, windDrift, applyVibe, startTour, endTour, photo, enterPhoto, exitPhoto, get tour() { return tour; }, camera, scene, renderer, settings, updateSun, sky, wind, cubeTarget, skyScene, post, params, regenerate, display, applyDisplay, movement, torch, persist, player, character, snapView, lookAt, groundUniforms, resetToDefaults, applyQuality, quality, perf, weather, addRipple, fluff, fps, sunShadows, get world() { return world; } },
 });
