@@ -4,7 +4,7 @@ import * as THREE from 'three';
  * Photo mode (O): a free camera with a real lens. The field of view is a focal length on a full-frame sensor
  * (wheel zooms from 14 to 200 mm), the f-stop sets how shallow the depth of field is, and focus either follows
  * the middle of the frame (eased, like a camera's autofocus) or locks onto whatever you right-click. Time can be
- * frozen, Enter saves the frame as a PNG, and the HUD gives way to a viewfinder overlay.
+ * frozen, Shift+Enter saves the frame as a PNG (Enter runs a photo session), and the HUD gives way to a viewfinder overlay.
  */
 
 export const photoSettings = {
@@ -154,6 +154,6 @@ export class PhotoMode {
     this.reticle.classList.toggle('locked', this.lockAt !== null);
     const focusText = this.focus >= far * 0.85 ? '∞' : this.focus < 10 ? `${this.focus.toFixed(1)} m` : `${Math.round(this.focus)} m`;
     this.info.textContent = `${Math.round(this.focal * 1000)} mm · f/${photoSettings.fStop.toFixed(1)} · focus ${focusText}${this.lockAt ? ' (held)' : ''}`
-      + `${photoSettings.freeze ? ' · time frozen' : ''}   —   wheel zoom · right-click focus · Enter save · O exit`;
+      + `${photoSettings.freeze ? ' · time frozen' : ''}   —   wheel zoom · right-click focus · Enter photo session · Shift+Enter save · O exit`;
   }
 }

@@ -223,7 +223,18 @@ In priority order: the first items are the user's requests for the next sessions
   `src/dof.ts`: `DepthCopyPass` keeps linear distance (water included) from before the haze pass, and `DofPass`
   gathers a thin-lens circle of confusion on a golden-angle spiral over the HDR frame before the bloom, so bright
   spots open into bokeh. Viewfinder overlay instead of the HUD; "freeze time" stops the world's clock while the
-  camera still moves; Enter saves a PNG. Both passes are off outside photo mode. ~50 fps at the stone circle.
+  camera still moves; Shift+Enter saves a PNG. Both passes are off outside photo mode. ~50 fps at the stone circle.
+- Photo sessions (user, 2026-11-01): Enter in photo mode (or the panel's "🎞 photo session") shoots 1-100 photos
+  (`src/photo-session.ts`). The demo film's shots are the places, framed as the film frames them; each photo gets its
+  own time of day, weather, season, vibe and lens, picked greedily for coverage of values and pairs, within place
+  profiles that keep every combination a picture (no forest interiors at night, long lenses only on far subjects,
+  clear night skies, rain on open land by day, stylized vibes only on well-lit frames). Shot at Ultra by default; a
+  progress card shows each photo as it's saved (`src/photo-hud.ts`), Esc stops. Photos (manual ones and the demo's
+  snapshot too) go to a folder chosen in the panel, default ~/Downloads, a session in its own subfolder, written by
+  a dev-server endpoint (`vite.config.ts`, same-origin only, home folder or /Volumes only); a static build downloads.
+  Open: the place list is the demo's; places of their own (hilltops, the stone circle, aerial views) would add range.
+- Demo film to video (user, 2026-11-01): `npm run film` renders the demo frame-exact at 1080p60 on Ultra with its
+  soundscape (`scripts/film/`, output in `recordings/`). ~50 min for the picture on an M5, 7.5 min for the sound.
 
 - Cinematic flythrough (user, 2026-11-01): K, the "🎬 flythrough" button, or `?tour` (starts after 1.5 s, for
   recording). `src/tour.ts` builds a 152 s path from the world itself: in low over the sea at dawn with the sun

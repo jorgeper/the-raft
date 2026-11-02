@@ -834,14 +834,16 @@ photoGui.add({ save: () => (photoPending = true) }, 'save').name('💾 save this
 // planned for coverage (src/photo-session.ts) and saved into a new folder inside the photo folder. The places and
 // their framing are the demo film's shots: the session plays the demo with its own settings in place of each shot's.
 persist.bind('photoSave', saveSettings, ['folder']);
-const sessionSettings = { count: 10 };
-persist.bind('photoSession', sessionSettings, ['count']);
+const sessionSettings = { count: 10, ultra: true };
+persist.bind('photoSession', sessionSettings, ['count', 'ultra']);
 /** Snap the exposure and the forest haze to the view instead of easing them (a photo session's cuts). */
 let snapLook = false;
 let session: {
   plans: PhotoPlan[]; i: number; wait: number; frames: number; folder: string; saved: number; where: string; busy: boolean;
   /** Started from photo mode: go back to it (where you were) afterwards. */
   fromPhoto: boolean;
+  /** The graphics preset and render scale to put back, if the session switched to Ultra. */
+  quality: { level: typeof display.quality; scale: number } | null;
 } | null = null;
 const hud = new SessionHud(stage);
 const noteEl = document.createElement('div');
@@ -860,12 +862,18 @@ function startPhotoSession() {
   const fromPhoto = photo.active;
   if (photo.active) exitPhoto();
   if (demo.active) endDemo();
+  // The photos at the best the world can look (125% supersampling, grass to 150 m, finer beams); fps doesn't matter.
+  const quality = sessionSettings.ultra && display.quality !== 'ultra' ? { level: display.quality, scale: display.renderScale } : null;
+  if (quality) {
+    display.quality = 'ultra';
+    applyQuality();
+  }
   startDemo();
   demo.captions = false;
   document.body.classList.remove('letterbox');
   const n = Math.round(THREE.MathUtils.clamp(sessionSettings.count, 1, 100));
   const plans = planSession(n, demo.catalog, Date.now() % 1e9);
-  session = { plans, i: -1, wait: 0, frames: 0, folder: `meadows-photos-${stamp('folder')}`, saved: 0, where: '', busy: false, fromPhoto };
+  session = { plans, i: -1, wait: 0, frames: 0, folder: `meadows-photos-${stamp('folder')}`, saved: 0, where: '', busy: false, fromPhoto, quality };
   hud.start(n);
   nextPhoto();
 }
@@ -915,6 +923,11 @@ function endPhotoSession(done: boolean) {
   session = null;
   snapLook = false;
   demo.override = null;
+  if (s.quality) {
+    display.quality = s.quality.level;
+    display.renderScale = s.quality.scale;
+    applyQuality(true);
+  }
   if (demo.active) endDemo();
   demo.captions = demoSettings.captions;
   hud.finish(s.saved, s.plans.length, s.where, !done);
@@ -934,6 +947,7 @@ photoGui.add({
   },
 }, 'pick').name('📁 choose folder…');
 photoGui.add(sessionSettings, 'count', 1, 100, 1).name('photos per session');
+photoGui.add(sessionSettings, 'ultra').name('session photos at Ultra quality');
 photoGui.add({ go: startPhotoSession }, 'go').name('🎞 photo session (Enter in photo mode)');
 
 // --- Demo mode (J, or ?demo): a scripted five-minute film of the world (src/demo.ts), with optional captions. It
