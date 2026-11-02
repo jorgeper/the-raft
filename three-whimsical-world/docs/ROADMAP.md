@@ -148,16 +148,24 @@ In priority order: the first items are the user's requests for the next sessions
   clear of), so they fit any seed. Optional captions sit in the lower cinema bar. Sound is on while it plays;
   everything it changes is put back after, and nothing is saved. Esc or J stops it. `__app.demo.seek(seconds)` jumps
   into it for review (`.playwright-mcp/demo.js` grabs a frame from each shot).
-  Four more shots (user, 2026-11-01), up front for now until the user places them (the film runs about 6½ minutes):
-  a drone run off the tallest fall, down its gorge and out over the sea, banking into the bends (`Key.roll`); a day
-  in thirty seconds from a clear headland (sunset over the sea, aurora, dawn; `setTime` wraps past 24); the pond at
-  evening on a 50 mm lens with its dragonflies lured into frame (`PondLife.lure`); and the seasons along a front-lit
-  broadleaf wood edge (searched from the tree spots, away from the oak), turning spring to winter on cues with no
-  fades: tree colors ease (`Trees.setSeason(s, false)`). "demo: lens throughout" in the Cinematic panel films every
-  shot without its own lens through your play lens settings.
+  Now about 7½ minutes in 20 shots, one day from dawn to night (`ORDER` at the end of `plan()`), with five more
+  (user, 2026-11-01): a day in thirty seconds from a clear headland (sunset over the sea, aurora, dawn; `setTime`
+  wraps past 24) followed by a year, the seasons along a front-lit broadleaf wood edge turning on cues with no fades
+  (tree colors ease: `Trees.setSeason(s, false)`); the pond at evening on a 50 mm lens with its dragonflies lured
+  into frame (`PondLife.lure`); a calm glide down the river from the tallest fall to the sea (steady speed, the
+  centerline smoothed; the first version was a banking drone run the user found dizzying); and "The herd", a
+  helicopter shot in from the sea at golden hour onto a dozen red deer galloping across a meadow, alongside them,
+  then up over them (`DeerHerds.stampede`, run on the film's clock so the herd is where the camera expects; the shot
+  is `linear`, without the usual easing, to keep pace). "demo: lens throughout" in the Cinematic panel films every
+  shot without its own lens through your play lens settings. Title card: "An experiment in real-time 3D: a living
+  world drawn live in three.js, made with AI".
 
 - Seasons picker (user, 2026-11-01; Time & weather panel, or `?season=autumn`): spring, summer, autumn, winter, eased
-  over a few seconds (`src/season.ts`). Spring: fresh yellow-green meadow and blossom on hawthorn-like bushes and a
+  over a few seconds (`src/season.ts`). Spring is the default. Made more distinct later the same day (user: "too
+  similar", Stardew Valley as the model): summer is deep saturated green with drifts of golden hay (`HAY_PATCH`, the
+  same noise on blades and ground) and scarlet poppies, no early turners; autumn turns every broadleaf tree bright
+  (fiery red to gold, only the conifers green), the meadow rust-orange, and the falling leaves (`src/life.ts`) take
+  autumn colors and blow out over the open meadows too. Spring: fresh yellow-green meadow and blossom on hawthorn-like bushes and a
   share of the ash, aspen and rowan (no berries yet). Autumn: every broadleaf turns (aspens gold, ash amber, oaks
   copper, rowans red, a few late ones green) and starts to shed; the grass goes tawny, most flowers and fireweed go to
   seed, heather rusts. Winter: snow lies whatever the weather, broadleaf trees go bare (oaks keep some withered brown

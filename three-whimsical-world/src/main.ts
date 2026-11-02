@@ -233,7 +233,7 @@ const settings = {
   /** How far the vibe goes: 0 = the whimsical look, 1 = as designed, 1.5 = pushed. */
   vibeStrength: 1,
   /** The time of year (season.ts): spring blossom, summer, autumn colors, winter snow and bare trees. */
-  season: 'summer' as Season,
+  season: 'spring' as Season,
   /** Valheim's dreamy side: two-tone haze, stronger beams, lens flares, soft glow, floating motes and fireflies. */
   whimsy: 0.9,
   /** Pollen and dust motes by day, and seed fluff on the wind (fireflies at night stay). */
@@ -867,6 +867,9 @@ const demoHost: DemoHost = {
   dragonflies(at) {
     world.pondLife.lure(at);
   },
+  stampede(at, dir) {
+    world.deer.stampede(at, dir);
+  },
   vibe(v) {
     if (settings.vibe === v) return;
     settings.vibe = v;
@@ -1382,6 +1385,7 @@ renderer.setAnimationLoop((now) => {
   const forestHere = canopyAround(camera.position.x, camera.position.z) * (1 - THREE.MathUtils.smoothstep(altitude, 5, 40));
   post.atmosphere.uForest.value += (forestHere - post.atmosphere.uForest.value) * Math.min(dt * 1.5, 1);
   world.life.update(timer.getElapsed(), camera, daylight, post.atmosphere.uForest.value);
+  if (demo.active) world.deer.stampedeTime = demo.shotTime;
   world.deer.update(timer.getElapsed(), player.position);
   world.pondLife.update(timer.getElapsed(), player.position, daylight);
   coastLight.setRGB(0.85, 0.9, 0.95).multiplyScalar(0.15 + 1.6 * daylight);

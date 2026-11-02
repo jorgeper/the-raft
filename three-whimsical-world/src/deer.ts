@@ -102,6 +102,8 @@ interface Deer {
   stepWait: number;
   /** The Walk action is playing blended under the graze for a step (not as the gait). */
   stepping: boolean;
+  /** Part of a stampede (the demo's): its place in the herd, which runs its line on the film's clock. */
+  driven?: { back: number; across: number; phase: number };
 }
 
 const HERDS = 4;
@@ -268,12 +270,65 @@ export class DeerHerds {
     }
   }
 
+  /**
+   * A herd at full gallop from `at` along `dir` (flat, normalized), for a film shot: a dozen deer in a loose wedge,
+   * running their line for half a minute whatever the viewer does. Replaces any earlier stampede; null clears it.
+   */
+  /** The film's clock for the stampede (s since it set off), so the herd is where the camera expects it. */
+  stampedeTime = 0;
+  private herdAt = new THREE.Vector2();
+  private herdDir = new THREE.Vector2(1, 0);
+  private herdSide = new THREE.Vector2(0, 1);
+
+  stampede(at: THREE.Vector3 | null, dir?: THREE.Vector2) {
+    for (const d of this.deer) if (d.driven) this.remove(d);
+    this.deer = this.deer.filter((d) => d.root.parent);
+    if (!at || !dir || !this.template) return;
+    const side = new THREE.Vector2(-dir.y, dir.x);
+    this.herdAt.set(at.x, at.z);
+    this.herdDir.copy(dir);
+    this.herdSide.copy(side);
+    this.stampedeTime = 0;
+    const kinds: Deer['kind'][] = ['stag', 'doe', 'doe', 'doe', 'stag', 'doe', 'doe', 'fawn', 'doe', 'doe', 'fawn', 'stag'];
+    kinds.forEach((kind, i) => {
+      // A wedge: a stag leading, the rest spreading out behind it.
+      const row = Math.floor(Math.sqrt(i * 1.6));
+      const back = row * 4.5 + this.rand() * 2.5;
+      const across = (this.rand() - 0.5) * (2 + row * 4.5);
+      const x = at.x - dir.x * back + side.x * across, z = at.z - dir.y * back + side.y * across;
+      const pos = new THREE.Vector3(x, this.world.height(x, z), z);
+      const model = this.spawnModel(kind);
+      const d: Deer = {
+        kind,
+        ...model,
+        clip: 'Gallop',
+        pos,
+        heading: Math.atan2(dir.y, dir.x),
+        target: new THREE.Vector2(x + dir.x * 600, z + dir.y * 600),
+        state: 'flee',
+        timer: 60,
+        speed: 9,
+        scale: kind === 'stag' ? 1.12 + this.rand() * 0.08 : kind === 'fawn' ? 0.6 + this.rand() * 0.06 : 0.92 + this.rand() * 0.1,
+        stareCooldown: 0,
+        earT: [-this.rand() * 4, -this.rand() * 4],
+        stepT: 0,
+        stepWait: 99,
+        stepping: false,
+        driven: { back, across, phase: this.rand() * 6.28 },
+      };
+      const gallop = d.actions.Gallop;
+      gallop.play();
+      gallop.time = this.rand() * gallop.getClip().duration;
+      this.deer.push(d);
+    });
+  }
+
   update(time: number, viewer: THREE.Vector3) {
     const dt = Math.min(time - this.lastTime, 0.1);
     this.lastTime = time;
     if (!this.template) return;
     // Herds out of sight and mind are dropped; new ones appear beyond view range.
-    for (const d of this.deer) if (d.pos.distanceTo(viewer) >= 260) this.remove(d);
+    for (const d of this.deer) if (d.pos.distanceTo(viewer) >= (d.driven ? 600 : 260)) this.remove(d);
     this.deer = this.deer.filter((d) => d.root.parent);
     const herdsNow = Math.ceil(this.deer.length / 3);
     if (herdsNow < HERDS && this.rand() < 0.02) this.spawnHerd(viewer);
@@ -301,6 +356,17 @@ export class DeerHerds {
     const dist = Math.hypot(d.pos.x - viewer.x, d.pos.z - viewer.z);
     const toViewer = Math.atan2(viewer.z - d.pos.z, viewer.x - d.pos.x);
     d.stareCooldown = Math.max(d.stareCooldown - dt, 0);
+    if (d.driven) {
+      // A stampede keeps its line and its pace at 9 m/s, each deer surging, easing and weaving a little in the herd.
+      const T = this.stampedeTime, dv = d.driven, D = this.herdDir, S = this.herdSide;
+      const along = 9 * T - dv.back + 1.4 * Math.sin(T * 0.8 + dv.phase);
+      const across = dv.across + 0.8 * Math.sin(T * 0.5 + dv.phase * 1.7);
+      d.pos.set(this.herdAt.x + D.x * along + S.x * across, 0, this.herdAt.y + D.y * along + S.y * across);
+      d.pos.y = this.world.height(d.pos.x, d.pos.z);
+      d.speed = 9 + 1.1 * Math.cos(T * 0.8 + dv.phase);
+      d.heading = Math.atan2(D.y, D.x) + 0.05 * Math.cos(T * 0.5 + dv.phase * 1.7);
+      return;
+    }
     if (dist < STARTLE && d.state !== 'flee') {
       d.state = 'flee';
       // Away from the player, toward the denser forest if there's a choice.

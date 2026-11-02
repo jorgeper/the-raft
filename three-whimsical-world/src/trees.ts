@@ -627,14 +627,17 @@ export class Trees {
       const v = this.all[pl.variant];
       const kind = leafKind(v);
       const h = Math.abs(Math.sin(pl.center.x * 12.9898 + pl.center.z * 78.233) * 43758.5453) % 1;
-      if (kind === 'needles' || season === 'summer') {
+      if (kind === 'needles') {
         pl.color.copy(pl.summer);
+      } else if (season === 'summer') {
+        // High summer: deep, lush crowns (no early turners; that's autumn's).
+        pl.color.setRGB(pl.natural.r * 0.8, pl.natural.g * 0.94, pl.natural.b * 0.72);
       } else if (season === 'spring') {
         pl.color.copy(pl.natural);
         // Blossom: hawthorn and blackthorn among the bushes, wild cherry-like among the slimmer trees; oaks leaf out.
         const share = kind === 'bush' ? 0.45 : kind === 'oak' ? 0 : /Small|Medium/.test(v.preset) ? 0.4 : 0.25;
         if (h < share) pl.color.setRGB(pl.natural.r, pl.natural.r * 0.3, pl.natural.r * 0.9);
-      } else if (season === 'autumn' && kind !== 'aspen' && h > 0.88) {
+      } else if (season === 'autumn' && kind !== 'aspen' && h > 0.97) {
         pl.color.copy(pl.natural);
       } else {
         const k = (h * 7.31) % 1;

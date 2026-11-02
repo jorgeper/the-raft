@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { seasonUniforms, SEASON_GLSL } from './season';
+import { HAY_PATCH, seasonUniforms, SEASON_GLSL } from './season';
 import { createNoise2D } from 'simplex-noise';
 import { coverageFrom } from './terrain';
 import type { WorldFns } from './worldgen';
@@ -167,7 +167,7 @@ export class Grass {
     this.material.onBeforeCompile = (shader, renderer) => {
       patchVertex.call(this.material, shader, renderer);
       Object.assign(shader.uniforms, sunLight, weatherUniforms, trampleUniforms, seasonUniforms);
-      shader.vertexShader = ('varying float vTip;\nattribute float aSide;\nvarying float vSide;\nvarying float vBlade;\nuniform sampler2D tTrample;\nuniform vec4 uTrampleRect;\nvec3 trample = vec3(0.0);\n' + shader.vertexShader)
+      shader.vertexShader = ('varying float vTip;\nattribute float aSide;\nvarying float vSide;\nvarying float vBlade;\nvarying float vHay;\n' + HAY_PATCH + '\nuniform sampler2D tTrample;\nuniform vec4 uTrampleRect;\nvec3 trample = vec3(0.0);\n' + shader.vertexShader)
         .replace(
           '#include <beginnormal_vertex>',
           // Bias normals upward so the field reads as one soft surface while blades keep some individual shading.
@@ -178,12 +178,12 @@ export class Grass {
           // How trampled this blade's root is (sampled once; the wind body runs twice).
           '#include <begin_vertex>\n{ vec2 tUv = (instanceMatrix[3].xz - uTrampleRect.xy) / uTrampleRect.z;\n'
           + 'if (uTrampleRect.w > 0.0 && all(greaterThan(tUv, vec2(0.0))) && all(lessThan(tUv, vec2(1.0)))) { vec4 t = textureLod(tTrample, tUv, 0.0); trample = vec3(t.ba, t.g); } }\n'
-          + 'vSide = aSide;\nvBlade = fract(sin(float(gl_InstanceID) * 12.9898) * 43758.5453);',
+          + 'vSide = aSide;\nvBlade = fract(sin(float(gl_InstanceID) * 12.9898) * 43758.5453);\nvHay = hayPatch(instanceMatrix[3].xz);',
         );
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nvarying float vTip;\nvarying float vSide;\nvarying float vBlade;\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;\nuniform float uDew;\nuniform float uWet;\nuniform float uSnow;\n' + SEASON_GLSL,
+          '#include <common>\nvarying float vTip;\nvarying float vSide;\nvarying float vBlade;\nvarying float vHay;\nuniform vec3 uSunDirView;\nuniform vec3 uSunColor;\nuniform float uDew;\nuniform float uWet;\nuniform float uSnow;\n' + SEASON_GLSL,
         )
         .replace(
           '#include <color_fragment>',
@@ -193,14 +193,18 @@ export class Grass {
           float across = abs(vSide) / max(1.0 - vTip * 0.9, 0.1);
           float rib = 1.0 - smoothstep(0.0, 0.22, across);
           diffuseColor.rgb *= (1.0 + 0.22 * rib) * (0.93 + 0.07 * cos(across * 15.7)) * (1.0 - 0.2 * smoothstep(0.65, 1.0, across));
-          float dried = step(0.82, vBlade) * smoothstep(0.55 + 0.25 * fract(vBlade * 7.0), 0.95, vTip);
+          float dried = step(0.82 - 0.3 * uSummer, vBlade) * smoothstep(0.55 + 0.25 * fract(vBlade * 7.0) - 0.3 * uSummer, 0.95, vTip);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.48, 0.22) * (0.8 + 0.4 * fract(vBlade * 13.0)), dried * 0.85);
           diffuseColor.rgb *= 0.9 + 0.2 * fract(vBlade * 3.7);
-          // Seasons: spring's fresh yellow-green; autumn's tawny meadow, a blade in four still green.
+          // Seasons: spring's fresh yellow-green; summer's deep saturated green with patches gone to golden hay;
+          // autumn's rust-orange meadow, a blade in ten still green.
           diffuseColor.rgb *= mix(vec3(1.0), vec3(1.06, 1.12, 0.78), uSpring);
+          diffuseColor.rgb *= mix(vec3(1.0), vec3(0.78, 1.0, 0.56), uSummer);
+          float hay = uSummer * vHay * step(0.25, fract(vBlade * 6.1)) * smoothstep(0.05, 0.6, vTip);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.66, 0.54, 0.22) * (0.8 + 0.4 * fract(vBlade * 5.3)), hay * 0.85);
           float tawnyL = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
-          vec3 tawny = tawnyL * vec3(1.6, 1.12, 0.42) * (0.85 + 0.3 * fract(vBlade * 5.3));
-          diffuseColor.rgb = mix(diffuseColor.rgb, tawny, uAutumn * step(0.25, fract(vBlade * 9.7)) * 0.9);
+          vec3 tawny = tawnyL * vec3(1.9, 1.0, 0.34) * (0.8 + 0.4 * fract(vBlade * 5.3));
+          diffuseColor.rgb = mix(diffuseColor.rgb, tawny, uAutumn * step(0.1, fract(vBlade * 9.7)) * 0.95);
           diffuseColor.rgb *= 1.0 - 0.22 * uWet;
           // Snow: the blade low down is in the blanket, and what stands out is frosted and straw-pale.
           // In winter the stalks have died back to pale straw.

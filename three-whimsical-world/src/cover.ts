@@ -352,12 +352,13 @@ export class GroundCover {
       // Stems stay green; only petals take the per-instance flower color.
       Object.assign(shader.uniforms, seasonUniforms);
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float aHead;\nvarying vec3 vFlower;\nvarying float vKeep;')
+        .replace('#include <common>', '#include <common>\nattribute float aHead;\nvarying vec3 vFlower;\nvarying float vKeep;\nvarying float vHead;')
         .replace(
           '#include <begin_vertex>',
           // Chunks where no flowers landed have no per-instance colors at all.
           `#include <begin_vertex>
           vKeep = fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
+          vHead = aHead;
           #ifdef USE_INSTANCING_COLOR
             vFlower = mix(vec3(0.18, 0.32, 0.08), instanceColor.rgb * 0.85, min(aHead, 1.0));
             // The center: golden, a deeper orange in yellow flowers.
@@ -367,10 +368,17 @@ export class GroundCover {
           #endif`,
         );
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>\nvarying vec3 vFlower;\nvarying float vKeep;\n${SEASON_GLSL}`)
+        .replace('#include <common>', `#include <common>\nvarying vec3 vFlower;\nvarying float vKeep;\nvarying float vHead;\n${SEASON_GLSL}`)
         // Autumn: most flowers have gone, the rest are fading to seed; winter takes nearly all.
         .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (vKeep < max(uAutumn * 0.8, uWither * 0.97)) discard;')
-        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix(vFlower, vFlower * vec3(0.8, 0.62, 0.42), uAutumn * 0.6);');
+        // High summer: poppies among them, scarlet petals round a near-black eye.
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          diffuseColor.rgb = mix(vFlower, vFlower * vec3(0.8, 0.62, 0.42), uAutumn * 0.6);
+          float poppy = uSummer * step(0.55, fract(vKeep * 7.31)) * step(0.5, vHead);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vHead > 1.5 ? vec3(0.05, 0.04, 0.03) : vec3(0.92, 0.1, 0.04), poppy);`,
+        );
     };
     const flowerColors = ['#f2c419', '#f2c419', '#f4f1e6', '#9b6cc7'].map((c) => new THREE.Color(c));
     this.layers.push(

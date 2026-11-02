@@ -5,7 +5,7 @@ import { groundUniforms } from './ground';
 import { weatherUniforms, RAIN_RIPPLES } from './weather';
 import { trampleUniforms, PRINT_RES } from './trample';
 import { STRATA_GLSL } from './strata';
-import { seasonUniforms, SEASON_GLSL } from './season';
+import { HAY_PATCH, seasonUniforms, SEASON_GLSL } from './season';
 import { CLIFF_FADE } from './cliffs';
 
 export type { HeightFn } from './worldgen';
@@ -214,6 +214,7 @@ export function terrainMaterial(shell = false) {
         #endif
         ${STRATA_GLSL}
         ${SEASON_GLSL}
+        ${HAY_PATCH}
         uniform float uGrassRadius;
         uniform float uWet;
         uniform float uSnow;
@@ -346,8 +347,10 @@ export function terrainMaterial(shell = false) {
         {
           float meadow = smoothstep(0.1, 0.5, vGrass);
           diffuseColor.rgb *= mix(vec3(1.0), vec3(1.06, 1.12, 0.78), uSpring * meadow);
+          diffuseColor.rgb *= mix(vec3(1.0), vec3(0.78, 1.0, 0.56), uSummer * meadow);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.34, 0.14) * (0.85 + 0.3 * mottle), uSummer * meadow * hayPatch(vWorld.xz) * 0.6);
           float tl = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
-          diffuseColor.rgb = mix(diffuseColor.rgb, tl * vec3(1.6, 1.12, 0.42), uAutumn * meadow * 0.7);
+          diffuseColor.rgb = mix(diffuseColor.rgb, tl * vec3(1.9, 1.0, 0.34), uAutumn * meadow * 0.9);
           float litter = uAutumn * smoothstep(0.3, 0.8, vSplat.x) * smoothstep(0.5, 0.75, tNoise(vWorld.xz * 1.3) * 0.6 + tNoise(vWorld.xz * 5.1) * 0.4);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.5, 0.26, 0.08) * (0.7 + 0.6 * mottle), litter * 0.6);
         }

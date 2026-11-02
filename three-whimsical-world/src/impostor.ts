@@ -110,10 +110,11 @@ export const AUTUMN_LEAVES = /* glsl */ `
     float autumn = (1.0 - smoothstep(0.4, 0.6, inst.b / max(inst.r, 1e-3))) * mask;
     if (autumn <= 0.0) return c;
     float hue = smoothstep(0.55, 1.0, inst.g / max(inst.r, 1e-3));
-    vec3 turned = mix(vec3(2.6, 0.72, 0.2), vec3(2.8, 1.95, 0.26), hue) * lum * inst.r;
+    // Bright and saturated: fiery red-orange to gold.
+    vec3 turned = mix(vec3(3.2, 0.62, 0.14), vec3(3.3, 2.2, 0.22), hue) * lum * inst.r;
     // Winter: what's left on the tree has withered brown.
     turned = mix(turned, vec3(1.15, 0.72, 0.4) * lum * inst.r, uWither);
-    return mix(c, turned, autumn * 0.9);
+    return mix(c, turned, autumn);
   }
 `;
 

@@ -80,8 +80,10 @@ export class Life {
     uTime: { value: 0 },
     uDay: { value: 1 },
     uCam: { value: new THREE.Vector3() },
-    /** How wooded it is around the viewer: falling leaves only show under trees. */
+    /** How wooded it is around the viewer: falling leaves only show under trees (in autumn, on the wind everywhere). */
     uLeafAmount: { value: 0 },
+    /** Autumn: the falling leaves take the turned colors. */
+    uAutumnLeaves: { value: 0 },
   };
   private butterflies: THREE.InstancedMesh;
   private birds: THREE.InstancedMesh;
@@ -111,6 +113,7 @@ export class Life {
           uniform float uDay;
           uniform vec3 uCam;
           uniform float uLeafAmount;
+          uniform float uAutumnLeaves;
           ${rotY}
           ${decls}`,
         )
@@ -228,13 +231,21 @@ export class Life {
     const geo = new THREE.PlaneGeometry(0.13, 0.17);
     const seeds = new Float32Array(LEAVES * 4).map(() => Math.random());
     geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 4));
+    // Each leaf's autumn color: gold, orange, red, copper.
+    const fallColors = ['#f0b52a', '#e8901c', '#d9641a', '#c23a14', '#b0501e', '#e8c040'].map((c) => new THREE.Color(c));
+    const fall = new Float32Array(LEAVES * 3);
+    for (let i = 0; i < LEAVES; i++) fallColors[i % fallColors.length].toArray(fall, i * 3);
+    geo.setAttribute('aFall', new THREE.InstancedBufferAttribute(fall, 3));
     const map = createLeafTexture();
     // A little self-light: thin leaves glow with the light coming through them even in the canopy's shade.
     const mat = new THREE.MeshStandardMaterial({ map, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8, emissive: '#3a3010' });
     this.animate(
       mat,
-      'attribute vec4 aSeed;',
+      'attribute vec4 aSeed;\nattribute vec3 aFall;',
       /* glsl */ `
+        #ifdef USE_INSTANCING_COLOR
+          vColor.rgb = mix(vColor.rgb, aFall, uAutumnLeaves);
+        #endif
         // Tumble: spin about a tilted axis while swinging side to side on the way down.
         float t = uTime + aSeed.x * 50.0;
         float spin = t * (1.5 + 2.0 * aSeed.y);
@@ -309,7 +320,10 @@ export class Life {
     this.birds.instanceMatrix.needsUpdate = true;
     this.birds.visible = enabled && daylight > 0.3;
 
-    u.uLeafAmount.value = THREE.MathUtils.smoothstep(forestHere, 0.1, 0.7) * 0.9 * quality.motes;
+    // Autumn: leaves come down everywhere (blown out over the meadows too), thickest under the trees.
+    const autumn = THREE.MathUtils.clamp(seasonUniforms.uAutumn.value * (1 - seasonUniforms.uWither.value), 0, 1);
+    u.uAutumnLeaves.value = autumn;
+    u.uLeafAmount.value = Math.max(THREE.MathUtils.smoothstep(forestHere, 0.1, 0.7) * (0.9 + 0.1 * autumn), autumn * 0.45) * quality.motes;
     this.leaves.visible = enabled && u.uLeafAmount.value > 0.01;
   }
 

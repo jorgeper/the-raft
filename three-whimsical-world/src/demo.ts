@@ -29,6 +29,8 @@ export interface DemoHost {
   season(season: Season, snap?: boolean): void;
   /** Draws a pond's dragonflies to hover around a point (null: let them roam). */
   dragonflies(at: THREE.Vector3 | null): void;
+  /** Sets a herd of deer galloping from `at` along `dir` (null: none). */
+  stampede(at: THREE.Vector3 | null, dir?: THREE.Vector2): void;
   vibe(name: VibeName): void;
   /** A lens for the shot, or null for the usual view. */
   lens(lens: { focal: number; fStop: number } | null): void;
@@ -76,6 +78,8 @@ interface Cue {
 }
 
 interface Shot {
+  /** Names a shot with no caption, for the running order. */
+  name?: string;
   duration: number;
   /** Time of day at its start and end. */
   hours: [number, number];
@@ -91,6 +95,8 @@ interface Shot {
   mood?: Mood;
   /** The camera stays this far above the ground (m). */
   clearance?: number;
+  /** The keys at their own times, with no easing, for a camera keeping pace with something (the stampede). */
+  linear?: boolean;
   fadeIn?: number;
   fadeOut?: number;
   title?: string;
@@ -181,9 +187,15 @@ export class Demo {
     this.host.sprayBow(true);
     this.host.mood(null);
     this.host.dragonflies(null);
+    this.host.stampede(null);
   }
 
   /** Jumps to `seconds` into the film (for reviewing a shot), running the cues before it. */
+  /** Seconds into the current shot. */
+  get shotTime() {
+    return this.t;
+  }
+
   seek(seconds: number) {
     if (!this.active) return;
     let i = 0;
@@ -226,7 +238,7 @@ export class Demo {
     this.lift = 0;
     h.setTime(shot.hours[0], true);
     h.weather(shot.weather ?? 'clear', true);
-    h.season(shot.season ?? 'summer');
+    h.season(shot.season ?? 'spring');
     h.vibe(shot.vibe ?? 'whimsical');
     h.lens(shot.lens ?? null);
     h.freeze(!!shot.freeze);
@@ -234,6 +246,7 @@ export class Demo {
     h.sprayBow(!shot.noSprayBow);
     h.mood(shot.mood ?? null);
     h.dragonflies(null);
+    h.stampede(null);
     this.el.vf.style.display = shot.viewfinder ? 'block' : 'none';
     this.el.vfInfo.textContent = shot.viewfinder ?? '';
     const keys = shot.path();
@@ -280,9 +293,10 @@ export class Demo {
 
     // The camera: along the shot's spline, kept clear of the ground (looking a little ahead, so it rises early),
     // aimed along the look spline.
-    const u = ease(clamp01(t / d));
+    const timing = shot.linear ? clamp01 : (x: number) => ease(clamp01(x));
+    const u = timing(t / d);
     const p = this.posCurve.getPoint(u);
-    const ahead = this.posCurve.getPoint(ease(clamp01((t + 0.8) / d)));
+    const ahead = this.posCurve.getPoint(timing((t + 0.8) / d));
     const f = this.host.fns;
     const ground = Math.max(f.height(p.x, p.z), f.height(ahead.x, ahead.z), 0);
     const need = ground + (shot.clearance ?? 1.5) - p.y;
@@ -408,50 +422,129 @@ export class Demo {
     const wood0 = () => woods[0] ?? start;
     const shots: Shot[] = [];
 
-    // --- New shots, up front for review (to be moved to their places in the film).
+    // In from the sea like a helicopter at golden hour: over the surf and the beach, down to a herd of red deer in
+    // full flight across the meadow, alongside them at a gallop, then rising up behind and over them.
+    const herdRun = (() => {
+      let best: { x: number; z: number; dir: THREE.Vector2; side: THREE.Vector2; score: number } | null = null;
+      for (let z = -500; z <= 500; z += 25) {
+        const sx = shoreAt(z);
+        for (const back of [70, 100, 130, 170]) {
+          const px = sx - back;
+          for (const ang of [-0.5, -0.25, 0, 0.25, 0.5]) {
+            // Inland, away from the sea.
+            const dir = new THREE.Vector2(-Math.cos(ang), Math.sin(ang));
+            let ok = true, rough = 0, prev = f.height(px, z);
+            for (let s = 0; s <= 300 && ok; s += 10) {
+              const x = px + dir.x * s, zz = z + dir.y * s, y = f.height(x, zz);
+              if (y < 2.5 || f.forest(x, zz) > 0.2 || f.river(x, zz) > 0.05 || f.pondEdge(x, zz) < 8 || f.streamEdge(x, zz) < 8) ok = false;
+              rough += Math.abs(y - prev);
+              prev = y;
+            }
+            if (!ok || clearLine(px, z, px + dir.x * 300, z + dir.y * 300, 5) < 1) continue;
+            // The camera runs alongside, 12-17 m off to one side: whichever side is open.
+            for (const sg of [1, -1]) {
+              const side = new THREE.Vector2(-dir.y * sg, dir.x * sg);
+              const ox = px + side.x * 14, oz = z + side.y * 14;
+              if (clearLine(ox + dir.x * 100, oz + dir.y * 100, ox + dir.x * 240, oz + dir.y * 240, 3) < 1) continue;
+              // No rise between the camera and the herd while it runs alongside.
+              let lip = 0;
+              for (let s = 100; s <= 240; s += 10) {
+                const hx = px + dir.x * s, hz = z + dir.y * s, herdY = f.height(hx, hz);
+                for (const o of [5, 9, 13]) lip = Math.max(lip, f.height(hx + side.x * o, hz + side.y * o) - herdY);
+              }
+              if (lip > 1.5) continue;
+              const score = -rough - Math.abs(z) * 0.01 - lip * 4;
+              if (!best || score > best.score) best = { x: px, z, dir, side, score };
+            }
+          }
+        }
+      }
+      return best;
+    })();
+    if (herdRun) {
+      shots.push({
+        duration: 30,
+        hours: [18.3, 18.42],
+        weather: 'fair',
+        fadeIn: 2,
+        clearance: 2.5,
+        linear: true,
+        title: 'The herd',
+        line: 'In from the sea at golden hour, over red deer running wild across the meadow.',
+        path: () => {
+          const { x, z, dir: D, side: S } = herdRun;
+          h.stampede(V(x, 0, z), D);
+          // Where the herd's leader is t seconds in (at a gallop of 9 m/s).
+          const H = (t: number, along = 0, across = 0) => ({ x: x + D.x * (9 * t + along) + S.x * across, z: z + D.y * (9 * t + along) + S.y * across });
+          const P = (p: { x: number; z: number }, up: number) => at(p.x, up, p.z);
+          // Heights alongside are from the herd's ground, so a dip under the camera doesn't drop it into the grass.
+          const A = (p: { x: number; z: number }, herd: { x: number; z: number }, up: number) => V(p.x, Math.max(ground(p.x, p.z), ground(herd.x, herd.z)) + up, p.z);
+          const base = H(10, -35, 30);
+          // Coming in from over the sea, slowing as it drops toward them.
+          const sea = (d: number) => ({ x: base.x - D.x * d, z: base.z - D.y * d });
+          // The look stays on the middle of the herd (a few metres behind the leader) until the lift-off.
+          // Last, rising up behind and above them: the herd from overhead (the grass can't hide them there), their long
+          // shadows running ahead of them over the meadow.
+          return [
+            { pos: V(sea(420).x, 34, sea(420).z), look: P(H(10), 3) },
+            { pos: P(sea(170), 20), look: P(H(10, -5), 2) },
+            { pos: P(base, 10), look: P(H(10, -5), 1.2) },
+            { pos: A(H(15, -6, 17), H(15), 4.5), look: P(H(15, -5), 1.2) },
+            { pos: A(H(20, 0, 14), H(20), 4.5), look: P(H(20, -5), 1.2) },
+            { pos: A(H(25, -14, 9), H(25), 10), look: P(H(25, -6), 0.5) },
+            { pos: A(H(30, -28, 4), H(30), 22), look: P(H(30, -5), 0) },
+          ];
+        },
+      });
+    }
 
-    // A drone run: off the highest fall, down its gorge at full speed and out over the sea, banking through the bends.
+    // Down the river from the tallest fall, calm and steady: along the gorge, over the shallows and out to sea.
     const tallFall = [...f.waterfalls].sort((a, b) => b.top - a.top)[0];
     if (tallFall) {
+      const w = tallFall;
+      const plunge = { x: w.x + w.dirX * 14, z: w.z + w.dirZ * 14 };
+      // The river the fall pours into, followed by its centerline (smoothed, so the camera doesn't swing with
+      // every bend), every 10 m from below the falls to the sea.
+      const rivers = f.riverCenters(plunge.x);
+      let ri = 0;
+      rivers.forEach((r, i) => Math.abs(r.z - plunge.z) < Math.abs(rivers[ri].z - plunge.z) && (ri = i));
+      const raw: { x: number; z: number }[] = [];
+      for (let x = plunge.x + 12; raw.length < 300; x += 10) {
+        raw.push({ x, z: f.riverCenters(x)[ri].z });
+        if (x > 0 && f.height(x, raw[raw.length - 1].z) < -5) break;
+      }
+      const line = raw.map((p, i) => {
+        const lo = Math.max(0, i - 3), hi = Math.min(raw.length - 1, i + 3);
+        let sz = 0;
+        for (let j = lo; j <= hi; j++) sz += raw[j].z;
+        return { x: p.x, z: sz / (hi - lo + 1) };
+      });
+      // A steady glide of about 14 m/s, out to sea at the end.
+      const length = line.length * 10;
+      const duration = Math.min(Math.max(length / 14 + 6, 22), 44);
+      const zAt = (x: number) => {
+        const i = Math.min(Math.max(Math.round((x - line[0].x) / 10), 0), line.length - 1);
+        return line[i].z;
+      };
       shots.push({
-        duration: 20,
-        hours: [18.3, 18.45],
+        duration,
+        hours: [18.25, 18.4],
         weather: 'fair',
         fadeIn: 2,
         clearance: 6,
-        title: 'Drone run',
-        line: 'Off the falls and down the gorge at full throttle, out over the sea.',
+        title: 'Down the river',
+        line: 'From the falls, down the gorge and out to the sea.',
         path: () => {
-          const w = tallFall;
-          const plunge = { x: w.x + w.dirX * 14, z: w.z + w.dirZ * 14 };
-          // The river the fall pours into, followed by its centerline.
-          const rivers = f.riverCenters(plunge.x);
-          let ri = 0;
-          rivers.forEach((r, i) => Math.abs(r.z - plunge.z) < Math.abs(rivers[ri].z - plunge.z) && (ri = i));
-          const mid = (x: number) => f.riverCenters(x)[ri].z;
-          // Easing away from the falls, then faster and faster: the keys are evenly spaced in time.
-          const xs = [plunge.x + 10, plunge.x + 22, plunge.x + 45, plunge.x + 80];
-          for (let x = plunge.x + 125; xs.length < 40; x += 46) {
-            xs.push(x);
-            if (x > 0 && f.height(x, mid(x)) < -5) break;
+          const n = Math.max(4, Math.round(duration / 3));
+          const span = line[line.length - 1].x - line[0].x;
+          const keys: Key[] = [];
+          for (let i = 0; i < n; i++) {
+            const x = line[0].x + (span * i) / (n - 1);
+            keys.push({ pos: at(x, 11, zAt(x)), look: at(x + 130, 6, zAt(x + 130)) });
           }
-          const keys: Key[] = xs.map((x, i) => {
-            const up = i === 0 ? 16 : 12;
-            return {
-              pos: at(x, up, mid(x)),
-              look: i === 0 ? V(w.x, w.top * 0.6, w.z) : at(x + 90, up - 3, mid(x + 90)),
-            };
-          });
-          // Out over the sea, climbing.
-          const last = xs[xs.length - 1], z = mid(last);
-          keys.push({ pos: V(last + 120, 22, z), look: V(last + 600, 18, z) }, { pos: V(last + 230, 34, z), look: V(last + 800, 22, z) });
-          // Bank into the bends: roll with the change of heading.
-          const heading = (i: number) => Math.atan2(keys[i + 1].pos.z - keys[i].pos.z, keys[i + 1].pos.x - keys[i].pos.x);
-          for (let i = 2; i < keys.length - 1; i++) {
-            let turn = heading(i) - heading(i - 1);
-            turn = Math.atan2(Math.sin(turn), Math.cos(turn));
-            keys[i].roll = Math.max(-0.45, Math.min(0.45, turn * 3));
-          }
+          // Then on over the water, rising a little.
+          const end = keys[keys.length - 1].pos, step = span / (n - 1);
+          keys.push({ pos: V(end.x + step, 15, end.z), look: V(end.x + step + 500, 14, end.z) });
           return keys;
         },
       });
@@ -522,8 +615,8 @@ export class Demo {
     // The seasons at a woodland edge: the land turns through the year as we drift along it, with no cuts.
     const seasonLine: Record<Season, string> = {
       spring: 'Blossom on the thorn and the wild cherry, fresh green in the meadow.',
-      summer: 'Long days, and here and there a tree already turning.',
-      autumn: 'Gold, copper and red, and the meadow gone to seed.',
+      summer: 'High summer: deep green woods, and the meadow ripening to gold.',
+      autumn: 'Every broadleaf ablaze in gold, orange and red, and leaves on the wind.',
       winter: 'Snow on the boughs, and bare branches.',
     };
     const seasonTitle: Record<Season, string> = { spring: 'Spring', summer: 'Summer', autumn: 'Autumn', winter: 'Winter' };
@@ -593,12 +686,13 @@ export class Demo {
 
     // Dawn over the sea, low over the swell toward the land, the sun coming up behind it.
     shots.push({
+      name: 'dawn',
       duration: 24,
       hours: [5.6, 6.2],
       weather: 'fair',
       fadeIn: 2.5,
       clearance: 3,
-      card: { title: 'Meadows', line: 'A northern wilderness, grown from a single seed and drawn live in your browser', from: 2.5, to: 11 },
+      card: { title: 'Meadows', line: 'An experiment in real-time 3D: a living world drawn live in three.js, made with AI', from: 2.5, to: 11 },
       path: () => [
         { pos: V(shore + 330, 7, 40), look: V(shore - 300, 18, 10) },
         { pos: V(shore + 210, 5, 28), look: V(shore - 300, 15, 0) },
@@ -880,6 +974,7 @@ export class Demo {
 
     // Sunset: climbing out over the land toward the sea.
     shots.push({
+      name: 'sunset',
       duration: 22,
       hours: [19, 19.4],
       weather: 'fair',
@@ -908,6 +1003,17 @@ export class Demo {
         { pos: at(shore - 50, 2.6, 20), look: V(shore + 140, 80, -300) },
       ],
     });
-    return shots;
+    // The running order: one day, dawn to night. The two time-lapses sit together in the afternoon (a day, then
+    // a year), and the river run ends out over the sea, where the herd shot comes in from.
+    const ORDER = [
+      'dawn', 'The deep forest', 'Spores and pollen', 'Under the canopy', 'The meadows', 'A real lens', 'Real rock',
+      'The coast', 'A day', seasonTitle.spring, 'Vibes', 'The pond', 'Weather', 'Waterfalls', 'Down the river',
+      'The herd', 'Photo mode', 'Dusk in the woods', 'sunset', 'Night',
+    ];
+    const rank = (s: Shot) => {
+      const i = ORDER.indexOf(s.name ?? s.title ?? '');
+      return i < 0 ? ORDER.length : i;
+    };
+    return shots.map((s, i) => ({ s, i })).sort((a, b) => rank(a.s) - rank(b.s) || a.i - b.i).map(({ s }) => s);
   }
 }

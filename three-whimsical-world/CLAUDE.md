@@ -54,6 +54,8 @@ volumetric, shafts, fog, AO) before changing code.
 - The cliff shell (`src/cliff-worker.ts`) is a half-meter mesh: relief finer than ~1 m, or steps sharper than that,
   alias into combs and moiré. Keep its features broad (the scans' normal map carries the grain), and keep rows on
   level contours so near-horizontal seams don't stair-step across the triangles.
+- Demo shots ease their timing, so the camera is not at a key at that key's even share of the shot. A camera that
+  must keep pace with something moving (the stampede) needs `linear: true` on its shot.
 - In Blender scripts run through MCP, `bpy.ops.wm.read_homefile` leaves the context without an active object (later
   `mode_set` calls fail); delete objects and data blocks instead, as `scripts/blender/rig-deer.py` does.
 
