@@ -65,7 +65,7 @@ export class Character {
   }
 
   /** Resolves to null when the model files are missing, so the world still runs without a character. */
-  static async load(base = '/models/'): Promise<Character | null> {
+  static async load(base = `${import.meta.env.BASE_URL}models/`): Promise<Character | null> {
     try {
       const loader = new GLTFLoader();
       const [model, anims] = await Promise.all([loader.loadAsync(base + 'viking.glb'), loader.loadAsync(base + 'viking-anims.glb')]);

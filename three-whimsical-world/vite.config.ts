@@ -72,6 +72,8 @@ function photoSaver(): Plugin {
   };
 }
 
-export default defineConfig({
+// GitHub Pages serves the site from /<repo>/ (see .github/workflows/pages.yml); the dev server stays at the root.
+export default defineConfig(({ command, isPreview }) => ({
+  base: command === 'build' || isPreview ? (process.env.BASE_PATH ?? '/3d-tests/') : '/',
   plugins: [photoSaver()],
-});
+}));

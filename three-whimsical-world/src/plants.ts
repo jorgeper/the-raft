@@ -11,7 +11,7 @@ export const plants = {
   fern: null as { geometries: THREE.BufferGeometry[]; material: THREE.MeshStandardMaterial } | null,
 };
 
-export async function loadPlants(base = '/assets/plants/'): Promise<void> {
+export async function loadPlants(base = `${import.meta.env.BASE_URL}assets/plants/`): Promise<void> {
   try {
     const gltf = await new GLTFLoader().loadAsync(base + 'fern_02.glb');
     const geometries: THREE.BufferGeometry[] = [];

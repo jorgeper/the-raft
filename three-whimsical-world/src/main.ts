@@ -952,7 +952,8 @@ photoGui.add({ go: startPhotoSession }, 'go').name('🎞 photo session (Enter in
 
 // --- Demo mode (J, or ?demo): a scripted five-minute film of the world (src/demo.ts), with optional captions. It
 // drives the clock, weather, season, vibe and lens; everything is put back when it ends, and nothing it sets is saved.
-const demoSettings = { captions: true, lens: false, savePrint: true };
+// The demo's snapshot is saved to disk only on the dev server; a hosted build would download it for every visitor.
+const demoSettings = { captions: true, lens: false, savePrint: import.meta.env.DEV };
 persist.bind('demo', demoSettings, ['captions', 'lens']);
 let demoCapture = false;
 /** The demo's forest mood brightens the motes (spores and pollen in the light) by this much. */

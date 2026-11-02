@@ -48,7 +48,7 @@ function arrayTexture(data: Uint8Array, srgb: boolean) {
 }
 
 /** Loads the layers into groundUniforms; resolves false (terrain keeps flat colors) when they're missing. */
-export async function loadGroundTextures(base = '/assets/ground/'): Promise<boolean> {
+export async function loadGroundTextures(base = `${import.meta.env.BASE_URL}assets/ground/`): Promise<boolean> {
   try {
     const manifest = await (await fetch(base + 'manifest.json')).json();
     const layers: string[] = manifest.layers;
