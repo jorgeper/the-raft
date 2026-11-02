@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "assets": "node scripts/fetch-assets.mjs"
+    "assets": "node scripts/fetch-assets.mjs",
+    "film": "node scripts/film/record-video.mjs && node scripts/film/record-audio.mjs && node scripts/film/assemble-audio.mjs && bash scripts/film/master.sh"
   },
   "repository": {
     "type": "git",
@@ -34,6 +35,7 @@
     "@gltf-transform/functions": "^4.5.1",
     "@types/three": "^0.187.0",
     "meshoptimizer": "^1.3.0",
+    "playwright": "^1.57.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"
   }

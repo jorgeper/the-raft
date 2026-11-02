@@ -23,7 +23,8 @@ Visual work is done when a screenshot shows it, not when it type-checks. The loo
 `window.__app` exposes the camera, world, settings, post-processing uniforms, `display`/`applyDisplay`,
 `movement`, `torch`, `character` and `regenerate()` so shots and A/B toggles can be scripted with `browser_evaluate`.
 The demo film (`src/demo.ts`) can be reviewed shot by shot with `__app.startDemo()` then `__app.demo.seek(seconds)`
-(`__app.demo.starts` lists where each shot begins).
+(`__app.demo.starts` lists where each shot begins). `npm run film` renders it to a 1080p60 video with its soundscape
+(`scripts/film/`: frame-exact offline render on a virtual clock, then a real-time audio pass; output in `recordings/`).
 The camera follows `__app.player` (the eye; mouse look and WASD move it): to frame a shot from script, move and
 rotate `player`, then call `snapView()`. Third person is the default view; add `&view=first` for scenery shots.
 When something looks wrong, bisect by switching effects off one at a time through `__app.post` (bloom,
