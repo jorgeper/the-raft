@@ -65,6 +65,8 @@ enum Cmd {
     },
     /// Run a Gmail-style query and print one line per thread.
     Search {
+        /// Query; may start with '-' (e.g. "-in:inbox").
+        #[arg(allow_hyphen_values = true)]
         query: String,
         #[arg(long, default_value_t = 50)]
         limit: usize,

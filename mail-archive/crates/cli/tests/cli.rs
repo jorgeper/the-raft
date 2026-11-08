@@ -111,3 +111,23 @@ fn cli_search_strips_terminal_escapes() {
     );
     assert!(String::from_utf8_lossy(&out.stdout).contains("evil ?[2Jsubject"));
 }
+
+#[test]
+fn cli_search_accepts_query_starting_with_dash_and_limit_either_side() {
+    let (_tmp, lib) = setup();
+    for args in [
+        &["search", "-from:ana"][..],
+        &["search", "--limit", "5", "-from:ana"][..],
+        &["search", "-from:ana", "--limit", "5"][..],
+    ] {
+        let out = run(&lib, args);
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let s = String::from_utf8(out.stdout).unwrap();
+        assert!(s.contains("Something else"), "{args:?}: {s}");
+        assert!(!s.contains(SUBJECT), "{args:?}: {s}");
+    }
+}
