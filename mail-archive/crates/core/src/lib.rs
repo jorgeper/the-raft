@@ -1,4 +1,5 @@
 pub mod events;
+pub mod import;
 pub mod index;
 pub mod library;
 pub mod mbox;
@@ -31,6 +32,10 @@ pub enum Error {
     Index(String),
     #[error("library is in use by another process")]
     LibraryInUse,
+    #[error("import source error: {0}")]
+    Source(String),
+    #[error("cancelled")]
+    Cancelled,
 }
 
 impl From<tantivy::TantivyError> for Error {
