@@ -58,8 +58,18 @@ describe("handleKey", () => {
     expect(handleKey(k("c", "list", { metaKey: true }), st({ count: 0 }))).toEqual({ type: "none" });
   });
 
-  it("ignores list navigation keys typed into the search box", () => {
-    expect(handleKey(k("ArrowDown", "search"), st())).toEqual({ type: "none" });
-    expect(handleKey(k("Enter", "search"), st())).toEqual({ type: "none" });
+  it("ArrowDown and Enter in the search box go to the results, keeping the selection", () => {
+    expect(handleKey(k("ArrowDown", "search"), st())).toEqual({ type: "enterList", index: 2 });
+    expect(handleKey(k("Enter", "search"), st())).toEqual({ type: "enterList", index: 2 });
+    expect(handleKey(k("ArrowDown", "search"), st({ selected: 0 }))).toEqual({ type: "enterList", index: 0 });
+    // A selection past the end (results shrank) lands on the last row.
+    expect(handleKey(k("Enter", "search"), st({ selected: 9 }))).toEqual({ type: "enterList", index: 4 });
+  });
+
+  it("leaves the search box alone with no results, and for other keys", () => {
+    expect(handleKey(k("ArrowDown", "search"), st({ count: 0, selected: 0 }))).toEqual({ type: "none" });
+    expect(handleKey(k("Enter", "search"), st({ count: 0, selected: 0 }))).toEqual({ type: "none" });
+    expect(handleKey(k("ArrowUp", "search"), st())).toEqual({ type: "none" });
+    expect(handleKey(k("ArrowRight", "search"), st())).toEqual({ type: "none" });
   });
 });

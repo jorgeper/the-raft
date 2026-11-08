@@ -91,8 +91,9 @@ older mail.
 | Key | Action |
 |---|---|
 | `⌘F` or `/` | Focus search |
-| `↑` / `↓` | Move through results |
-| `Enter` / `→` | Read the selected conversation |
+| `↓` or `Enter` (in search) | Go to the results list (with suggestions open, they pick a suggestion instead) |
+| `↑` / `↓` (in list) | Move through results |
+| `Enter` / `→` (in list) | Read the selected conversation |
 | `Esc` | Clear search, or go back to the list |
 | `⌘C` (in list) | Copy subject — sender — date |
 | `⌘I` | Import Takeout… |

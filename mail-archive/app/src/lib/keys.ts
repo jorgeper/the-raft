@@ -6,6 +6,8 @@ export type Action =
   | { type: "focusPane" }
   | { type: "clear" }
   | { type: "focusList" }
+  /** From the search box: select `index` and focus the results list. */
+  | { type: "enterList"; index: number }
   | { type: "copy" }
   | { type: "none" };
 
@@ -26,7 +28,12 @@ export function handleKey(
 
   switch (target) {
     case "search":
+      // Only reached with no suggestion list open: SearchBox handles (and
+      // preventDefaults) these keys while one is.
       if (key === "Escape") return state.query ? { type: "clear" } : { type: "focusList" };
+      if ((key === "ArrowDown" || key === "Enter") && state.count > 0) {
+        return { type: "enterList", index: Math.min(Math.max(state.selected, 0), state.count - 1) };
+      }
       return NONE;
     case "list": {
       if (state.count === 0) return NONE;

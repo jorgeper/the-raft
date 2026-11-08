@@ -117,6 +117,47 @@ describe("App keyboard and prefetch", () => {
     expect(document.activeElement).toBe(container.querySelector("#search-area input"));
   });
 
+  it("ArrowDown or Enter in the search box moves to the list with row 0 selected", async () => {
+    seed(3);
+    const { container } = render(App);
+    await tick();
+    const input = container.querySelector<HTMLInputElement>("#search-area input")!;
+    const list = container.querySelector<HTMLElement>(".scroller")!;
+    const selectedSubject = () => container.querySelector('[aria-selected="true"] .subject')!.textContent;
+    for (const key of ["ArrowDown", "Enter"]) {
+      input.focus();
+      await fireEvent.keyDown(input, { key });
+      await tick();
+      expect(document.activeElement).toBe(list);
+      expect(selectedSubject()).toBe("Subject 0");
+    }
+    // The selection made in the list is kept on the next trip from the box.
+    await fireEvent.keyDown(list, { key: "ArrowDown" });
+    input.focus();
+    await fireEvent.keyDown(input, { key: "ArrowDown" });
+    await tick();
+    expect(document.activeElement).toBe(list);
+    expect(selectedSubject()).toBe("Subject 1");
+  });
+
+  it("with suggestions open, ArrowDown and Enter stay in the search box", async () => {
+    seed(3);
+    vi.mocked(api.autocomplete).mockResolvedValue(["Receipts", "Work"]);
+    const { container } = render(App);
+    await tick();
+    const input = container.querySelector<HTMLInputElement>("#search-area input")!;
+    input.focus();
+    await fireEvent.input(input, { target: { value: "label:" } });
+    await vi.waitFor(() => expect(container.querySelector("#suggestions")).not.toBeNull());
+    await fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(input);
+    expect(container.querySelector('#suggestions [aria-selected="true"]')!.textContent).toBe("Work");
+    await fireEvent.keyDown(input, { key: "Enter" });
+    await tick();
+    expect(document.activeElement).toBe(input);
+    expect(store.query).toContain("Work");
+  });
+
   it("Escape in the search box clears its text", async () => {
     seed(1);
     store.query = "from:ana";

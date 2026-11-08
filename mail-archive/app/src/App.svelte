@@ -136,6 +136,10 @@
       case "focusList":
         list?.focus();
         break;
+      case "enterList":
+        selected = action.index;
+        list?.focus();
+        break;
       case "clear":
         store.query = "";
         break;
