@@ -20,8 +20,11 @@ Requirements: Rust 1.96+, Node 22+, pnpm.
 ```sh
 cd app
 pnpm install
-pnpm tauri build          # → target/release/bundle/macos/Mail Archive.app
+pnpm tauri build          # → ../target/release/bundle/macos/Mail Archive.app
 ```
+
+The bundle lands in the workspace target directory: `target/release/bundle/macos/`
+from the repo root.
 
 The app is unsigned. The first time you open it, right-click and choose Open
 (or allow it in System Settings ▸ Privacy & Security).
