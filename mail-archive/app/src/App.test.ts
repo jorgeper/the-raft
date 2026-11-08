@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./lib/api", async (orig) => {
   const real = await orig<typeof import("./lib/api")>();
-  return { ...real, search: vi.fn().mockResolvedValue({}), autocomplete: vi.fn(), getThread: vi.fn(), onOpenFailed: vi.fn().mockResolvedValue(() => {}), libraryStatus: vi.fn(), onMenuImport: vi.fn().mockResolvedValue(() => {}), onMenuRebuild: vi.fn().mockResolvedValue(() => {}) };
+  return { ...real, search: vi.fn().mockResolvedValue({}), autocomplete: vi.fn(), getThread: vi.fn(), onOpenFailed: vi.fn().mockResolvedValue(() => {}), libraryStatus: vi.fn(), onMenuImport: vi.fn().mockResolvedValue(() => {}), onMenuRebuild: vi.fn().mockResolvedValue(() => {}), onProgress: vi.fn().mockResolvedValue(() => {}) };
 });
-vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
+// The import dialog's file picker never answers, so the dialog stays open.
+vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn(), open: vi.fn(() => new Promise(() => {})) }));
 
 import * as api from "./lib/api";
 import { formatFull } from "./lib/format";
