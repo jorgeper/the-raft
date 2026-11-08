@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { copyText, formatDate, formatFull, highlightParts } from "./format";
+import { copyText, formatDate, formatFull, highlightParts, resultsHeader } from "./format";
 
 const at = (y: number, mo: number, d: number, h = 0, mi = 0) =>
   Math.floor(new Date(y, mo - 1, d, h, mi).getTime() / 1000);
@@ -69,5 +69,19 @@ describe("highlightParts", () => {
   });
   it("prefers the longest term", () => {
     expect(highlightParts("foobar", ["foo", "foobar"])).toEqual([{ text: "foobar", mark: true }]);
+  });
+});
+
+describe("resultsHeader", () => {
+  it("shows the count with thousands separators and whole milliseconds", () => {
+    expect(resultsHeader({ total_messages: 1234567, elapsed_ms: 2.5341, capped: false })).toBe(
+      "1,234,567 messages · 3 ms",
+    );
+    expect(resultsHeader({ total_messages: 12, elapsed_ms: 0.4, capped: false })).toBe("12 messages · 0 ms");
+  });
+  it("says when only the newest 5,000 matches are listed", () => {
+    expect(resultsHeader({ total_messages: 12345, elapsed_ms: 9.9, capped: true })).toBe(
+      "Showing the newest 5,000 of 12,345 messages — narrow your search to see older mail",
+    );
   });
 });

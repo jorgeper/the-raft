@@ -30,6 +30,8 @@ export interface ThreadHit {
 export interface SearchResults {
   threads: ThreadHit[];
   total_messages: number;
+  /** More messages matched than the newest MAX_COLLECTED that results are grouped from. */
+  capped: boolean;
   elapsed_ms: number;
   chips: Chip[];
   hints: Hint[];

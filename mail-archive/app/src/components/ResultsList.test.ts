@@ -28,7 +28,7 @@ function thread(i: number, o: Partial<ThreadHit> = {}): ThreadHit {
 function results(n: number, o: Partial<SearchResults> = {}): SearchResults {
   return {
     threads: Array.from({ length: n }, (_, i) => thread(i)),
-    total_messages: n, elapsed_ms: 7, chips: [], hints: [], terms: [], ...o,
+    total_messages: n, capped: false, elapsed_ms: 7, chips: [], hints: [], terms: [], ...o,
   };
 }
 
@@ -55,10 +55,19 @@ async function scrollTo(c: HTMLElement, top: number) {
 
 describe("ResultsList", () => {
   it("shows the header text", async () => {
-    store.results = results(3, { total_messages: 1234, elapsed_ms: 42 });
+    store.results = results(3, { total_messages: 1234, elapsed_ms: 42.4 });
     const { container } = render(ResultsList, { selected: 0, onselect: () => {} });
     await tick();
-    expect(container.querySelector(".header")!.textContent).toBe("1234 messages · 42 ms");
+    expect(container.querySelector(".header")!.textContent).toBe("1,234 messages · 42 ms");
+  });
+
+  it("says so in the header when results are capped", async () => {
+    store.results = results(3, { total_messages: 48210, capped: true });
+    const { container } = render(ResultsList, { selected: 0, onselect: () => {} });
+    await tick();
+    expect(container.querySelector(".header")!.textContent).toBe(
+      "Showing the newest 5,000 of 48,210 messages — narrow your search to see older mail",
+    );
   });
 
   it("renders only the visible rows plus 10 each side", async () => {

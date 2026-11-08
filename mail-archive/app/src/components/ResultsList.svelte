@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import * as api from "../lib/api";
-  import { formatDate, highlightParts } from "../lib/format";
+  import { formatDate, highlightParts, resultsHeader } from "../lib/format";
   import { store } from "../lib/store.svelte";
 
   /** Fixed row height in px; windowing relies on it. */
@@ -114,7 +114,7 @@
 
 <div class="list">
   {#if store.results}
-    <div class="header" role="status">{store.results.total_messages} messages · {store.results.elapsed_ms} ms</div>
+    <div class="header" role="status">{resultsHeader(store.results)}</div>
   {/if}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div

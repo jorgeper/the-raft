@@ -29,7 +29,7 @@ let menuRebuild!: () => void;
 
 beforeEach(() => {
   vi.mocked(api.search).mockReset().mockResolvedValue({
-    threads: [], total_messages: 0, elapsed_ms: 1, chips: [], hints: [], terms: [],
+    threads: [], total_messages: 0, capped: false, elapsed_ms: 1, chips: [], hints: [], terms: [],
   });
   vi.mocked(api.libraryStatus).mockReset().mockResolvedValue(base);
   vi.mocked(api.rebuildIndex).mockReset().mockResolvedValue(undefined);

@@ -99,11 +99,21 @@ fn sample_search() -> SearchResults {
             hit(THRID, vec![2, 1], "First thread"),
         ],
         total_messages: 3,
+        capped: false,
         elapsed_ms: 1.25,
         chips: vec![],
         hints: vec![],
         terms: vec!["hello".into()],
     }
+}
+
+#[test]
+fn search_cap_matches_the_ui_header() {
+    assert_eq!(
+        mail_core::query::exec::MAX_COLLECTED,
+        5_000,
+        "update MAX_COLLECTED in app/src/lib/format.ts to match"
+    );
 }
 
 #[test]

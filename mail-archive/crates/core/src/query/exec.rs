@@ -40,6 +40,9 @@ pub struct ThreadHit {
 pub struct SearchResults {
     pub threads: Vec<ThreadHit>,
     pub total_messages: usize,
+    /// More messages matched than the newest [`MAX_COLLECTED`] that threads
+    /// are grouped from: older matches are not in any page.
+    pub capped: bool,
     pub elapsed_ms: f64,
     pub chips: Vec<Chip>,
     pub hints: Vec<Hint>,

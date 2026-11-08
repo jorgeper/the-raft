@@ -1,4 +1,4 @@
-import type { ThreadHit } from "./api";
+import type { SearchResults, ThreadHit } from "./api";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -56,4 +56,17 @@ export function highlightParts(text: string, terms: string[]): Part[] {
   }
   if (last < text.length) parts.push({ text: text.slice(last), mark: false });
   return parts;
+}
+
+/** Matches grouped into threads per search; mirrors MAX_COLLECTED in crates/core/src/query/exec.rs. */
+export const MAX_COLLECTED = 5000;
+
+const count = (n: number) => n.toLocaleString("en-US");
+
+/** The line above the results list. */
+export function resultsHeader(r: Pick<SearchResults, "total_messages" | "elapsed_ms" | "capped">): string {
+  if (r.capped) {
+    return `Showing the newest ${count(MAX_COLLECTED)} of ${count(r.total_messages)} messages — narrow your search to see older mail`;
+  }
+  return `${count(r.total_messages)} messages · ${Math.round(r.elapsed_ms)} ms`;
 }

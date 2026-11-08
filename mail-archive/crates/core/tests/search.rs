@@ -773,3 +773,32 @@ fn same_date_results_ignore_index_doc_order() {
         "doc order leaked into result order or cutoff"
     );
 }
+
+/// Grouping sees only the newest MAX_COLLECTED matches; the results say so.
+#[test]
+fn results_past_the_collected_window_are_flagged_capped() {
+    use mail_core::query::exec::MAX_COLLECTED;
+    let msgs: Vec<Vec<u8>> = (0..=MAX_COLLECTED as u64)
+        .map(|n| {
+            MsgBuilder::new()
+                .from("bulk@example.com")
+                .subject(&format!("bulk{n}"))
+                .date_rfc2822("Mon, 01 Jun 2020 10:00:00 +0000")
+                .message_id(Some(&format!("<bulk{n}@fixture>")))
+                .thrid(n + 1)
+                .labels(&["Inbox"])
+                .text("capword")
+                .build()
+        })
+        .collect();
+    let tmp = TempDir::new().unwrap();
+    let l = build_library(tmp.path(), &msgs);
+    let all = run(&l, "capword");
+    assert_eq!(all.total_messages, MAX_COLLECTED + 1);
+    assert!(all.capped, "more matches than the window must be flagged");
+    // Exactly the window: complete, not capped.
+    let window = run(&l, "capword -subject:bulk0");
+    assert_eq!(window.total_messages, MAX_COLLECTED);
+    assert!(!window.capped);
+    assert!(!run(&l, "bulk7").capped);
+}

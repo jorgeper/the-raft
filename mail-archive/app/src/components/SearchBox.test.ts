@@ -16,7 +16,7 @@ const search = vi.mocked(api.search);
 const autocomplete = vi.mocked(api.autocomplete);
 
 function results(partial: Partial<SearchResults> = {}): SearchResults {
-  return { threads: [], total_messages: 0, elapsed_ms: 1, chips: [], hints: [], terms: [], ...partial };
+  return { threads: [], total_messages: 0, capped: false, elapsed_ms: 1, chips: [], hints: [], terms: [], ...partial };
 }
 
 async function type(box: HTMLElement, value: string) {

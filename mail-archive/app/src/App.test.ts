@@ -56,7 +56,7 @@ function seed(n: number) {
       thrid: String(100 + i), latest_date: 1_700_000_000, senders: [`Sender ${i}`], message_count: 1,
       subject: `Subject ${i}`, snippet: "", has_attachment: false, matched: [],
     })),
-    total_messages: n, elapsed_ms: 1, chips: [], hints: [], terms: ["foo"],
+    total_messages: n, capped: false, elapsed_ms: 1, chips: [], hints: [], terms: ["foo"],
   };
   store.resultsQuery = store.query;
 }

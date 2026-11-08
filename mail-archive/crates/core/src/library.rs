@@ -247,6 +247,7 @@ impl Library {
         let parsed = parse_query(q);
         let query = exec::build_query(&self.index, parsed.expr.as_ref(), now, tz);
         let (hits, total_messages) = exec::run(&self.index, &*query)?;
+        let capped = total_messages > hits.len();
         let page: Vec<_> = exec::group_threads(&hits)
             .into_iter()
             .skip(offset)
@@ -264,6 +265,7 @@ impl Library {
         Ok(SearchResults {
             threads,
             total_messages,
+            capped,
             elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
             chips: parsed.chips,
             hints: parsed.hints,

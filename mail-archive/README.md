@@ -84,6 +84,10 @@ Type in the search box. Results update as you type, and the parsed query is
 shown as chips below the box. You can remove a chip with ✕, or add one with
 **+ label** or **+ date**.
 
+Results are grouped from the newest 5,000 matching messages. When more match,
+the header says so; narrow the search (for example with `before:`) to reach
+older mail.
+
 | Key | Action |
 |---|---|
 | `⌘F` or `/` | Focus search |
