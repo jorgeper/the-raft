@@ -68,6 +68,8 @@ fn classify(p: &Path, home: &Path) -> Option<&'static str> {
             })
         }
         ("library", Some("mobile documents")) => Some(ICLOUD),
+        // Moved to iCloud Drive when "Desktop & Documents Folders" is on.
+        ("desktop" | "documents", _) => Some(ICLOUD_DESKTOP_DOCUMENTS),
         ("dropbox", _) => Some(DROPBOX),
         ("google drive", _) => Some(GOOGLE),
         ("onedrive", _) => Some(ONEDRIVE),
@@ -77,6 +79,7 @@ fn classify(p: &Path, home: &Path) -> Option<&'static str> {
 
 const DROPBOX: &str = "This folder is synced by Dropbox; keeping the library there uploads your mail to the cloud and can corrupt the index.";
 const ICLOUD: &str = "This folder is synced by iCloud Drive; keeping the library there uploads your mail to the cloud and can corrupt the index.";
+const ICLOUD_DESKTOP_DOCUMENTS: &str = "This folder may be synced by iCloud: if iCloud \u{201c}Desktop & Documents\u{201d} sync is on, keeping the library there uploads your mail to the cloud and can corrupt the index.";
 const GOOGLE: &str = "This folder is synced by Google Drive; keeping the library there uploads your mail to the cloud and can corrupt the index.";
 const ONEDRIVE: &str = "This folder is synced by OneDrive; keeping the library there uploads your mail to the cloud and can corrupt the index.";
 const GENERIC: &str = "This folder is synced by a cloud storage service; keeping the library there uploads your mail to the cloud and can corrupt the index.";
@@ -129,6 +132,27 @@ mod tests {
                 .unwrap()
                 .contains("Dropbox")
         );
+    }
+
+    /// iCloud "Desktop & Documents" sync moves these two folders to the cloud.
+    #[test]
+    fn desktop_and_documents_warned_for_icloud() {
+        let home = Path::new("/Users/u");
+        for p in [
+            "Desktop/lib",
+            "Documents",
+            "Documents/Mail/library",
+            "documents/x",
+        ] {
+            let w = cloud_sync_warning_in(&home.join(p), home).unwrap_or_else(|| panic!("{p}"));
+            assert!(
+                w.contains("iCloud") && w.contains("Desktop & Documents"),
+                "{p}: {w}"
+            );
+        }
+        for p in ["DesktopStuff/lib", "Downloads/lib", "Library/Documents/x"] {
+            assert!(cloud_sync_warning_in(&home.join(p), home).is_none(), "{p}");
+        }
     }
 
     #[test]

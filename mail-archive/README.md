@@ -75,7 +75,8 @@ settings live in `~/Library/Application Support/mail-archive/config.json`.
 | `LOCK` | Held while the app or `mail-cli` has the library open |
 
 Keep the library out of Dropbox, iCloud Drive, Google Drive and OneDrive; the
-app warns if you pick a folder inside one. Only one process can open the
+app warns if you pick a folder inside one, and for `~/Desktop` and
+`~/Documents`, which iCloud "Desktop & Documents" sync may upload. Only one process can open the
 library at a time. Quit the app before running `mail-cli` on the same library.
 
 ## Search
