@@ -1,3 +1,4 @@
+pub mod events;
 pub mod mbox;
 pub mod model;
 pub mod parse;
@@ -16,6 +17,8 @@ pub enum Error {
     Parse(#[from] ParseError),
     #[error("store error: {0}")]
     Store(String),
+    #[error("event log error: {0}")]
+    Events(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

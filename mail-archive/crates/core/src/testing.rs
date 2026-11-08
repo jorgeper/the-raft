@@ -44,9 +44,7 @@ fn text_part(mime: &str, text: &str) -> Part {
         body.push(b'\n');
     }
     Part {
-        headers: format!(
-            "Content-Type: {mime}; charset=utf-8\nContent-Transfer-Encoding: 8bit\n"
-        ),
+        headers: format!("Content-Type: {mime}; charset=utf-8\nContent-Transfer-Encoding: 8bit\n"),
         body,
     }
 }

@@ -1,0 +1,389 @@
+//! Append-only event log (newline-delimited JSON). Together with the store it
+//! is the source of truth; SQLite and the search index are rebuildable caches.
+
+use std::collections::HashSet;
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+use crate::model::{ImportKind, Key, MessageRef};
+use crate::paths::create_private_file;
+use crate::{Error, Result};
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub enum Event {
+    ImportStarted {
+        import_id: u64,
+        at: i64,
+        source: String,
+        kind: ImportKind,
+    },
+    MessageAdded {
+        import_id: u64,
+        #[serde(with = "hex_key")]
+        content_key: Key,
+        #[serde(with = "hex_opt_key")]
+        header_key: Option<Key>,
+        msg_ref: MessageRef,
+        labels: Vec<String>,
+    },
+    LabelsChanged {
+        import_id: u64,
+        #[serde(with = "hex_key")]
+        content_key: Key,
+        labels: Vec<String>,
+    },
+    /// `removed` holds the content keys of ALL library messages absent from
+    /// this (full) import, not just the newly absent ones.
+    ImportCompleted {
+        import_id: u64,
+        at: i64,
+        #[serde(with = "hex_keys")]
+        removed: Vec<Key>,
+    },
+}
+
+impl Event {
+    pub fn import_id(&self) -> u64 {
+        match self {
+            Event::ImportStarted { import_id, .. }
+            | Event::MessageAdded { import_id, .. }
+            | Event::LabelsChanged { import_id, .. }
+            | Event::ImportCompleted { import_id, .. } => *import_id,
+        }
+    }
+}
+
+fn to_hex(k: &Key) -> String {
+    k.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn from_hex(s: &str) -> std::result::Result<Key, String> {
+    if s.len() != 64 || !s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        return Err("key must be 64 lowercase hex characters".into());
+    }
+    let mut k = [0u8; 32];
+    for (i, b) in k.iter_mut().enumerate() {
+        *b = u8::from_str_radix(&s[2 * i..2 * i + 2], 16).map_err(|e| e.to_string())?;
+    }
+    Ok(k)
+}
+
+mod hex_key {
+    use super::*;
+    use serde::{Deserializer, Serializer, de::Error as _};
+
+    pub fn serialize<S: Serializer>(k: &Key, s: S) -> std::result::Result<S::Ok, S::Error> {
+        s.serialize_str(&to_hex(k))
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> std::result::Result<Key, D::Error> {
+        from_hex(&String::deserialize(d)?).map_err(D::Error::custom)
+    }
+}
+
+mod hex_opt_key {
+    use super::*;
+    use serde::{Deserializer, Serializer, de::Error as _};
+
+    pub fn serialize<S: Serializer>(k: &Option<Key>, s: S) -> std::result::Result<S::Ok, S::Error> {
+        match k {
+            Some(k) => s.serialize_some(&to_hex(k)),
+            None => s.serialize_none(),
+        }
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> std::result::Result<Option<Key>, D::Error> {
+        Option::<String>::deserialize(d)?
+            .map(|s| from_hex(&s).map_err(D::Error::custom))
+            .transpose()
+    }
+}
+
+mod hex_keys {
+    use super::*;
+    use serde::{Deserializer, Serializer, de::Error as _};
+
+    pub fn serialize<S: Serializer>(ks: &[Key], s: S) -> std::result::Result<S::Ok, S::Error> {
+        s.collect_seq(ks.iter().map(to_hex))
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> std::result::Result<Vec<Key>, D::Error> {
+        Vec::<String>::deserialize(d)?
+            .iter()
+            .map(|s| from_hex(s).map_err(D::Error::custom))
+            .collect()
+    }
+}
+
+pub struct EventLog {
+    file: File,
+}
+
+impl EventLog {
+    /// Open (creating with mode 0600 if missing) for appending. If a previous
+    /// crash left a torn final line, a newline is written first so the next
+    /// event starts on its own line; the torn line stays ignored by readers.
+    pub fn open(path: &Path) -> Result<EventLog> {
+        drop(create_private_file(path)?);
+        let mut file = OpenOptions::new().read(true).append(true).open(path)?;
+        let len = file.metadata()?.len();
+        if len > 0 {
+            file.seek(SeekFrom::Start(len - 1))?;
+            let mut last = [0u8; 1];
+            file.read_exact(&mut last)?;
+            if last[0] != b'\n' {
+                file.write_all(b"\n")?;
+            }
+        }
+        Ok(EventLog { file })
+    }
+
+    pub fn append(&mut self, e: &Event) -> Result<()> {
+        let mut line = serde_json::to_vec(e).map_err(|e| Error::Events(e.to_string()))?;
+        line.push(b'\n');
+        // One write call so a line is never interleaved with another.
+        self.file.write_all(&line)?;
+        Ok(())
+    }
+
+    pub fn sync(&mut self) -> Result<()> {
+        self.file.sync_all()?;
+        Ok(())
+    }
+}
+
+/// Read all events, streaming line by line. A malformed final line (torn
+/// write) is ignored; a malformed earlier line is corruption and an error.
+pub fn read_events(path: &Path) -> Result<Vec<Event>> {
+    let mut reader = BufReader::new(File::open(path)?);
+    let mut events = Vec::new();
+    let mut buf = Vec::new();
+    let mut lineno = 0usize;
+    loop {
+        buf.clear();
+        if reader.read_until(b'\n', &mut buf)? == 0 {
+            break;
+        }
+        lineno += 1;
+        let terminated = buf.last() == Some(&b'\n');
+        let body = if terminated {
+            &buf[..buf.len() - 1]
+        } else {
+            &buf[..]
+        };
+        if body.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        match serde_json::from_slice::<Event>(body) {
+            Ok(e) => events.push(e),
+            Err(err) => {
+                // Last line = nothing follows it in the file.
+                if reader.fill_buf()?.is_empty() {
+                    break;
+                }
+                return Err(Error::Events(format!("corrupt line {lineno}: {err}")));
+            }
+        }
+    }
+    Ok(events)
+}
+
+/// Drop every event of imports that never reached `ImportCompleted`.
+pub fn completed_events(all: Vec<Event>) -> Vec<Event> {
+    let done: HashSet<u64> = all
+        .iter()
+        .filter_map(|e| match e {
+            Event::ImportCompleted { import_id, .. } => Some(*import_id),
+            _ => None,
+        })
+        .collect();
+    all.into_iter()
+        .filter(|e| done.contains(&e.import_id()))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn k(n: u8) -> Key {
+        [n; 32]
+    }
+
+    fn mref() -> MessageRef {
+        MessageRef {
+            pack_id: 1,
+            offset: 42,
+            length: 7,
+        }
+    }
+
+    fn all_variants() -> Vec<Event> {
+        vec![
+            Event::ImportStarted {
+                import_id: 1,
+                at: 100,
+                source: "a.mbox".into(),
+                kind: ImportKind::Full,
+            },
+            Event::MessageAdded {
+                import_id: 1,
+                content_key: k(1),
+                header_key: Some(k(2)),
+                msg_ref: mref(),
+                labels: vec!["Inbox".into()],
+            },
+            Event::MessageAdded {
+                import_id: 1,
+                content_key: k(3),
+                header_key: None,
+                msg_ref: mref(),
+                labels: vec![],
+            },
+            Event::LabelsChanged {
+                import_id: 1,
+                content_key: k(1),
+                labels: vec!["Sent".into()],
+            },
+            Event::ImportCompleted {
+                import_id: 1,
+                at: 200,
+                removed: vec![k(9), k(10)],
+            },
+        ]
+    }
+
+    fn write_all(path: &Path, evs: &[Event]) {
+        let mut log = EventLog::open(path).unwrap();
+        for e in evs {
+            log.append(e).unwrap();
+        }
+        log.sync().unwrap();
+    }
+
+    #[test]
+    fn roundtrip_all_variants() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        let evs = all_variants();
+        write_all(&p, &evs);
+        assert_eq!(read_events(&p).unwrap(), evs);
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.contains(&"01".repeat(32)));
+        assert_eq!(text.lines().count(), evs.len());
+    }
+
+    #[test]
+    fn torn_last_line_ignored() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        let evs = all_variants();
+        write_all(&p, &evs);
+        let mut f = OpenOptions::new().append(true).open(&p).unwrap();
+        f.write_all(b"{\"MessageAdded\":{\"import_id\":2,\"conte")
+            .unwrap();
+        drop(f);
+        assert_eq!(read_events(&p).unwrap(), evs);
+    }
+
+    #[test]
+    fn append_after_torn_tail_starts_new_line() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        let evs = all_variants();
+        write_all(&p, &evs[..2]);
+        let mut f = OpenOptions::new().append(true).open(&p).unwrap();
+        f.write_all(b"{\"Import").unwrap();
+        drop(f);
+        let mut log = EventLog::open(&p).unwrap();
+        log.append(&evs[2]).unwrap();
+        // The torn line is now mid-file: it must be reported as corruption
+        // only if malformed AND not last; here it is followed by a good line.
+        assert!(read_events(&p).is_err());
+    }
+
+    #[test]
+    fn corrupt_middle_line_is_error() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        let evs = all_variants();
+        let mut s = String::new();
+        s.push_str(&serde_json::to_string(&evs[0]).unwrap());
+        s.push_str("\nnot json\n");
+        s.push_str(&serde_json::to_string(&evs[1]).unwrap());
+        s.push('\n');
+        std::fs::write(&p, s).unwrap();
+        assert!(matches!(read_events(&p), Err(Error::Events(_))));
+    }
+
+    #[test]
+    fn incomplete_import_dropped() {
+        let k1 = k(1);
+        let evs = vec![
+            Event::ImportStarted {
+                import_id: 1,
+                at: 1,
+                source: "a".into(),
+                kind: ImportKind::Partial,
+            },
+            Event::MessageAdded {
+                import_id: 1,
+                content_key: k1,
+                header_key: None,
+                msg_ref: mref(),
+                labels: vec![],
+            },
+            Event::ImportCompleted {
+                import_id: 1,
+                at: 2,
+                removed: vec![],
+            },
+            Event::ImportStarted {
+                import_id: 2,
+                at: 3,
+                source: "b".into(),
+                kind: ImportKind::Full,
+            },
+            Event::MessageAdded {
+                import_id: 2,
+                content_key: k(2),
+                header_key: None,
+                msg_ref: mref(),
+                labels: vec![],
+            },
+            Event::MessageAdded {
+                import_id: 2,
+                content_key: k(3),
+                header_key: None,
+                msg_ref: mref(),
+                labels: vec![],
+            },
+        ];
+        let kept = completed_events(evs.clone());
+        assert_eq!(kept, evs[..3].to_vec());
+    }
+
+    #[test]
+    fn file_is_private() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        drop(EventLog::open(&p).unwrap());
+        assert_eq!(
+            std::fs::metadata(&p).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn reopen_appends() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        let evs = all_variants();
+        write_all(&p, &evs[..2]);
+        write_all(&p, &evs[2..]);
+        assert_eq!(read_events(&p).unwrap(), evs);
+    }
+}
