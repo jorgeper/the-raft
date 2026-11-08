@@ -3,11 +3,13 @@
 
 mod commands;
 mod config;
+mod nav;
 mod protocol;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
 use tauri::{Manager, RunEvent};
 
 use commands::AppState;
@@ -45,6 +47,34 @@ fn main() {
             let cache = base.join(&session);
             *session_dir.lock().unwrap() = Some(cache.clone());
             app.manage(AppState::new(lib, open_error, cfg_path, cache));
+
+            // The main window is built here (config has `create: false`) so
+            // it can carry the link-routing hooks. See nav.rs.
+            let mut origins = vec!["tauri://localhost".to_string()];
+            if tauri::is_dev()
+                && let Some(dev) = &app.config().build.dev_url
+            {
+                origins.push(nav::origin_key(dev));
+            }
+            let origins_nav = origins.clone();
+            let cfg = app.config().app.windows[0].clone();
+            WebviewWindowBuilder::from_config(app.handle(), &cfg)?
+                .on_navigation(move |url| match nav::route_navigation(url, &origins_nav) {
+                    nav::NavDecision::Allow => true,
+                    nav::NavDecision::Deny => false,
+                    nav::NavDecision::OpenExternal(u) => {
+                        nav::open_external(u);
+                        false
+                    }
+                })
+                .on_new_window(move |url, _features| {
+                    // A window is never created: external links go to the browser.
+                    if let nav::NavDecision::OpenExternal(u) = nav::route_navigation(&url, &origins) {
+                        nav::open_external(u);
+                    }
+                    NewWindowResponse::Deny
+                })
+                .build()?;
             Ok(())
         })
         // The handlers run on the blocking pool, never on the main thread.

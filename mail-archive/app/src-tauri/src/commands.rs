@@ -577,7 +577,7 @@ pub async fn open_attachment(
 
 /// `/usr/bin/open <target>` with the target as one argument, never via a shell.
 /// `open` returns once LaunchServices has the request; waiting reaps it.
-fn run_open(target: impl AsRef<std::ffi::OsStr>) -> Result<(), String> {
+pub fn run_open(target: impl AsRef<std::ffi::OsStr>) -> Result<(), String> {
     match Command::new("/usr/bin/open").arg(target).status() {
         Ok(s) if s.success() => Ok(()),
         _ => Err("could not open".to_string()),

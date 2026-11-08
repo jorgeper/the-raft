@@ -1,16 +1,101 @@
 <script lang="ts">
+  import ReadingPane from "./components/ReadingPane.svelte";
+  import ResultsList from "./components/ResultsList.svelte";
   import SearchBox from "./components/SearchBox.svelte";
+  import { copyText } from "./lib/format";
+  import { handleKey, type KeyTarget } from "./lib/keys";
   import { store } from "./lib/store.svelte";
+  import { clearThreadCache, prefetchThread } from "./lib/threads";
+
+  let selected = $state(0);
+  let list: ResultsList | undefined = $state();
+  let pane: ReadingPane | undefined = $state();
+
+  const threads = $derived(store.results?.threads ?? []);
+  const terms = $derived(store.results?.terms ?? []);
+  const thread = $derived(threads[selected] ?? null);
+
+  // A new result set: start at the top and drop cached threads (bodies may have changed).
+  $effect(() => {
+    void store.results;
+    selected = 0;
+    clearThreadCache();
+  });
+
+  // Prefetch the next row's thread so ArrowDown opens instantly.
+  $effect(() => {
+    const next = threads[selected + 1];
+    if (next) prefetchThread(next.thrid, terms);
+  });
+
+  function targetOf(el: Element | null): KeyTarget {
+    if (el?.closest("#search-area")) return "search";
+    if (el?.closest("#reading-pane-region")) return "pane";
+    return "list";
+  }
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // WKWebView may refuse the async clipboard API; fall back to a selection copy.
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+  }
+
+  function onkeydown(e: KeyboardEvent) {
+    if (e.defaultPrevented || e.isComposing) return;
+    const action = handleKey(
+      { key: e.key, metaKey: e.metaKey, target: targetOf(document.activeElement) },
+      { selected, count: threads.length, query: store.query },
+    );
+    if (action.type === "none") return;
+    e.preventDefault();
+    switch (action.type) {
+      case "focusSearch": {
+        const input = document.querySelector<HTMLInputElement>("#search-area input");
+        input?.focus();
+        input?.select();
+        break;
+      }
+      case "select":
+        selected = action.index;
+        break;
+      case "focusPane":
+        pane?.focus();
+        break;
+      case "focusList":
+        list?.focus();
+        break;
+      case "clear":
+        store.query = "";
+        break;
+      case "copy":
+        if (thread) void copy(copyText(thread));
+        break;
+    }
+  }
 </script>
+
+<svelte:window {onkeydown} />
 
 <div class="app">
   <header class="search-region"><SearchBox /></header>
   <!-- Results on screen are out of date while the library is busy or the last search failed. -->
   <div class="panes" class:stale={store.busy || store.error !== null}>
-    <!-- Task 16 mounts ResultsList here (left, ~40%). -->
-    <section id="results-region" class="results-region" aria-label="Results"></section>
-    <!-- Task 16 mounts ReadingPane here (right, ~60%). -->
-    <section id="reading-pane-region" class="reading-region" aria-label="Reading pane"></section>
+    <section id="results-region" class="results-region" aria-label="Results">
+      <ResultsList bind:this={list} {selected} onselect={(i) => (selected = i)} />
+    </section>
+    <section id="reading-pane-region" class="reading-region" aria-label="Reading pane">
+      <ReadingPane bind:this={pane} {thread} {terms} />
+    </section>
   </div>
 </div>
 
@@ -79,7 +164,7 @@
   .results-region {
     flex: 0 0 40%;
     min-width: 0;
-    overflow: auto;
+    overflow: hidden;
     border-right: 1px solid var(--border);
   }
   .reading-region {

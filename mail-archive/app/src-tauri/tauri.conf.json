@@ -13,6 +13,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
+        "create": false,
         "title": "Mail Archive",
         "width": 1280,
         "height": 800
