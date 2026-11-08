@@ -1,5 +1,6 @@
 pub mod events;
 pub mod index;
+pub mod library;
 pub mod mbox;
 pub mod meta;
 pub mod model;
@@ -28,6 +29,8 @@ pub enum Error {
     Meta(String),
     #[error("search index error: {0}")]
     Index(String),
+    #[error("library is in use by another process")]
+    LibraryInUse,
 }
 
 impl From<tantivy::TantivyError> for Error {

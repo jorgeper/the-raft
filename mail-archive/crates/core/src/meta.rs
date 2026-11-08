@@ -129,6 +129,18 @@ pub struct KeyIndex {
     pub labels: HashMap<MsgId, Vec<String>>,
 }
 
+/// The few columns needed to summarize a thread in a result list.
+#[derive(Clone, PartialEq, Debug)]
+pub struct MsgSummary {
+    pub id: MsgId,
+    pub date: i64,
+    pub from_name: Option<String>,
+    pub from_addr: Option<String>,
+    pub subject: String,
+    pub snippet: String,
+    pub has_attachments: bool,
+}
+
 #[derive(Serialize, Clone, PartialEq, Debug)]
 pub struct MessageRow {
     pub id: MsgId,
@@ -529,6 +541,34 @@ impl MetaDb {
     pub fn thread(&self, thrid: i64) -> Result<Vec<MessageRow>> {
         let sql = format!("SELECT {ROW_COLS} FROM messages WHERE thrid = ? ORDER BY date, id");
         self.rows(&sql, thrid)
+    }
+
+    /// Light per-message summaries for a set of threads in one query, grouped
+    /// by thread id, each list oldest first.
+    pub fn thread_summaries(&self, thrids: &[i64]) -> Result<HashMap<i64, Vec<MsgSummary>>> {
+        let mut out: HashMap<i64, Vec<MsgSummary>> = HashMap::new();
+        // Stay well under SQLite's bound-parameter limit.
+        for chunk in thrids.chunks(500) {
+            let marks = vec!["?"; chunk.len()].join(",");
+            let sql = format!(
+                "SELECT thrid, id, date, from_name, from_addr, subject, snippet, has_attachments \
+                 FROM messages WHERE thrid IN ({marks}) ORDER BY date, id"
+            );
+            let mut st = self.conn.prepare(&sql)?;
+            let mut rows = st.query(rusqlite::params_from_iter(chunk))?;
+            while let Some(r) = rows.next()? {
+                out.entry(r.get(0)?).or_default().push(MsgSummary {
+                    id: r.get(1)?,
+                    date: r.get(2)?,
+                    from_name: r.get(3)?,
+                    from_addr: r.get(4)?,
+                    subject: r.get(5)?,
+                    snippet: r.get(6)?,
+                    has_attachments: r.get(7)?,
+                });
+            }
+        }
+        Ok(out)
     }
 
     /// Labels whose name starts with `prefix` (case-insensitive), most used first.
