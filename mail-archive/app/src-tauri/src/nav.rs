@@ -6,7 +6,7 @@
 //! case is a new-window request for an https URL: deny the window and hand the
 //! URL to the same validator and opener `open_link` uses.
 
-use tauri::Url;
+use tauri::{AppHandle, Emitter, Url};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum NavDecision {
@@ -21,31 +21,45 @@ pub enum NavDecision {
 /// `scheme://host[:port]` as a comparison key. `Url::origin` is opaque for
 /// custom schemes such as `tauri:`, so build it by hand.
 pub fn origin_key(url: &Url) -> String {
-    let mut s = format!("{}://{}", url.scheme(), url.host_str().unwrap_or(""));
+    let mut s = format!("{}://{}", url.scheme(), url.host_str().unwrap_or("").to_ascii_lowercase());
     if let Some(p) = url.port() {
         s.push_str(&format!(":{p}"));
     }
     s
 }
 
+/// Hosts of non-special schemes (`tauri:`, `mailbody:`) keep their case in `Url`.
+fn is_localhost(url: &Url) -> bool {
+    url.host_str().is_some_and(|h| h.eq_ignore_ascii_case("localhost"))
+}
+
 /// `app_origins` are the origin keys the app itself is served from:
 /// `tauri://localhost` in a bundle, plus the dev server URL in dev.
 ///
 /// Decisions:
-/// - the app's own origins and `ipc://localhost` (Tauri's IPC bridge): allow;
+/// - the app's own origins: allow (a URL with userinfo is never "the app");
 /// - `mailbody://localhost`: allow (the iframe's document);
+/// - `ipc://localhost` is Tauri's fetch bridge, which is a request and never a
+///   navigation, so a navigation to it is denied;
 /// - `mailcid://` is only ever a subresource of a body (images). A navigation
 ///   to it would show an attachment as a top-level document, so deny;
 /// - `about:blank`: allow (an empty frame, no content, no network);
 /// - http, https, mailto: open externally if `validate_link` accepts;
 /// - everything else (javascript:, file:, data:, blob:, ftp:, ...): deny.
+///
+/// Layers: tauri-runtime-wry hands the hook a parsed `Url`; if the native URL
+/// string fails to parse it lets the navigation proceed without calling the
+/// hook. This function is therefore not the only barrier. The page CSP
+/// (`default-src 'self'`, `frame-src mailbody:`), the iframe sandbox (no
+/// scripts, no same-origin, no top navigation) and the body CSP and sanitizer
+/// (no remote resources, links are plain `target=_blank`) cover that case.
 pub fn route_navigation(url: &Url, app_origins: &[String]) -> NavDecision {
+    let userinfo = !url.username().is_empty() || url.password().is_some();
     match url.scheme() {
-        "mailbody" if url.host_str() == Some("localhost") => NavDecision::Allow,
-        "ipc" if url.host_str() == Some("localhost") => NavDecision::Allow,
+        "mailbody" if is_localhost(url) && !userinfo => NavDecision::Allow,
         "about" if url.as_str() == "about:blank" => NavDecision::Allow,
         "http" | "https" | "mailto" => {
-            if app_origins.contains(&origin_key(url)) {
+            if !userinfo && app_origins.contains(&origin_key(url)) {
                 NavDecision::Allow
             } else if crate::commands::validate_link(url.as_str()).is_ok() {
                 NavDecision::OpenExternal(url.as_str().to_string())
@@ -53,16 +67,20 @@ pub fn route_navigation(url: &Url, app_origins: &[String]) -> NavDecision {
                 NavDecision::Deny
             }
         }
-        "tauri" if app_origins.contains(&origin_key(url)) => NavDecision::Allow,
+        "tauri" if !userinfo && app_origins.contains(&origin_key(url)) => NavDecision::Allow,
         _ => NavDecision::Deny,
     }
 }
 
 /// Opens off the calling thread: the hooks run on the main thread and `open`
-/// must not block it.
-pub fn open_external(url: String) {
+/// must not block it. A failure is logged with fixed text (no URL) and the UI
+/// is told through the `open-failed` event so it can show a transient note.
+pub fn open_external(app: AppHandle, url: String) {
     std::thread::spawn(move || {
-        let _ = crate::commands::run_open(&url);
+        if crate::commands::run_open(&url).is_err() {
+            eprintln!("mail-archive: could not open a link");
+            let _ = app.emit("open-failed", ());
+        }
     });
 }
 
@@ -112,9 +130,39 @@ mod tests {
     }
 
     #[test]
-    fn ipc_origin_is_allowed() {
-        assert_eq!(route("ipc://localhost/search"), NavDecision::Allow);
+    fn ipc_is_a_request_not_a_navigation() {
+        assert_eq!(route("ipc://localhost/search"), NavDecision::Deny);
         assert_eq!(route("ipc://evil/search"), NavDecision::Deny);
+    }
+
+    #[test]
+    fn look_alike_origins_are_not_the_app() {
+        assert_eq!(route("tauri://localhost.evil/"), NavDecision::Deny);
+        assert_eq!(route("tauri://localhost:1234/"), NavDecision::Deny);
+        assert_eq!(route("tauri://u@localhost/"), NavDecision::Deny);
+        assert_eq!(route("mailbody://u@localhost/1"), NavDecision::Deny);
+        // userinfo on the dev origin: not the app, so it goes to the browser
+        assert_eq!(
+            route("http://u@127.0.0.1:1420/"),
+            NavDecision::OpenExternal("http://u@127.0.0.1:1420/".into())
+        );
+        assert_eq!(
+            route("https://127.0.0.1:1420/"),
+            NavDecision::OpenExternal("https://127.0.0.1:1420/".into())
+        );
+    }
+
+    #[test]
+    fn scheme_and_host_case_variants_normalise() {
+        assert_eq!(route("TAURI://LOCALHOST/index.html"), NavDecision::Allow);
+        assert_eq!(route("MAILBODY://LocalHost/1"), NavDecision::Allow);
+        assert_eq!(route("HTTP://127.0.0.1:1420/"), NavDecision::Allow);
+        assert_eq!(
+            route("HTTPS://Example.ORG/Path"),
+            NavDecision::OpenExternal("https://example.org/Path".into())
+        );
+        assert_eq!(route("JavaScript:alert(1)"), NavDecision::Deny);
+        assert_eq!(route("FILE:///etc/passwd"), NavDecision::Deny);
     }
 
     #[test]

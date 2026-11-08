@@ -25,7 +25,7 @@ export function formatFull(unixSecs: number): string {
 }
 
 export function copyText(t: ThreadHit): string {
-  return `${t.subject} — ${t.senders.join(", ")} — ${formatFull(t.latest_date)}`;
+  return [t.subject, t.senders.join(", "), formatFull(t.latest_date)].filter((p) => p.length > 0).join(" — ");
 }
 
 export function formatSize(bytes: number): string {

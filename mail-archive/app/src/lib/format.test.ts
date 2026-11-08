@@ -35,6 +35,18 @@ describe("formatFull / copyText", () => {
   });
 });
 
+describe("copyText with missing parts", () => {
+  const base = {
+    thrid: 1, latest_date: at(2026, 11, 8, 15, 7), senders: [] as string[], message_count: 1,
+    subject: "", snippet: "", has_attachment: false, matched: [],
+  };
+  it("never leaves an empty segment", () => {
+    expect(copyText({ ...base })).toBe("Nov 8, 2026, 3:07 PM");
+    expect(copyText({ ...base, subject: "Hi" })).toBe("Hi — Nov 8, 2026, 3:07 PM");
+    expect(copyText({ ...base, senders: ["Ana"] })).toBe("Ana — Nov 8, 2026, 3:07 PM");
+  });
+});
+
 describe("highlightParts", () => {
   it("splits on terms case-insensitively", () => {
     expect(highlightParts("Hello World hello", ["hello"])).toEqual([

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { onOpenFailed } from "./lib/api";
   import ReadingPane from "./components/ReadingPane.svelte";
   import ResultsList from "./components/ResultsList.svelte";
   import SearchBox from "./components/SearchBox.svelte";
@@ -8,6 +10,20 @@
   import { clearThreadCache, prefetchThread } from "./lib/threads";
 
   let selected = $state(0);
+  let linkNote = $state(false);
+  let linkTimer: ReturnType<typeof setTimeout> | undefined;
+
+  onMount(() => {
+    const un = onOpenFailed(() => {
+      linkNote = true;
+      clearTimeout(linkTimer);
+      linkTimer = setTimeout(() => (linkNote = false), 4000);
+    });
+    return () => {
+      clearTimeout(linkTimer);
+      void un.then((f) => f());
+    };
+  });
   let list: ResultsList | undefined = $state();
   let pane: ReadingPane | undefined = $state();
 
@@ -88,6 +104,7 @@
 
 <div class="app">
   <header class="search-region"><SearchBox /></header>
+  {#if linkNote}<p class="toast" role="status">Could not open the link.</p>{/if}
   <!-- Results on screen are out of date while the library is busy or the last search failed. -->
   <div class="panes" class:stale={store.busy || store.error !== null}>
     <section id="results-region" class="results-region" aria-label="Results">
@@ -157,6 +174,14 @@
     flex: 1;
     min-height: 0;
     display: flex;
+  }
+  .toast {
+    margin: 0;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
   }
   .panes.stale {
     opacity: 0.5;

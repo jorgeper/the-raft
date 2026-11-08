@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./lib/api", async (orig) => {
   const real = await orig<typeof import("./lib/api")>();
-  return { ...real, search: vi.fn().mockResolvedValue({}), autocomplete: vi.fn(), getThread: vi.fn() };
+  return { ...real, search: vi.fn().mockResolvedValue({}), autocomplete: vi.fn(), getThread: vi.fn(), onOpenFailed: vi.fn().mockResolvedValue(() => {}) };
 });
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
 
@@ -131,5 +131,29 @@ describe("App keyboard and prefetch", () => {
     await fireEvent.keyDown(list, { key: "c", metaKey: true });
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(writeText.mock.calls[0][0]).toBe(`Subject 0 — Sender 0 — ${formatFull(1_700_000_000)}`);
+  });
+});
+
+describe("open-failed note", () => {
+  it("shows a transient note when a link could not be opened", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.search).mockImplementation(() => new Promise(() => {}));
+      let fire!: () => void;
+      vi.mocked(api.onOpenFailed).mockImplementation(async (cb) => {
+        fire = cb;
+        return () => {};
+      });
+      const { container } = render(App);
+      await tick();
+      expect(container.textContent).not.toContain("Could not open the link");
+      fire();
+      await tick();
+      expect(container.textContent).toContain("Could not open the link");
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(container.textContent).not.toContain("Could not open the link");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

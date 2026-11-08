@@ -111,7 +111,39 @@ describe("ResultsList", () => {
     resolve({ ...results(0), threads: [thread(900)] });
     await tick();
     await tick();
+    expect(search).toHaveBeenCalledTimes(1);
     expect(store.results.threads.length).toBe(5);
+  });
+
+  it("checks a new result set afresh even if a page for the old one is still pending", async () => {
+    store.results = results(200);
+    store.resultsQuery = "old";
+    let resolveOld!: (r: SearchResults) => void;
+    search.mockReturnValueOnce(new Promise((r) => (resolveOld = r)));
+    const { container } = render(ResultsList, { selected: 0, onselect: () => {} });
+    await scrollTo(container, 160 * ROW);
+    expect(search).toHaveBeenCalledTimes(1);
+
+    search.mockResolvedValueOnce(results(0));
+    store.resultsQuery = "new";
+    store.results = results(200, { threads: Array.from({ length: 200 }, (_, i) => thread(1000 + i)) });
+    await tick();
+    await scrollTo(container, 160 * ROW);
+    await vi.waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+    expect(search).toHaveBeenLastCalledWith("new", 200, 200);
+    resolveOld(results(0));
+  });
+
+  it("returns to the top when the result set is replaced", async () => {
+    store.results = results(1000);
+    const { container } = render(ResultsList, { selected: 0, onselect: () => {} });
+    await scrollTo(container, 500 * ROW);
+    expect(rowText(rowsIn(container)[0])).toBe("Subject 490");
+    store.results = results(1000, { threads: Array.from({ length: 1000 }, (_, i) => thread(5000 + i)) });
+    await tick();
+    await tick();
+    expect(container.querySelector<HTMLElement>(".scroller")!.scrollTop).toBe(0);
+    expect(rowText(rowsIn(container)[0])).toBe("Subject 5000");
   });
 
   it("highlights terms with <mark> but renders markup in text as text", async () => {

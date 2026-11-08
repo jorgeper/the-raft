@@ -167,6 +167,50 @@ describe("ReadingPane", () => {
     }
   });
 
+  it("keeps retrying a busy get_thread every 2 s until it succeeds", async () => {
+    vi.useFakeTimers();
+    try {
+      getThread
+        .mockRejectedValueOnce("library is busy")
+        .mockRejectedValueOnce("library is busy")
+        .mockResolvedValue([msg(1, 1)]);
+      const r = render(ReadingPane, { thread: hit({ matched: [1] }), terms: [] });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(r.container.querySelector("iframe")).toBeNull();
+      expect(r.container.textContent).toContain("Body unavailable while the library is busy");
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(r.container.querySelector("iframe")).not.toBeNull();
+      expect(getThread).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not show the previous thread's messages while a new one loads", async () => {
+    const { container, rerender } = await show([msg(1, 1)], hit({ thrid: 1, matched: [1] }));
+    let resolve!: (m: MessageView[]) => void;
+    getThread.mockReturnValue(new Promise((r) => (resolve = r)));
+    await rerender({ thread: hit({ thrid: 2, subject: "Second" }), terms: [] });
+    await tick();
+    expect(container.querySelectorAll(".msg").length).toBe(0);
+    expect(container.textContent).toContain("Loading");
+    resolve([msg(2, 2)]);
+    await vi.waitFor(() => expect(container.querySelectorAll(".msg").length).toBe(1));
+    expect(container.textContent).not.toContain("Loading");
+  });
+
+  it("offers a sanitized file name to the dialog and on the chip", async () => {
+    saveDialog.mockResolvedValue(null);
+    const evil = msg(7, 1, {
+      attachments: [{ part_index: 0, filename: "../../x\u202Efdp.exe", mime_type: "a/b", size: 1, content_id: null }],
+    });
+    const { container } = await show([evil], hit({ matched: [7] }));
+    expect(container.querySelector(".chip")!.textContent).toContain("_.._xfdp.exe");
+    await fireEvent.click(screen.getByLabelText("Save As"));
+    await vi.waitFor(() => expect(saveDialog).toHaveBeenCalledWith({ defaultPath: "_.._xfdp.exe" }));
+  });
+
   it("shows an empty state without a thread", () => {
     const { container } = render(ReadingPane, { thread: null, terms: [] });
     expect(container.textContent).toContain("Select a conversation");

@@ -126,3 +126,5 @@ export const setLibraryPath = (path: string) =>
   invoke<string | null>("set_library_path", { path });
 export const onProgress = (cb: (p: Progress) => void): Promise<UnlistenFn> =>
   listen<Progress>("progress", (e) => cb(e.payload));
+/** Fired when handing a link to the default browser failed. */
+export const onOpenFailed = (cb: () => void): Promise<UnlistenFn> => listen("open-failed", () => cb());

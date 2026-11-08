@@ -23,9 +23,10 @@
   let scroller: HTMLDivElement | undefined = $state();
   let scrollTop = $state(0);
   let viewHeight = $state(0);
-  let loading = false;
-  /** Set by a failed page load; cleared by the next scroll. */
-  let failed = false;
+  /** The result set a page request is in flight for (reactive: finishing re-runs the check). */
+  let loadingFor: object | null = $state.raw(null);
+  /** The result set whose last page load failed; cleared by the next scroll. */
+  let failedFor: object | null = null;
   /** The result set for which the last page came back short (nothing more to load). */
   let exhausted: object | null = null;
 
@@ -42,7 +43,7 @@
 
   function measure() {
     if (!scroller) return;
-    failed = false;
+    failedFor = null;
     scrollTop = scroller.scrollTop;
     viewHeight = scroller.clientHeight;
   }
@@ -57,6 +58,13 @@
     return () => ro.disconnect();
   });
 
+  // A new result set starts at the top, even if the selection was already row 0.
+  $effect(() => {
+    void store.results;
+    if (scroller) scroller.scrollTop = 0;
+    scrollTop = 0;
+  });
+
   // Keep the selected row on screen (keyboard selection).
   $effect(() => {
     const idx = selected;
@@ -68,28 +76,30 @@
     void tick().then(measure);
   });
 
-  // Next page when within LOAD_AHEAD rows of the end.
+  // Next page when within LOAD_AHEAD rows of the end. Everything is scoped to the result set
+  // object, so a page for an old set is dropped and the new set is checked afresh.
   $effect(() => {
     const res = store.results;
-    if (!res || loading || failed || exhausted === res) return;
+    if (!res || loadingFor === res || failedFor === res || exhausted === res) return;
     // A first page shorter than a full page is the whole result set.
     if (res.threads.length < PAGE_SIZE || lastVisible < res.threads.length - LOAD_AHEAD) return;
-    loading = true;
+    loadingFor = res;
     const offset = res.threads.length;
+    const query = store.resultsQuery;
     api
-      .search(store.resultsQuery, offset, PAGE_SIZE)
+      .search(query, offset, PAGE_SIZE)
       .then((page) => {
-        // Clear before pushing: the push re-runs this effect, which must see loading=false.
-        loading = false;
-        if (store.results !== res) return; // a newer search replaced the list
+        // Clear before pushing: the push re-runs this effect, which must see it idle.
+        if (loadingFor === res) loadingFor = null;
+        if (store.results !== res) return;
         const seen = new Set(res.threads.map((t) => t.thrid));
         if (page.threads.length < PAGE_SIZE) exhausted = res;
         res.threads.push(...page.threads.filter((t) => !seen.has(t.thrid)));
       })
       .catch(() => {
         // Busy or failed: retry on the next scroll, not in a loop.
-        loading = false;
-        failed = true;
+        if (loadingFor === res) loadingFor = null;
+        failedFor = res;
       });
   });
 

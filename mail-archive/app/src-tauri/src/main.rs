@@ -57,20 +57,22 @@ fn main() {
                 origins.push(nav::origin_key(dev));
             }
             let origins_nav = origins.clone();
+            let app_nav = app.handle().clone();
+            let app_win = app.handle().clone();
             let cfg = app.config().app.windows[0].clone();
             WebviewWindowBuilder::from_config(app.handle(), &cfg)?
                 .on_navigation(move |url| match nav::route_navigation(url, &origins_nav) {
                     nav::NavDecision::Allow => true,
                     nav::NavDecision::Deny => false,
                     nav::NavDecision::OpenExternal(u) => {
-                        nav::open_external(u);
+                        nav::open_external(app_nav.clone(), u);
                         false
                     }
                 })
                 .on_new_window(move |url, _features| {
                     // A window is never created: external links go to the browser.
                     if let nav::NavDecision::OpenExternal(u) = nav::route_navigation(&url, &origins) {
-                        nav::open_external(u);
+                        nav::open_external(app_win.clone(), u);
                     }
                     NewWindowResponse::Deny
                 })

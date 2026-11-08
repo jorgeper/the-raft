@@ -1,6 +1,7 @@
 <script lang="ts">
   import { save } from "@tauri-apps/plugin-dialog";
   import * as api from "../lib/api";
+  import { safeFilename } from "../lib/filename";
   import { formatFull, formatSize } from "../lib/format";
   import { loadThread } from "../lib/threads";
   import { store } from "../lib/store.svelte";
@@ -42,7 +43,10 @@
       return;
     }
     let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     failed = null;
+    messages = [];
+    loadedFor = null;
     loadThread(th.thrid, ts).then(
       (ms) => {
         if (!live) return;
@@ -54,26 +58,18 @@
         if (!live) return;
         if (api.isBusy(err)) {
           threadBusy = true;
-          messages = [];
-          loadedFor = null;
+          // Keep trying every 2 s until it succeeds or the selection changes.
+          timer = setTimeout(() => retry++, 2000);
         } else {
           threadBusy = false;
           failed = api.errorText(err);
-          messages = [];
-          loadedFor = null;
         }
       },
     );
     return () => {
       live = false;
+      clearTimeout(timer);
     };
-  });
-
-  // While busy, retry the thread every 2 s until the library is free.
-  $effect(() => {
-    if (!threadBusy) return;
-    const id = setTimeout(() => retry++, 2000);
-    return () => clearTimeout(id);
   });
 
   /** Bodies come from mailbody://, which answers 503 while an import runs, so they are not
@@ -108,7 +104,7 @@
   async function saveAs(m: api.MessageView, a: api.AttachmentInfo) {
     note = null;
     try {
-      const dest = await save({ defaultPath: a.filename ?? "attachment" });
+      const dest = await save({ defaultPath: safeFilename(a.filename) });
       if (!dest) return;
       await api.saveAttachment(m.id, a.part_index, dest);
     } catch (e) {
@@ -128,7 +124,10 @@
       <p class="status" role="status">Body unavailable while the library is busy</p>
     {/if}
     {#if note}<p class="status" role="alert">{note}</p>{/if}
-    {#each messages as m (m.id)}
+    {#if loadedFor !== thread.thrid && !failed && !threadBusy}
+      <p class="status" role="status">Loading…</p>
+    {/if}
+    {#each loadedFor === thread.thrid ? messages : [] as m (m.id)}
       <section class="msg" class:open={isOpen(m.id)}>
         <button
           class="head"
@@ -162,7 +161,7 @@
                       void saveAs(m, a);
                     }}
                   >
-                    📎 {a.filename ?? "attachment"} <small>{formatSize(a.size)}</small>
+                    📎 {safeFilename(a.filename)} <small>{formatSize(a.size)}</small>
                   </button>
                   <button class="save" type="button" aria-label="Save As" title="Save As…" onclick={() => saveAs(m, a)}>↓</button>
                 </span>
