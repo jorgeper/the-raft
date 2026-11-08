@@ -171,7 +171,9 @@
           {#if m.blocked_remote > 0}
             <p class="blocked">{m.blocked_remote} remote images blocked</p>
           {/if}
-          {#if busyNow}
+          {#if m.body_failed}
+            <p class="status" role="status">This message could not be displayed</p>
+          {:else if busyNow}
             <p class="status" role="status">Body unavailable while the library is busy</p>
           {:else}
             <!-- Sandbox: popups only. No scripts, no same-origin, no forms, no top navigation.

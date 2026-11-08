@@ -29,7 +29,7 @@ function msg(id: number, date: number, o: Partial<MessageView> = {}): MessageVie
   return {
     id, thrid: "1", from: { name: `Name ${id}`, addr: `u${id}@example.org` }, to: [{ name: null, addr: "me@example.org" }],
     cc: [], date, labels: [], subject: "S", attachments: [], body_url: `mailbody://localhost/${id}`,
-    blocked_remote: 0, ...o,
+    blocked_remote: 0, body_failed: false, ...o,
   };
 }
 const hit = (o: Partial<ThreadHit> = {}): ThreadHit => ({
@@ -65,6 +65,18 @@ describe("ReadingPane", () => {
   it("asks for the thread with the search terms", async () => {
     await show([msg(1, 1)], hit({ thrid: "9" }), ["foo"]);
     expect(getThread).toHaveBeenCalledWith("9", ["foo"]);
+  });
+
+  it("shows a notice instead of the body of a message that could not be rendered", async () => {
+    const { container } = await show(
+      [msg(1, 100), msg(2, 200, { body_failed: true, blocked_remote: 0 })],
+      hit({ matched: [1, 2] }),
+    );
+    const [ok, bad] = [...container.querySelectorAll(".msg")];
+    expect(ok.querySelector("iframe")).not.toBeNull();
+    expect(bad.querySelector("iframe")).toBeNull();
+    expect(bad.textContent).toContain("This message could not be displayed");
+    expect(ok.textContent).not.toContain("could not be displayed");
   });
 
   it("orders messages oldest to newest", async () => {

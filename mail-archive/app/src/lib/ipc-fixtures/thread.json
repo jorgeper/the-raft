@@ -15,7 +15,8 @@
     "subject": "First thread",
     "attachments": [],
     "body_url": "mailbody://localhost/1?t=hello",
-    "blocked_remote": 0
+    "blocked_remote": 0,
+    "body_failed": false
   },
   {
     "id": 2,
@@ -33,6 +34,7 @@
     "subject": "First thread",
     "attachments": [],
     "body_url": "mailbody://localhost/2?t=hello",
-    "blocked_remote": 0
+    "blocked_remote": 0,
+    "body_failed": false
   }
 ]

@@ -211,6 +211,7 @@ fn view(id: i64, date: i64) -> crate::commands::MessageView {
         attachments: vec![],
         body_url: crate::protocol::body_url(id, &["hello".into()]),
         blocked_remote: 0,
+        body_failed: false,
     }
 }
 

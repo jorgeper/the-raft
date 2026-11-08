@@ -60,6 +60,8 @@ export interface MessageView {
   attachments: AttachmentInfo[];
   body_url: string;
   blocked_remote: number;
+  /** Rendering this message failed: show a notice instead of the body. */
+  body_failed: boolean;
 }
 export interface ScanReport {
   kind: "Full" | "Partial";

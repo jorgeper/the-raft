@@ -4,6 +4,7 @@
 //! include message content (or paths, or underlying library messages).
 
 use std::io::Write;
+use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,6 +15,7 @@ use mail_core::import::scan::{Progress, ScanReport};
 use mail_core::library::{Library, SearchResults, SuggestKind};
 use mail_core::meta::MessageRow;
 use mail_core::model::{Address, AttachmentInfo};
+use mail_core::render::RenderedBody;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
@@ -364,6 +366,9 @@ async fn blocking<T: Send + 'static>(
         .map_err(|_| "internal error".to_string())?
 }
 
+/// Renders one body: (message id, raw bytes, terms, cache generation).
+type RenderFn<'a> = dyn Fn(i64, &[u8], &[String], u64) -> Arc<RenderedBody> + 'a;
+
 #[derive(Serialize)]
 pub struct MessageView {
     pub id: i64,
@@ -380,6 +385,8 @@ pub struct MessageView {
     /// `mailbody://localhost/{id}?t=<term>&t=<term>...`
     pub body_url: String,
     pub blocked_remote: u32,
+    /// Rendering this message failed: show a notice instead of the body.
+    pub body_failed: bool,
 }
 
 #[derive(Serialize, Debug)]
@@ -409,6 +416,18 @@ impl AppState {
     /// The `get_thread` command: every message of the thread, oldest first.
     /// `thrid` is the decimal string the UI got from `search`.
     pub fn thread(&self, thrid: &str, terms: &[String]) -> Result<Vec<MessageView>, String> {
+        self.thread_with(thrid, terms, &|id, raw, terms, generation| {
+            render_cached(self, id, raw, terms, generation)
+        })
+    }
+
+    /// `thread` with the renderer injected (tests make it panic).
+    fn thread_with(
+        &self,
+        thrid: &str,
+        terms: &[String],
+        render: &RenderFn,
+    ) -> Result<Vec<MessageView>, String> {
         let thrid =
             mail_core::model::parse_thread_id(thrid).ok_or_else(|| BAD_THREAD_ID.to_string())?;
         // Read the generation before fetching raw bytes: a library swap in
@@ -424,7 +443,14 @@ impl AppState {
         Ok(rows
             .into_iter()
             .map(|(r, raw)| {
-                let body = render_cached(self, r.id, &raw, terms, generation);
+                // One message that crashes the renderer must not fail the
+                // conversation. The app's panic hook prints no payload.
+                let body = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                    render(r.id, &raw, terms, generation)
+                }));
+                if body.is_err() {
+                    eprintln!("mail-archive: a message body could not be rendered");
+                }
                 MessageView {
                     id: r.id,
                     thrid: r.thrid,
@@ -436,7 +462,8 @@ impl AppState {
                     subject: r.subject,
                     attachments: r.attachments,
                     body_url: body_url(r.id, terms),
-                    blocked_remote: body.blocked_remote,
+                    blocked_remote: body.as_ref().map_or(0, |b| b.blocked_remote),
+                    body_failed: body.is_err(),
                 }
             })
             .collect())
@@ -1193,6 +1220,36 @@ mod tests {
         // Free again: they work.
         assert!(st.search("", 0, 10, 0, &chrono::Utc).is_ok());
         assert!(st.autocomplete(SuggestKind::Label, "").is_ok());
+    }
+
+    /// A panic while rendering one message marks only that message; the rest
+    /// of the conversation still opens.
+    #[test]
+    fn a_render_panic_fails_only_that_message() {
+        let second = MsgBuilder::new()
+            .from("b@example.com")
+            .subject("Re: Att")
+            .thrid(1)
+            .date_rfc2822("Tue, 02 Jun 2020 10:00:00 +0000")
+            .message_id(Some("<b@x>"))
+            .text("reply")
+            .build();
+        let (st, ids, _d) = test_support::state_with(&[one_msg(), second]);
+        let views = st
+            .thread_with("1", &[], &|id, raw, terms, generation| {
+                if id == ids[1] {
+                    panic!("synthetic render failure");
+                }
+                render_cached(&st, id, raw, terms, generation)
+            })
+            .unwrap();
+        assert_eq!(views.iter().map(|v| v.id).collect::<Vec<_>>(), ids);
+        assert!(!views[0].body_failed);
+        assert!(views[1].body_failed);
+        assert_eq!(views[1].blocked_remote, 0);
+        assert!(st.cache().get(ids[1], &[]).is_none());
+        // Without a panic, nothing is marked.
+        assert!(st.thread("1", &[]).unwrap().iter().all(|v| !v.body_failed));
     }
 
     #[test]
