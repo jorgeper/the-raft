@@ -1,4 +1,5 @@
 pub mod events;
+pub mod index;
 pub mod mbox;
 pub mod meta;
 pub mod model;
@@ -24,6 +25,14 @@ pub enum Error {
     Sqlite(#[from] rusqlite::Error),
     #[error("metadata error: {0}")]
     Meta(String),
+    #[error("search index error: {0}")]
+    Index(String),
+}
+
+impl From<tantivy::TantivyError> for Error {
+    fn from(e: tantivy::TantivyError) -> Self {
+        Error::Index(e.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
