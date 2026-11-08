@@ -24,6 +24,7 @@ const AUTOCOMPLETE_LIMIT: usize = 10;
 /// Marker file: SQLite/index may disagree with the store + event log and
 /// must be rebuilt from them. Cleared only by a rebuild.
 pub(crate) const NEEDS_REBUILD_FILE: &str = "NEEDS_REBUILD";
+const EVENTS_FILE: &str = "events.log";
 
 /// Disjoint borrows of the library's parts, for the importer.
 pub(crate) struct Parts<'a> {
@@ -61,7 +62,7 @@ impl Library {
             std::fs::TryLockError::Error(e) => Error::Io(e),
         })?;
         let store = Store::open(dir)?;
-        let events = EventLog::open(&dir.join("events.log"))?;
+        let events = EventLog::open(&dir.join(EVENTS_FILE))?;
         let meta = MetaDb::open(&dir.join("meta.sqlite"))?;
         let (index, index_was_rebuilt) = match SearchIndex::open_or_create(&dir.join("index"))? {
             OpenedIndex::Ready(i) => (i, false),
@@ -95,6 +96,10 @@ impl Library {
     ) -> Result<ImportSummary> {
         let report = scan::scan(self, paths, progress, cancel)?;
         apply::apply(self, &report, progress, cancel)
+    }
+
+    pub(crate) fn events_path(&self) -> PathBuf {
+        self.dir.join(EVENTS_FILE)
     }
 
     pub(crate) fn parts(&mut self) -> Parts<'_> {

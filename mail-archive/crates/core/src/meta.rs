@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS imports(
     status TEXT,
     summary_json TEXT
 );
+CREATE INDEX IF NOT EXISTS imports_status ON imports(status);
 ";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
@@ -246,6 +247,10 @@ impl MetaDb {
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        // Make syncs (only done at checkpoints under WAL + NORMAL) real
+        // barriers on macOS.
+        conn.pragma_update(None, "fullfsync", "ON")?;
+        conn.pragma_update(None, "checkpoint_fullfsync", "ON")?;
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if v > SCHEMA_VERSION {
             return Err(Error::Meta(format!(
@@ -687,21 +692,38 @@ impl MetaDb {
         Ok(v)
     }
 
-    /// Whether any message was first seen in `import_id`.
-    pub fn has_messages_from(&self, import_id: u64) -> Result<bool> {
-        Ok(self.conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM messages WHERE first_seen_import = ?)",
-            [import_id as i64],
-            |r| r.get(0),
-        )?)
-    }
-
     /// Make every committed transaction durable (WAL with `synchronous =
     /// NORMAL` only syncs at checkpoints).
     pub fn checkpoint(&self) -> Result<()> {
-        self.conn
-            .query_row("PRAGMA wal_checkpoint(FULL)", [], |_| Ok(()))?;
+        let busy: i64 = self
+            .conn
+            .query_row("PRAGMA wal_checkpoint(FULL)", [], |r| r.get(0))?;
+        if busy != 0 {
+            return Err(Error::Meta("WAL checkpoint could not complete".into()));
+        }
         Ok(())
+    }
+
+    /// Imports whose status is not `completed`, by id.
+    pub fn incomplete_imports(&self) -> Result<Vec<(u64, ImportStatus)>> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT id, status FROM imports WHERE status != 'completed' ORDER BY id",
+        )?;
+        let rows: Vec<(i64, String)> = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        rows.into_iter()
+            .map(|(id, s)| Ok((id as u64, ImportStatus::parse(&s)?)))
+            .collect()
+    }
+
+    pub fn latest_completed_import(&self) -> Result<Option<u64>> {
+        let id: Option<i64> = self.conn.query_row(
+            "SELECT max(id) FROM imports WHERE status = 'completed'",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(id.map(|i| i as u64))
     }
 
     pub fn latest_message_date(&self) -> Result<Option<i64>> {
@@ -857,9 +879,19 @@ mod tests {
         assert!(f.db.removed_ids().unwrap().is_empty());
         f.db.mark_seen(3, &[synth]).unwrap();
         assert_eq!(f.db.removed_ids().unwrap(), vec![synth]);
-        assert!(f.db.has_messages_from(2).unwrap());
-        assert!(!f.db.has_messages_from(3).unwrap());
         f.db.checkpoint().unwrap();
+        assert!(f.db.incomplete_imports().unwrap().is_empty());
+        assert_eq!(f.db.latest_completed_import().unwrap(), None);
+        f.db.begin_import(1, 0, "a", ImportKind::Full).unwrap();
+        f.db.begin_import(2, 0, "b", ImportKind::Full).unwrap();
+        f.db.begin_import(3, 0, "c", ImportKind::Full).unwrap();
+        f.db.set_import_status(1, ImportStatus::Completed).unwrap();
+        f.db.set_import_status(3, ImportStatus::Finalizing).unwrap();
+        assert_eq!(
+            f.db.incomplete_imports().unwrap(),
+            vec![(2, ImportStatus::Running), (3, ImportStatus::Finalizing)]
+        );
+        assert_eq!(f.db.latest_completed_import().unwrap(), Some(1));
     }
 
     #[test]

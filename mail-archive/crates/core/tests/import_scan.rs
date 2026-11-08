@@ -146,7 +146,7 @@ fn rescan_detects_changes() {
         (2, 1, 1, 4, 5)
     );
     assert!((r.removed_fraction - 1.0 / 6.0).abs() < 1e-9);
-    assert!(matches!(r.plan.decisions[0], Decision::Relabel(_)));
+    assert!(matches!(r.plan.decisions[0], Decision::Relabel(..)));
     assert_eq!(r.plan.removed.len(), 1);
     assert!(!r.looks_older);
 }
@@ -249,7 +249,7 @@ fn older_export_flagged() {
         !r.plan
             .decisions
             .iter()
-            .any(|d| matches!(d, Decision::Relabel(_)))
+            .any(|d| matches!(d, Decision::Relabel(..)))
     );
     assert!(matches!(
         r.plan.decisions[..],

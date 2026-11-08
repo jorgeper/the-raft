@@ -13,13 +13,13 @@ use rayon::prelude::*;
 use serde::Serialize;
 
 use super::source::open_source;
+use super::{BATCH_MESSAGES, fill_batch};
 use crate::library::Library;
 use crate::mbox::MboxReader;
 use crate::model::{DedupeKeys, ImportKind, Key, MsgId, ParsedMessage, RawMessage};
 use crate::parse::{dedupe_keys, parse_message};
 use crate::{Error, Result};
 
-const BATCH: usize = 2_000;
 const PROGRESS_EVERY: Duration = Duration::from_millis(100);
 
 #[derive(Serialize, Clone, Debug)]
@@ -36,7 +36,9 @@ pub enum Decision {
     /// Add the message; carries its content key so apply can verify that the
     /// source still holds the same message at this position.
     New(Key),
-    Relabel(MsgId),
+    /// Replace the labels of a library message; carries the source message's
+    /// content key for the same check.
+    Relabel(MsgId, Key),
     Unchanged,
     Skip,
 }
@@ -45,6 +47,10 @@ pub enum Decision {
 #[derive(Default, Clone, Debug)]
 pub struct ImportPlan {
     pub decisions: Vec<Decision>,
+    /// Latest completed import and message count at scan time; apply refuses
+    /// a plan whose library has changed since.
+    pub base_import: Option<u64>,
+    pub base_count: u64,
     /// Library messages to mark removed (Full imports that do not look older).
     pub removed: Vec<MsgId>,
     pub source_paths: Vec<PathBuf>,
@@ -129,6 +135,10 @@ pub fn scan(
     cancel: &AtomicBool,
 ) -> Result<ScanReport> {
     install_panic_hook();
+    if lib.needs_rebuild() {
+        return Err(Error::NeedsRebuild);
+    }
+    let base_import = lib.meta().latest_completed_import()?;
     let source = open_source(paths)?;
     let kind = source.kind;
     let ki = lib.meta().key_index()?;
@@ -165,22 +175,13 @@ pub fn scan(
     let mut newest: Option<i64> = None;
     let relabels_allowed = kind == ImportKind::Full;
 
-    let mut batch: Vec<RawMessage> = Vec::with_capacity(BATCH);
+    let mut batch: Vec<RawMessage> = Vec::new();
     let mut done = false;
     while !done {
         if cancel.load(Ordering::Relaxed) {
             return Err(Error::Cancelled);
         }
-        batch.clear();
-        while batch.len() < BATCH {
-            match mbox.next() {
-                Some(m) => batch.push(m?),
-                None => {
-                    done = true;
-                    break;
-                }
-            }
-        }
+        done = fill_batch(&mut mbox, &mut batch, BATCH_MESSAGES)?;
         let keyed: Vec<Option<Keyed>> = batch.par_iter().map(parse_keyed).collect();
         for k in keyed {
             let Some(k) = k else {
@@ -231,7 +232,7 @@ pub fn scan(
                 decisions.push(Decision::Unchanged);
             } else {
                 label_changes += 1;
-                decisions.push(Decision::Relabel(id));
+                decisions.push(Decision::Relabel(id, k.keys.content_key));
             }
         }
         emit(decisions.len() as u64, false, &mut last_emit);
@@ -244,7 +245,7 @@ pub fn scan(
     let suppress = looks_older || newest.is_none();
     if suppress {
         for d in &mut decisions {
-            if matches!(d, Decision::Relabel(_)) {
+            if matches!(d, Decision::Relabel(..)) {
                 *d = Decision::Unchanged;
             }
         }
@@ -285,6 +286,8 @@ pub fn scan(
         looks_older,
         plan: ImportPlan {
             decisions,
+            base_import,
+            base_count: library_count,
             removed,
             source_paths: paths.to_vec(),
             total,

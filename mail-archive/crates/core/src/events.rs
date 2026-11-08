@@ -1,7 +1,7 @@
 //! Append-only event log (newline-delimited JSON). Together with the store it
 //! is the source of truth; SQLite and the search index are rebuildable caches.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -43,6 +43,18 @@ pub enum Event {
         #[serde(with = "hex_keys")]
         removed: Vec<Key>,
     },
+    /// An interrupted import was removed from SQLite and the index. Its
+    /// events (this one included) are ignored by [`completed_events`].
+    ImportRolledBack { import_id: u64, at: i64 },
+}
+
+/// How far an import got, according to the log.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LogState {
+    /// Has events but neither `ImportCompleted` nor `ImportRolledBack`.
+    Open,
+    Completed,
+    RolledBack,
 }
 
 impl Event {
@@ -51,7 +63,8 @@ impl Event {
             Event::ImportStarted { import_id, .. }
             | Event::MessageAdded { import_id, .. }
             | Event::LabelsChanged { import_id, .. }
-            | Event::ImportCompleted { import_id, .. } => *import_id,
+            | Event::ImportCompleted { import_id, .. }
+            | Event::ImportRolledBack { import_id, .. } => *import_id,
         }
     }
 }
@@ -220,8 +233,28 @@ impl EventLog {
 /// malformed terminated final line are ignored; a malformed earlier line is
 /// corruption and an error.
 pub fn read_events(path: &Path) -> Result<Vec<Event>> {
-    let mut reader = BufReader::new(File::open(path)?);
     let mut events = Vec::new();
+    for_each_event(path, |e| events.push(e))?;
+    Ok(events)
+}
+
+/// The state of every import that has events in the log, streaming the log
+/// without keeping the events.
+pub fn import_states(path: &Path) -> Result<BTreeMap<u64, LogState>> {
+    let mut states = BTreeMap::new();
+    for_each_event(path, |e| {
+        let st = states.entry(e.import_id()).or_insert(LogState::Open);
+        match e {
+            Event::ImportCompleted { .. } => *st = LogState::Completed,
+            Event::ImportRolledBack { .. } => *st = LogState::RolledBack,
+            _ => {}
+        }
+    })?;
+    Ok(states)
+}
+
+fn for_each_event(path: &Path, mut f: impl FnMut(Event)) -> Result<()> {
+    let mut reader = BufReader::new(File::open(path)?);
     let mut buf = Vec::new();
     let mut lineno = 0usize;
     loop {
@@ -238,7 +271,7 @@ pub fn read_events(path: &Path) -> Result<Vec<Event>> {
             continue;
         }
         match serde_json::from_slice::<Event>(body) {
-            Ok(e) => events.push(e),
+            Ok(e) => f(e),
             Err(err) => {
                 // Last line = nothing follows it in the file.
                 if reader.fill_buf()?.is_empty() {
@@ -248,7 +281,7 @@ pub fn read_events(path: &Path) -> Result<Vec<Event>> {
             }
         }
     }
-    Ok(events)
+    Ok(())
 }
 
 /// Drop every event of imports that never reached `ImportCompleted`.
@@ -313,6 +346,10 @@ mod tests {
                 import_id: 1,
                 at: 200,
                 removed: vec![k(9), k(10)],
+            },
+            Event::ImportRolledBack {
+                import_id: 2,
+                at: 300,
             },
         ]
     }
@@ -490,8 +527,53 @@ mod tests {
                 labels: vec![],
             },
         ];
+        let mut evs = evs;
+        evs.push(Event::ImportRolledBack {
+            import_id: 2,
+            at: 4,
+        });
         let kept = completed_events(evs.clone());
         assert_eq!(kept, evs[..3].to_vec());
+    }
+
+    #[test]
+    fn import_states_track_outcomes() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        let started = |id| Event::ImportStarted {
+            import_id: id,
+            at: 0,
+            source: "s".into(),
+            kind: ImportKind::Full,
+        };
+        write_all(
+            &p,
+            &[
+                started(1),
+                Event::ImportCompleted {
+                    import_id: 1,
+                    at: 1,
+                    removed: vec![],
+                },
+                started(2),
+                Event::ImportRolledBack {
+                    import_id: 2,
+                    at: 2,
+                },
+                started(3),
+                started(4),
+            ],
+        );
+        let st = import_states(&p).unwrap();
+        assert_eq!(
+            st.into_iter().collect::<Vec<_>>(),
+            vec![
+                (1, LogState::Completed),
+                (2, LogState::RolledBack),
+                (3, LogState::Open),
+                (4, LogState::Open)
+            ]
+        );
     }
 
     #[test]

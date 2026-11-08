@@ -6,36 +6,38 @@
 //! 2. Stream the source again; for each `New`: store append, `MessageAdded`,
 //!    SQLite insert, index upsert. After each `COMMIT_EVERY` added messages
 //!    sync store, sync log, commit SQLite, commit index.
-//! 3. Status `finalizing`; relabels (`LabelsChanged`, `set_labels`), then
+//! 3. Status `finalizing` + SQLite checkpoint (durable before any older
+//!    message is touched); relabels (`LabelsChanged`, `set_labels`), then
 //!    `mark_seen` (Full only); re-index touched docs; commit index;
-//!    checkpoint SQLite; `ImportCompleted` (synced); status `completed`.
+//!    checkpoint; `ImportCompleted` (synced); status `completed`.
 //!
-//! Recovery (`recover`, run on `Library::open` and after a failed apply):
-//! an import still `running` is deleted from SQLite and the index; one that
-//! was `finalizing` is deleted too and the library is flagged for rebuild
-//! (relabels/removed flags of older messages may already be changed); one
-//! whose `ImportCompleted` is in the log is simply marked `completed`.
+//! Recovery (`recover`, run on `Library::open`, before every apply and after
+//! a failed one): every import the log leaves open, or whose `imports` row is
+//! not `completed`, is resolved. Still `running`: deleted from SQLite and the
+//! index, then `ImportRolledBack` is logged. `finalizing`: the same, and the
+//! library is flagged for rebuild (labels/removed flags of older messages may
+//! already have changed). Logged `ImportCompleted` but row `finalizing`:
+//! marked `completed`.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rayon::prelude::*;
 use serde::Serialize;
 
-use super::scan::{Decision, Progress, ScanReport, install_panic_hook, parse_guarded};
+use super::scan::{Decision, ImportPlan, Progress, ScanReport, install_panic_hook, parse_guarded};
 use super::source::open_source;
-use crate::events::Event;
+use super::{BATCH_BYTES, BATCH_MESSAGES, fill_batch};
+use crate::events::{Event, LogState, import_states};
 use crate::index::{IndexDoc, IndexWriterHandle};
 use crate::library::{Library, Parts};
 use crate::mbox::MboxReader;
-use crate::meta::{ImportStatus, MetaDb};
+use crate::meta::{ImportStatus, MessageRow, MetaDb};
 use crate::model::{ImportKind, MsgId, RawMessage};
 use crate::store::Store;
 use crate::{Error, Result};
 
-/// Messages read and parsed together (bounds memory to one batch of bytes).
-const PARSE_BATCH: usize = 2_000;
 /// Added messages between durable commits.
 const COMMIT_EVERY: usize = 5_000;
 const PROGRESS_EVERY: Duration = Duration::from_millis(100);
@@ -52,10 +54,13 @@ pub struct ImportSummary {
 }
 
 /// Where a simulated crash stops an apply (test hook).
+#[cfg(any(test, feature = "testing"))]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CrashPoint {
-    /// After this many messages were added (at least one commit may have happened).
+    /// After this many messages were added (earlier batches may be committed).
     AfterAdded(u64),
+    /// After the first SQLite commit, before the matching index commit.
+    BeforeIndexCommit,
     /// After relabels and removed flags were committed, before `ImportCompleted`.
     Finalizing,
     /// After `ImportCompleted` was synced, before the status became `completed`.
@@ -71,34 +76,54 @@ pub struct TestHooks {
     pub crash: Option<CrashPoint>,
 }
 
+#[cfg(any(test, feature = "testing"))]
+#[derive(Debug)]
+struct SimulatedCrash;
+
+#[cfg(any(test, feature = "testing"))]
+impl std::fmt::Display for SimulatedCrash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("simulated crash")
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+impl std::error::Error for SimulatedCrash {}
+
+#[cfg(any(test, feature = "testing"))]
+fn is_simulated_crash(e: &Error) -> bool {
+    matches!(e, Error::Io(io) if io.get_ref().is_some_and(|i| i.is::<SimulatedCrash>()))
+}
+
 struct Opts {
     parse_batch: usize,
     commit_every: usize,
+    #[cfg(any(test, feature = "testing"))]
     crash: Option<CrashPoint>,
 }
 
 impl Default for Opts {
     fn default() -> Self {
         Opts {
-            parse_batch: PARSE_BATCH,
+            parse_batch: BATCH_MESSAGES,
             commit_every: COMMIT_EVERY,
+            #[cfg(any(test, feature = "testing"))]
             crash: None,
         }
     }
 }
 
 impl Opts {
-    /// Simulate a crash at `at` if requested; sets `crashed` so the caller
-    /// skips cleanup.
-    fn crash_at(&self, at: CrashPoint, crashed: &mut bool) -> Result<()> {
+    /// Fail like a crash at `at`, if the test hook asks for it.
+    #[cfg(any(test, feature = "testing"))]
+    fn crash_at(&self, at: CrashPoint) -> Result<()> {
         let hit = match (self.crash, at) {
             (Some(CrashPoint::AfterAdded(n)), CrashPoint::AfterAdded(added)) => added >= n,
             (Some(want), at) => want == at,
             (None, _) => false,
         };
         if hit {
-            *crashed = true;
-            return Err(Error::Io(std::io::Error::other("simulated crash")));
+            return Err(Error::Io(std::io::Error::other(SimulatedCrash)));
         }
         Ok(())
     }
@@ -142,16 +167,38 @@ fn run(
     opts: &Opts,
 ) -> Result<ImportSummary> {
     install_panic_hook();
-    let mut crashed = false;
-    match apply_inner(lib, report, progress, cancel, opts, &mut crashed) {
-        Ok(s) => Ok(s),
-        Err(e) if crashed => Err(e),
-        Err(e) => {
-            // Best effort: if this fails too, the next open retries it.
-            let _ = recover(lib);
-            Err(e)
-        }
+    // Resolve any earlier interrupted import first: recovery must never have
+    // to look past a newer import to find leftovers.
+    recover(lib)?;
+    if lib.needs_rebuild() {
+        return Err(Error::NeedsRebuild);
     }
+    check_fresh(lib.meta(), &report.plan)?;
+    match apply_inner(lib, report, progress, cancel, opts) {
+        Ok(s) => Ok(s),
+        #[cfg(any(test, feature = "testing"))]
+        Err(e) if is_simulated_crash(&e) => Err(e),
+        Err(e) => match recover(lib) {
+            Ok(()) => Err(e),
+            Err(re) => {
+                // Best effort; the error tells the caller to reopen, and the
+                // reopen retries the rollback.
+                let _ = lib.mark_needs_rebuild();
+                Err(Error::RollbackFailed {
+                    cause: e.to_string(),
+                    rollback: re.to_string(),
+                })
+            }
+        },
+    }
+}
+
+/// Refuse a plan made against a library that has changed since the scan.
+fn check_fresh(meta: &MetaDb, plan: &ImportPlan) -> Result<()> {
+    if meta.latest_completed_import()? != plan.base_import || meta.count()? != plan.base_count {
+        return Err(Error::StaleScan);
+    }
+    Ok(())
 }
 
 /// The kind the import is applied and logged as: a full export that looks
@@ -183,7 +230,6 @@ fn apply_inner(
     progress: &dyn Fn(Progress),
     cancel: &AtomicBool,
     opts: &Opts,
-    crashed: &mut bool,
 ) -> Result<ImportSummary> {
     let started = Instant::now();
     let plan = &report.plan;
@@ -235,7 +281,7 @@ fn apply_inner(
 
     // Phase 1: stream the source and add new messages in durable batches.
     let mut mbox = MboxReader::new(source.reader);
-    let mut batch: Vec<RawMessage> = Vec::with_capacity(opts.parse_batch);
+    let mut batch: Vec<RawMessage> = Vec::new();
     let mut pos = 0usize;
     let mut added = 0u64;
     let mut relabels: Vec<(MsgId, Vec<String>)> = Vec::new();
@@ -247,16 +293,7 @@ fn apply_inner(
                 if cancel.load(Ordering::Relaxed) {
                     return Err(Error::Cancelled);
                 }
-                batch.clear();
-                while batch.len() < opts.parse_batch {
-                    match mbox.next() {
-                        Some(m) => batch.push(m?),
-                        None => {
-                            done = true;
-                            break;
-                        }
-                    }
-                }
+                done = fill_batch(&mut mbox, &mut batch, opts.parse_batch)?;
                 let decisions = plan
                     .decisions
                     .get(pos..pos + batch.len())
@@ -266,7 +303,7 @@ fn apply_inner(
                     .zip(decisions)
                     .map(|(raw, d)| match d {
                         Decision::New(_) => parse_guarded(raw),
-                        Decision::Relabel(_) if full => parse_guarded(raw),
+                        Decision::Relabel(..) if full => parse_guarded(raw),
                         _ => None,
                     })
                     .collect();
@@ -291,10 +328,14 @@ fn apply_inner(
                                 .upsert(&IndexDoc::from_parsed(id, thrid, import_id, &p, false))?;
                             added += 1;
                             pending += 1;
-                            opts.crash_at(CrashPoint::AfterAdded(added), crashed)?;
+                            #[cfg(any(test, feature = "testing"))]
+                            opts.crash_at(CrashPoint::AfterAdded(added))?;
                         }
-                        Decision::Relabel(id) if full => {
-                            let (p, _) = parsed.ok_or(Error::SourceChanged)?;
+                        Decision::Relabel(id, key) if full => {
+                            let (p, keys) = parsed.ok_or(Error::SourceChanged)?;
+                            if keys.content_key != key {
+                                return Err(Error::SourceChanged);
+                            }
                             relabels.push((id, p.labels));
                         }
                         _ => {}
@@ -307,6 +348,8 @@ fn apply_inner(
             events.sync()?;
             Ok(())
         })?;
+        #[cfg(any(test, feature = "testing"))]
+        opts.crash_at(CrashPoint::BeforeIndexCommit)?;
         writer.commit()?;
     }
     drop(batch);
@@ -315,8 +358,10 @@ fn apply_inner(
     }
     emit("import", pos as u64, true, &mut last_emit);
 
-    // Phase 2: finalize. Not cancellable; a crash from here needs a rebuild.
+    // Phase 2: finalize. Not cancellable; a crash from here needs a rebuild,
+    // so `finalizing` must be durable before any older message changes.
     meta.set_import_status(import_id, ImportStatus::Finalizing)?;
+    meta.checkpoint()?;
     let mut touched: Vec<MsgId> = Vec::new();
     if full && !relabels.is_empty() {
         meta.transaction(|| {
@@ -352,7 +397,8 @@ fn apply_inner(
     reindex(meta, store, &mut writer, &touched, opts.parse_batch)?;
     writer.commit()?;
     drop(writer);
-    opts.crash_at(CrashPoint::Finalizing, crashed)?;
+    #[cfg(any(test, feature = "testing"))]
+    opts.crash_at(CrashPoint::Finalizing)?;
 
     // SQLite must be durable before the log declares the import complete.
     meta.checkpoint()?;
@@ -362,7 +408,8 @@ fn apply_inner(
         removed: removed_keys,
     })?;
     events.sync()?;
-    opts.crash_at(CrashPoint::BeforeCompletedStatus, crashed)?;
+    #[cfg(any(test, feature = "testing"))]
+    opts.crash_at(CrashPoint::BeforeCompletedStatus)?;
     meta.set_import_status(import_id, ImportStatus::Completed)?;
 
     Ok(ImportSummary {
@@ -376,116 +423,137 @@ fn apply_inner(
 }
 
 /// Re-index existing messages from their stored bytes, taking labels,
-/// removed flag, thread id, date and import id from SQLite.
+/// removed flag, thread id, date and import id from SQLite. Batches are
+/// capped like parse batches (message count and raw bytes).
 fn reindex(
     meta: &MetaDb,
     store: &Store,
     writer: &mut IndexWriterHandle,
     ids: &[MsgId],
-    batch: usize,
+    max_messages: usize,
 ) -> Result<()> {
-    for chunk in ids.chunks(batch) {
-        let rows = chunk
-            .iter()
-            .map(|&id| meta.message(id))
-            .collect::<Result<Vec<_>>>()?;
-        let docs: Vec<Result<IndexDoc>> = rows
-            .par_iter()
-            .map(|row| {
-                let raw = RawMessage {
-                    bytes: store.read(row.msg_ref)?,
-                    from_line_date: None,
-                };
-                let (parsed, _) = parse_guarded(&raw).ok_or_else(|| {
-                    Error::Index(format!("stored message {} no longer parses", row.id))
-                })?;
-                let mut doc = IndexDoc::from_parsed(
-                    row.id,
-                    row.thrid,
-                    row.first_seen_import,
-                    &parsed,
-                    row.removed,
-                );
-                doc.date = row.date;
-                doc.labels = row.labels.clone();
-                Ok(doc)
-            })
-            .collect();
-        for d in docs {
-            writer.upsert(&d?)?;
+    let mut rows: Vec<MessageRow> = Vec::new();
+    let mut bytes = 0u64;
+    for (i, &id) in ids.iter().enumerate() {
+        let row = meta.message(id)?;
+        bytes += row.size;
+        rows.push(row);
+        let last = i + 1 == ids.len();
+        if last || rows.len() >= max_messages || bytes >= BATCH_BYTES as u64 {
+            reindex_rows(store, writer, &rows)?;
+            rows.clear();
+            bytes = 0;
         }
     }
     Ok(())
 }
 
-/// Bring SQLite and the index back in line with the event log after an
-/// interrupted import. Cheap when there is nothing to do (reads only the log
-/// tail and the latest `imports` row).
+fn reindex_rows(store: &Store, writer: &mut IndexWriterHandle, rows: &[MessageRow]) -> Result<()> {
+    let docs: Vec<Result<IndexDoc>> = rows
+        .par_iter()
+        .map(|row| {
+            let raw = RawMessage {
+                bytes: store.read(row.msg_ref)?,
+                from_line_date: None,
+            };
+            let (parsed, _) = parse_guarded(&raw).ok_or_else(|| {
+                Error::Index(format!("stored message {} no longer parses", row.id))
+            })?;
+            let mut doc = IndexDoc::from_parsed(
+                row.id,
+                row.thrid,
+                row.first_seen_import,
+                &parsed,
+                row.removed,
+            );
+            doc.date = row.date;
+            doc.labels = row.labels.clone();
+            Ok(doc)
+        })
+        .collect();
+    for d in docs {
+        writer.upsert(&d?)?;
+    }
+    Ok(())
+}
+
+/// Bring SQLite and the index back in line with the event log after
+/// interrupted imports. Cheap when there is nothing to do: the log's last
+/// event closes an import and no `imports` row is incomplete.
 pub(crate) fn recover(lib: &mut Library) -> Result<()> {
-    let mut rollback: Vec<u64> = Vec::new();
+    let log_path = lib.events_path();
+    let mut rollback: BTreeSet<u64> = BTreeSet::new();
+    let mut already_logged: HashSet<u64> = HashSet::new();
     let mut rebuild = false;
     {
         let p = lib.parts();
-        let last = p.events.last_event()?;
-        let latest = p.meta.latest_import()?;
-        let logged_complete = match &last {
-            Some(Event::ImportCompleted { import_id, .. }) => Some(*import_id),
-            _ => None,
-        };
-        // The log's last import never completed.
-        if let Some(e) = &last
-            && logged_complete.is_none()
-        {
-            let x = e.import_id();
-            match p.meta.import_status(x)? {
-                Some(ImportStatus::Running) => rollback.push(x),
-                Some(ImportStatus::Finalizing | ImportStatus::Completed) => {
-                    rebuild = true;
-                    rollback.push(x);
-                }
-                // Already rolled back, unless a previous rollback was cut short.
-                None => {
-                    if p.meta.has_messages_from(x)? || p.index.import_doc_count(x)? > 0 {
-                        rollback.push(x);
-                    }
-                }
-            }
+        let tail_closed = matches!(
+            p.events.last_event()?,
+            None | Some(Event::ImportCompleted { .. } | Event::ImportRolledBack { .. })
+        );
+        let rows = p.meta.incomplete_imports()?;
+        if tail_closed && rows.is_empty() {
+            return Ok(());
         }
-        // SQLite's latest import never completed.
-        if let Some((y, _, status)) = latest
-            && status != ImportStatus::Completed
-            && !rollback.contains(&y)
-        {
-            match (status, logged_complete == Some(y)) {
+        let states = import_states(&log_path)?;
+        for (&x, &st) in &states {
+            if st != LogState::Open {
+                continue;
+            }
+            match p.meta.import_status(x)? {
+                None | Some(ImportStatus::Running) => {}
+                Some(ImportStatus::Finalizing | ImportStatus::Completed) => rebuild = true,
+            }
+            rollback.insert(x);
+        }
+        for (y, status) in rows {
+            match states.get(&y) {
+                Some(LogState::Open) => {} // handled above
                 // Crash after the log append: SQLite has everything but the status.
-                (ImportStatus::Finalizing, true) => {
+                Some(LogState::Completed) if status == ImportStatus::Finalizing => {
                     p.meta.set_import_status(y, ImportStatus::Completed)?;
                 }
                 // Logged complete but SQLite lost committed work (power loss).
-                (_, true) => rebuild = true,
-                (ImportStatus::Finalizing, false) => {
-                    rebuild = true;
-                    rollback.push(y);
+                Some(LogState::Completed) => rebuild = true,
+                // Not logged at all (crash before `ImportStarted`), or rolled
+                // back but SQLite lost the delete: roll back (again).
+                st @ (Some(LogState::RolledBack) | None) => {
+                    if st.is_some() {
+                        already_logged.insert(y);
+                    }
+                    if status == ImportStatus::Finalizing {
+                        rebuild = true;
+                    }
+                    rollback.insert(y);
                 }
-                _ => rollback.push(y),
             }
         }
     }
     if rebuild {
         lib.mark_needs_rebuild()?;
     }
-    if !rollback.is_empty() {
-        let p = lib.parts();
-        // SQLite first: a crash in between leaves index docs, which the next
-        // recovery finds via `import_doc_count`.
-        for id in &rollback {
-            p.meta.delete_import(*id)?;
-        }
-        let mut w = p.index.writer()?;
-        for id in &rollback {
-            w.delete_import(*id)?;
-        }
-        w.commit()?;
+    if rollback.is_empty() {
+        return Ok(());
     }
+    let p = lib.parts();
+    // SQLite (made durable), then the index, then the log marker: a crash
+    // anywhere in between leaves the import open and recovery repeats.
+    for id in &rollback {
+        p.meta.delete_import(*id)?;
+    }
+    p.meta.checkpoint()?;
+    let mut w = p.index.writer()?;
+    for id in &rollback {
+        w.delete_import(*id)?;
+    }
+    w.commit()?;
+    drop(w);
+    for &id in rollback.iter().filter(|id| !already_logged.contains(id)) {
+        p.events.append(&Event::ImportRolledBack {
+            import_id: id,
+            at: unix_now(),
+        })?;
+    }
+    p.events.sync()?;
     Ok(())
 }

@@ -38,6 +38,15 @@ pub enum Error {
     Cancelled,
     #[error("the import source changed since it was scanned; scan it again")]
     SourceChanged,
+    #[error("the scan is stale (the library changed since it was scanned); please rescan")]
+    StaleScan,
+    #[error("library needs a rebuild before importing")]
+    NeedsRebuild,
+    #[error(
+        "import failed ({cause}) and could not be rolled back ({rollback}); \
+         reopen the library to finish the rollback"
+    )]
+    RollbackFailed { cause: String, rollback: String },
 }
 
 impl From<tantivy::TantivyError> for Error {

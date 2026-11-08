@@ -642,6 +642,7 @@ dependencies = [
  "chrono-tz",
  "crc32fast",
  "flate2",
+ "libc",
  "mail-core",
  "mail-parser",
  "rayon",
