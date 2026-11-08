@@ -217,49 +217,66 @@ pub struct SearchIndex {
 }
 
 impl SearchIndex {
+    /// Open the index in `dir`, creating it if the directory is empty or
+    /// missing. The index is a disposable cache: on a VERSION mismatch, a
+    /// missing VERSION next to existing files, or an index tantivy cannot open,
+    /// the directory contents are deleted and a fresh index is created and
+    /// returned as `NeedsRebuild`. The handle is always valid for the current
+    /// schema.
     pub fn open_or_create(dir: &Path) -> Result<OpenedIndex> {
         create_private_dir(dir)?;
         let (schema, fields) = build_schema();
-        let existing = dir.join("meta.json").exists();
-        let index = if existing {
-            Index::open_in_dir(dir)?
-        } else {
-            Index::create_in_dir(dir, schema)?
-        };
+        if fs::read_dir(dir)?.next().is_none() {
+            return Self::create_fresh(dir, schema, fields).map(OpenedIndex::Ready);
+        }
+        let version_ok = fs::read_to_string(dir.join(VERSION_FILE))
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok())
+            == Some(SCHEMA_VERSION);
+        if version_ok
+            && let Ok(index) = Index::open_in_dir(dir)
+            && index.schema() == schema
+        {
+            register_tokenizers(&index);
+            let reader = index
+                .reader_builder()
+                .reload_policy(ReloadPolicy::Manual)
+                .try_into()?;
+            return Ok(OpenedIndex::Ready(SearchIndex {
+                index,
+                reader,
+                fields,
+                path: dir.to_path_buf(),
+            }));
+        }
+        for e in fs::read_dir(dir)? {
+            let p = e?.path();
+            if p.is_dir() {
+                fs::remove_dir_all(&p)?;
+            } else {
+                fs::remove_file(&p)?;
+            }
+        }
+        Self::create_fresh(dir, schema, fields).map(OpenedIndex::NeedsRebuild)
+    }
+
+    fn create_fresh(dir: &Path, schema: Schema, fields: Fields) -> Result<SearchIndex> {
+        use std::io::Write;
+        let index = Index::create_in_dir(dir, schema)?;
         register_tokenizers(&index);
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::Manual)
             .try_into()?;
-        let vpath = dir.join(VERSION_FILE);
-        let ready = if existing {
-            fs::read_to_string(&vpath)
-                .ok()
-                .and_then(|s| s.trim().parse::<u32>().ok())
-                == Some(SCHEMA_VERSION)
-        } else {
-            use std::io::Write;
-            let mut f = create_private_file(&vpath)?;
-            f.set_len(0)?;
-            write!(f, "{SCHEMA_VERSION}")?;
-            true
-        };
-        // Handles come from our schema; an index of another version may differ.
-        let fields = if ready {
-            fields
-        } else {
-            fields_from(index.schema()).unwrap_or(fields)
-        };
-        let si = SearchIndex {
+        let mut f = create_private_file(&dir.join(VERSION_FILE))?;
+        f.set_len(0)?;
+        write!(f, "{SCHEMA_VERSION}")?;
+        restrict_permissions(dir);
+        Ok(SearchIndex {
             index,
             reader,
             fields,
             path: dir.to_path_buf(),
-        };
-        Ok(if ready {
-            OpenedIndex::Ready(si)
-        } else {
-            OpenedIndex::NeedsRebuild(si)
         })
     }
 
@@ -309,27 +326,6 @@ fn text_tokenizer_name(schema: &Schema, field: Field) -> Option<String> {
         }
         _ => None,
     }
-}
-
-fn fields_from(schema: Schema) -> Option<Fields> {
-    let g = |n: &str| schema.get_field(n).ok();
-    Some(Fields {
-        msg_id: g(F_MSG_ID)?,
-        thrid: g(F_THRID)?,
-        import_id: g(F_IMPORT_ID)?,
-        date: g(F_DATE)?,
-        size: g(F_SIZE)?,
-        subject: g(F_SUBJECT)?,
-        body: g(F_BODY)?,
-        from: g(F_FROM)?,
-        to: g(F_TO)?,
-        cc: g(F_CC)?,
-        bcc: g(F_BCC)?,
-        filenames: g(F_FILENAMES)?,
-        labels: g(F_LABELS)?,
-        has_attachment: g(F_HAS_ATTACHMENT)?,
-        removed: g(F_REMOVED)?,
-    })
 }
 
 pub struct IndexWriterHandle {
@@ -526,21 +522,57 @@ mod tests {
         assert_eq!(by_import(2), 1);
     }
 
+    fn rebuilt(r: OpenedIndex) -> SearchIndex {
+        match r {
+            OpenedIndex::NeedsRebuild(i) => i,
+            OpenedIndex::Ready(_) => panic!("expected NeedsRebuild"),
+        }
+    }
+
+    fn assert_works(si: &SearchIndex) {
+        let mut d = doc(42);
+        d.subject = "fresh".into();
+        put(si, &[d]);
+        assert_eq!(si.searcher().num_docs(), 1);
+        assert_eq!(hits(si, si.fields().subject, "fresh"), 1);
+    }
+
     #[test]
     fn schema_mismatch_needs_rebuild() {
         let t = tempfile::tempdir().unwrap();
         let dir = t.path().join("idx");
-        drop(open(&dir));
+        fs::create_dir_all(&dir).unwrap();
+        let mut b = Schema::builder();
+        b.add_text_field("other", tantivy::schema::TEXT);
+        drop(Index::create_in_dir(&dir, b.build()).unwrap());
         fs::write(dir.join(VERSION_FILE), "0").unwrap();
-        assert!(matches!(
-            SearchIndex::open_or_create(&dir).unwrap(),
-            OpenedIndex::NeedsRebuild(_)
-        ));
-        fs::write(dir.join(VERSION_FILE), SCHEMA_VERSION.to_string()).unwrap();
-        assert!(matches!(
-            SearchIndex::open_or_create(&dir).unwrap(),
-            OpenedIndex::Ready(_)
-        ));
+        assert_works(&rebuilt(SearchIndex::open_or_create(&dir).unwrap()));
+        // Missing VERSION next to existing files.
+        fs::remove_file(dir.join(VERSION_FILE)).unwrap();
+        assert_works(&rebuilt(SearchIndex::open_or_create(&dir).unwrap()));
+        // Same schema, old VERSION.
+        fs::write(dir.join(VERSION_FILE), "0").unwrap();
+        assert_works(&rebuilt(SearchIndex::open_or_create(&dir).unwrap()));
+    }
+
+    #[test]
+    fn corrupt_index_needs_rebuild() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("idx");
+        drop(open(&dir));
+        fs::write(dir.join("meta.json"), "garbage{{").unwrap();
+        assert_works(&rebuilt(SearchIndex::open_or_create(&dir).unwrap()));
+    }
+
+    #[test]
+    fn ready_index_is_not_wiped() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("idx");
+        let si = open(&dir);
+        put(&si, &[doc(1)]);
+        drop(si);
+        let si = open(&dir);
+        assert_eq!(si.searcher().num_docs(), 1);
     }
 
     #[test]
