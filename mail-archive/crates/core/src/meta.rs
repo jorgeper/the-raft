@@ -660,6 +660,50 @@ impl MetaDb {
         })
     }
 
+    /// Stored thread id of a message (Gmail's, or the synthetic fallback).
+    pub fn thrid_of(&self, id: MsgId) -> Result<i64> {
+        Ok(self
+            .conn
+            .prepare_cached("SELECT thrid FROM messages WHERE id = ?")?
+            .query_row([id], |r| r.get(0))?)
+    }
+
+    pub fn content_key(&self, id: MsgId) -> Result<Key> {
+        let k: Vec<u8> = self
+            .conn
+            .prepare_cached("SELECT content_key FROM messages WHERE id = ?")?
+            .query_row([id], |r| r.get(0))?;
+        key_from(k)
+    }
+
+    /// Ids of all messages flagged removed, ascending.
+    pub fn removed_ids(&self) -> Result<Vec<MsgId>> {
+        let mut st = self
+            .conn
+            .prepare_cached("SELECT id FROM messages WHERE removed ORDER BY id")?;
+        let v = st
+            .query_map([], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(v)
+    }
+
+    /// Whether any message was first seen in `import_id`.
+    pub fn has_messages_from(&self, import_id: u64) -> Result<bool> {
+        Ok(self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM messages WHERE first_seen_import = ?)",
+            [import_id as i64],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Make every committed transaction durable (WAL with `synchronous =
+    /// NORMAL` only syncs at checkpoints).
+    pub fn checkpoint(&self) -> Result<()> {
+        self.conn
+            .query_row("PRAGMA wal_checkpoint(FULL)", [], |_| Ok(()))?;
+        Ok(())
+    }
+
     pub fn latest_message_date(&self) -> Result<Option<i64>> {
         Ok(self
             .conn
@@ -792,6 +836,30 @@ mod tests {
         assert!(!m.removed);
         assert_eq!(f.db.count().unwrap(), 1);
         assert_eq!(f.db.latest_message_date().unwrap(), Some(m.date));
+    }
+
+    #[test]
+    fn apply_helpers() {
+        let f = fx();
+        let gm = add(&f.db, &MsgBuilder::new().thrid(42).subject("a"), 1);
+        let synth = add(&f.db, &MsgBuilder::new().subject("b"), 2);
+        assert_eq!(f.db.thrid_of(gm).unwrap(), 42);
+        assert_eq!(
+            f.db.thrid_of(synth).unwrap(),
+            f.db.message(synth).unwrap().thrid
+        );
+        assert!(f.db.thrid_of(synth).unwrap() < 0);
+        assert_eq!(
+            f.db.content_key(gm).unwrap(),
+            f.db.message(gm).unwrap().content_key
+        );
+        assert!(f.db.content_key(999).is_err());
+        assert!(f.db.removed_ids().unwrap().is_empty());
+        f.db.mark_seen(3, &[synth]).unwrap();
+        assert_eq!(f.db.removed_ids().unwrap(), vec![synth]);
+        assert!(f.db.has_messages_from(2).unwrap());
+        assert!(!f.db.has_messages_from(3).unwrap());
+        f.db.checkpoint().unwrap();
     }
 
     #[test]

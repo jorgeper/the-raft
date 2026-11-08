@@ -31,6 +31,8 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+use tantivy::collector::Count;
+use tantivy::query::TermQuery;
 use tantivy::schema::{
     Field, IndexRecordOption, NumericOptions, Schema, TextFieldIndexing, TextOptions,
 };
@@ -287,6 +289,15 @@ impl SearchIndex {
     /// A searcher reflecting the last commit made through a writer handle.
     pub fn searcher(&self) -> Searcher {
         self.reader.searcher()
+    }
+
+    /// Number of live documents tagged with `import_id` (as of the last commit).
+    pub fn import_doc_count(&self, import_id: u64) -> Result<u64> {
+        let q = TermQuery::new(
+            Term::from_field_u64(self.fields.import_id, import_id),
+            IndexRecordOption::Basic,
+        );
+        Ok(self.searcher().search(&q, &Count)? as u64)
     }
 
     pub fn writer(&self) -> Result<IndexWriterHandle> {

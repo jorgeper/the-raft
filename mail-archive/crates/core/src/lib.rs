@@ -36,6 +36,8 @@ pub enum Error {
     Source(String),
     #[error("cancelled")]
     Cancelled,
+    #[error("the import source changed since it was scanned; scan it again")]
+    SourceChanged,
 }
 
 impl From<tantivy::TantivyError> for Error {

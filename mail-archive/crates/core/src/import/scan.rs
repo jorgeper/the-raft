@@ -15,7 +15,7 @@ use serde::Serialize;
 use super::source::open_source;
 use crate::library::Library;
 use crate::mbox::MboxReader;
-use crate::model::{DedupeKeys, ImportKind, Key, MsgId, RawMessage};
+use crate::model::{DedupeKeys, ImportKind, Key, MsgId, ParsedMessage, RawMessage};
 use crate::parse::{dedupe_keys, parse_message};
 use crate::{Error, Result};
 
@@ -33,7 +33,9 @@ pub struct Progress {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Decision {
-    New,
+    /// Add the message; carries its content key so apply can verify that the
+    /// source still holds the same message at this position.
+    New(Key),
     Relabel(MsgId),
     Unchanged,
     Skip,
@@ -83,7 +85,7 @@ thread_local! {
 
 /// Replace panic output from inside message parsing (which can quote message
 /// text) with a fixed line; everything else goes to the previous hook.
-fn install_panic_hook() {
+pub(crate) fn install_panic_hook() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         let prev = std::panic::take_hook();
@@ -97,20 +99,27 @@ fn install_panic_hook() {
     });
 }
 
-fn parse_keyed(raw: &RawMessage) -> Option<Keyed> {
+/// Parse a message and compute its dedupe keys, turning parser errors and
+/// panics into `None`. Call [`install_panic_hook`] once before using it.
+pub(crate) fn parse_guarded(raw: &RawMessage) -> Option<(ParsedMessage, DedupeKeys)> {
     IN_PARSE.with(|f| f.set(true));
     let parsed = catch_unwind(AssertUnwindSafe(|| {
         let parsed = parse_message(raw).ok()?;
         let keys = dedupe_keys(raw, &parsed);
-        Some(Keyed {
-            keys,
-            thrid: parsed.thrid,
-            labels: parsed.labels.into_iter().collect(),
-            date: parsed.date,
-        })
+        Some((parsed, keys))
     }));
     IN_PARSE.with(|f| f.set(false));
     parsed.ok().flatten()
+}
+
+fn parse_keyed(raw: &RawMessage) -> Option<Keyed> {
+    let (parsed, keys) = parse_guarded(raw)?;
+    Some(Keyed {
+        keys,
+        thrid: parsed.thrid,
+        labels: parsed.labels.into_iter().collect(),
+        date: parsed.date,
+    })
 }
 
 pub fn scan(
@@ -206,7 +215,7 @@ pub fn scan(
             };
             let Some(id) = hit else {
                 new += 1;
-                decisions.push(Decision::New);
+                decisions.push(Decision::New(k.keys.content_key));
                 continue;
             };
             let first_claim = matched.insert(id);

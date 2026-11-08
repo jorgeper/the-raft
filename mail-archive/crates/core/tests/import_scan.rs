@@ -69,7 +69,12 @@ fn streams_from_zip() {
     let lib = lib_with(&dir, &[]);
     let r = run(&lib, &full);
     assert_eq!((r.kind, r.total, r.new), (ImportKind::Full, 3, 3));
-    assert!(r.plan.decisions.iter().all(|d| *d == Decision::New));
+    assert!(
+        r.plan
+            .decisions
+            .iter()
+            .all(|d| matches!(d, Decision::New(_)))
+    );
 }
 
 #[test]
@@ -97,6 +102,28 @@ fn first_scan_all_new() {
     assert_eq!(r.removed_fraction, 0.0);
     assert!(!r.looks_older);
     assert_eq!(r.plan.total, 5);
+}
+
+#[test]
+fn new_decisions_carry_content_keys() {
+    use mail_core::model::RawMessage;
+    use mail_core::parse::{dedupe_keys, parse_message};
+    let dir = TempDir::new().unwrap();
+    let lib = lib_with(&dir, &[]);
+    let src = msgs(1..=3);
+    let p = write_full_mbox(dir.path(), &src);
+    let r = run(&lib, &p);
+    let want: Vec<Decision> = src
+        .iter()
+        .map(|b| {
+            let raw = RawMessage {
+                bytes: b.clone(),
+                from_line_date: None,
+            };
+            Decision::New(dedupe_keys(&raw, &parse_message(&raw).unwrap()).content_key)
+        })
+        .collect();
+    assert_eq!(r.plan.decisions, want);
 }
 
 #[test]
@@ -224,7 +251,10 @@ fn older_export_flagged() {
             .iter()
             .any(|d| matches!(d, Decision::Relabel(_)))
     );
-    assert_eq!(r.plan.decisions, vec![Decision::Unchanged, Decision::New]);
+    assert!(matches!(
+        r.plan.decisions[..],
+        [Decision::Unchanged, Decision::New(_)]
+    ));
 }
 
 #[test]
@@ -235,7 +265,10 @@ fn duplicates_in_source_are_skipped() {
     let p = write_full_mbox(dir.path(), &[one.clone(), one]);
     let r = run(&lib, &p);
     assert_eq!((r.new, r.duplicates_in_source, r.total), (1, 1, 2));
-    assert_eq!(r.plan.decisions, vec![Decision::New, Decision::Skip]);
+    assert!(matches!(
+        r.plan.decisions[..],
+        [Decision::New(_), Decision::Skip]
+    ));
 }
 
 #[test]

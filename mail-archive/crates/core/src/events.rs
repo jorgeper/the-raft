@@ -192,6 +192,27 @@ impl EventLog {
         self.file.sync_all()?;
         Ok(())
     }
+
+    /// The last event in the log, reading only the tail of the file.
+    pub fn last_event(&mut self) -> Result<Option<Event>> {
+        let mut end = self.file.metadata()?.len();
+        loop {
+            let Some(nl) = last_newline_before(&mut self.file, end)? else {
+                return Ok(None);
+            };
+            let start = last_newline_before(&mut self.file, nl)?.map_or(0, |p| p + 1);
+            let mut line = vec![0u8; (nl - start) as usize];
+            self.file.seek(SeekFrom::Start(start))?;
+            self.file.read_exact(&mut line)?;
+            if line.iter().all(u8::is_ascii_whitespace) {
+                end = start;
+                continue;
+            }
+            return serde_json::from_slice(&line)
+                .map(Some)
+                .map_err(|e| Error::Events(format!("corrupt last line: {e}")));
+        }
+    }
 }
 
 /// Read all events, streaming line by line. An event exists only if its line
@@ -481,6 +502,38 @@ mod tests {
         assert_eq!(
             std::fs::metadata(&p).unwrap().permissions().mode() & 0o777,
             0o600
+        );
+    }
+
+    #[test]
+    fn last_event_reads_tail() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        let mut log = EventLog::open(&p).unwrap();
+        assert_eq!(log.last_event().unwrap(), None);
+        let evs = all_variants();
+        for e in &evs[..2] {
+            log.append(e).unwrap();
+        }
+        assert_eq!(log.last_event().unwrap().as_ref(), Some(&evs[1]));
+        log.append(&evs[4]).unwrap();
+        // Blank trailing lines are skipped.
+        let mut f = OpenOptions::new().append(true).open(&p).unwrap();
+        f.write_all(b"\n  \n").unwrap();
+        drop(f);
+        assert_eq!(log.last_event().unwrap().as_ref(), Some(&evs[4]));
+        // Appending still goes to the end after the tail was read.
+        log.append(&evs[2]).unwrap();
+        assert_eq!(log.last_event().unwrap().as_ref(), Some(&evs[2]));
+        let read = read_events(&p).unwrap();
+        assert_eq!(
+            read,
+            vec![
+                evs[0].clone(),
+                evs[1].clone(),
+                evs[4].clone(),
+                evs[2].clone()
+            ]
         );
     }
 

@@ -3,9 +3,12 @@
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use crate::events::EventLog;
+use crate::import::apply::{self, ImportSummary};
+use crate::import::scan::{self, Progress};
 use crate::index::{OpenedIndex, SearchIndex};
 use crate::meta::{MessageRow, MetaDb};
 use crate::model::MsgId;
@@ -18,6 +21,17 @@ use crate::{Error, Result};
 pub use crate::query::exec::{SearchResults, ThreadHit};
 
 const AUTOCOMPLETE_LIMIT: usize = 10;
+/// Marker file: SQLite/index may disagree with the store + event log and
+/// must be rebuilt from them. Cleared only by a rebuild.
+pub(crate) const NEEDS_REBUILD_FILE: &str = "NEEDS_REBUILD";
+
+/// Disjoint borrows of the library's parts, for the importer.
+pub(crate) struct Parts<'a> {
+    pub store: &'a mut Store,
+    pub events: &'a mut EventLog,
+    pub meta: &'a MetaDb,
+    pub index: &'a SearchIndex,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SuggestKind {
@@ -66,9 +80,42 @@ impl Library {
         Ok(lib)
     }
 
-    /// Hook for rolling back an import that never completed (Task 10).
+    /// Roll back (or finish) an import that a crash or cancel interrupted.
     fn recover_incomplete_import(&mut self) -> Result<()> {
+        apply::recover(self)
+    }
+
+    /// Scan `paths` and apply the result (CLI/tests; the app shows the scan
+    /// report and asks before applying).
+    pub fn import(
+        &mut self,
+        paths: &[PathBuf],
+        progress: &dyn Fn(Progress),
+        cancel: &AtomicBool,
+    ) -> Result<ImportSummary> {
+        let report = scan::scan(self, paths, progress, cancel)?;
+        apply::apply(self, &report, progress, cancel)
+    }
+
+    pub(crate) fn parts(&mut self) -> Parts<'_> {
+        Parts {
+            store: &mut self.store,
+            events: &mut self.events,
+            meta: &self.meta,
+            index: &self.index,
+        }
+    }
+
+    /// Persistently flag that SQLite and the index must be rebuilt.
+    pub(crate) fn mark_needs_rebuild(&self) -> Result<()> {
+        create_private_file(&self.dir.join(NEEDS_REBUILD_FILE))?.sync_all()?;
+        File::open(&self.dir)?.sync_all()?;
         Ok(())
+    }
+
+    /// Number of messages in the library.
+    pub fn count(&self) -> Result<u64> {
+        self.meta.count()
     }
 
     pub fn dir(&self) -> &Path {
@@ -95,10 +142,11 @@ impl Library {
         &self.index
     }
 
-    /// True when the index was recreated (schema change or unusable) or its
-    /// document count disagrees with SQLite's message count.
+    /// True when the index was recreated (schema change or unusable), its
+    /// document count disagrees with SQLite's message count, or an interrupted
+    /// import left SQLite/index changes that only a rebuild can undo.
     pub fn needs_rebuild(&self) -> bool {
-        if self.index_was_rebuilt {
+        if self.index_was_rebuilt || self.dir.join(NEEDS_REBUILD_FILE).exists() {
             return true;
         }
         match self.meta.count() {
