@@ -76,3 +76,38 @@ fn cli_bench_prints_percentiles() {
     assert!(s.contains("p95"), "{s}");
     assert!(!s.contains(SUBJECT), "{s}");
 }
+
+#[test]
+fn cli_search_strips_terminal_escapes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let msg = MsgBuilder::new()
+        .from("Eve <eve@example.com>")
+        .subject("evil \x1b[2Jsubject")
+        .thrid(1)
+        .labels(&["Inbox"])
+        .text("x")
+        .build();
+    let zip = tmp.path().join("t.zip");
+    std::fs::write(
+        &zip,
+        zip_of(
+            "Takeout/Mail/All mail Including Spam and Trash.mbox",
+            &mbox_of(&[msg]),
+        ),
+    )
+    .unwrap();
+    let lib = tmp.path().join("lib");
+    assert!(
+        run(&lib, &["import", zip.to_str().unwrap(), "--yes"])
+            .status
+            .success()
+    );
+    let out = run(&lib, &["search", "from:eve"]);
+    assert!(out.status.success());
+    assert!(
+        !out.stdout.contains(&0x1b),
+        "{:?}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("evil ?[2Jsubject"));
+}

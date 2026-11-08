@@ -1,7 +1,7 @@
 //! `mail-cli`: import, search, rebuild and benchmark a local mail library.
 
 use std::cell::Cell;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -15,6 +15,7 @@ use mail_core::library::Library;
 use mail_core::{Error, paths};
 
 const PROGRESS_EVERY: Duration = Duration::from_millis(100);
+const PLAIN_PROGRESS_EVERY: Duration = Duration::from_secs(5);
 const BENCH_RUNS: usize = 5;
 const BENCH_LIMIT: usize = 50;
 
@@ -74,28 +75,35 @@ enum Cmd {
     Bench,
 }
 
-/// Throttled single-line progress on stderr.
+/// Throttled progress on stderr: one redrawn line on a terminal, an
+/// occasional plain line otherwise.
 struct ProgressLine {
     started: Instant,
     last: Cell<Option<Instant>>,
     shown: Cell<bool>,
+    tty: bool,
+    /// Item count to measure `processed` against, when known.
+    total_items: Option<u64>,
 }
 
 impl ProgressLine {
-    fn new() -> Self {
+    fn new(total_items: Option<u64>) -> Self {
         Self {
             started: Instant::now(),
             last: Cell::new(None),
             shown: Cell::new(false),
+            tty: io::stderr().is_terminal(),
+            total_items,
         }
     }
 
     fn update(&self, p: &Progress) {
-        if self
-            .last
-            .get()
-            .is_some_and(|t| t.elapsed() < PROGRESS_EVERY)
-        {
+        let every = if self.tty {
+            PROGRESS_EVERY
+        } else {
+            PLAIN_PROGRESS_EVERY
+        };
+        if self.last.get().is_some_and(|t| t.elapsed() < every) {
             return;
         }
         self.last.set(Some(Instant::now()));
@@ -105,31 +113,46 @@ impl ProgressLine {
             fmt_int(p.processed),
             fmt_int(p.rate_per_sec as u64)
         );
-        if let Some(total) = p.total_bytes.filter(|&t| t > 0) {
-            let frac = (p.bytes as f64 / total as f64).min(1.0);
+        let frac = match (self.total_items, p.total_bytes) {
+            (Some(t), _) if t > 0 => Some(p.processed as f64 / t as f64),
+            (_, Some(t)) if t > 0 => Some(p.bytes as f64 / t as f64),
+            _ => None,
+        };
+        if let Some(frac) = frac.map(|f| f.min(1.0)) {
             line.push_str(&format!(", {:.0}%", frac * 100.0));
             let secs = self.started.elapsed().as_secs_f64();
-            if frac > 0.01 && p.phase == "scan" {
-                let eta = secs / frac - secs;
-                line.push_str(&format!(", ETA {}", fmt_duration(eta)));
+            if frac > 0.01 {
+                line.push_str(&format!(", ETA {}", fmt_duration(secs / frac - secs)));
             }
         }
         if p.errors > 0 {
             line.push_str(&format!(", {} errors", fmt_int(p.errors)));
         }
-        eprint!("\r\x1b[2K{line}");
-        let _ = io::stderr().flush();
+        if self.tty {
+            eprint!("\r\x1b[2K{line}");
+            let _ = io::stderr().flush();
+        } else {
+            eprintln!("{line}");
+        }
         self.shown.set(true);
     }
 
     /// Erase the line and reset throttling for the next phase.
     fn finish(&self) {
-        if self.shown.replace(false) {
+        if self.shown.replace(false) && self.tty {
             eprint!("\r\x1b[2K");
             let _ = io::stderr().flush();
         }
         self.last.set(None);
     }
+}
+
+/// Replace control characters (including ESC and C1 codes) so untrusted
+/// mail headers cannot drive the terminal.
+fn sanitize(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
 }
 
 fn fmt_int(n: u64) -> String {
@@ -207,7 +230,7 @@ fn cmd_import(
         eprintln!("error: the library needs a rebuild before importing; run `mail-cli rebuild`");
         return Ok(ExitCode::FAILURE);
     }
-    let progress = ProgressLine::new();
+    let progress = ProgressLine::new(None);
     let report = mail_core::import::scan::scan(lib, paths, &|p| progress.update(&p), cancel);
     progress.finish();
     let report = report?;
@@ -250,7 +273,7 @@ fn cmd_import(
     }
 
     let started = Instant::now();
-    let progress = ProgressLine::new();
+    let progress = ProgressLine::new(Some(report.plan.total));
     let summary = mail_core::import::apply::apply(lib, &report, &|p| progress.update(&p), cancel);
     progress.finish();
     let s = summary?;
@@ -277,7 +300,11 @@ fn cmd_search(lib: &Library, query: &str, limit: usize) -> Result<ExitCode, Erro
         } else {
             String::new()
         };
-        println!("{date} · {} · {}{count}", t.senders.join(", "), t.subject);
+        println!(
+            "{date} · {} · {}{count}",
+            sanitize(&t.senders.join(", ")),
+            sanitize(&t.subject)
+        );
     }
     println!("{} messages · {:.0} ms", res.total_messages, res.elapsed_ms);
     Ok(ExitCode::SUCCESS)
@@ -285,7 +312,7 @@ fn cmd_search(lib: &Library, query: &str, limit: usize) -> Result<ExitCode, Erro
 
 fn cmd_rebuild(lib: &mut Library, cancel: &AtomicBool) -> Result<ExitCode, Error> {
     let started = Instant::now();
-    let progress = ProgressLine::new();
+    let progress = ProgressLine::new(None);
     let summary = lib.rebuild(&|p| progress.update(&p), cancel);
     progress.finish();
     let s = summary?;
@@ -318,10 +345,11 @@ fn cmd_bench(lib: &Library) -> Result<ExitCode, Error> {
         all.extend_from_slice(&times);
         times.sort_by(f64::total_cmp);
         println!(
-            "{:<40} p50 {:8.1} ms  p95 {:8.1} ms",
+            "{:<40} p50 {:8.1} ms  p95 {:8.1} ms  max {:8.1} ms",
             format!("{q:?}"),
             percentile(&times, 0.5),
-            percentile(&times, 0.95)
+            percentile(&times, 0.95),
+            times.last().copied().unwrap_or(0.0)
         );
     }
     all.sort_by(f64::total_cmp);
@@ -334,21 +362,26 @@ fn cmd_bench(lib: &Library) -> Result<ExitCode, Error> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn run(cli: Cli) -> Result<ExitCode, Error> {
-    let dir = cli.library.unwrap_or_else(paths::default_library_dir);
-    if let Some(w) = paths::cloud_sync_warning(&dir) {
-        eprintln!("warning: {w}");
-    }
+/// Make Ctrl-C set the returned flag so long operations roll back cleanly.
+fn install_cancel() -> Arc<AtomicBool> {
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&cancel);
     if let Err(e) = ctrlc::set_handler(move || flag.store(true, Ordering::Relaxed)) {
         eprintln!("warning: cannot install Ctrl-C handler: {e}");
     }
+    cancel
+}
+
+fn run(cli: Cli) -> Result<ExitCode, Error> {
+    let dir = cli.library.unwrap_or_else(paths::default_library_dir);
+    if let Some(w) = paths::cloud_sync_warning(&dir) {
+        eprintln!("warning: {w}");
+    }
     let mut lib = Library::open(&dir)?;
     match cli.command {
-        Cmd::Import { paths, yes } => cmd_import(&mut lib, &paths, yes, &cancel),
+        Cmd::Import { paths, yes } => cmd_import(&mut lib, &paths, yes, &install_cancel()),
         Cmd::Search { query, limit } => cmd_search(&lib, &query, limit),
-        Cmd::Rebuild => cmd_rebuild(&mut lib, &cancel),
+        Cmd::Rebuild => cmd_rebuild(&mut lib, &install_cancel()),
         Cmd::Bench => cmd_bench(&lib),
     }
 }
@@ -368,5 +401,17 @@ fn main() -> ExitCode {
             eprintln!("error: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize;
+
+    #[test]
+    fn sanitize_removes_escapes() {
+        let out = sanitize("a\x1b[2Jb\u{9b}c\n");
+        assert!(!out.chars().any(char::is_control), "{out:?}");
+        assert!(out.starts_with('a'));
     }
 }
