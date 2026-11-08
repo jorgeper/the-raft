@@ -129,11 +129,19 @@ impl RenderCache {
 }
 
 /// Render through the cache. No library lock is held here.
-pub fn render_cached(state: &AppState, id: i64, raw: &[u8], terms: &[String]) -> Arc<RenderedBody> {
+///
+/// `generation` must have been read BEFORE `raw` was fetched, so that a
+/// library swap in between makes the insert stale and `put` drops it.
+pub fn render_cached(
+    state: &AppState,
+    id: i64,
+    raw: &[u8],
+    terms: &[String],
+    generation: u64,
+) -> Arc<RenderedBody> {
     if let Some(hit) = state.cache().get(id, terms) {
         return hit;
     }
-    let generation = state.cache().generation();
     let body = Arc::new(render_body(raw, id, terms));
     state.cache().put(generation, id, terms, body.clone());
     body
@@ -174,11 +182,13 @@ pub fn serve_body(state: &AppState, path: &str, query: Option<&str>) -> Response
     let Some((id, terms)) = parse_body_uri(path, query) else {
         return not_found();
     };
+    // Read before the raw fetch (see `render_cached`).
+    let generation = state.cache().generation();
     let body = match state.cache().get(id, &terms) {
         Some(b) => b,
         // The library lock is held only for the raw fetch; rendering is outside it.
         None => match state.raw(id, false) {
-            Ok(raw) => render_cached(state, id, &raw, &terms),
+            Ok(raw) => render_cached(state, id, &raw, &terms, generation),
             Err(f) => return fetch_failure(f),
         },
     };

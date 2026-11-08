@@ -255,9 +255,11 @@ impl AppState {
                 let new = Library::open(&dir).map_err(|e| err_text(&e))?;
                 *g = Some(new);
             }
+            // Clear (bumping the generation) while still holding the library
+            // lock, so the swap and the clear happen together.
+            self.0.cache.clear();
         }
         *lock(&self.0.open_error) = None;
-        self.0.cache.clear();
         *lock(&self.0.pending) = None;
         Config {
             library_path: Some(dir),
@@ -325,6 +327,9 @@ pub async fn get_thread(
 ) -> Result<Vec<MessageView>, String> {
     let st = state.inner().clone();
     blocking(move || {
+        // Read the generation before fetching raw bytes: a library swap in
+        // between makes our cache inserts stale, and `put` drops them.
+        let generation = st.cache().generation();
         // Collect rows and raw bytes under the lock, then render without it.
         let rows: Vec<(MessageRow, Vec<u8>)> = st.with_lib(|l| {
             l.thread(thrid)?
@@ -335,7 +340,7 @@ pub async fn get_thread(
         Ok(rows
             .into_iter()
             .map(|(r, raw)| {
-                let body = render_cached(&st, r.id, &raw, &terms);
+                let body = render_cached(&st, r.id, &raw, &terms, generation);
                 MessageView {
                     id: r.id,
                     from: r.from,
@@ -388,12 +393,14 @@ fn attachment_part(
     Ok((info, bytes))
 }
 
-/// Unicode format characters (Cf) and line/paragraph separators: bidi
-/// overrides, zero-width characters and the like, which can disguise a name.
+/// Unicode general category Cf (format) code points, plus U+2028/2029
+/// (line/paragraph separators): bidi overrides, zero-width characters and the
+/// like, which can disguise a file name. Source: the Cf listing of
+/// DerivedGeneralCategory.txt, Unicode 16.0 (identical to 15.1 for Cf).
 fn is_invisible_format(c: char) -> bool {
     matches!(c as u32,
-        0x00AD | 0x0600..=0x0605 | 0x061C | 0x06DD | 0x070F | 0x08E2 | 0x180E
-        | 0x200B..=0x200F | 0x2028..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F
+        0x00AD | 0x0600..=0x0605 | 0x061C | 0x06DD | 0x070F | 0x0890..=0x0891 | 0x08E2
+        | 0x180E | 0x200B..=0x200F | 0x2028..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F
         | 0xFEFF | 0xFFF9..=0xFFFB | 0x110BD | 0x110CD | 0x13430..=0x1343F
         | 0x1BCA0..=0x1BCA3 | 0x1D173..=0x1D17A | 0xE0001 | 0xE0020..=0xE007F)
 }
@@ -496,17 +503,41 @@ pub fn write_temp_copy(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<
     Ok(file)
 }
 
-/// Write `bytes` to a temp file beside `dest`, then rename over it.
-pub fn write_atomic(dest: &Path, bytes: &[u8]) -> std::io::Result<()> {
+/// Name of the temp file used to save `dest` atomically.
+fn atomic_tmp_path(dest: &Path, nonce: u128) -> std::io::Result<PathBuf> {
     let name = dest
         .file_name()
         .ok_or_else(|| std::io::Error::other("no file name"))?;
-    let tmp = dest.with_file_name(format!(
-        ".{}.{}.tmp",
+    Ok(dest.with_file_name(format!(
+        ".{}.{}.{nonce:x}.tmp",
         name.to_string_lossy(),
         std::process::id()
-    ));
-    let result = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, dest));
+    )))
+}
+
+/// Write `bytes` to a new private temp file beside `dest`, then rename over
+/// it. The temp file is created exclusively (O_EXCL), so a file or symlink
+/// planted at that name makes this fail instead of being followed.
+pub fn write_atomic(dest: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    write_atomic_with_nonce(dest, bytes, nonce)
+}
+
+fn write_atomic_with_nonce(dest: &Path, bytes: &[u8], nonce: u128) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let tmp = atomic_tmp_path(dest, nonce)?;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&tmp)?;
+    // Only a file we created is ours to clean up.
+    let result = f
+        .write_all(bytes)
+        .and_then(|()| f.sync_all())
+        .and_then(|()| std::fs::rename(&tmp, dest));
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
@@ -760,6 +791,8 @@ mod tests {
             "abc"
         );
         assert_eq!(sanitize_filename(Some("\u{2066}\u{2069}")), "attachment");
+        // Arabic number mark above (Cf, added in Unicode 14).
+        assert_eq!(sanitize_filename(Some("a\u{0890}b\u{0891}c")), "abc");
     }
 
     #[test]
@@ -879,6 +912,35 @@ mod tests {
     }
 
     #[test]
+    fn save_does_not_follow_a_planted_symlink() {
+        let d = tempfile::tempdir().unwrap();
+        let dest = d.path().join("out.bin");
+        let victim = d.path().join("victim");
+        std::fs::write(&victim, b"precious").unwrap();
+        let tmp = atomic_tmp_path(&dest, 7).unwrap();
+        std::os::unix::fs::symlink(&victim, &tmp).unwrap();
+
+        assert!(write_atomic_with_nonce(&dest, b"attacker data", 7).is_err());
+        assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+        assert!(!dest.exists());
+        // The planted link is left alone, not removed or written through.
+        assert!(
+            std::fs::symlink_metadata(&tmp)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        // A fresh nonce works, and the result is private.
+        write_atomic(&dest, b"ok").unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"ok");
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
     fn stale_sessions_are_swept() {
         let d = tempfile::tempdir().unwrap();
         for n in ["session-1", "session-2", "session-9", "other"] {
@@ -960,6 +1022,25 @@ mod tests {
         drop(held);
         assert!(st.raw(ids[0], false).is_ok());
         assert_eq!(st.raw(9999, false).unwrap_err(), Fetch::NotFound);
+    }
+
+    #[test]
+    fn render_started_before_a_library_swap_is_not_cached() {
+        use crate::protocol::render_cached;
+        let (st, ids, d) = test_support::state_with(&[one_msg()]);
+        // Deterministic interleaving of a handler racing set_library:
+        let generation = st.cache().generation();
+        let raw = st.raw(ids[0], true).unwrap(); // raw from the OLD library
+        st.set_library(d.path().join("other").to_str().unwrap())
+            .unwrap(); // swap + clear
+        let body = render_cached(&st, ids[0], &raw, &[], generation);
+        assert!(!body.html.is_empty());
+        // The stale body must not be stored under the new library's id.
+        assert!(st.cache().get(ids[0], &[]).is_none());
+        // A render that captured the generation after the swap is cached.
+        let g2 = st.cache().generation();
+        render_cached(&st, ids[0], &raw, &[], g2);
+        assert!(st.cache().get(ids[0], &[]).is_some());
     }
 
     #[test]
