@@ -117,11 +117,10 @@ mod hex_keys {
     }
 }
 
-/// Length of the file prefix ending in `\n` (0 if no newline), scanning
-/// backwards in chunks so a large log is not read in full.
-fn valid_prefix_len(file: &mut File, len: u64) -> Result<u64> {
+/// Offset of the last `\n` in `file[..end]`, scanning backwards in chunks.
+fn last_newline_before(file: &mut File, end: u64) -> Result<Option<u64>> {
     const CHUNK: u64 = 8192;
-    let mut end = len;
+    let mut end = end;
     let mut buf = vec![0u8; CHUNK as usize];
     while end > 0 {
         let start = end.saturating_sub(CHUNK);
@@ -129,11 +128,31 @@ fn valid_prefix_len(file: &mut File, len: u64) -> Result<u64> {
         file.seek(SeekFrom::Start(start))?;
         file.read_exact(&mut buf[..n])?;
         if let Some(i) = buf[..n].iter().rposition(|&b| b == b'\n') {
-            return Ok(start + i as u64 + 1);
+            return Ok(Some(start + i as u64));
         }
         end = start;
     }
-    Ok(0)
+    Ok(None)
+}
+
+/// An event exists only if its line is complete (ends in `\n`) and parses.
+/// Returns the length of the log up to the end of the last such line,
+/// looking only at the final one or two lines.
+fn valid_prefix_len(file: &mut File, len: u64) -> Result<u64> {
+    // End of the last complete line.
+    let Some(nl) = last_newline_before(file, len)? else {
+        return Ok(0);
+    };
+    let end = nl + 1;
+    let start = last_newline_before(file, nl)?.map_or(0, |p| p + 1);
+    let mut line = vec![0u8; (nl - start) as usize];
+    file.seek(SeekFrom::Start(start))?;
+    file.read_exact(&mut line)?;
+    if line.iter().all(u8::is_ascii_whitespace) || serde_json::from_slice::<Event>(&line).is_ok() {
+        Ok(end)
+    } else {
+        Ok(start)
+    }
 }
 
 pub struct EventLog {
@@ -141,9 +160,9 @@ pub struct EventLog {
 }
 
 impl EventLog {
-    /// Open (creating with mode 0600 if missing) for appending. If the file
-    /// does not end in `\n`, the trailing bytes are an incomplete write from a
-    /// crash: truncate back to just after the last `\n` (or to 0).
+    /// Open (creating with mode 0600 if missing) for appending. Truncates the
+    /// file to the end of the last complete line that parses, dropping an
+    /// unterminated tail or a malformed final line left by a crash.
     pub fn open(path: &Path) -> Result<EventLog> {
         drop(create_private_file(path)?);
         let mut file = OpenOptions::new().read(true).append(true).open(path)?;
@@ -159,8 +178,13 @@ impl EventLog {
     pub fn append(&mut self, e: &Event) -> Result<()> {
         let mut line = serde_json::to_vec(e).map_err(|e| Error::Events(e.to_string()))?;
         line.push(b'\n');
+        let before = self.file.metadata()?.len();
         // One write call so a line is never interleaved with another.
-        self.file.write_all(&line)?;
+        if let Err(err) = self.file.write_all(&line) {
+            // A partial write (e.g. ENOSPC) must not leave a torn line behind.
+            let _ = self.file.set_len(before);
+            return Err(err.into());
+        }
         Ok(())
     }
 
@@ -170,8 +194,10 @@ impl EventLog {
     }
 }
 
-/// Read all events, streaming line by line. A malformed final line (torn
-/// write) is ignored; a malformed earlier line is corruption and an error.
+/// Read all events, streaming line by line. An event exists only if its line
+/// ends in `\n` and parses: an unterminated final line (valid or not) and a
+/// malformed terminated final line are ignored; a malformed earlier line is
+/// corruption and an error.
 pub fn read_events(path: &Path) -> Result<Vec<Event>> {
     let mut reader = BufReader::new(File::open(path)?);
     let mut events = Vec::new();
@@ -183,12 +209,10 @@ pub fn read_events(path: &Path) -> Result<Vec<Event>> {
             break;
         }
         lineno += 1;
-        let terminated = buf.last() == Some(&b'\n');
-        let body = if terminated {
-            &buf[..buf.len() - 1]
-        } else {
-            &buf[..]
-        };
+        if buf.last() != Some(&b'\n') {
+            break; // unterminated final line: incomplete write
+        }
+        let body = &buf[..buf.len() - 1];
         if body.iter().all(u8::is_ascii_whitespace) {
             continue;
         }
@@ -327,6 +351,65 @@ mod tests {
         let mut log = EventLog::open(&p).unwrap();
         log.append(&all_variants()[0]).unwrap();
         assert_eq!(read_events(&p).unwrap(), all_variants()[..1].to_vec());
+    }
+
+    fn line_of(e: &Event) -> Vec<u8> {
+        serde_json::to_vec(e).unwrap()
+    }
+
+    #[test]
+    fn unterminated_valid_final_line_ignored_by_read_and_open() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        let evs = all_variants();
+        write_all(&p, &evs[..2]);
+        let mut f = OpenOptions::new().append(true).open(&p).unwrap();
+        f.write_all(&line_of(&evs[4])).unwrap(); // no trailing \n
+        drop(f);
+        assert_eq!(read_events(&p).unwrap(), evs[..2].to_vec());
+        let mut log = EventLog::open(&p).unwrap();
+        log.append(&evs[2]).unwrap();
+        assert_eq!(
+            read_events(&p).unwrap(),
+            vec![evs[0].clone(), evs[1].clone(), evs[2].clone()]
+        );
+    }
+
+    #[test]
+    fn malformed_terminated_final_line_truncated_on_open() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        let evs = all_variants();
+        write_all(&p, &evs[..2]);
+        let mut f = OpenOptions::new().append(true).open(&p).unwrap();
+        f.write_all(b"{\"garbage\n").unwrap();
+        drop(f);
+        assert_eq!(read_events(&p).unwrap(), evs[..2].to_vec());
+        let mut log = EventLog::open(&p).unwrap();
+        log.append(&evs[2]).unwrap();
+        assert_eq!(read_events(&p).unwrap(), evs[..3].to_vec());
+    }
+
+    #[test]
+    fn torn_tail_longer_than_one_chunk() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        let evs = all_variants();
+        write_all(&p, &evs[..2]);
+        let mut f = OpenOptions::new().append(true).open(&p).unwrap();
+        f.write_all(&vec![b'x'; 20_000]).unwrap();
+        drop(f);
+        let mut log = EventLog::open(&p).unwrap();
+        log.append(&evs[2]).unwrap();
+        assert_eq!(read_events(&p).unwrap(), evs[..3].to_vec());
+        // Same with a long malformed terminated final line.
+        let mut f = OpenOptions::new().append(true).open(&p).unwrap();
+        f.write_all(&vec![b'y'; 20_000]).unwrap();
+        f.write_all(b"\n").unwrap();
+        drop(f);
+        let mut log = EventLog::open(&p).unwrap();
+        log.append(&evs[3]).unwrap();
+        assert_eq!(read_events(&p).unwrap(), evs[..4].to_vec());
     }
 
     #[test]
