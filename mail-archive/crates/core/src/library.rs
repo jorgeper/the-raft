@@ -200,24 +200,9 @@ impl Library {
         &self.dir
     }
 
-    #[allow(dead_code)] // used by the import and rebuild tasks
-    pub(crate) fn store(&self) -> &Store {
-        &self.store
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn events(&self) -> &EventLog {
-        &self.events
-    }
-
-    #[allow(dead_code)]
+    /// The metadata database (scan and apply read it).
     pub(crate) fn meta(&self) -> &MetaDb {
         &self.meta
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn index(&self) -> &SearchIndex {
-        &self.index
     }
 
     /// True when the index was recreated (schema change or unusable), its

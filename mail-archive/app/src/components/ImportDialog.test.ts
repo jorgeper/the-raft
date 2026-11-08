@@ -17,7 +17,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "../lib/api";
 import { store } from "../lib/store.svelte";
-import { cachedThreadCount, loadThread } from "../lib/threads";
+import { clearThreadCache, loadThread } from "../lib/threads";
 import ImportDialog from "./ImportDialog.svelte";
 
 let emit!: (p: api.Progress) => void;
@@ -125,9 +125,11 @@ describe("ImportDialog", () => {
     const apply = deferred<api.ImportSummary>();
     vi.mocked(api.importApply).mockReturnValue(apply.promise);
     vi.mocked(api.search).mockResolvedValue({} as api.SearchResults);
-    vi.mocked(api.getThread).mockResolvedValue([]);
-    loadThread("1", []);
-    expect(cachedThreadCount()).toBe(1);
+    vi.mocked(api.getThread).mockReset().mockResolvedValue([]);
+    clearThreadCache();
+    await loadThread("1", []);
+    await loadThread("1", []);
+    expect(api.getThread).toHaveBeenCalledTimes(1); // cached
     render(ImportDialog, { onclose: vi.fn() });
     await vi.waitFor(() => screen.getByText("Import"));
     await fireEvent.click(screen.getByText("Import"));
@@ -142,7 +144,9 @@ describe("ImportDialog", () => {
     );
     await vi.waitFor(() => expect(store.status).toEqual(STATUS));
     expect(store.refresh).toBe(1);
-    expect(cachedThreadCount()).toBe(0);
+    // The import dropped the cached thread: loading it asks again.
+    await loadThread("1", []);
+    expect(api.getThread).toHaveBeenCalledTimes(2);
   });
 
   it("Cancel while applying calls import_cancel and reports it", async () => {

@@ -30,7 +30,3 @@ export function prefetchThread(thrid: ThreadId, terms: string[]): void {
 export function clearThreadCache(): void {
   cache.clear();
 }
-
-export function cachedThreadCount(): number {
-  return cache.size;
-}

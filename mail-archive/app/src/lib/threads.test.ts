@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./api", () => ({ getThread: vi.fn() }));
 import * as api from "./api";
-import { cachedThreadCount, clearThreadCache, loadThread, prefetchThread } from "./threads";
+import * as threads from "./threads";
+import { clearThreadCache, loadThread, prefetchThread } from "./threads";
 import type { SearchResults } from "./api";
 // Golden JSON written by the Rust side (src-tauri/src/ipc_contract.rs).
 import searchWire from "./ipc-fixtures/search.json?raw";
@@ -28,12 +29,17 @@ describe("thread cache", () => {
     for (let i = 0; i < 8; i++) await loadThread(String(i), []);
     await loadThread("0", []); // refresh 0
     await loadThread("100", []); // evicts 1
-    expect(cachedThreadCount()).toBe(8);
     getThread.mockClear();
-    await loadThread("0", []);
+    // The 8 survivors are all served from the cache...
+    for (const id of ["0", "2", "3", "4", "5", "6", "7", "100"]) await loadThread(id, []);
     expect(getThread).not.toHaveBeenCalled();
+    // ...and the least recently used one was dropped.
     await loadThread("1", []);
     expect(getThread).toHaveBeenCalledTimes(1);
+  });
+
+  it("exports no test-only helpers", () => {
+    expect(Object.keys(threads).sort()).toEqual(["clearThreadCache", "loadThread", "prefetchThread"]);
   });
   it("does not cache failures, and prefetch swallows them", async () => {
     getThread.mockRejectedValueOnce("library is busy");
