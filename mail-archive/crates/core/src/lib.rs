@@ -1,5 +1,6 @@
 pub mod events;
 pub mod mbox;
+pub mod meta;
 pub mod model;
 pub mod parse;
 pub mod paths;
@@ -19,6 +20,10 @@ pub enum Error {
     Store(String),
     #[error("event log error: {0}")]
     Events(String),
+    #[error("sqlite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+    #[error("metadata error: {0}")]
+    Meta(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
