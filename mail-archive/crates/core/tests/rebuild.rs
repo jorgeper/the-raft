@@ -2,10 +2,13 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::Utc;
+use mail_core::events::EventLog;
 use mail_core::events::{Event, read_events};
 use mail_core::import::apply::{CrashPoint, TestHooks, apply_with_hooks};
 use mail_core::import::scan::scan;
 use mail_core::library::{Library, SuggestKind};
+use mail_core::model::{ImportKind, MessageRef};
+use mail_core::store::Store;
 use mail_core::testing::{MsgBuilder, mbox_of, zip_of};
 use tempfile::TempDir;
 
@@ -88,10 +91,23 @@ fn build(tmp: &Path) -> Library {
     let za = zip_to(tmp, "a.zip", FULL, &a);
     let za2 = zip_to(tmp, "a2.zip", FULL, &a2);
     let zp = zip_to(tmp, "p.zip", "Work.mbox", &part);
+    // A Full import after the Partial; it lacks the Partial's message 8
+    // (and 5, 6 stay removed).
+    let a3 = vec![
+        m(1, &["Inbox", "Starred"]),
+        m(2, &["Inbox", "Work"]),
+        m(3, &["Spam"]),
+        m(4, &["Trash"]),
+        m(7, &["Inbox", "Work"]),
+        reply_to(1),
+        orphan(),
+    ];
+    let za3 = zip_to(tmp, "a3.zip", FULL, &a3);
     let mut lib = Library::open(&tmp.join("lib")).unwrap();
     import(&mut lib, &za);
     import(&mut lib, &za2);
     import(&mut lib, &zp);
+    import(&mut lib, &za3);
     lib
 }
 
@@ -165,6 +181,13 @@ fn rebuild_reproduces_state() {
     let before = snapshot(&lib);
     // The fixture exercises what rebuild must reproduce.
     assert!(before.1.iter().any(|r| r.contains("removed=true")));
+    assert!(
+        before
+            .1
+            .iter()
+            .any(|r| r.starts_with("subject8") && r.contains("removed=true")),
+        "message of the Partial removed by the later Full"
+    );
     assert!(before.1.iter().any(|r| r.contains("thrid=-")));
     assert!(before.2.iter().filter(|q| q.2 > 0).count() >= 10);
     assert!(before.3.iter().any(|a| !a.is_empty()));
@@ -308,9 +331,9 @@ fn rebuild_skips_rolled_back_imports_and_ids_are_never_reused() {
     let mut lib = build(tmp.path());
     let before = snapshot(&lib);
 
-    // Import 4 crashes while finalizing and is rolled back on reopen.
-    let a3 = vec![m(1, &["Inbox", "Starred", "Extra"]), m(10, &["Inbox"])];
-    let z = zip_to(tmp.path(), "a3.zip", FULL, &a3);
+    // Import 5 crashes while finalizing and is rolled back on reopen.
+    let a4 = vec![m(1, &["Inbox", "Starred", "Extra"]), m(10, &["Inbox"])];
+    let z = zip_to(tmp.path(), "a4.zip", FULL, &a4);
     let report = scan(&lib, &[z], &|_| {}, &no_cancel()).unwrap();
     let hooks = TestHooks {
         batch: None,
@@ -335,7 +358,7 @@ fn rebuild_skips_rolled_back_imports_and_ids_are_never_reused() {
             _ => None,
         })
         .collect();
-    assert_eq!(ids, vec![1, 2, 3, 4, 5]);
+    assert_eq!(ids, vec![1, 2, 3, 4, 5, 6]);
 }
 
 #[test]
@@ -348,4 +371,288 @@ fn open_flags_rebuild_when_completed_import_has_no_sqlite_row() {
     let lib = Library::open(&dir).unwrap();
     assert!(lib.needs_rebuild());
     assert_eq!(lib.count().unwrap(), 0);
+}
+
+fn is_0600(dir: &Path) -> Vec<String> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut bad = Vec::new();
+    for e in std::fs::read_dir(dir).unwrap() {
+        let e = e.unwrap();
+        if e.file_type().unwrap().is_file() {
+            let mode = e.metadata().unwrap().permissions().mode() & 0o777;
+            if mode != 0o600 {
+                bad.push(format!("{:?} {mode:o}", e.path()));
+            }
+        }
+    }
+    bad
+}
+
+#[test]
+fn rebuilt_index_files_are_private() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("lib");
+    let mut lib = build(tmp.path());
+    lib.rebuild(&|_| {}, &no_cancel()).unwrap();
+    assert_eq!(is_0600(&dir.join("index")), Vec::<String>::new());
+    drop(lib);
+    // Also after opening a Ready index whose files were loosened.
+    use std::os::unix::fs::PermissionsExt;
+    for e in std::fs::read_dir(dir.join("index")).unwrap() {
+        let p = e.unwrap().path();
+        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o644)).unwrap();
+    }
+    drop(Library::open(&dir).unwrap());
+    assert_eq!(is_0600(&dir.join("index")), Vec::<String>::new());
+}
+
+/// An mbox whose `From ` lines carry the given dates (`Day Mon dd hh:mm:ss +0000 yyyy`).
+fn mbox_with_from_dates(msgs: &[(&str, Vec<u8>)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (date, msg) in msgs {
+        out.extend_from_slice(format!("From 1@xxx {date}\n").as_bytes());
+        out.extend_from_slice(msg);
+        if !msg.ends_with(b"\n") {
+            out.push(b'\n');
+        }
+        out.push(b'\n');
+    }
+    out
+}
+
+#[test]
+fn dateless_message_keeps_its_from_line_date() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("lib");
+    let dateless = |n: u32| {
+        MsgBuilder::new()
+            .from("nodate@example.com")
+            .subject(&format!("nodate{n}"))
+            .no_date()
+            .message_id(Some(&format!("<nodate{n}@fixture>")))
+            .thrid(500 + u64::from(n))
+            .labels(&["Inbox"])
+            .text("no date header here")
+            .build()
+    };
+    let mbox = mbox_with_from_dates(&[
+        ("Mon Jan 05 10:00:00 +0000 2026", dateless(1)),
+        ("Sat Mar 14 10:00:00 +0000 2026", dateless(2)),
+    ]);
+    let z = tmp.path().join("nd.zip");
+    std::fs::write(&z, zip_of("Takeout/Mail/Work.mbox", &mbox)).unwrap();
+    let mut lib = Library::open(&dir).unwrap();
+    import(&mut lib, &z);
+    let q = |lib: &Library, s: &str| {
+        lib.search(s, 0, 100, NOW, &Utc)
+            .unwrap()
+            .threads
+            .iter()
+            .map(|t| t.subject.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(q(&lib, "after:2026/02/01"), vec!["nodate2"]);
+    assert_eq!(q(&lib, "before:2026/02/01"), vec!["nodate1"]);
+    let before = snapshot(&lib);
+    assert!(
+        before.1.iter().any(|r| r.contains("date=1767607200")),
+        "{:?}",
+        before.1
+    );
+    drop(lib);
+
+    let mut lib = Library::open(&dir).unwrap();
+    lib.rebuild(&|_| {}, &no_cancel()).unwrap();
+    assert_eq!(snapshot(&lib), before);
+    assert_eq!(q(&lib, "after:2026/02/01"), vec!["nodate2"]);
+    assert_eq!(q(&lib, "before:2026/02/01"), vec!["nodate1"]);
+}
+
+#[test]
+fn missing_row_detected_after_cancelled_last_import() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("lib");
+    let mut lib = build(tmp.path());
+    // Cancel the next import once it is under way; it is rolled back.
+    let z = zip_to(
+        tmp.path(),
+        "c.zip",
+        "More.mbox",
+        &(20..30).map(|n| m(n, &["Inbox"])).collect::<Vec<_>>(),
+    );
+    let report = scan(&lib, &[z], &|_| {}, &no_cancel()).unwrap();
+    let cancel = AtomicBool::new(false);
+    let hooks = TestHooks {
+        batch: Some(1),
+        crash: None,
+    };
+    let r = apply_with_hooks(
+        &mut lib,
+        &report,
+        &|p| {
+            if p.phase == "import" {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        },
+        &cancel,
+        hooks,
+    );
+    assert!(matches!(r, Err(mail_core::Error::Cancelled)), "{r:?}");
+    let events = read_events(&dir.join("events.log")).unwrap();
+    assert!(matches!(
+        events.last(),
+        Some(Event::ImportRolledBack { .. })
+    ));
+    drop(lib);
+    assert!(!Library::open(&dir).unwrap().needs_rebuild());
+
+    std::fs::remove_file(dir.join("meta.sqlite")).unwrap();
+    let lib = Library::open(&dir).unwrap();
+    assert!(
+        lib.needs_rebuild(),
+        "log tail is a rollback, SQLite is empty"
+    );
+}
+
+/// Many small imports: every rebuild commit adds a segment, so merges run.
+fn many_small_imports(tmp: &Path, n: u32) -> Library {
+    let mut lib = Library::open(&tmp.join("lib")).unwrap();
+    for i in 0..n {
+        // Distinct dates: thread order must not depend on tie-breaking.
+        let msgs: Vec<_> = (0..3)
+            .map(|j| {
+                let n = i * 3 + j;
+                MsgBuilder::new()
+                    .from(&format!("Sender {n} <sender{n}@example.com>"))
+                    .subject(&format!("subject{n} topic"))
+                    .date_rfc2822(&format!(
+                        "Mon, 02 Nov 2026 {:02}:{:02}:00 +0000",
+                        n / 60,
+                        n % 60
+                    ))
+                    .message_id(Some(&format!("<s{n}@fixture>")))
+                    .thrid(1000 + u64::from(n % 4))
+                    .labels(&["Inbox"])
+                    .text(&format!("body {n}"))
+                    .build()
+            })
+            .collect();
+        let z = zip_to(tmp, &format!("s{i}.zip"), &format!("L{i}.mbox"), &msgs);
+        import(&mut lib, &z);
+    }
+    lib
+}
+
+#[test]
+fn cancel_during_merges_then_retry_immediately() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("lib");
+    let mut lib = many_small_imports(tmp.path(), 14);
+    let before = snapshot(&lib);
+    for round in 0..2 {
+        let cancel = AtomicBool::new(false);
+        let calls = std::cell::Cell::new(0);
+        let r = lib.rebuild(
+            &|_| {
+                calls.set(calls.get() + 1);
+                if calls.get() >= 10 {
+                    cancel.store(true, Ordering::Relaxed);
+                }
+            },
+            &cancel,
+        );
+        assert!(
+            matches!(r, Err(mail_core::Error::Cancelled)),
+            "{round}: {r:?}"
+        );
+        assert!(!dir.join("index.rebuild").exists());
+        assert!(!dir.join("meta.sqlite.rebuild").exists());
+    }
+    lib.rebuild(&|_| {}, &no_cancel()).unwrap();
+    assert_eq!(snapshot(&lib), before);
+    assert_eq!(is_0600(&dir.join("index")), Vec::<String>::new());
+}
+
+#[test]
+fn crash_after_only_meta_step_one_rolls_back() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("lib");
+    let lib = build(tmp.path());
+    let before = snapshot(&lib);
+    drop(lib);
+    // Swap step 1 renamed only meta.sqlite; the index is untouched.
+    std::fs::rename(dir.join("meta.sqlite"), dir.join("meta.sqlite.old")).unwrap();
+    std::fs::write(dir.join("meta.sqlite.rebuild"), b"new").unwrap();
+    std::fs::create_dir_all(dir.join("index.rebuild")).unwrap();
+    let lib = Library::open(&dir).unwrap();
+    assert_eq!(snapshot(&lib), before);
+    assert!(!lib.needs_rebuild());
+    for leftover in [
+        "meta.sqlite.rebuild",
+        "meta.sqlite.old",
+        "index.rebuild",
+        "index.old",
+    ] {
+        assert!(!dir.join(leftover).exists(), "{leftover}");
+    }
+}
+
+#[test]
+fn unreadable_message_and_log_inconsistencies_do_not_abort_rebuild() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("lib");
+    let lib = build(tmp.path());
+    let count = lib.count().unwrap();
+    drop(lib);
+    // Append a completed Full import by hand: one garbage message, one
+    // relabel of a message that does not exist, one unknown removed key.
+    let mut store = Store::open(&dir).unwrap();
+    let bad: MessageRef = store.append(b"\x00\x01 not a message\n").unwrap();
+    store.sync().unwrap();
+    let mut log = EventLog::open(&dir.join("events.log")).unwrap();
+    let key = |n: u8| [n; 32];
+    for e in [
+        Event::ImportStarted {
+            import_id: 50,
+            at: 1,
+            source: "hand".into(),
+            kind: ImportKind::Full,
+        },
+        Event::MessageAdded {
+            import_id: 50,
+            content_key: key(7),
+            header_key: None,
+            msg_ref: bad,
+            labels: vec!["Inbox".into()],
+            from_line_date: None,
+        },
+        Event::LabelsChanged {
+            import_id: 50,
+            content_key: key(8),
+            labels: vec!["X".into()],
+        },
+        Event::ImportCompleted {
+            import_id: 50,
+            at: 2,
+            removed: vec![key(7), key(9)],
+        },
+    ] {
+        log.append(&e).unwrap();
+    }
+    log.sync().unwrap();
+    drop(log);
+    drop(store);
+
+    let mut lib = Library::open(&dir).unwrap();
+    assert!(lib.needs_rebuild());
+    let seen = std::cell::Cell::new(0);
+    let s = lib
+        .rebuild(&|p| seen.set(seen.get().max(p.errors)), &no_cancel())
+        .unwrap();
+    assert_eq!(s.parse_errors, 1);
+    // LabelsChanged(8), removed 7 (skipped message) and 9.
+    assert_eq!(s.inconsistencies, 3);
+    assert_eq!(seen.get(), 1, "progress reports the skipped message");
+    assert_eq!(lib.count().unwrap(), count);
+    assert!(!lib.needs_rebuild());
 }

@@ -29,6 +29,8 @@ pub struct Progress {
     pub bytes: u64,
     pub total_bytes: Option<u64>,
     pub rate_per_sec: f64,
+    /// Messages skipped because they could not be processed (counts only).
+    pub errors: u64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -161,6 +163,7 @@ pub fn scan(
                 } else {
                     0.0
                 },
+                errors: 0,
             });
         }
     };

@@ -10,9 +10,14 @@
 //! never completed are skipped. Messages are read and parsed in batches capped
 //! like import batches, and the log is streamed, never collected.
 //!
-//! Known limit: the `From ` line date of an mbox is not stored, so a message
-//! without a usable `Date` header gets its date from the epoch fallback in
-//! the parser rather than from its `From ` line.
+//! The mbox `From ` line date is recorded in `MessageAdded` and handed back to
+//! the parser, so messages without a `Date` header get the same date.
+//!
+//! A stored message that cannot be read or parsed is skipped and counted in
+//! [`RebuildSummary::parse_errors`]; log entries that refer to messages the
+//! replay does not have (an unknown `LabelsChanged` or `removed` key,
+//! including those of skipped messages) are counted in
+//! [`RebuildSummary::inconsistencies`]. Neither aborts the rebuild.
 //!
 //! # Swap state machine
 //!
@@ -24,16 +29,19 @@
 //! 1. rename `meta.sqlite` -> `meta.sqlite.old`, `index` -> `index.old`
 //! 2. rename `meta.sqlite.rebuild` -> `meta.sqlite`, `index.rebuild` -> `index`
 //! 3. fsync the library directory
-//! 4. delete `*.old`, then the `NEEDS_REBUILD` marker
+//! 4. delete the `NEEDS_REBUILD` marker (fsynced), then delete `*.old`
 //!
 //! [`recover_swap`] runs on every `Library::open` (under the lock) and
 //! resolves a crash at any point:
 //! * no `*.old`: delete leftover `*.rebuild` (cancelled or crashed build);
-//! * some `*.old` whose live twin is missing (crash in steps 1-2): roll back,
-//!   i.e. delete any live twin that is the new one, rename every `*.old` back,
-//!   delete `*.rebuild`;
+//! * some `*.old` whose live twin is missing (crash in steps 1-2): roll back.
+//!   First every live twin that exists (the new one) is renamed to
+//!   `*.rebuild`, so that a live path that is present is always complete and
+//!   "every `*.old` has its live twin" can only hold once the swap is done;
+//!   then every `*.old` is renamed back and `*.rebuild` deleted. A crash at
+//!   any point of the rollback still has a missing live twin, so it repeats;
 //! * `*.old` present and every live file present (crash in steps 3-4): the
-//!   swap completed; delete `*.old` and the marker.
+//!   swap completed; delete the marker and `*.old`.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::ffi::OsString;
@@ -61,8 +69,21 @@ const INDEX: &str = "index";
 const COMMIT_EVERY: usize = 5_000;
 const PROGRESS_EVERY: Duration = Duration::from_millis(100);
 
+/// What a rebuild skipped or found inconsistent (counts only, no content).
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, serde::Serialize)]
+pub struct RebuildSummary {
+    /// Logged messages whose stored bytes could not be read or parsed.
+    pub parse_errors: u64,
+    /// Log entries that refer to messages the replay does not have.
+    pub inconsistencies: u64,
+}
+
 /// Rebuild the library in `lib_dir` (opening it, and so taking its lock).
-pub fn rebuild(lib_dir: &Path, progress: &dyn Fn(Progress), cancel: &AtomicBool) -> Result<()> {
+pub fn rebuild(
+    lib_dir: &Path,
+    progress: &dyn Fn(Progress),
+    cancel: &AtomicBool,
+) -> Result<RebuildSummary> {
     Library::open(lib_dir)?.rebuild(progress, cancel)
 }
 
@@ -119,37 +140,64 @@ fn remove_old_files(dir: &Path) -> Result<()> {
     remove_any(&suffixed(dir, INDEX, ".old"))
 }
 
+/// How [`recover_swap`] resolved a swap.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum SwapRecovery {
+    /// No swap was in progress (leftover `*.rebuild` files were deleted).
+    Nothing,
+    /// The swap had completed; the new files are live.
+    Completed,
+    /// The swap was undone; the old files are live again.
+    RolledBack,
+}
+
+/// True if a swap left `*.old` files behind.
+pub(crate) fn old_files_exist(dir: &Path) -> bool {
+    suffixed(dir, META, ".old").exists() || suffixed(dir, INDEX, ".old").exists()
+}
+
 /// Resolve whatever an interrupted rebuild or swap left behind (see the
 /// module docs). Call with the library lock held, before opening SQLite.
-pub(crate) fn recover_swap(dir: &Path) -> Result<()> {
+pub(crate) fn recover_swap(dir: &Path) -> Result<SwapRecovery> {
     let old_meta = suffixed(dir, META, ".old");
     let old_index = suffixed(dir, INDEX, ".old");
     let (meta_old, index_old) = (old_meta.exists(), old_index.exists());
     if !meta_old && !index_old {
-        return remove_rebuild_files(dir);
+        remove_rebuild_files(dir)?;
+        return Ok(SwapRecovery::Nothing);
     }
     let live_meta = dir.join(META);
     let live_index = dir.join(INDEX);
     let partial = (meta_old && !live_meta.exists()) || (index_old && !live_index.exists());
     if partial {
+        remove_rebuild_files(dir)?;
+        // A: move the new live files aside (live paths present stay complete).
         if meta_old {
-            for p in meta_files(dir, "") {
-                remove_any(&p)?;
+            rename_if_exists(&live_meta, &suffixed(dir, META, ".rebuild"))?;
+            for p in &meta_files(dir, "")[1..] {
+                remove_any(p)?;
             }
+        }
+        if index_old {
+            rename_if_exists(&live_index, &suffixed(dir, INDEX, ".rebuild"))?;
+        }
+        // B: restore the old files.
+        if meta_old {
             for (o, l) in meta_files(dir, ".old").iter().zip(meta_files(dir, "")) {
                 rename_if_exists(o, &l)?;
             }
         }
         if index_old {
-            remove_any(&live_index)?;
             fs::rename(&old_index, &live_index)?;
         }
         remove_rebuild_files(dir)?;
-        sync_dir(dir)
+        sync_dir(dir)?;
+        Ok(SwapRecovery::RolledBack)
     } else {
-        remove_old_files(dir)?;
         remove_rebuild_files(dir)?;
-        clear_needs_rebuild(dir)
+        clear_needs_rebuild(dir)?;
+        remove_old_files(dir)?;
+        Ok(SwapRecovery::Completed)
     }
 }
 
@@ -160,13 +208,17 @@ pub(crate) fn clear_needs_rebuild(dir: &Path) -> Result<()> {
 }
 
 /// Swap the finished `*.rebuild` files over the live ones. Nothing may have
-/// `meta.sqlite` open. On error, rolls back to the old files.
+/// `meta.sqlite` open. If a step fails, recovery runs at once: `Ok` if it
+/// found the swap complete, otherwise the error (old files restored, or
+/// left for the next open's recovery if that failed too).
 pub(crate) fn swap(dir: &Path) -> Result<()> {
-    let r = swap_steps(dir);
-    if r.is_err() {
-        let _ = recover_swap(dir);
+    match swap_steps(dir) {
+        Ok(()) => Ok(()),
+        Err(e) => match recover_swap(dir) {
+            Ok(SwapRecovery::Completed) => Ok(()),
+            _ => Err(e),
+        },
     }
-    r
 }
 
 fn swap_steps(dir: &Path) -> Result<()> {
@@ -178,9 +230,15 @@ fn swap_steps(dir: &Path) -> Result<()> {
     // Step 2: rebuild -> live.
     fs::rename(suffixed(dir, META, ".rebuild"), dir.join(META))?;
     fs::rename(suffixed(dir, INDEX, ".rebuild"), dir.join(INDEX))?;
-    // Step 3, then 4 (the marker is cleared by the caller once reopened).
+    // Step 3, then 4: once the marker is gone the new files are the truth.
     sync_dir(dir)?;
+    clear_needs_rebuild(dir)?;
     remove_old_files(dir)
+}
+
+/// Delete the partial or unused `*.rebuild` files.
+pub(crate) fn discard_rebuild_files(dir: &Path) -> Result<()> {
+    remove_rebuild_files(dir)
 }
 
 struct Added {
@@ -188,6 +246,7 @@ struct Added {
     header_key: Option<Key>,
     msg_ref: MessageRef,
     labels: Vec<String>,
+    from_line_date: Option<i64>,
 }
 
 struct Replay<'a> {
@@ -210,6 +269,7 @@ struct Replay<'a> {
     import_id: u64,
     kind: ImportKind,
     touched: BTreeSet<MsgId>,
+    summary: RebuildSummary,
 }
 
 impl Replay<'_> {
@@ -227,6 +287,7 @@ impl Replay<'_> {
                 } else {
                     0.0
                 },
+                errors: self.summary.parse_errors,
             });
         }
     }
@@ -255,6 +316,7 @@ impl Replay<'_> {
                 header_key,
                 msg_ref,
                 labels,
+                from_line_date,
                 ..
             } => {
                 self.batch_bytes += msg_ref.length as usize;
@@ -263,6 +325,7 @@ impl Replay<'_> {
                     header_key,
                     msg_ref,
                     labels,
+                    from_line_date,
                 });
                 if self.batch.len() >= BATCH_MESSAGES || self.batch_bytes >= BATCH_BYTES {
                     self.flush()?;
@@ -274,11 +337,13 @@ impl Replay<'_> {
                 ..
             } => {
                 self.flush()?;
-                let id = *self.ids.get(&content_key).ok_or_else(|| {
-                    Error::Events("LabelsChanged for a message that was never added".into())
-                })?;
-                self.meta.set_labels(id, &labels)?;
-                self.touched.insert(id);
+                match self.ids.get(&content_key) {
+                    Some(&id) => {
+                        self.meta.set_labels(id, &labels)?;
+                        self.touched.insert(id);
+                    }
+                    None => self.summary.inconsistencies += 1,
+                }
             }
             Event::ImportCompleted {
                 import_id, removed, ..
@@ -286,10 +351,13 @@ impl Replay<'_> {
                 self.flush()?;
                 if self.kind == ImportKind::Full {
                     let before: HashSet<MsgId> = self.meta.removed_ids()?.into_iter().collect();
-                    let absent: Vec<MsgId> = removed
-                        .iter()
-                        .filter_map(|k| self.ids.get(k).copied())
-                        .collect();
+                    let mut absent: Vec<MsgId> = Vec::with_capacity(removed.len());
+                    for k in &removed {
+                        match self.ids.get(k) {
+                            Some(&id) => absent.push(id),
+                            None => self.summary.inconsistencies += 1,
+                        }
+                    }
                     self.meta.mark_seen(import_id, &absent)?;
                     let after: HashSet<MsgId> = self.meta.removed_ids()?.into_iter().collect();
                     self.touched.extend(before.symmetric_difference(&after));
@@ -306,7 +374,7 @@ impl Replay<'_> {
                 self.since_commit = 0;
                 self.meta
                     .set_import_status(import_id, ImportStatus::Completed)?;
-                self.emit(false);
+                self.emit(true);
             }
             Event::ImportRolledBack { .. } => {}
         }
@@ -319,17 +387,16 @@ impl Replay<'_> {
             return Ok(());
         }
         let store = self.store;
-        let parsed: Vec<Result<_>> = self
+        // Unreadable or unparseable stored messages are skipped (counted).
+        let parsed: Vec<Option<_>> = self
             .batch
             .par_iter()
             .map(|a| {
                 let raw = RawMessage {
-                    bytes: store.read(a.msg_ref)?,
-                    from_line_date: None,
+                    bytes: store.read(a.msg_ref).ok()?,
+                    from_line_date: a.from_line_date,
                 };
-                parse_guarded(&raw)
-                    .map(|(p, _)| p)
-                    .ok_or_else(|| Error::Store("a stored message no longer parses".into()))
+                parse_guarded(&raw).map(|(p, _)| p)
             })
             .collect();
         let Replay {
@@ -341,9 +408,13 @@ impl Replay<'_> {
             ..
         } = self;
         let import_id = *import_id;
+        let mut skipped = 0u64;
         meta.transaction(|| {
             for (a, p) in batch.iter().zip(parsed) {
-                let mut p = p?;
+                let Some(mut p) = p else {
+                    skipped += 1;
+                    continue;
+                };
                 p.labels = a.labels.clone();
                 let keys = DedupeKeys {
                     content_key: a.content_key,
@@ -354,6 +425,7 @@ impl Replay<'_> {
             }
             Ok(())
         })?;
+        self.summary.parse_errors += skipped;
         let n = self.batch.len();
         self.processed += n as u64;
         self.bytes += self.batch_bytes as u64;
@@ -377,8 +449,9 @@ pub(crate) fn build(
     store: &Store,
     progress: &dyn Fn(Progress),
     cancel: &AtomicBool,
-) -> Result<()> {
+) -> Result<RebuildSummary> {
     install_panic_hook();
+    // Not swallowed: a leftover that cannot be deleted must stop the retry.
     remove_rebuild_files(dir)?;
     let r = build_inner(dir, store, progress, cancel);
     if r.is_err() {
@@ -392,7 +465,7 @@ fn build_inner(
     store: &Store,
     progress: &dyn Fn(Progress),
     cancel: &AtomicBool,
-) -> Result<()> {
+) -> Result<RebuildSummary> {
     let log = dir.join("events.log");
     // Pass 1: which imports completed, and how much work they hold.
     let mut states: HashMap<u64, LogState> = HashMap::new();
@@ -448,6 +521,7 @@ fn build_inner(
         import_id: 0,
         kind: ImportKind::Partial,
         touched: BTreeSet::new(),
+        summary: RebuildSummary::default(),
     };
     // Pass 2: replay.
     try_for_each_event(&log, |e| replay.on_event(e))?;
@@ -458,6 +532,7 @@ fn build_inner(
     replay.writer.commit()?;
     replay.emit(true);
     debug_assert_eq!(replay.processed, replay.total);
+    let summary = replay.summary;
     replay.writer.close()?;
     meta.checkpoint()?;
     drop(meta);
@@ -466,5 +541,6 @@ fn build_inner(
     for p in &meta_files(dir, ".rebuild")[1..] {
         remove_any(p)?;
     }
-    sync_dir(dir)
+    sync_dir(dir)?;
+    Ok(summary)
 }

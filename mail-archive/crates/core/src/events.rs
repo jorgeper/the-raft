@@ -28,6 +28,10 @@ pub enum Event {
         header_key: Option<Key>,
         msg_ref: MessageRef,
         labels: Vec<String>,
+        /// The mbox `From ` line date, which the stored bytes lack; parsing
+        /// needs it for messages without a usable `Date` header.
+        #[serde(default)]
+        from_line_date: Option<i64>,
     },
     LabelsChanged {
         import_id: u64,
@@ -206,6 +210,26 @@ impl EventLog {
         Ok(())
     }
 
+    /// Id of the newest `ImportCompleted`, scanning back from the end (cheap
+    /// when the log ends with one; otherwise it walks back past the events of
+    /// the rolled-back or open imports after it).
+    pub fn last_completed_import(&mut self) -> Result<Option<u64>> {
+        let mut end = self.file.metadata()?.len();
+        while let Some(nl) = last_newline_before(&mut self.file, end)? {
+            let start = last_newline_before(&mut self.file, nl)?.map_or(0, |p| p + 1);
+            end = start;
+            let mut line = vec![0u8; (nl - start) as usize];
+            self.file.seek(SeekFrom::Start(start))?;
+            self.file.read_exact(&mut line)?;
+            if line.windows(15).any(|w| w == b"ImportCompleted")
+                && let Ok(Event::ImportCompleted { import_id, .. }) = serde_json::from_slice(&line)
+            {
+                return Ok(Some(import_id));
+            }
+        }
+        Ok(None)
+    }
+
     /// The last event in the log, reading only the tail of the file.
     pub fn last_event(&mut self) -> Result<Option<Event>> {
         let mut end = self.file.metadata()?.len();
@@ -337,6 +361,7 @@ mod tests {
                 content_key: k(1),
                 header_key: Some(k(2)),
                 msg_ref: mref(),
+                from_line_date: None,
                 labels: vec!["Inbox".into()],
             },
             Event::MessageAdded {
@@ -344,6 +369,7 @@ mod tests {
                 content_key: k(3),
                 header_key: None,
                 msg_ref: mref(),
+                from_line_date: None,
                 labels: vec![],
             },
             Event::LabelsChanged {
@@ -508,6 +534,7 @@ mod tests {
                 content_key: k1,
                 header_key: None,
                 msg_ref: mref(),
+                from_line_date: None,
                 labels: vec![],
             },
             Event::ImportCompleted {
@@ -526,6 +553,7 @@ mod tests {
                 content_key: k(2),
                 header_key: None,
                 msg_ref: mref(),
+                from_line_date: None,
                 labels: vec![],
             },
             Event::MessageAdded {
@@ -533,6 +561,7 @@ mod tests {
                 content_key: k(3),
                 header_key: None,
                 msg_ref: mref(),
+                from_line_date: None,
                 labels: vec![],
             },
         ];

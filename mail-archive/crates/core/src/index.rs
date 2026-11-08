@@ -240,6 +240,7 @@ impl SearchIndex {
             && index.schema() == schema
         {
             register_tokenizers(&index);
+            restrict_permissions(dir);
             let reader = index
                 .reader_builder()
                 .reload_policy(ReloadPolicy::Manual)
@@ -306,7 +307,7 @@ impl SearchIndex {
 
     pub(crate) fn writer_with(&self, budget: usize, threads: usize) -> Result<IndexWriterHandle> {
         Ok(IndexWriterHandle {
-            writer: self.index.writer_with_num_threads(threads, budget)?,
+            writer: Some(self.index.writer_with_num_threads(threads, budget)?),
             reader: self.reader.clone(),
             fields: self.fields.clone(),
             path: self.path.clone(),
@@ -340,17 +341,38 @@ fn text_tokenizer_name(schema: &Schema, field: Field) -> Option<String> {
 }
 
 pub struct IndexWriterHandle {
-    writer: IndexWriter,
+    /// `None` only once closed or dropped.
+    writer: Option<IndexWriter>,
     reader: IndexReader,
     fields: Fields,
     path: PathBuf,
 }
 
+impl Drop for IndexWriterHandle {
+    /// Never leave background merges writing into the directory (they would
+    /// race a later delete or rename of it).
+    fn drop(&mut self) {
+        let _ = self.finish();
+    }
+}
+
 impl IndexWriterHandle {
+    fn w(&mut self) -> &mut IndexWriter {
+        self.writer.as_mut().expect("writer used after close")
+    }
+
+    fn finish(&mut self) -> Result<()> {
+        if let Some(w) = self.writer.take() {
+            w.wait_merging_threads()?;
+            restrict_permissions(&self.path);
+        }
+        Ok(())
+    }
+
     /// Insert or replace the document for `d.msg_id`.
     pub fn upsert(&mut self, d: &IndexDoc) -> Result<()> {
-        let f = &self.fields;
-        self.writer
+        let f = self.fields.clone();
+        self.w()
             .delete_term(Term::from_field_i64(f.msg_id, d.msg_id));
         let mut doc = TantivyDocument::default();
         doc.add_i64(f.msg_id, d.msg_id);
@@ -370,27 +392,26 @@ impl IndexWriterHandle {
         }
         doc.add_bool(f.has_attachment, d.has_attachment);
         doc.add_bool(f.removed, d.removed);
-        self.writer.add_document(doc)?;
+        self.w().add_document(doc)?;
         Ok(())
     }
 
     /// Delete every document belonging to `import_id` (takes effect on commit).
     pub fn delete_import(&mut self, import_id: u64) -> Result<()> {
-        self.writer
-            .delete_term(Term::from_field_u64(self.fields.import_id, import_id));
+        let t = Term::from_field_u64(self.fields.import_id, import_id);
+        self.w().delete_term(t);
         Ok(())
     }
 
     /// Finish: wait for background segment merges, so nothing writes into the
     /// index directory afterwards. Call after the last `commit`.
-    pub fn close(self) -> Result<()> {
-        self.writer.wait_merging_threads()?;
-        Ok(())
+    pub fn close(mut self) -> Result<()> {
+        self.finish()
     }
 
     /// Commit and make the result visible to `SearchIndex::searcher`.
     pub fn commit(&mut self) -> Result<()> {
-        self.writer.commit()?;
+        self.w().commit()?;
         self.reader.reload()?;
         restrict_permissions(&self.path);
         Ok(())
@@ -443,6 +464,23 @@ mod tests {
             w.upsert(d).unwrap();
         }
         w.commit().unwrap();
+    }
+
+    #[test]
+    fn dropping_a_writer_waits_for_merges() {
+        let tmp = tempfile::tempdir().unwrap();
+        for round in 0..3 {
+            let dir = tmp.path().join(format!("ix{round}"));
+            let si = open(&dir);
+            let mut w = si.writer_with(SMALL, 1).unwrap();
+            for i in 0..30 {
+                w.upsert(&doc(i)).unwrap();
+                w.commit().unwrap(); // many tiny segments: merges start
+            }
+            drop(w); // no close(): Drop must wait for the merges
+            drop(si);
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
     }
 
     #[test]

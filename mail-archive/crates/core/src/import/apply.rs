@@ -268,6 +268,7 @@ fn apply_inner(
                 } else {
                     0.0
                 },
+                errors: report.parse_errors,
             });
         }
     };
@@ -314,6 +315,7 @@ fn apply_inner(
                                 header_key: keys.header_key,
                                 msg_ref,
                                 labels: p.labels.clone(),
+                                from_line_date: raw.from_line_date,
                             })?;
                             insert_and_index(meta, &mut writer, &p, &keys, msg_ref, import_id)?;
                             added += 1;
@@ -500,14 +502,22 @@ pub(crate) fn recover(lib: &mut Library) -> Result<()> {
             None | Some(Event::ImportCompleted { .. } | Event::ImportRolledBack { .. })
         );
         let rows = p.meta.incomplete_imports()?;
-        // Cheap check of the newest completed import: SQLite lost its row
-        // (deleted or replaced database), so the caches are stale.
-        if let Some(Event::ImportCompleted { import_id, .. }) = &tail
-            && p.meta.import_status(*import_id)?.is_none()
+        // Cheap check of the newest *completed* import (the tail, or found by
+        // scanning back past rolled-back ones): SQLite lost its row (deleted
+        // or replaced database), so the caches are stale.
+        let newest_completed = match &tail {
+            Some(Event::ImportCompleted { import_id, .. }) => Some(*import_id),
+            Some(Event::ImportRolledBack { .. }) => p.events.last_completed_import()?,
+            _ => None,
+        };
+        if let Some(id) = newest_completed
+            && p.meta.import_status(id)?.is_none()
         {
             rebuild = true;
         }
-        if tail_closed && rows.is_empty() && !rebuild {
+        // A log with events but a SQLite without any import: look closer.
+        let no_imports = tail.is_some() && p.meta.latest_import()?.is_none();
+        if tail_closed && rows.is_empty() && !rebuild && !no_imports {
             return Ok(());
         }
         let states = import_states(&log_path)?;

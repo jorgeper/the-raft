@@ -712,6 +712,18 @@ impl MetaDb {
         Ok(())
     }
 
+    /// Checkpoint and truncate the WAL, so the database file is complete on
+    /// its own (before it is renamed).
+    pub fn checkpoint_truncate(&self) -> Result<()> {
+        let busy: i64 = self
+            .conn
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))?;
+        if busy != 0 {
+            return Err(Error::Meta("WAL checkpoint could not complete".into()));
+        }
+        Ok(())
+    }
+
     /// Imports whose status is not `completed`, by id.
     pub fn incomplete_imports(&self) -> Result<Vec<(u64, ImportStatus)>> {
         let mut st = self.conn.prepare_cached(

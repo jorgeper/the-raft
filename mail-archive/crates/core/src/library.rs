@@ -15,6 +15,7 @@ use crate::model::MsgId;
 use crate::paths::{create_private_dir, create_private_file};
 use crate::query::exec::{self, thread_hit};
 use crate::query::parse_query;
+use crate::rebuild::RebuildSummary;
 use crate::store::Store;
 use crate::{Error, Result};
 
@@ -124,19 +125,39 @@ impl Library {
 
     /// Rebuild SQLite and the search index from the store and event log,
     /// then reopen them. See [`crate::rebuild`]. On cancel or error the old
-    /// ones stay live.
-    pub fn rebuild(&mut self, progress: &dyn Fn(Progress), cancel: &AtomicBool) -> Result<()> {
-        crate::rebuild::build(&self.dir, &self.store, progress, cancel)?;
+    /// ones stay live. Unreadable messages are skipped and counted in the
+    /// summary.
+    pub fn rebuild(
+        &mut self,
+        progress: &dyn Fn(Progress),
+        cancel: &AtomicBool,
+    ) -> Result<RebuildSummary> {
+        let summary = crate::rebuild::build(&self.dir, &self.store, progress, cancel)?;
+        // The live database must be complete in its own file before it moves.
+        if let Err(e) = self.meta.checkpoint_truncate() {
+            let _ = crate::rebuild::discard_rebuild_files(&self.dir);
+            return Err(e);
+        }
         // Point of no return: close our SQLite handle so its files can move.
         self.meta = MetaDb::placeholder()?;
         let swapped = crate::rebuild::swap(&self.dir);
-        // Reopen whatever is live now (new on success, old after a rollback).
+        if let Err(e) = &swapped
+            && crate::rebuild::old_files_exist(&self.dir)
+        {
+            // Even recovery failed. Opening `meta.sqlite` now could create an
+            // empty one next to the good `*.old`; leave it to the next open.
+            return Err(Error::Meta(format!(
+                "rebuild swap failed ({}) and could not be undone; reopen the library",
+                e
+            )));
+        }
+        // New files on success, the old ones after a clean rollback.
         let reopened = self.reopen_caches();
         swapped?;
         reopened?;
         crate::rebuild::clear_needs_rebuild(&self.dir)?;
         self.max_import_id = None;
-        Ok(())
+        Ok(summary)
     }
 
     fn reopen_caches(&mut self) -> Result<()> {
