@@ -117,4 +117,21 @@ describe("App screens", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(open).not.toHaveBeenCalled();
   });
+
+  it("an empty library shows an empty state whose button opens the import dialog, and Cmd+I works there", async () => {
+    vi.mocked(api.libraryStatus).mockResolvedValue({ ...base, message_count: 0 });
+    render(App);
+    await vi.waitFor(() => screen.getByText("No mail in this library yet"));
+    await fireEvent.click(screen.getByText("Import Takeout…"));
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    await settle();
+    menuImport();
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+  });
+
+  it("a non-empty library shows no empty state", async () => {
+    const { container } = render(App);
+    await vi.waitFor(() => expect(container.querySelector("#results-region")).not.toBeNull());
+    expect(screen.queryByText("No mail in this library yet")).toBeNull();
+  });
 });

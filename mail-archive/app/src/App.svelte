@@ -100,6 +100,18 @@
     }
   }
 
+  // Edit > Copy (and Cmd+C when the menu takes it) arrives as a DOM `copy`
+  // event. With the list focused and nothing selected, copy the row instead.
+  // `lastKeyCopy` makes sure one Cmd+C never copies twice.
+  let lastKeyCopy = 0;
+  function oncopy(e: ClipboardEvent) {
+    if (modalOpen || Date.now() - lastKeyCopy < 300) return;
+    if (targetOf(document.activeElement) !== "list" || !thread) return;
+    if (window.getSelection()?.toString()) return;
+    e.preventDefault();
+    e.clipboardData?.setData("text/plain", copyText(thread));
+  }
+
   function onkeydown(e: KeyboardEvent) {
     if (e.defaultPrevented || e.isComposing || modalOpen) return;
     const action = handleKey(
@@ -128,13 +140,16 @@
         store.query = "";
         break;
       case "copy":
-        if (thread) void copy(copyText(thread));
+        if (thread) {
+          lastKeyCopy = Date.now();
+          void copy(copyText(thread));
+        }
         break;
     }
   }
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window {onkeydown} {oncopy} />
 
 {#if ready}
   <div class="app">
@@ -147,6 +162,12 @@
     {/if}
     {#if linkNote}<p class="toast" role="status">Could not open the link.</p>{/if}
     <!-- Results on screen are out of date while the library is busy or the last search failed. -->
+    {#if status?.message_count === 0}
+      <section class="empty" aria-label="Empty library">
+        <p>No mail in this library yet</p>
+        <button onclick={() => (showImport = true)}>Import Takeout…</button>
+      </section>
+    {:else}
     <div class="panes" class:stale={store.busy || store.error !== null}>
       <section id="results-region" class="results-region" aria-label="Results">
         <ResultsList bind:this={list} {selected} onselect={(i) => (selected = i)} />
@@ -155,6 +176,7 @@
         <ReadingPane bind:this={pane} {thread} {terms} />
       </section>
     </div>
+    {/if}
   </div>
 {:else if status && onboarding}
   <FirstRun path={status.path} onimport={() => (showImport = true)} />
@@ -257,6 +279,23 @@
     border-radius: 6px;
     background: var(--input-bg);
     color: var(--fg);
+  }
+  .empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--muted);
+  }
+  .empty button {
+    font: inherit;
+    padding: 6px 16px;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    background: var(--accent);
+    color: var(--accent-fg);
   }
   .status-error {
     max-width: 520px;

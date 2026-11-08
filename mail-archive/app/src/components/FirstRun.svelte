@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { errorText, setLibraryPath } from "../lib/api";
+  import { checkLibraryFolder, errorText, setLibraryPath } from "../lib/api";
+  import FolderConfirm from "./FolderConfirm.svelte";
   import { pickFolder } from "../lib/pick";
 
   /** `path`: the default library folder. `onimport`: called once the library is set up. */
@@ -11,11 +12,27 @@
   let error = $state<string | null>(null);
   let working = $state(false);
 
+  let confirmDir = $state<string | null>(null);
+
   async function choose() {
     error = null;
     try {
       const dir = await pickFolder("Choose a folder for your mail library");
       if (dir === null) return;
+      if (await checkLibraryFolder(dir)) {
+        confirmDir = dir;
+        return;
+      }
+      await use(dir);
+    } catch (err) {
+      error = errorText(err);
+    }
+  }
+
+  async function use(dir: string) {
+    confirmDir = null;
+    error = null;
+    try {
       working = true;
       warning = await setLibraryPath(dir);
       chosen = dir;
@@ -47,6 +64,9 @@
   <p class="path" data-testid="library-path">{chosen}</p>
   {#if warning}<p class="warning" role="alert">{warning}</p>{/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
+  {#if confirmDir}
+    <FolderConfirm path={confirmDir} onyes={() => use(confirmDir!)} onno={() => (confirmDir = null)} />
+  {/if}
   <div class="actions">
     <button onclick={choose} disabled={working}>Choose another…</button>
     <button class="primary" onclick={start} disabled={working}>Import Takeout…</button>

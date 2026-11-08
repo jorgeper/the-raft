@@ -62,13 +62,21 @@
       summary = await api.importApply();
       step = "done";
     } catch (err) {
-      if (cancelling) message = "Import cancelled.";
-      else message = api.errorText(err);
+      // A cancelled apply is rolled back completely (core apply: any error,
+      // cancel included, runs recover()); other errors show their own text.
+      const text = api.errorText(err);
+      message = text === "cancelled" ? "Import cancelled. Nothing was changed." : text;
       step = "error";
     } finally {
       // Batches may have been committed even when the import did not finish.
       void afterLibraryChange();
     }
+  }
+
+  /** Cancel on the summary: forget the scan that was waiting. */
+  function discard() {
+    void api.importDiscard();
+    onclose();
   }
 
   function cancel() {
@@ -98,7 +106,7 @@
     {#if report.looks_older}<p class="warning" role="alert">{OLDER_EXPORT_WARNING}</p>{/if}
     {#if removedMsg}<p class="warning" role="alert">{removedMsg}</p>{/if}
     <div class="actions">
-      <button onclick={onclose}>Cancel</button>
+      <button onclick={discard}>Cancel</button>
       <button class="primary" onclick={apply}>Import</button>
     </div>
   {:else if step === "applying"}

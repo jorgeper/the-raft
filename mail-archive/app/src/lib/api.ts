@@ -133,3 +133,9 @@ export const revealLibrary = () => invoke<void>("reveal_library", {});
 /** Menu events from the native menu bar (see src-tauri/src/menu.rs). */
 export const onMenuImport = (cb: () => void): Promise<UnlistenFn> => listen("menu-import-takeout", () => cb());
 export const onMenuRebuild = (cb: () => void): Promise<UnlistenFn> => listen("menu-rebuild-index", () => cb());
+/** Close and re-open the configured library (works even when it opened but is unreadable). */
+export const reopenLibrary = () => invoke<void>("reopen_library", {});
+/** Drop the scan that is waiting for confirmation. */
+export const importDiscard = () => invoke<void>("import_discard", {});
+/** True when the folder is non-empty and does not look like a Mail Archive library. */
+export const checkLibraryFolder = (path: string) => invoke<boolean>("check_library_folder", { path });

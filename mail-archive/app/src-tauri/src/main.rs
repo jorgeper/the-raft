@@ -72,8 +72,7 @@ fn main() {
                 })
                 .on_new_window(move |url, _features| {
                     // A window is never created: external links go to the browser.
-                    if let nav::NavDecision::OpenExternal(u) = nav::route_navigation(&url, &origins)
-                    {
+                    if let nav::NavDecision::OpenExternal(u) = nav::route_navigation(&url, &origins) {
                         nav::open_external(app_win.clone(), u);
                     }
                     NewWindowResponse::Deny
@@ -116,6 +115,9 @@ fn main() {
             commands::library_status,
             commands::set_library_path,
             commands::reveal_library,
+            commands::reopen_library,
+            commands::import_discard,
+            commands::check_library_folder,
         ])
         .build(tauri::generate_context!());
 

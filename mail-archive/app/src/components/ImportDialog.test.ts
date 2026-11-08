@@ -6,6 +6,7 @@ vi.mock("../lib/api", async (orig) => ({
   importScan: vi.fn(),
   importApply: vi.fn(),
   importCancel: vi.fn(),
+  importDiscard: vi.fn(),
   onProgress: vi.fn(),
   libraryStatus: vi.fn(),
   search: vi.fn(),
@@ -41,6 +42,7 @@ beforeEach(() => {
   vi.mocked(api.importScan).mockReset();
   vi.mocked(api.importApply).mockReset();
   vi.mocked(api.importCancel).mockReset().mockResolvedValue(undefined);
+  vi.mocked(api.importDiscard).mockReset().mockResolvedValue(undefined);
   vi.mocked(api.libraryStatus).mockReset().mockResolvedValue(STATUS);
   vi.mocked(api.onProgress).mockReset().mockImplementation(async (cb) => {
     emit = cb;
@@ -154,9 +156,45 @@ describe("ImportDialog", () => {
     await fireEvent.click(screen.getByText("Cancel"));
     expect(api.importCancel).toHaveBeenCalledTimes(1);
     apply.reject("cancelled");
-    await vi.waitFor(() => expect(screen.getByText("Import cancelled.")).toBeTruthy());
+    await vi.waitFor(() => expect(screen.getByText("Import cancelled. Nothing was changed.")).toBeTruthy());
     // The library may have changed in committed batches, so it still refreshes.
     await vi.waitFor(() => expect(store.refresh).toBe(1));
+  });
+
+  it("Cancel on the summary discards the pending scan and closes", async () => {
+    vi.mocked(api.importScan).mockResolvedValue(report());
+    const onclose = vi.fn();
+    render(ImportDialog, { onclose });
+    await vi.waitFor(() => screen.getByTestId("summary"));
+    await fireEvent.click(screen.getByText("Cancel"));
+    expect(api.importDiscard).toHaveBeenCalledTimes(1);
+    expect(onclose).toHaveBeenCalledTimes(1);
+    expect(api.importApply).not.toHaveBeenCalled();
+  });
+
+  it("a scan that finishes after Cancel was pressed still shows its summary", async () => {
+    const scan = deferred<api.ScanReport>();
+    vi.mocked(api.importScan).mockReturnValue(scan.promise);
+    const onclose = vi.fn();
+    render(ImportDialog, { onclose });
+    await vi.waitFor(() => screen.getByText("Cancel"));
+    await fireEvent.click(screen.getByText("Cancel"));
+    scan.resolve(report());
+    await vi.waitFor(() => screen.getByTestId("summary"));
+    expect(onclose).not.toHaveBeenCalled();
+    // Import still works from here.
+    vi.mocked(api.importApply).mockReturnValue(new Promise(() => {}));
+    await fireEvent.click(screen.getByText("Import"));
+    expect(api.importApply).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failed apply shows its own error text, not 'cancelled'", async () => {
+    vi.mocked(api.importScan).mockResolvedValue(report());
+    vi.mocked(api.importApply).mockRejectedValue("the library changed since it was scanned; scan again");
+    render(ImportDialog, { onclose: vi.fn() });
+    await vi.waitFor(() => screen.getByText("Import"));
+    await fireEvent.click(screen.getByText("Import"));
+    await vi.waitFor(() => expect(screen.getByRole("alert").textContent).toContain("scan again"));
   });
 
   it("shows a scan error", async () => {

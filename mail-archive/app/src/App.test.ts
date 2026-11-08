@@ -142,6 +142,77 @@ describe("App keyboard and prefetch", () => {
   });
 });
 
+describe("copy event (Edit > Copy)", () => {
+  beforeEach(() => {
+    clearThreadCache();
+    vi.mocked(api.getThread).mockReset().mockResolvedValue([]);
+    vi.mocked(api.search).mockImplementation(() => new Promise(() => {}));
+  });
+  const copyEvent = () => {
+    const ev = new Event("copy", { bubbles: true, cancelable: true });
+    const setData = vi.fn();
+    Object.defineProperty(ev, "clipboardData", { value: { setData } });
+    return { ev, setData };
+  };
+
+  it("copies the selected row when the list has focus and nothing is selected", async () => {
+    seed(2);
+    const { container } = render(App);
+    await tick();
+    container.querySelector<HTMLElement>(".scroller")!.focus();
+    const { ev, setData } = copyEvent();
+    window.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(setData).toHaveBeenCalledWith("text/plain", `Subject 0 — Sender 0 — ${formatFull(1_700_000_000)}`);
+  });
+
+  it("leaves a real text selection alone", async () => {
+    seed(2);
+    const { container } = render(App);
+    await tick();
+    container.querySelector<HTMLElement>(".scroller")!.focus();
+    const p = document.createElement("p");
+    p.textContent = "selected words";
+    document.body.appendChild(p);
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const { ev, setData } = copyEvent();
+    window.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+    expect(setData).not.toHaveBeenCalled();
+    window.getSelection()!.removeAllRanges();
+    p.remove();
+  });
+
+  it("does nothing from the search box", async () => {
+    seed(2);
+    const { container } = render(App);
+    await tick();
+    container.querySelector<HTMLInputElement>("#search-area input")!.focus();
+    const { ev, setData } = copyEvent();
+    window.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+    expect(setData).not.toHaveBeenCalled();
+  });
+
+  it("one Cmd+C never copies twice (keydown, then a copy event)", async () => {
+    seed(2);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const { container } = render(App);
+    await tick();
+    const list = container.querySelector<HTMLElement>(".scroller")!;
+    list.focus();
+    await fireEvent.keyDown(list, { key: "c", metaKey: true });
+    const { ev, setData } = copyEvent();
+    window.dispatchEvent(ev);
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(setData).not.toHaveBeenCalled();
+  });
+});
+
 describe("open-failed note", () => {
   it("shows a transient note when a link could not be opened", async () => {
     vi.useFakeTimers();

@@ -279,7 +279,50 @@ impl AppState {
     }
 }
 
+/// True when `dir` holds files but does not look like a Mail Archive library
+/// (no `events.log` and no `store/`): the UI asks before creating one in it.
+pub fn folder_needs_confirmation(dir: &Path) -> bool {
+    let Ok(mut entries) = std::fs::read_dir(dir) else {
+        return false; // missing or unreadable: nothing there to disturb
+    };
+    entries.next().is_some() && !dir.join("events.log").exists() && !dir.join("store").is_dir()
+}
+
 impl AppState {
+    /// Drop the held library (releasing its lock) and open the configured
+    /// path again. Unlike `set_library`, this also works when a library is
+    /// open but unreadable.
+    pub fn reopen(&self) -> Result<(), String> {
+        let dir = Config::load_from(&self.0.config_path)
+            .library_path
+            .ok_or_else(|| NOT_OPEN.to_string())?;
+        let mut g = lock(&self.0.lib);
+        // The old handle must go first: its flock would otherwise make the
+        // new open fail with "in use".
+        *g = None;
+        let result = Library::open(&dir);
+        self.0.cache.clear();
+        *lock(&self.0.pending) = None;
+        match result {
+            Ok(l) => {
+                *g = Some(l);
+                *lock(&self.0.open_error) = None;
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("mail-archive: could not open library: {}", err_text(&e));
+                let text = open_error_text(&e);
+                *lock(&self.0.open_error) = Some(text.clone());
+                Err(text)
+            }
+        }
+    }
+
+    /// Forget the scan that is waiting for confirmation.
+    pub fn discard_pending(&self) {
+        *lock(&self.0.pending) = None;
+    }
+
     /// Reveal the configured library folder through `run`. Reads the config,
     /// not the library lock, so it works during an import.
     pub fn reveal_library_with(
@@ -717,6 +760,25 @@ pub async fn set_library_path(
 ) -> Result<Option<String>, String> {
     let st = state.inner().clone();
     blocking(move || st.set_library(&path)).await
+}
+
+#[tauri::command]
+pub async fn reopen_library(state: State<'_, AppState>) -> Result<(), String> {
+    let st = state.inner().clone();
+    blocking(move || st.reopen()).await
+}
+
+/// Never takes a lock, like `import_cancel`.
+#[tauri::command]
+pub fn import_discard(state: State<'_, AppState>) {
+    state.discard_pending();
+}
+
+#[tauri::command]
+pub async fn check_library_folder(path: String) -> bool {
+    blocking(move || Ok(folder_needs_confirmation(Path::new(&path))))
+        .await
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -1213,5 +1275,57 @@ mod tests {
         assert_eq!(again["new"], 0);
         assert_eq!(again["unchanged"], 2);
         assert_eq!(again["label_changes"], 0);
+    }
+
+    #[test]
+    fn reopen_works_when_the_library_is_open_but_unreadable() {
+        let (st, _ids, d) = test_support::state_with(&[one_msg()]);
+        let lib_dir = d.path().join("lib");
+        // Not configured: nothing to reopen.
+        assert_eq!(st.reopen().unwrap_err(), "library not open");
+        Config {
+            library_path: Some(lib_dir.clone()),
+        }
+        .save_to(&d.path().join("config.json"))
+        .unwrap();
+        // The library is open (and holds the flock). Reopening must drop it
+        // first, or Library::open would fail with "in use".
+        st.reopen().unwrap();
+        assert_eq!(st.status().unwrap().message_count, 1);
+
+        // Breaking the database makes the reopen fail and the status say why,
+        // with no library held (so a later fix plus another Try again works).
+        std::fs::write(lib_dir.join("meta.sqlite"), b"not a database").unwrap();
+        let err = st.reopen().unwrap_err();
+        assert_eq!(err, "Library could not be opened.");
+        let s = st.status().unwrap();
+        assert!(s.configured);
+        assert_eq!(s.open_error.as_deref(), Some(err.as_str()));
+        assert_eq!(st.with_lib(|l| l.count()).unwrap_err(), "library not open");
+    }
+
+    #[test]
+    fn discard_drops_the_pending_scan() {
+        let (st, _ids, d) = test_support::state_with(&[one_msg()]);
+        let mbox = d.path().join("in.mbox");
+        st.scan(&[mbox], &|_| {}).unwrap();
+        st.discard_pending();
+        let err = st.apply_pending(&|_| {}).unwrap_err();
+        assert!(err.contains("no scan is pending"), "{err}");
+    }
+
+    #[test]
+    fn only_foreign_non_empty_folders_need_confirmation() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(!folder_needs_confirmation(&d.path().join("missing")));
+        assert!(!folder_needs_confirmation(d.path())); // empty
+        let foreign = d.path().join("docs");
+        std::fs::create_dir(&foreign).unwrap();
+        std::fs::write(foreign.join("a.txt"), b"x").unwrap();
+        assert!(folder_needs_confirmation(&foreign));
+        // A real library (even one with only its store dir) does not.
+        let lib = d.path().join("lib");
+        drop(Library::open(&lib).unwrap());
+        assert!(!folder_needs_confirmation(&lib));
     }
 }
