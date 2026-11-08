@@ -68,8 +68,9 @@ function tokenRanges(query: string): Array<[number, number]> {
   for (let i = 0; i < query.length; i++) {
     const c = query[i];
     if (c === '"') inQuote = !inQuote;
-    const isSpace = !inQuote && /\s/.test(c);
-    if (isSpace) {
+    // Whitespace and ( ) { } delimit tokens, like tokenize() in the Rust parser.
+    const isDelimiter = !inQuote && (/\s/.test(c) || "(){}".includes(c));
+    if (isDelimiter) {
       if (start >= 0) out.push([start, i]);
       start = -1;
     } else if (start < 0) {
@@ -105,7 +106,10 @@ export function applySuggestion(
   token: Token,
   value: string,
 ): { query: string; caret: number } {
-  const text = `${token.operator}:${quoteIfNeeded(value)}`;
+  // Addresses: insert the bare address ("Jane <j@x.com>" -> j@x.com) so the
+  // search matches the address under any display name.
+  const v = token.operator === "label" ? value : (/<([^<>]*)>/.exec(value)?.[1] ?? value).trim();
+  const text = `${token.operator}:${quoteIfNeeded(v)}`;
   const left = query.slice(0, token.start);
   let right = query.slice(token.end);
   let caret = token.start + text.length;

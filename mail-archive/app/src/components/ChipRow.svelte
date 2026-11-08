@@ -14,8 +14,6 @@
 
   let labelMenuOpen = $state(false);
   let labels = $state<string[]>([]);
-  let after = $state("");
-  let before = $state("");
 
   async function toggleLabels() {
     labelMenuOpen = !labelMenuOpen;
@@ -32,11 +30,10 @@
     oninsert(`label:${name}`);
   }
 
-  function pickDate(op: "after" | "before", value: string) {
-    if (!value) return;
-    oninsert(`${op}:${value}`);
-    if (op === "after") after = "";
-    else before = "";
+  function pickDate(op: "after" | "before", el: HTMLInputElement) {
+    if (!el.value) return;
+    oninsert(`${op}:${el.value}`);
+    el.value = "";
   }
 </script>
 
@@ -72,8 +69,8 @@
     </div>
     <span class="add date">
       + date
-      <label>after <input type="date" aria-label="After date" bind:value={after} onchange={() => pickDate("after", after)} /></label>
-      <label>before <input type="date" aria-label="Before date" bind:value={before} onchange={() => pickDate("before", before)} /></label>
+      <label>after <input type="date" aria-label="After date" onchange={(e) => pickDate("after", e.currentTarget)} /></label>
+      <label>before <input type="date" aria-label="Before date" onchange={(e) => pickDate("before", e.currentTarget)} /></label>
     </span>
   </div>
 </div>

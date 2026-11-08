@@ -7,6 +7,7 @@
 
   const DEBOUNCE_MS = 100;
   const PAGE_SIZE = 200;
+  const RETRY_MS = 2000;
 
   let input: HTMLInputElement;
   let searchSeq = 0;
@@ -21,6 +22,20 @@
   $effect(() => {
     const q = store.query;
     const timer = setTimeout(() => void runSearch(q), DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  });
+
+  // While the library is busy, retry the latest query every 2 s. The timer is
+  // cleared on success (busy flips), on a new query and on destroy (effect cleanup).
+  let retries = $state(0);
+  $effect(() => {
+    if (!store.busy) return;
+    void retries;
+    const q = store.query;
+    const timer = setTimeout(() => {
+      retries++;
+      void runSearch(q);
+    }, RETRY_MS);
     return () => clearTimeout(timer);
   });
 
@@ -45,8 +60,10 @@
   }
 
   async function updateSuggestions() {
+    // Drop the old list first so Tab/Enter can never apply stale spans to new text.
+    closeSuggestions();
     const tok = currentToken(input.value, input.selectionStart ?? input.value.length);
-    const seq = ++suggestSeq;
+    const seq = suggestSeq;
     if (!tok.operator || (tok.operator !== "label" && tok.prefix === "")) {
       closeSuggestions();
       return;
@@ -79,7 +96,7 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
-    if (suggestions.length === 0) return;
+    if (suggestions.length === 0 || e.isComposing || e.keyCode === 229) return;
     if (e.key === "Tab" || e.key === "Enter") {
       e.preventDefault();
       void accept(suggestions[active]);
@@ -118,7 +135,8 @@
       type="search"
       role="combobox"
       aria-expanded={suggestions.length > 0}
-      aria-controls="suggestions"
+      aria-controls={suggestions.length > 0 ? "suggestions" : undefined}
+      aria-activedescendant={suggestions.length > 0 ? `suggestion-${active}` : undefined}
       aria-label="Search mail"
       autofocus
       autocomplete="off"
@@ -137,6 +155,7 @@
         {#each suggestions as s, i (s)}
           <li
             role="option"
+            id={`suggestion-${i}`}
             aria-selected={i === active}
             class:active={i === active}
             onmousedown={(e) => {
@@ -151,7 +170,7 @@
   <ChipRow {chips} {hints} {stale} onremove={removeChip} oninsert={addOperator} />
 
   {#if store.busy}
-    <p class="status" role="status">Import in progress — search will resume when it finishes.</p>
+    <p class="status" role="status">Library is busy (import or rebuild running) — results will refresh when it finishes.</p>
   {:else if store.error}
     <p class="status" role="status">{store.error}</p>
   {/if}

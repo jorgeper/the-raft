@@ -77,6 +77,13 @@ describe("currentToken", () => {
     expect(currentToken("hello", 5).operator).toBeNull();
     expect(currentToken("after:20", 8).operator).toBeNull();
   });
+  it("treats ( ) { } as delimiters", () => {
+    expect(currentToken("(from:an", 8)).toMatchObject({ operator: "from", prefix: "an", start: 1, end: 8 });
+    const q = "{from:an to:b}";
+    expect(currentToken(q, 8)).toMatchObject({ operator: "from", prefix: "an", start: 1, end: 8 });
+    expect(currentToken(q, 13)).toMatchObject({ operator: "to", prefix: "b", start: 9, end: 13 });
+    expect(currentToken("(from:an)", 8)).toMatchObject({ prefix: "an" });
+  });
   it("uses only the token under the caret", () => {
     expect(currentToken("from:al to:bo", 7)).toMatchObject({ operator: "from", prefix: "al" });
   });
@@ -86,8 +93,17 @@ describe("applySuggestion", () => {
   it("replaces the token and moves the caret after it", () => {
     const q = "x from:an y";
     const r = applySuggestion(q, currentToken(q, 9), "Ana Díaz <ana@x.org>");
-    expect(r.query).toBe('x from:"Ana Díaz <ana@x.org>" y');
-    expect(r.caret).toBe(29);
+    // Only the bare address is inserted, so any display name matches.
+    expect(r.query).toBe("x from:ana@x.org y");
+    expect(r.caret).toBe(16);
+  });
+  it("uses the whole string when there are no angle brackets", () => {
+    const q = "to:b";
+    expect(applySuggestion(q, currentToken(q, 4), "bob@x.org").query).toBe("to:bob@x.org ");
+  });
+  it("keeps full label names (quoted when needed)", () => {
+    const q = "label:R";
+    expect(applySuggestion(q, currentToken(q, 7), "Receipts 2019").query).toBe('label:"Receipts 2019" ');
   });
   it("appends a space when the token is at the end", () => {
     const q = "label:Rec";

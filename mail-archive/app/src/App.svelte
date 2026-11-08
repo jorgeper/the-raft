@@ -1,10 +1,12 @@
 <script lang="ts">
   import SearchBox from "./components/SearchBox.svelte";
+  import { store } from "./lib/store.svelte";
 </script>
 
 <div class="app">
   <header class="search-region"><SearchBox /></header>
-  <div class="panes">
+  <!-- Results on screen are out of date while the library is busy or the last search failed. -->
+  <div class="panes" class:stale={store.busy || store.error !== null}>
     <!-- Task 16 mounts ResultsList here (left, ~40%). -->
     <section id="results-region" class="results-region" aria-label="Results"></section>
     <!-- Task 16 mounts ReadingPane here (right, ~60%). -->
@@ -70,6 +72,9 @@
     flex: 1;
     min-height: 0;
     display: flex;
+  }
+  .panes.stale {
+    opacity: 0.5;
   }
   .results-region {
     flex: 0 0 40%;

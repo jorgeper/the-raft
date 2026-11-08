@@ -138,7 +138,7 @@ describe("SearchBox", () => {
     expect(store.query).toBe('x label:"Receipts 2019" ');
     expect(screen.queryAllByRole("option").length).toBe(0);
 
-    autocomplete.mockResolvedValue(["ana@example.org"]);
+    autocomplete.mockResolvedValue(["Ana Díaz <ana@example.org>"]);
     await type(box, "from:an");
     await flushTimers(0);
     expect(autocomplete).toHaveBeenLastCalledWith("address", "an");
@@ -154,6 +154,105 @@ describe("SearchBox", () => {
     await flushTimers();
     expect(store.busy).toBe(true);
     expect(store.error).toBeNull();
-    expect(screen.getByRole("status").textContent).toContain("Import in progress");
+    expect(screen.getByRole("status").textContent).toContain("Library is busy");
+  });
+
+  it("retries every 2 s while busy, then shows results and clears busy", async () => {
+    search.mockRejectedValueOnce("library is busy").mockRejectedValueOnce("library is busy");
+    search.mockResolvedValue(results({ total_messages: 7 }));
+    render(SearchBox);
+    await type(screen.getByRole("combobox"), "x");
+    await flushTimers(); // first attempt: busy
+    expect(store.busy).toBe(true);
+    expect(screen.getByRole("status").textContent).toContain("results will refresh");
+    expect(search).toHaveBeenCalledTimes(1);
+
+    await flushTimers(1999);
+    expect(search).toHaveBeenCalledTimes(1);
+    await flushTimers(1); // retry 1: still busy
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(store.busy).toBe(true);
+    await flushTimers(2000); // retry 2: success
+    expect(search).toHaveBeenCalledTimes(3);
+    expect(store.results?.total_messages).toBe(7);
+    expect(store.busy).toBe(false);
+    expect(screen.queryByRole("status")).toBeNull();
+
+    await flushTimers(10000); // timer cleared on success
+    expect(search).toHaveBeenCalledTimes(3);
+  });
+
+  it("stops retrying when the component is destroyed", async () => {
+    search.mockRejectedValue("library is busy");
+    const { unmount } = render(SearchBox);
+    await type(screen.getByRole("combobox"), "x");
+    await flushTimers();
+    unmount();
+    search.mockClear();
+    await flushTimers(10000);
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it("shows a non-busy error in the status line and keeps old results", async () => {
+    search.mockResolvedValueOnce(results({ total_messages: 3 }));
+    render(SearchBox);
+    const box = screen.getByRole("combobox");
+    await type(box, "a");
+    await flushTimers();
+    search.mockRejectedValue("library not open");
+    await type(box, "ab");
+    await flushTimers();
+    expect(screen.getByRole("status").textContent).toBe("library not open");
+    expect(store.busy).toBe(false);
+    expect(store.results?.total_messages).toBe(3);
+  });
+
+  it("clears suggestions on every input so Tab cannot apply stale spans", async () => {
+    const slow = deferred<string[]>();
+    autocomplete.mockResolvedValueOnce(["Receipts"]).mockReturnValueOnce(slow.promise);
+    render(SearchBox);
+    const box = screen.getByRole("combobox") as HTMLInputElement;
+    await type(box, "label:Rec");
+    await flushTimers(0);
+    expect(screen.getAllByRole("option").length).toBe(1);
+
+    await type(box, "zzzzzzzz label:Rec"); // list must vanish immediately
+    expect(screen.queryAllByRole("option").length).toBe(0);
+    await fireEvent.keyDown(box, { key: "Tab" });
+    expect(store.query).toBe("zzzzzzzz label:Rec");
+    slow.resolve(["Receipts"]);
+    await flushTimers(0);
+    expect(screen.getAllByRole("option").length).toBe(1);
+  });
+
+  it("does not accept a suggestion while an IME is composing", async () => {
+    autocomplete.mockResolvedValue(["Receipts"]);
+    render(SearchBox);
+    const box = screen.getByRole("combobox");
+    await type(box, "label:R");
+    await flushTimers(0);
+    await fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+    await fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
+    expect(store.query).toBe("label:R");
+    expect(screen.getAllByRole("option").length).toBe(1);
+  });
+
+  it("wires ARIA combobox attributes only while the list exists", async () => {
+    autocomplete.mockResolvedValue(["A", "B"]);
+    render(SearchBox);
+    const box = screen.getByRole("combobox");
+    expect(box.getAttribute("aria-controls")).toBeNull();
+    expect(box.getAttribute("aria-activedescendant")).toBeNull();
+    await type(box, "label:");
+    await flushTimers(0);
+    expect(box.getAttribute("aria-controls")).toBe("suggestions");
+    expect(box.getAttribute("aria-activedescendant")).toBe("suggestion-0");
+    await fireEvent.keyDown(box, { key: "ArrowDown" });
+    await tick();
+    expect(box.getAttribute("aria-activedescendant")).toBe("suggestion-1");
+    expect(document.getElementById("suggestion-1")?.getAttribute("aria-selected")).toBe("true");
+    await fireEvent.keyDown(box, { key: "Escape" });
+    await tick();
+    expect(box.getAttribute("aria-controls")).toBeNull();
   });
 });
