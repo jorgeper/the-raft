@@ -251,6 +251,14 @@ fn parse_size(s: &str) -> Option<u64> {
     digits.parse::<u64>().ok()?.checked_mul(mult)
 }
 
+fn label_for(negated: bool, name: &str, shown: &str) -> String {
+    if negated {
+        format!("not {name}: {shown}")
+    } else {
+        format!("{name}: {shown}")
+    }
+}
+
 fn age_label(a: Age) -> String {
     let u = match a.unit {
         AgeUnit::Day => 'd',
@@ -322,7 +330,7 @@ impl Parser<'_> {
         if negate {
             self.negated = !saved;
         }
-        let chip_minus = if negate { minus_start } else { None };
+        let chip_minus = minus_start;
         let inner = match self.peek() {
             None => None,
             Some(Tok::Or) | Some(Tok::RParen) | Some(Tok::RBrace) => {
@@ -335,7 +343,7 @@ impl Parser<'_> {
                 let t = self.toks[self.pos];
                 self.pos += 1;
                 let text = unquote(&self.input[t.start..t.end]);
-                if text.is_empty() {
+                if text.trim().is_empty() {
                     None
                 } else {
                     self.note_plain(text);
@@ -395,7 +403,7 @@ impl Parser<'_> {
     fn word(&mut self, t: Token, minus: Option<usize>) -> Option<Expr> {
         let raw = &self.input[t.start..t.end];
         let plain = |p: &mut Self| {
-            p.note_plain(raw);
+            p.note_plain(&raw.replace('"', ""));
             Some(Expr::Term(Term::Text(raw.to_string())))
         };
         let Some(colon) = raw.find(':') else {
@@ -511,8 +519,8 @@ impl Parser<'_> {
             }
         };
         let (start, label) = match minus {
-            Some(s) => (s, format!("not {name}: {shown}")),
-            None => (t.start, format!("{name}: {shown}")),
+            Some(s) => (s, label_for(self.negated, &name, &shown)),
+            None => (t.start, label_for(self.negated, &name, &shown)),
         };
         self.chips.push(Chip {
             start,
@@ -709,6 +717,37 @@ mod tests {
         assert_eq!(p.chips.len(), 1);
         assert_eq!(&q[p.chips[0].start..p.chips[0].end], "-from:bob");
         assert_eq!(p.chips[0].label, "not from: bob");
+    }
+
+    #[test]
+    fn chips_in_negated_groups_and_double_negation() {
+        let p = parse_query("-(from:x y)");
+        assert_eq!(p.chips[0].label, "not from: x");
+        let p = parse_query("-(-from:x)");
+        assert_eq!(p.chips[0].label, "from: x");
+        assert_eq!(p.chips[0].start, 2);
+        let p = parse_query("--from:x");
+        assert_eq!(p.chips[0].label, "from: x");
+        assert_eq!((p.chips[0].start, p.chips[0].end), (0, 8));
+    }
+
+    #[test]
+    fn removing_chip_span_leaves_no_stray_minus() {
+        let q = "a --from:x b";
+        let c = &parse_query(q).chips[0];
+        let rest = format!("{}{}", &q[..c.start], &q[c.end..]);
+        assert_eq!(rest, "a  b");
+    }
+
+    #[test]
+    fn blank_phrase_and_quoted_fallback() {
+        let p = parse_query("\" \"");
+        assert_eq!(p.expr, None);
+        assert!(p.terms.is_empty());
+        let p = parse_query("foo:\"a b\"");
+        assert_eq!(p.terms, ["foo:a b"]);
+        let p = parse_query("from:");
+        assert_eq!((p.expr, p.chips.len(), p.terms.len()), (None, 0, 0));
     }
 
     #[test]
