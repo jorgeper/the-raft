@@ -631,18 +631,17 @@ fn install_panic_hook_is_idempotent_and_chains_to_previous_hook() {
     );
 }
 
-/// Many messages share one date; the tied group straddles `MAX_COLLECTED`.
-/// Results must depend only on library content (date desc, thrid desc,
-/// msg id desc), not on index doc order, so a rebuilt library answers
-/// identically to the imported one.
-#[test]
-fn same_date_results_are_deterministic_across_rebuild_and_limit() {
+/// `MAX_COLLECTED + 100` messages sharing one date over 60 threads, plus 20
+/// newer ones. `work(n)` marks tied message `n` with an extra label.
+fn tied_messages(work: impl Fn(usize) -> bool) -> Vec<Vec<u8>> {
     use mail_core::query::exec::MAX_COLLECTED;
-    use std::sync::atomic::AtomicBool;
-
-    let tied = MAX_COLLECTED + 100;
     let mut msgs = Vec::new();
-    for n in 0..tied {
+    for n in 0..MAX_COLLECTED + 100 {
+        let labels: &[&str] = if work(n) {
+            &["Inbox", "Work"]
+        } else {
+            &["Inbox"]
+        };
         msgs.push(
             MsgBuilder::new()
                 .from(&format!("s{}@example.com", n % 7))
@@ -650,7 +649,7 @@ fn same_date_results_are_deterministic_across_rebuild_and_limit() {
                 .date_rfc2822("Mon, 02 Mar 2020 10:00:00 +0000")
                 .message_id(Some(&format!("<t{n}@fixture>")))
                 .thrid(1 + (n as u64 * 7919) % 60)
-                .labels(&["Inbox"])
+                .labels(labels)
                 .text("tied body")
                 .build(),
         );
@@ -668,27 +667,47 @@ fn same_date_results_are_deterministic_across_rebuild_and_limit() {
                 .build(),
         );
     }
-    let dir = TempDir::new().unwrap();
-    let zip = dir.path().join("a.zip");
+    msgs
+}
+
+fn import_msgs(l: &mut Library, dir: &std::path::Path, name: &str, msgs: &[Vec<u8>]) {
+    use std::sync::atomic::AtomicBool;
+    let zip = dir.join(name);
     std::fs::write(
         &zip,
         mail_core::testing::zip_of(
             "Takeout/Mail/All mail Including Spam and Trash.mbox",
-            &mail_core::testing::mbox_of(&msgs),
+            &mail_core::testing::mbox_of(msgs),
         ),
     )
     .unwrap();
-    let mut l = Library::open(&dir.path().join("lib")).unwrap();
     l.import(&[zip], &|_| {}, &AtomicBool::new(false)).unwrap();
+}
 
-    let snapshot = |l: &Library| {
-        l.search("", 0, 10_000, NOW, &utc())
-            .unwrap()
-            .threads
-            .into_iter()
-            .map(|t| (t.thrid, t.latest_date, t.senders, t.matched))
-            .collect::<Vec<_>>()
-    };
+type Snapshot = Vec<(i64, i64, Vec<String>, Vec<i64>)>;
+
+fn snapshot(l: &Library) -> Snapshot {
+    l.search("", 0, 10_000, NOW, &utc())
+        .unwrap()
+        .threads
+        .into_iter()
+        .map(|t| (t.thrid, t.latest_date, t.senders, t.matched))
+        .collect()
+}
+
+/// Many messages share one date; the tied group straddles `MAX_COLLECTED`.
+/// Results must depend only on library content (date desc, thrid desc,
+/// msg id desc), not on index doc order, so a rebuilt library answers
+/// identically to the imported one.
+#[test]
+fn same_date_results_are_deterministic_across_rebuild_and_limit() {
+    use mail_core::query::exec::MAX_COLLECTED;
+    use std::sync::atomic::AtomicBool;
+
+    let msgs = tied_messages(|_| false);
+    let dir = TempDir::new().unwrap();
+    let mut l = Library::open(&dir.path().join("lib")).unwrap();
+    import_msgs(&mut l, dir.path(), "a.zip", &msgs);
     let before = snapshot(&l);
 
     // Thread order: latest_date desc, then thrid desc.
@@ -722,6 +741,35 @@ fn same_date_results_are_deterministic_across_rebuild_and_limit() {
         "tied group cut at the limit must be by thrid, id"
     );
 
-    l.rebuild(&|_| {}, &AtomicBool::new(false)).unwrap();
+    let summary = l.rebuild(&|_| {}, &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        summary.parse_errors, 0,
+        "ids are only stable if nothing is skipped"
+    );
     assert_eq!(snapshot(&l), before, "rebuild changed result order or set");
+}
+
+/// Doc order differs between the two libraries: in B, every third tied
+/// message is relabelled by a second import, which re-adds its document at
+/// the end of the index. Message ids and final content are identical.
+#[test]
+fn same_date_results_ignore_index_doc_order() {
+    let final_msgs = tied_messages(|n| n % 3 == 0);
+    let first_msgs = tied_messages(|_| false);
+
+    let da = TempDir::new().unwrap();
+    let mut a = Library::open(&da.path().join("lib")).unwrap();
+    import_msgs(&mut a, da.path(), "a.zip", &final_msgs);
+
+    let db = TempDir::new().unwrap();
+    let mut b = Library::open(&db.path().join("lib")).unwrap();
+    import_msgs(&mut b, db.path(), "b1.zip", &first_msgs);
+    import_msgs(&mut b, db.path(), "b2.zip", &final_msgs);
+
+    assert_eq!(a.count().unwrap(), b.count().unwrap());
+    assert_eq!(
+        snapshot(&a),
+        snapshot(&b),
+        "doc order leaked into result order or cutoff"
+    );
 }

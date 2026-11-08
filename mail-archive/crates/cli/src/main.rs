@@ -324,6 +324,11 @@ fn cmd_rebuild(lib: &mut Library, cancel: &AtomicBool) -> Result<ExitCode, Error
         fmt_int(s.parse_errors),
         fmt_int(s.inconsistencies)
     );
+    if s.parse_errors > 0 {
+        println!(
+            "Some messages could not be read; message ids and thread order may differ from before the rebuild."
+        );
+    }
     Ok(ExitCode::SUCCESS)
 }
 

@@ -13,11 +13,11 @@ use tantivy::query::{AllQuery, BooleanQuery, Occur, PhraseQuery, Query, RangeQue
 use tantivy::schema::{Field, IndexRecordOption};
 use tantivy::{DocId, Score, SegmentReader, Term as TTerm};
 
-use crate::Result;
 use crate::index::SearchIndex;
 use crate::meta::MsgSummary;
 use crate::model::MsgId;
 use crate::query::{Age, AgeUnit, Chip, Expr, Flag, Hint, Location, Term};
+use crate::{Error, Result};
 
 /// Matching messages kept for thread grouping.
 pub const MAX_COLLECTED: usize = 5_000;
@@ -345,10 +345,23 @@ fn build_term(cx: &Ctx, t: &Term) -> Option<Q> {
 /// order, so they are identical after a rebuild.
 pub fn run(si: &SearchIndex, q: &dyn Query) -> Result<(Vec<Hit>, usize)> {
     let searcher = si.searcher();
+    // Fail loudly on a missing or corrupt sort column instead of keying it as 0.
+    for seg in searcher.segment_readers() {
+        for name in [
+            crate::index::F_DATE,
+            crate::index::F_THRID,
+            crate::index::F_MSG_ID,
+        ] {
+            seg.fast_fields()
+                .i64(name)
+                .map_err(|e| Error::Index(format!("fast field {name}: {e}")))?;
+        }
+    }
     let mut mc = MultiCollector::new();
     let top = mc.add_collector(TopDocs::with_limit(MAX_COLLECTED).tweak_score(
         |seg: &SegmentReader| {
             let ff = seg.fast_fields();
+            // Validated above for every segment; the fallback is unreachable.
             let col = |name: &str| ff.i64(name).ok().map(|c| c.first_or_default_col(0));
             let (date, thrid, msg) = (
                 col(crate::index::F_DATE),
@@ -383,6 +396,11 @@ pub fn run(si: &SearchIndex, q: &dyn Query) -> Result<(Vec<Hit>, usize)> {
 /// Group hits (date desc, thrid desc, msg id desc) by thread. Threads end up
 /// ordered by `latest_date` desc, then `thrid` desc; `matched` keeps hit order.
 pub fn group_threads(hits: &[Hit]) -> Vec<ThreadGroup> {
+    debug_assert!(
+        hits.windows(2)
+            .all(|w| (w[0].date, w[0].thrid, w[0].msg_id) >= (w[1].date, w[1].thrid, w[1].msg_id)),
+        "hits must be sorted by (date, thrid, msg id) desc"
+    );
     let mut pos: HashMap<i64, usize> = HashMap::new();
     let mut out: Vec<ThreadGroup> = Vec::new();
     for h in hits {
@@ -398,6 +416,7 @@ pub fn group_threads(hits: &[Hit]) -> Vec<ThreadGroup> {
             }
         }
     }
+    // Defensive: already implied by the hit order; keeps the contract local.
     out.sort_by_key(|g| std::cmp::Reverse((g.latest_date, g.thrid)));
     out
 }
