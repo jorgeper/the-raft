@@ -232,14 +232,18 @@ fn rewrite(html: &str, msg_id: MsgId, terms: &[Vec<char>]) -> (String, u32) {
             }
 
             if tag == "a" {
+                // The tooltip shows where a link really goes (WKWebView has no
+                // status bar): always the validated href, never the sender's title.
                 match el.get_attribute("href").as_deref().and_then(safe_link) {
                     Some(h) => {
                         el.set_attribute("href", &h)?;
+                        el.set_attribute("title", &h)?;
                         el.set_attribute("target", "_blank")?;
                         el.set_attribute("rel", "noopener noreferrer")?;
                     }
                     None => {
                         el.remove_attribute("href");
+                        el.remove_attribute("title");
                         el.remove_attribute("target");
                         el.remove_attribute("rel");
                     }
@@ -916,7 +920,7 @@ fn linkify_escape(text: &str) -> String {
         if url.len() > "https://".len() {
             let e = escape_attr_and_text(url);
             out.push_str(&format!(
-                "<a href=\"{e}\" target=\"_blank\" rel=\"noopener noreferrer\">{e}</a>"
+                "<a href=\"{e}\" title=\"{e}\" target=\"_blank\" rel=\"noopener noreferrer\">{e}</a>"
             ));
             rest = &tail[end..];
         } else {
@@ -1248,7 +1252,7 @@ mod tests {
             "{}",
             r.html
         );
-        assert!(r.html.contains(r#"<a href="https://example.com/a?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">https://example.com/a?x=1&amp;y=2</a>,"#), "{}", r.html);
+        assert!(r.html.contains(r#"<a href="https://example.com/a?x=1&amp;y=2" title="https://example.com/a?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">https://example.com/a?x=1&amp;y=2</a>,"#), "{}", r.html);
         assert!(r.html.contains(r#"href="http://foo.example/bar""#));
         assert!(r.html.contains("<mark>line2</mark>"));
         assert!(!r.html.contains("<script>"));
@@ -1424,6 +1428,106 @@ mod tests {
             r#"<picture><source srcset="https://e.example/a.webp"></picture><img src="https://e.example/b.png">"#,
         );
         assert_eq!(r.blocked_remote, 2, "{}", r.html);
+    }
+
+    /// Attributes (name, value) of every `<a>` in `out`, in order.
+    fn anchors(out: &str) -> Vec<Vec<(String, String)>> {
+        let found = RefCell::new(Vec::new());
+        rewrite_str(
+            out,
+            RewriteStrSettings::new().append_element_content_handler(element!("a", |el| {
+                let mut attrs: Vec<(String, String)> = el
+                    .attributes()
+                    .iter()
+                    .map(|a| (a.name(), a.value()))
+                    .collect();
+                attrs.sort();
+                found.borrow_mut().push(attrs);
+                Ok(())
+            })),
+        )
+        .unwrap();
+        found.into_inner()
+    }
+
+    fn attr<'a>(a: &'a [(String, String)], name: &str) -> Option<&'a str> {
+        a.iter().find(|(n, _)| n == name).map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn link_title_is_the_real_href_not_the_senders() {
+        let r = render(
+            r#"<a href="https://real.example/x?a=1&b=2" title="https://bank.example/login">Your bank</a><a href="mailto:a@b.example">m</a><a title="https://bank.example/">no link</a>"#,
+        );
+        let a = anchors(&r.html);
+        assert_eq!(a.len(), 3, "{}", r.html);
+        for link in &a[..2] {
+            assert!(attr(link, "href").is_some(), "{}", r.html);
+            assert_eq!(attr(link, "title"), attr(link, "href"), "{}", r.html);
+        }
+        assert!(
+            r.html
+                .contains(r#"title="https://real.example/x?a=1&amp;b=2""#),
+            "{}",
+            r.html
+        );
+        // No link, nothing to show: the sender's claim is dropped too.
+        assert_eq!(attr(&a[2], "title"), None);
+        assert!(!r.html.contains("bank.example"), "{}", r.html);
+    }
+
+    #[test]
+    fn link_title_cannot_break_out_of_its_attribute() {
+        for html in [
+            r#"<a href='https://x.example/"onmouseover="alert(1)'>x</a>"#,
+            r#"<a href="https://x.example/&quot; onmouseover=&quot;alert(1)">x</a>"#,
+            r#"<a href="https://x.example/'><script>alert(1)</script>">x</a>"#,
+            r#"<a href="https://x.example/a&#34;b><img src=x onerror=alert(1)>" title='"><b>x</b>'>x</a>"#,
+        ] {
+            let r = render(html);
+            assert_no_remote(&r.html, html);
+            let a = anchors(&r.html);
+            assert_eq!(a.len(), 1, "{html}: {}", r.html);
+            let names: Vec<&str> = a[0].iter().map(|(n, _)| n.as_str()).collect();
+            assert_eq!(
+                names,
+                ["href", "rel", "target", "title"],
+                "{html}: {}",
+                r.html
+            );
+            assert_eq!(attr(&a[0], "title"), attr(&a[0], "href"), "{html}");
+            assert!(
+                !r.html.contains("<script") && !r.html.contains("<img") && !r.html.contains("<b>"),
+                "{html}: {}",
+                r.html
+            );
+        }
+    }
+
+    #[test]
+    fn plain_text_links_carry_their_url_as_title() {
+        let raw = MsgBuilder::new()
+            .text("go https://e.example/a?x=1&y=2 or https://e.example/it's\"onmouseover=x now")
+            .build();
+        let r = render_body(&raw, 1, &[]);
+        let a = anchors(&r.html);
+        assert_eq!(a.len(), 2, "{}", r.html);
+        for link in &a {
+            assert_eq!(attr(link, "title"), attr(link, "href"), "{}", r.html);
+            let names: Vec<&str> = link.iter().map(|(n, _)| n.as_str()).collect();
+            assert_eq!(names, ["href", "rel", "target", "title"], "{}", r.html);
+        }
+        assert!(
+            r.html
+                .contains(r#"title="https://e.example/a?x=1&amp;y=2""#),
+            "{}",
+            r.html
+        );
+        assert!(
+            r.html.contains(r#"title="https://e.example/it&#39;s""#),
+            "{}",
+            r.html
+        );
     }
 
     #[test]
