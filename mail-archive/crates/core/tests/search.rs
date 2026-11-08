@@ -630,3 +630,98 @@ fn install_panic_hook_is_idempotent_and_chains_to_previous_hook() {
         "hook installed twice or lost the previous one"
     );
 }
+
+/// Many messages share one date; the tied group straddles `MAX_COLLECTED`.
+/// Results must depend only on library content (date desc, thrid desc,
+/// msg id desc), not on index doc order, so a rebuilt library answers
+/// identically to the imported one.
+#[test]
+fn same_date_results_are_deterministic_across_rebuild_and_limit() {
+    use mail_core::query::exec::MAX_COLLECTED;
+    use std::sync::atomic::AtomicBool;
+
+    let tied = MAX_COLLECTED + 100;
+    let mut msgs = Vec::new();
+    for n in 0..tied {
+        msgs.push(
+            MsgBuilder::new()
+                .from(&format!("s{}@example.com", n % 7))
+                .subject(&format!("tied {n}"))
+                .date_rfc2822("Mon, 02 Mar 2020 10:00:00 +0000")
+                .message_id(Some(&format!("<t{n}@fixture>")))
+                .thrid(1 + (n as u64 * 7919) % 60)
+                .labels(&["Inbox"])
+                .text("tied body")
+                .build(),
+        );
+    }
+    for n in 0..20 {
+        msgs.push(
+            MsgBuilder::new()
+                .from("new@example.com")
+                .subject(&format!("newer {n}"))
+                .date_rfc2822("Tue, 03 Mar 2020 10:00:00 +0000")
+                .message_id(Some(&format!("<n{n}@fixture>")))
+                .thrid(100 + n as u64 % 3)
+                .labels(&["Inbox"])
+                .text("newer body")
+                .build(),
+        );
+    }
+    let dir = TempDir::new().unwrap();
+    let zip = dir.path().join("a.zip");
+    std::fs::write(
+        &zip,
+        mail_core::testing::zip_of(
+            "Takeout/Mail/All mail Including Spam and Trash.mbox",
+            &mail_core::testing::mbox_of(&msgs),
+        ),
+    )
+    .unwrap();
+    let mut l = Library::open(&dir.path().join("lib")).unwrap();
+    l.import(&[zip], &|_| {}, &AtomicBool::new(false)).unwrap();
+
+    let snapshot = |l: &Library| {
+        l.search("", 0, 10_000, NOW, &utc())
+            .unwrap()
+            .threads
+            .into_iter()
+            .map(|t| (t.thrid, t.latest_date, t.senders, t.matched))
+            .collect::<Vec<_>>()
+    };
+    let before = snapshot(&l);
+
+    // Thread order: latest_date desc, then thrid desc.
+    for w in before.windows(2) {
+        assert!((w[0].1, w[0].0) > (w[1].1, w[1].0), "thread order");
+    }
+    // Inside a thread: msg id desc (all but the newest group share a date).
+    for t in &before {
+        let dates: Vec<_> = t.3.iter().map(|&id| l.message(id).unwrap().date).collect();
+        assert!(dates.windows(2).all(|d| d[0] >= d[1]), "date desc");
+        for (i, w) in t.3.windows(2).enumerate() {
+            if dates[i] == dates[i + 1] {
+                assert!(w[0] > w[1], "msg id desc within tie");
+            }
+        }
+    }
+    // The kept set is exactly the top MAX_COLLECTED by (date, thrid, id).
+    let mut all: Vec<(i64, i64, i64)> = (1..=msgs.len() as i64)
+        .map(|id| {
+            let r = l.message(id).unwrap();
+            (r.date, r.thrid, id)
+        })
+        .collect();
+    all.sort_by(|a, b| b.cmp(a));
+    let mut want: Vec<i64> = all[..MAX_COLLECTED].iter().map(|k| k.2).collect();
+    let mut got: Vec<i64> = before.iter().flat_map(|t| t.3.clone()).collect();
+    want.sort_unstable();
+    got.sort_unstable();
+    assert_eq!(
+        got, want,
+        "tied group cut at the limit must be by thrid, id"
+    );
+
+    l.rebuild(&|_| {}, &AtomicBool::new(false)).unwrap();
+    assert_eq!(snapshot(&l), before, "rebuild changed result order or set");
+}

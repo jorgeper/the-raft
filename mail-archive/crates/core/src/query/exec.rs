@@ -3,13 +3,15 @@
 
 use std::collections::HashMap;
 use std::ops::Bound;
+use std::sync::Arc;
 
 use chrono::{NaiveDate, TimeZone};
 use serde::Serialize;
 use tantivy::collector::{Count, MultiCollector, TopDocs};
+use tantivy::columnar::ColumnValues;
 use tantivy::query::{AllQuery, BooleanQuery, Occur, PhraseQuery, Query, RangeQuery, TermQuery};
 use tantivy::schema::{Field, IndexRecordOption};
-use tantivy::{Order, Term as TTerm};
+use tantivy::{DocId, Score, SegmentReader, Term as TTerm};
 
 use crate::Result;
 use crate::index::SearchIndex;
@@ -336,45 +338,50 @@ fn build_term(cx: &Ctx, t: &Term) -> Option<Q> {
     }
 }
 
-/// Run `q`: the newest [`MAX_COLLECTED`] matches (date desc) and the full match count.
+/// Run `q`: the newest [`MAX_COLLECTED`] matches and the full match count.
+///
+/// Order is total and independent of index doc order: date desc, then thrid
+/// desc, then msg id desc. Msg ids are unique and are assigned in event-log
+/// order, so they are identical after a rebuild.
 pub fn run(si: &SearchIndex, q: &dyn Query) -> Result<(Vec<Hit>, usize)> {
     let searcher = si.searcher();
     let mut mc = MultiCollector::new();
-    let top = mc.add_collector(
-        TopDocs::with_limit(MAX_COLLECTED)
-            .order_by_fast_field::<i64>(crate::index::F_DATE, Order::Desc),
-    );
+    let top = mc.add_collector(TopDocs::with_limit(MAX_COLLECTED).tweak_score(
+        |seg: &SegmentReader| {
+            let ff = seg.fast_fields();
+            let col = |name: &str| ff.i64(name).ok().map(|c| c.first_or_default_col(0));
+            let (date, thrid, msg) = (
+                col(crate::index::F_DATE),
+                col(crate::index::F_THRID),
+                col(crate::index::F_MSG_ID),
+            );
+            move |doc: DocId, _score: Score| {
+                let get = |c: &Option<_>| {
+                    c.as_ref()
+                        .map_or(0, |c: &Arc<dyn ColumnValues<i64>>| c.get_val(doc))
+                };
+                (get(&date), get(&thrid), get(&msg))
+            }
+        },
+    ));
     let count = mc.add_collector(Count);
     let mut fruit = searcher.search(q, &mc)?;
     let docs = top.extract(&mut fruit);
     let total = count.extract(&mut fruit);
 
-    let mut cols = HashMap::new();
-    let mut hits = Vec::with_capacity(docs.len());
-    for (date, addr) in docs {
-        let seg = addr.segment_ord;
-        if let std::collections::hash_map::Entry::Vacant(v) = cols.entry(seg) {
-            let ff = searcher.segment_reader(seg).fast_fields();
-            v.insert((
-                ff.i64(crate::index::F_MSG_ID)?,
-                ff.i64(crate::index::F_THRID)?,
-            ));
-        }
-        let (msg_col, thr_col) = &cols[&seg];
-        let (Some(msg_id), Some(thrid)) = (msg_col.first(addr.doc_id), thr_col.first(addr.doc_id))
-        else {
-            continue;
-        };
-        hits.push(Hit {
+    let hits = docs
+        .into_iter()
+        .map(|((date, thrid, msg_id), _)| Hit {
             msg_id,
             thrid,
-            date: date.unwrap_or(0),
-        });
-    }
+            date,
+        })
+        .collect();
     Ok((hits, total))
 }
 
-/// Group hits (date desc) by thread, preserving first appearance.
+/// Group hits (date desc, thrid desc, msg id desc) by thread. Threads end up
+/// ordered by `latest_date` desc, then `thrid` desc; `matched` keeps hit order.
 pub fn group_threads(hits: &[Hit]) -> Vec<ThreadGroup> {
     let mut pos: HashMap<i64, usize> = HashMap::new();
     let mut out: Vec<ThreadGroup> = Vec::new();
@@ -391,6 +398,7 @@ pub fn group_threads(hits: &[Hit]) -> Vec<ThreadGroup> {
             }
         }
     }
+    out.sort_by_key(|g| std::cmp::Reverse((g.latest_date, g.thrid)));
     out
 }
 
