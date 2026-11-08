@@ -21,28 +21,55 @@ pub fn cloud_sync_warning(p: &Path) -> Option<&'static str> {
     cloud_sync_warning_in(p, &home_dir())
 }
 
+/// Canonicalize `p`; if it does not exist yet, canonicalize its nearest
+/// existing ancestor and re-append the missing tail.
+fn resolve(p: &Path) -> PathBuf {
+    let mut tail = Vec::new();
+    let mut cur = p;
+    loop {
+        if let Ok(c) = cur.canonicalize() {
+            return tail.iter().rev().fold(c, |acc, n| acc.join(n));
+        }
+        match (cur.parent(), cur.file_name()) {
+            (Some(parent), Some(name)) => {
+                tail.push(name);
+                cur = parent;
+            }
+            _ => return p.to_path_buf(),
+        }
+    }
+}
+
 pub(crate) fn cloud_sync_warning_in(p: &Path, home: &Path) -> Option<&'static str> {
+    // Check the path as given (e.g. `~/dropbox/..`) and with symlinks resolved.
+    let real_home = resolve(home);
+    classify(p, home)
+        .or_else(|| classify(p, &real_home))
+        .or_else(|| classify(&resolve(p), &real_home))
+}
+
+fn classify(p: &Path, home: &Path) -> Option<&'static str> {
     let rel = p.strip_prefix(home).ok()?;
     let mut c = rel.components().map(|c| c.as_os_str().to_string_lossy());
-    let first = c.next()?;
-    let second = c.next();
-    match (first.as_ref(), second.as_deref()) {
-        ("Library", Some("CloudStorage")) => {
-            let provider = c.next().unwrap_or_default();
-            Some(if provider.starts_with("Dropbox") {
+    let first = c.next()?.to_ascii_lowercase();
+    let second = c.next().map(|s| s.to_ascii_lowercase());
+    match (first.as_str(), second.as_deref()) {
+        ("library", Some("cloudstorage")) => {
+            let provider = c.next().unwrap_or_default().to_ascii_lowercase();
+            Some(if provider.starts_with("dropbox") {
                 DROPBOX
-            } else if provider.starts_with("OneDrive") {
+            } else if provider.starts_with("onedrive") {
                 ONEDRIVE
-            } else if provider.starts_with("GoogleDrive") {
+            } else if provider.starts_with("googledrive") {
                 GOOGLE
             } else {
                 GENERIC
             })
         }
-        ("Library", Some("Mobile Documents")) => Some(ICLOUD),
-        ("Dropbox", _) => Some(DROPBOX),
-        ("Google Drive", _) => Some(GOOGLE),
-        ("OneDrive", _) => Some(ONEDRIVE),
+        ("library", Some("mobile documents")) => Some(ICLOUD),
+        ("dropbox", _) => Some(DROPBOX),
+        ("google drive", _) => Some(GOOGLE),
+        ("onedrive", _) => Some(ONEDRIVE),
         _ => None,
     }
 }
@@ -101,6 +128,32 @@ mod tests {
                 .unwrap()
                 .contains("Dropbox")
         );
+    }
+
+    #[test]
+    fn symlink_into_cloud_storage_warned() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path();
+        let target = home.join("Library/CloudStorage/Dropbox-x");
+        std::fs::create_dir_all(&target).unwrap();
+        std::os::unix::fs::symlink(&target, home.join("alias")).unwrap();
+        for p in ["alias", "alias/new/lib"] {
+            let w = cloud_sync_warning_in(&home.join(p), home);
+            assert!(w.unwrap().contains("Dropbox"), "{p}");
+        }
+        std::fs::create_dir_all(home.join("plain")).unwrap();
+        assert!(cloud_sync_warning_in(&home.join("plain/lib"), home).is_none());
+    }
+
+    #[test]
+    fn lowercase_names_warned() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path();
+        assert!(cloud_sync_warning_in(&home.join("dropbox/a"), home).is_some());
+        assert!(
+            cloud_sync_warning_in(&home.join("library/cloudstorage/dropbox-x/a"), home).is_some()
+        );
+        assert!(cloud_sync_warning_in(&home.join("google drive/a"), home).is_some());
     }
 
     #[test]

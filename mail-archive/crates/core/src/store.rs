@@ -4,7 +4,7 @@ use crate::model::MessageRef;
 use crate::paths::{create_private_dir, create_private_file};
 use crate::{Error, Result};
 use std::fs::File;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Seek, SeekFrom};
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 
@@ -63,13 +63,16 @@ impl Store {
         if self.len > 0 && self.len + frame.len() as u64 > self.pack_limit {
             self.file.sync_data()?;
             let id = self.pack_id + 1;
-            self.file = create_private_file(&pack_path(&self.dir, id))?;
-            self.file.seek(SeekFrom::End(0))?;
+            let file = create_private_file(&pack_path(&self.dir, id))?;
+            let len = file.metadata()?.len();
+            self.file = file;
             self.pack_id = id;
-            self.len = 0;
+            self.len = len;
         }
         let offset = self.len;
-        self.file.write_all(&frame)?;
+        // Positional write: a failed or short write never desyncs the cursor
+        // from `self.len`; the next append overwrites any partial bytes.
+        self.file.write_all_at(&frame, offset)?;
         self.len += frame.len() as u64;
         Ok(MessageRef {
             pack_id: self.pack_id,
@@ -179,6 +182,49 @@ mod tests {
         drop(s);
         let mut s = Store::open_with_limit(t.path(), 1 << 20).unwrap();
         assert_eq!(s.append(b"x").unwrap().pack_id, 2);
+    }
+
+    #[test]
+    fn crash_tail_is_skipped_on_reopen() {
+        use std::io::Write;
+        let t = tempfile::tempdir().unwrap();
+        let a = noise(1, 1000);
+        let b = noise(2, 1000);
+        let ra = {
+            let mut s = Store::open(t.path()).unwrap();
+            let r = s.append(&a).unwrap();
+            s.sync().unwrap();
+            r
+        };
+        let pack = t.path().join("store/pack-00000.zst");
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&pack)
+            .unwrap();
+        f.write_all(&[0xAB; 77]).unwrap();
+        let garbage_end = std::fs::metadata(&pack).unwrap().len();
+        let mut s = Store::open(t.path()).unwrap();
+        let rb = s.append(&b).unwrap();
+        assert!(rb.offset >= garbage_end);
+        assert_eq!(s.read(ra).unwrap(), a);
+        assert_eq!(s.read(rb).unwrap(), b);
+    }
+
+    #[test]
+    fn failed_write_does_not_desync_offsets() {
+        use std::io::Write;
+        let t = tempfile::tempdir().unwrap();
+        let mut s = Store::open(t.path()).unwrap();
+        let a = noise(1, 500);
+        let ra = s.append(&a).unwrap();
+        // Simulate a partial write that moved the cursor but not `len`.
+        s.file.seek(SeekFrom::End(0)).unwrap();
+        s.file.write_all(&[0xCD; 33]).unwrap();
+        let b = noise(2, 500);
+        let rb = s.append(&b).unwrap();
+        assert_eq!(rb.offset, ra.offset + ra.length as u64);
+        assert_eq!(s.read(ra).unwrap(), a);
+        assert_eq!(s.read(rb).unwrap(), b);
     }
 
     #[test]
