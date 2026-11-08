@@ -3,6 +3,7 @@
 
 mod commands;
 mod config;
+mod menu;
 mod nav;
 mod protocol;
 
@@ -71,12 +72,15 @@ fn main() {
                 })
                 .on_new_window(move |url, _features| {
                     // A window is never created: external links go to the browser.
-                    if let nav::NavDecision::OpenExternal(u) = nav::route_navigation(&url, &origins) {
+                    if let nav::NavDecision::OpenExternal(u) = nav::route_navigation(&url, &origins)
+                    {
                         nav::open_external(app_win.clone(), u);
                     }
                     NewWindowResponse::Deny
                 })
                 .build()?;
+            app.set_menu(menu::build(app.handle())?)?;
+            app.on_menu_event(|app, event| menu::handle(app, event.id().as_ref()));
             Ok(())
         })
         // The handlers run on the blocking pool, never on the main thread.
@@ -111,6 +115,7 @@ fn main() {
             commands::rebuild_index,
             commands::library_status,
             commands::set_library_path,
+            commands::reveal_library,
         ])
         .build(tauri::generate_context!());
 

@@ -1,10 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { onOpenFailed } from "./lib/api";
+  import { onMenuImport, onMenuRebuild, onOpenFailed } from "./lib/api";
+  import FirstRun from "./components/FirstRun.svelte";
+  import ImportDialog from "./components/ImportDialog.svelte";
+  import OpenError from "./components/OpenError.svelte";
+  import RebuildDialog from "./components/RebuildDialog.svelte";
   import ReadingPane from "./components/ReadingPane.svelte";
   import ResultsList from "./components/ResultsList.svelte";
   import SearchBox from "./components/SearchBox.svelte";
   import { copyText } from "./lib/format";
+  import { refreshStatus } from "./lib/refresh";
   import { handleKey, type KeyTarget } from "./lib/keys";
   import { store } from "./lib/store.svelte";
   import { clearThreadCache, prefetchThread } from "./lib/threads";
@@ -13,15 +18,44 @@
   let linkNote = $state(false);
   let linkTimer: ReturnType<typeof setTimeout> | undefined;
 
+  // First run: the library is not configured yet. Stays up until mail has been imported.
+  let onboarding = $state(false);
+  let showImport = $state(false);
+  let showRebuild = $state<"confirm" | "now" | null>(null);
+
+  const status = $derived(store.status);
+  const openError = $derived(status?.configured ? status.open_error : null);
+  const ready = $derived(status !== null && status.configured && !status.open_error && !onboarding);
+  const modalOpen = $derived(showImport || showRebuild !== null);
+
+  let decided = false;
+  $effect(() => {
+    if (!status) return;
+    if (!decided) {
+      decided = true;
+      onboarding = !status.configured;
+    } else if (onboarding && status.message_count > 0) {
+      onboarding = false;
+    }
+  });
+
   onMount(() => {
+    void refreshStatus();
     const un = onOpenFailed(() => {
       linkNote = true;
       clearTimeout(linkTimer);
       linkTimer = setTimeout(() => (linkNote = false), 4000);
     });
+    // Menu items only act on the normal screen, and never on top of another dialog.
+    const unImport = onMenuImport(() => {
+      if (ready && !modalOpen) showImport = true;
+    });
+    const unRebuild = onMenuRebuild(() => {
+      if (ready && !modalOpen) showRebuild = "confirm";
+    });
     return () => {
       clearTimeout(linkTimer);
-      void un.then((f) => f());
+      for (const u of [un, unImport, unRebuild]) void u.then((f) => f());
     };
   });
   let list: ResultsList | undefined = $state();
@@ -67,7 +101,7 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
-    if (e.defaultPrevented || e.isComposing) return;
+    if (e.defaultPrevented || e.isComposing || modalOpen) return;
     const action = handleKey(
       { key: e.key, metaKey: e.metaKey, target: targetOf(document.activeElement) },
       { selected, count: threads.length, query: store.query },
@@ -102,19 +136,43 @@
 
 <svelte:window {onkeydown} />
 
-<div class="app">
-  <header class="search-region"><SearchBox /></header>
-  {#if linkNote}<p class="toast" role="status">Could not open the link.</p>{/if}
-  <!-- Results on screen are out of date while the library is busy or the last search failed. -->
-  <div class="panes" class:stale={store.busy || store.error !== null}>
-    <section id="results-region" class="results-region" aria-label="Results">
-      <ResultsList bind:this={list} {selected} onselect={(i) => (selected = i)} />
-    </section>
-    <section id="reading-pane-region" class="reading-region" aria-label="Reading pane">
-      <ReadingPane bind:this={pane} {thread} {terms} />
-    </section>
+{#if ready}
+  <div class="app">
+    <header class="search-region"><SearchBox /></header>
+    {#if status?.needs_rebuild}
+      <p class="banner" role="status">
+        Search index needs rebuilding
+        <button onclick={() => (showRebuild = "now")} disabled={showRebuild !== null}>Rebuild Index</button>
+      </p>
+    {/if}
+    {#if linkNote}<p class="toast" role="status">Could not open the link.</p>{/if}
+    <!-- Results on screen are out of date while the library is busy or the last search failed. -->
+    <div class="panes" class:stale={store.busy || store.error !== null}>
+      <section id="results-region" class="results-region" aria-label="Results">
+        <ResultsList bind:this={list} {selected} onselect={(i) => (selected = i)} />
+      </section>
+      <section id="reading-pane-region" class="reading-region" aria-label="Reading pane">
+        <ReadingPane bind:this={pane} {thread} {terms} />
+      </section>
+    </div>
   </div>
-</div>
+{:else if status && onboarding}
+  <FirstRun path={status.path} onimport={() => (showImport = true)} />
+{:else if status && openError}
+  <OpenError path={status.path} reason={openError} />
+{:else if store.statusError && !status}
+  <main class="status-error">
+    <p role="alert">{store.statusError}</p>
+    <button onclick={() => void refreshStatus()}>Try again</button>
+  </main>
+{/if}
+
+{#if showImport}
+  <ImportDialog onclose={() => { showImport = false; void refreshStatus(); }} />
+{/if}
+{#if showRebuild}
+  <RebuildDialog confirm={showRebuild === "confirm"} onclose={() => (showRebuild = null)} />
+{/if}
 
 <style>
   :global(:root) {
@@ -182,6 +240,28 @@
     color: var(--muted);
     background: var(--panel);
     border-bottom: 1px solid var(--border);
+  }
+  .banner {
+    margin: 0;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 170, 0, 0.18);
+    border-bottom: 1px solid var(--border);
+  }
+  .banner button {
+    font: inherit;
+    padding: 2px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--fg);
+  }
+  .status-error {
+    max-width: 520px;
+    margin: 12vh auto 0;
+    padding: 0 24px;
   }
   .panes.stale {
     opacity: 0.5;

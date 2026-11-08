@@ -128,3 +128,8 @@ export const onProgress = (cb: (p: Progress) => void): Promise<UnlistenFn> =>
   listen<Progress>("progress", (e) => cb(e.payload));
 /** Fired when handing a link to the default browser failed. */
 export const onOpenFailed = (cb: () => void): Promise<UnlistenFn> => listen("open-failed", () => cb());
+/** Reveal the library folder in Finder. */
+export const revealLibrary = () => invoke<void>("reveal_library", {});
+/** Menu events from the native menu bar (see src-tauri/src/menu.rs). */
+export const onMenuImport = (cb: () => void): Promise<UnlistenFn> => listen("menu-import-takeout", () => cb());
+export const onMenuRebuild = (cb: () => void): Promise<UnlistenFn> => listen("menu-rebuild-index", () => cb());

@@ -243,11 +243,20 @@ impl AppState {
     }
 
     pub fn set_library(&self, path: &str) -> Result<Option<String>, String> {
+        self.set_library_with(path, &mail_core::paths::cloud_sync_warning)
+    }
+
+    /// `set_library` with the cloud-sync check injected (tests pick the home).
+    pub fn set_library_with(
+        &self,
+        path: &str,
+        warn: &dyn Fn(&Path) -> Option<&'static str>,
+    ) -> Result<Option<String>, String> {
         let dir = PathBuf::from(path);
         if !dir.is_absolute() {
             return Err("the library path must be absolute".to_string());
         }
-        let warning = mail_core::paths::cloud_sync_warning(&dir).map(str::to_string);
+        let warning = warn(&dir).map(str::to_string);
         {
             let mut g = lock(&self.0.lib);
             if g.as_ref().is_none_or(|l| l.dir() != dir) {
@@ -267,6 +276,31 @@ impl AppState {
         .save_to(&self.0.config_path)
         .map_err(|_| "could not save settings".to_string())?;
         Ok(warning)
+    }
+}
+
+impl AppState {
+    /// Reveal the configured library folder through `run`. Reads the config,
+    /// not the library lock, so it works during an import.
+    pub fn reveal_library_with(
+        &self,
+        run: &dyn Fn(&Path) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let dir = Config::load_from(&self.0.config_path)
+            .library_path
+            .ok_or_else(|| NOT_OPEN.to_string())?;
+        if !dir.is_dir() {
+            return Err("library folder not found".to_string());
+        }
+        run(&dir)
+    }
+}
+
+/// `/usr/bin/open -R <dir>` with the folder as one argument, never via a shell.
+pub fn run_reveal(dir: &Path) -> Result<(), String> {
+    match Command::new("/usr/bin/open").arg("-R").arg(dir).status() {
+        Ok(s) if s.success() => Ok(()),
+        _ => Err("could not open".to_string()),
     }
 }
 
@@ -685,6 +719,12 @@ pub async fn set_library_path(
     blocking(move || st.set_library(&path)).await
 }
 
+#[tauri::command]
+pub async fn reveal_library(state: State<'_, AppState>) -> Result<(), String> {
+    let st = state.inner().clone();
+    blocking(move || st.reveal_library_with(&run_reveal)).await
+}
+
 /// Test helpers shared with protocol tests.
 #[cfg(test)]
 pub mod test_support {
@@ -1057,5 +1097,121 @@ mod tests {
         assert!(st.0.cancel.load(Ordering::SeqCst));
         drop(held);
         t.join().unwrap();
+    }
+
+    #[test]
+    fn set_library_path_warns_for_dropbox() {
+        let d = tempfile::tempdir().unwrap();
+        let home = d.path().join("home");
+        let st = test_support::unconfigured(d.path());
+        let lib_dir = home.join("Library/CloudStorage/Dropbox-test/lib");
+        let warn = |p: &Path| mail_core::paths::cloud_sync_warning_in(p, &home);
+        let w = st
+            .set_library_with(lib_dir.to_str().unwrap(), &warn)
+            .unwrap();
+        assert!(w.unwrap().contains("Dropbox"));
+        assert_eq!(
+            Config::load_from(&d.path().join("config.json")).library_path,
+            Some(lib_dir)
+        );
+        // A path outside any synced folder gives no warning.
+        let plain = d.path().join("plain");
+        assert!(
+            st.set_library_with(plain.to_str().unwrap(), &warn)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn reveal_library_runs_open_on_the_configured_folder() {
+        use std::cell::RefCell;
+        let d = tempfile::tempdir().unwrap();
+        let st = test_support::unconfigured(d.path());
+        let seen = RefCell::new(Vec::new());
+        let fake = |p: &Path| {
+            seen.borrow_mut().push(p.to_path_buf());
+            Ok(())
+        };
+        // Nothing configured yet: the runner is never called.
+        assert_eq!(
+            st.reveal_library_with(&fake).unwrap_err(),
+            "library not open"
+        );
+        let lib_dir = d.path().join("lib");
+        st.set_library(lib_dir.to_str().unwrap()).unwrap();
+        st.reveal_library_with(&fake).unwrap();
+        assert_eq!(*seen.borrow(), vec![lib_dir.clone()]);
+        // A runner failure is passed through; a missing folder never reaches it.
+        assert_eq!(
+            st.reveal_library_with(&|_| Err("could not open".to_string()))
+                .unwrap_err(),
+            "could not open"
+        );
+        std::fs::remove_dir_all(&lib_dir).unwrap();
+        assert!(st.reveal_library_with(&fake).is_err());
+        assert_eq!(seen.borrow().len(), 1);
+    }
+
+    /// The whole first-run path at the command layer: choose a library, scan a
+    /// Takeout-shaped zip, apply, search, and see a re-scan find nothing new.
+    #[test]
+    fn first_run_import_search_and_rescan() {
+        let d = tempfile::tempdir().unwrap();
+        let st = test_support::unconfigured(d.path());
+        st.set_library(d.path().join("lib").to_str().unwrap())
+            .unwrap();
+
+        let msgs = [
+            MsgBuilder::new()
+                .from("ana@example.com")
+                .subject("Quarterly zebra report")
+                .thrid(11)
+                .labels(&["Inbox"])
+                .date_rfc2822("Mon, 01 Jun 2020 10:00:00 +0000")
+                .message_id(Some("<z1@x>"))
+                .text("numbers inside")
+                .build(),
+            MsgBuilder::new()
+                .from("bo@example.com")
+                .subject("Lunch plans")
+                .thrid(12)
+                .labels(&["Inbox", "Friends"])
+                .date_rfc2822("Tue, 02 Jun 2020 10:00:00 +0000")
+                .message_id(Some("<l1@x>"))
+                .text("noodles")
+                .build(),
+        ];
+        let zip = d.path().join("takeout.zip");
+        std::fs::write(
+            &zip,
+            mail_core::testing::zip_of(
+                "Takeout/Mail/All mail Including Spam and Trash.mbox",
+                &mail_core::testing::mbox_of(&msgs),
+            ),
+        )
+        .unwrap();
+
+        let report = st.scan(std::slice::from_ref(&zip), &|_| {}).unwrap();
+        assert_eq!(report["new"], 2);
+        assert_eq!(report["unchanged"], 0);
+        let summary = st.apply_pending(&|_| {}).unwrap();
+        assert_eq!(summary.added, 2);
+        assert_eq!(st.status().unwrap().message_count, 2);
+
+        let find = |q: &str| {
+            st.with_lib(|l| l.search(q, 0, 50, 1_800_000_000, &chrono::Utc))
+                .unwrap()
+        };
+        let hit = find("zebra");
+        assert_eq!(hit.total_messages, 1);
+        assert_eq!(hit.threads[0].subject, "Quarterly zebra report");
+        assert_eq!(find("label:friends").total_messages, 1);
+        assert_eq!(find("").total_messages, 2);
+
+        let again = st.scan(&[zip], &|_| {}).unwrap();
+        assert_eq!(again["new"], 0);
+        assert_eq!(again["unchanged"], 2);
+        assert_eq!(again["label_changes"], 0);
     }
 }

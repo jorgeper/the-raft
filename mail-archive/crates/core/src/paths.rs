@@ -40,7 +40,8 @@ fn resolve(p: &Path) -> PathBuf {
     }
 }
 
-pub(crate) fn cloud_sync_warning_in(p: &Path, home: &Path) -> Option<&'static str> {
+/// Like [`cloud_sync_warning`] with an explicit home directory (for tests).
+pub fn cloud_sync_warning_in(p: &Path, home: &Path) -> Option<&'static str> {
     // Check the path as given (e.g. `~/dropbox/..`) and with symlinks resolved.
     let real_home = resolve(home);
     classify(p, home)

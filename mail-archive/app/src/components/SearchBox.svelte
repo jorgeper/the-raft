@@ -21,6 +21,7 @@
   // response that arrives late is dropped.
   $effect(() => {
     const q = store.query;
+    void store.refresh; // re-run the same query after an import or rebuild
     const timer = setTimeout(() => void runSearch(q), DEBOUNCE_MS);
     return () => clearTimeout(timer);
   });

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./lib/api", async (orig) => {
   const real = await orig<typeof import("./lib/api")>();
-  return { ...real, search: vi.fn().mockResolvedValue({}), autocomplete: vi.fn(), getThread: vi.fn(), onOpenFailed: vi.fn().mockResolvedValue(() => {}) };
+  return { ...real, search: vi.fn().mockResolvedValue({}), autocomplete: vi.fn(), getThread: vi.fn(), onOpenFailed: vi.fn().mockResolvedValue(() => {}), libraryStatus: vi.fn(), onMenuImport: vi.fn().mockResolvedValue(() => {}), onMenuRebuild: vi.fn().mockResolvedValue(() => {}) };
 });
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
 
@@ -14,8 +14,16 @@ import App from "./App.svelte";
 import { store } from "./lib/store.svelte";
 import { clearThreadCache } from "./lib/threads";
 
+const READY = { path: "/lib", configured: true, message_count: 10, needs_rebuild: false, open_error: null };
+
+beforeEach(() => {
+  store.status = { ...READY };
+  vi.mocked(api.libraryStatus).mockResolvedValue({ ...READY });
+});
+
 afterEach(() => {
   cleanup();
+  store.status = null;
   store.busy = false;
   store.error = null;
   store.results = null;
