@@ -161,6 +161,14 @@ impl AppState {
         f(lib).map_err(|e| err_text(&e))
     }
 
+    /// Like `with_lib`, but never waits: "library is busy" while an import,
+    /// scan or rebuild holds the lock (the UI shows that and retries).
+    fn with_lib_now<T>(&self, f: impl FnOnce(&Library) -> Result<T, Error>) -> Result<T, String> {
+        let g = self.lib_guard(false).map_err(|_| BUSY.to_string())?;
+        let lib = g.as_ref().ok_or_else(|| NOT_OPEN.to_string())?;
+        f(lib).map_err(|e| err_text(&e))
+    }
+
     fn with_lib_mut<T>(
         &self,
         f: impl FnOnce(&mut Library) -> Result<T, Error>,
@@ -395,7 +403,7 @@ impl AppState {
         now: i64,
         tz: &Tz,
     ) -> Result<SearchResults, String> {
-        self.with_lib(|l| l.search(q, offset, limit, now, tz))
+        self.with_lib_now(|l| l.search(q, offset, limit, now, tz))
     }
 
     /// The `get_thread` command: every message of the thread, oldest first.
@@ -407,7 +415,7 @@ impl AppState {
         // between makes our cache inserts stale, and `put` drops them.
         let generation = self.cache().generation();
         // Collect rows and raw bytes under the lock, then render without it.
-        let rows: Vec<(MessageRow, Vec<u8>)> = self.with_lib(|l| {
+        let rows: Vec<(MessageRow, Vec<u8>)> = self.with_lib_now(|l| {
             l.thread(thrid)?
                 .into_iter()
                 .map(|r| l.raw(r.id).map(|raw| (r, raw)))
@@ -436,7 +444,7 @@ impl AppState {
 
     /// The `autocomplete` command.
     pub fn autocomplete(&self, kind: SuggestKind, prefix: &str) -> Result<Vec<String>, String> {
-        self.with_lib(|l| l.autocomplete(kind, prefix))
+        self.with_lib_now(|l| l.autocomplete(kind, prefix))
     }
 }
 
@@ -1153,6 +1161,38 @@ mod tests {
         drop(held);
         assert!(st.raw(ids[0], false).is_ok());
         assert_eq!(st.raw(9999, false).unwrap_err(), Fetch::NotFound);
+    }
+
+    /// The read commands never queue behind an import or rebuild: they fail
+    /// at once with the text the UI retries on.
+    #[test]
+    fn read_commands_fail_fast_with_busy_while_the_library_is_held() {
+        let (st, _ids, _d) = test_support::state_with(&[one_msg()]);
+        let held = test_support::hold_lib_lock(&st);
+        let st2 = st.clone();
+        let t = std::thread::spawn(move || {
+            let start = std::time::Instant::now();
+            let results = [
+                st2.search("", 0, 10, 0, &chrono::Utc).err(),
+                st2.thread("1", &[]).err(),
+                st2.autocomplete(SuggestKind::Label, "").err(),
+            ];
+            (results, start.elapsed())
+        });
+        // Give a waiting implementation every chance to block, then release.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while !t.is_finished() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        drop(held);
+        let (results, elapsed) = t.join().unwrap();
+        for r in results {
+            assert_eq!(r.as_deref(), Some(BUSY));
+        }
+        assert!(elapsed < std::time::Duration::from_secs(1), "{elapsed:?}");
+        // Free again: they work.
+        assert!(st.search("", 0, 10, 0, &chrono::Utc).is_ok());
+        assert!(st.autocomplete(SuggestKind::Label, "").is_ok());
     }
 
     #[test]
