@@ -381,6 +381,13 @@ impl IndexWriterHandle {
         Ok(())
     }
 
+    /// Finish: wait for background segment merges, so nothing writes into the
+    /// index directory afterwards. Call after the last `commit`.
+    pub fn close(self) -> Result<()> {
+        self.writer.wait_merging_threads()?;
+        Ok(())
+    }
+
     /// Commit and make the result visible to `SearchIndex::searcher`.
     pub fn commit(&mut self) -> Result<()> {
         self.writer.commit()?;

@@ -34,7 +34,7 @@ use crate::index::{IndexDoc, IndexWriterHandle};
 use crate::library::{Library, Parts};
 use crate::mbox::MboxReader;
 use crate::meta::{ImportStatus, MessageRow, MetaDb};
-use crate::model::{ImportKind, MsgId, RawMessage};
+use crate::model::{DedupeKeys, ImportKind, MessageRef, MsgId, ParsedMessage, RawMessage};
 use crate::store::Store;
 use crate::{Error, Result};
 
@@ -217,13 +217,6 @@ fn unix_now() -> i64 {
         .map_or(0, |d| d.as_secs() as i64)
 }
 
-/// One past the highest import id in the event log or SQLite.
-fn next_import_id(p: &mut Parts<'_>) -> Result<u64> {
-    let log = p.events.last_event()?.map_or(0, |e| e.import_id());
-    let db = p.meta.latest_import()?.map_or(0, |(id, _, _)| id);
-    Ok(log.max(db) + 1)
-}
-
 fn apply_inner(
     lib: &mut Library,
     report: &ScanReport,
@@ -242,8 +235,8 @@ fn apply_inner(
     let bytes_read = source.bytes_read.clone();
     let total_bytes = source.total_bytes;
 
-    let mut parts = lib.parts();
-    let import_id = next_import_id(&mut parts)?;
+    let import_id = lib.next_import_id()?;
+    let parts = lib.parts();
     let Parts {
         store,
         events,
@@ -322,10 +315,7 @@ fn apply_inner(
                                 msg_ref,
                                 labels: p.labels.clone(),
                             })?;
-                            let id = meta.insert_message(&p, &keys, msg_ref, import_id)?;
-                            let thrid = meta.thrid_of(id)?;
-                            writer
-                                .upsert(&IndexDoc::from_parsed(id, thrid, import_id, &p, false))?;
+                            insert_and_index(meta, &mut writer, &p, &keys, msg_ref, import_id)?;
                             added += 1;
                             pending += 1;
                             #[cfg(any(test, feature = "testing"))]
@@ -396,7 +386,7 @@ fn apply_inner(
     emit("finalize", pos as u64, true, &mut last_emit);
     reindex(meta, store, &mut writer, &touched, opts.parse_batch)?;
     writer.commit()?;
-    drop(writer);
+    writer.close()?;
     #[cfg(any(test, feature = "testing"))]
     opts.crash_at(CrashPoint::Finalizing)?;
 
@@ -422,10 +412,27 @@ fn apply_inner(
     })
 }
 
+/// Insert a newly added message into SQLite and the index. Shared by import
+/// and rebuild so both derive the thread id (Gmail's, else the root message's,
+/// else synthetic) and the index document identically.
+pub(crate) fn insert_and_index(
+    meta: &MetaDb,
+    writer: &mut IndexWriterHandle,
+    p: &ParsedMessage,
+    keys: &DedupeKeys,
+    msg_ref: MessageRef,
+    import_id: u64,
+) -> Result<MsgId> {
+    let id = meta.insert_message(p, keys, msg_ref, import_id)?;
+    let thrid = meta.thrid_of(id)?;
+    writer.upsert(&IndexDoc::from_parsed(id, thrid, import_id, p, false))?;
+    Ok(id)
+}
+
 /// Re-index existing messages from their stored bytes, taking labels,
 /// removed flag, thread id, date and import id from SQLite. Batches are
 /// capped like parse batches (message count and raw bytes).
-fn reindex(
+pub(crate) fn reindex(
     meta: &MetaDb,
     store: &Store,
     writer: &mut IndexWriterHandle,
@@ -487,16 +494,27 @@ pub(crate) fn recover(lib: &mut Library) -> Result<()> {
     let mut rebuild = false;
     {
         let p = lib.parts();
+        let tail = p.events.last_event()?;
         let tail_closed = matches!(
-            p.events.last_event()?,
+            tail,
             None | Some(Event::ImportCompleted { .. } | Event::ImportRolledBack { .. })
         );
         let rows = p.meta.incomplete_imports()?;
-        if tail_closed && rows.is_empty() {
+        // Cheap check of the newest completed import: SQLite lost its row
+        // (deleted or replaced database), so the caches are stale.
+        if let Some(Event::ImportCompleted { import_id, .. }) = &tail
+            && p.meta.import_status(*import_id)?.is_none()
+        {
+            rebuild = true;
+        }
+        if tail_closed && rows.is_empty() && !rebuild {
             return Ok(());
         }
         let states = import_states(&log_path)?;
         for (&x, &st) in &states {
+            if st == LogState::Completed && p.meta.import_status(x)?.is_none() {
+                rebuild = true;
+            }
             if st != LogState::Open {
                 continue;
             }

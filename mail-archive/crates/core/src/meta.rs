@@ -240,6 +240,14 @@ const ROW_COLS: &str = "id, content_key, header_key, message_id, thrid, date, fr
     first_seen_import, last_seen_import, removed";
 
 impl MetaDb {
+    /// An empty in-memory database without schema, standing in for a closed
+    /// one while the real file is swapped.
+    pub(crate) fn placeholder() -> Result<MetaDb> {
+        Ok(MetaDb {
+            conn: Connection::open_in_memory()?,
+        })
+    }
+
     pub fn open(path: &Path) -> Result<MetaDb> {
         if !path.exists() {
             paths::create_private_file(path)?;

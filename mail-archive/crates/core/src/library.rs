@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
-use crate::events::EventLog;
+use crate::events::{EventLog, import_states};
 use crate::import::apply::{self, ImportSummary};
 use crate::import::scan::{self, Progress};
 use crate::index::{OpenedIndex, SearchIndex};
@@ -49,6 +49,8 @@ pub struct Library {
     meta: MetaDb,
     index: SearchIndex,
     index_was_rebuilt: bool,
+    /// Highest import id seen in the log or SQLite; ids are never reused.
+    max_import_id: Option<u64>,
 }
 
 impl Library {
@@ -61,6 +63,7 @@ impl Library {
             std::fs::TryLockError::WouldBlock => Error::LibraryInUse,
             std::fs::TryLockError::Error(e) => Error::Io(e),
         })?;
+        crate::rebuild::recover_swap(dir)?;
         let store = Store::open(dir)?;
         let events = EventLog::open(&dir.join(EVENTS_FILE))?;
         let meta = MetaDb::open(&dir.join("meta.sqlite"))?;
@@ -76,6 +79,7 @@ impl Library {
             meta,
             index,
             index_was_rebuilt,
+            max_import_id: None,
         };
         lib.recover_incomplete_import()?;
         Ok(lib)
@@ -96,6 +100,54 @@ impl Library {
     ) -> Result<ImportSummary> {
         let report = scan::scan(self, paths, progress, cancel)?;
         apply::apply(self, &report, progress, cancel)
+    }
+
+    /// A fresh import id: one past the highest id in the whole event log
+    /// (rolled-back and incomplete imports included) and in SQLite. The log is
+    /// scanned once per session; later calls use the remembered maximum.
+    pub(crate) fn next_import_id(&mut self) -> Result<u64> {
+        let max = match self.max_import_id {
+            Some(m) => m,
+            None => {
+                let log = import_states(&self.events_path())?
+                    .keys()
+                    .next_back()
+                    .copied()
+                    .unwrap_or(0);
+                let db = self.meta.latest_import()?.map_or(0, |(id, _, _)| id);
+                log.max(db)
+            }
+        };
+        self.max_import_id = Some(max + 1);
+        Ok(max + 1)
+    }
+
+    /// Rebuild SQLite and the search index from the store and event log,
+    /// then reopen them. See [`crate::rebuild`]. On cancel or error the old
+    /// ones stay live.
+    pub fn rebuild(&mut self, progress: &dyn Fn(Progress), cancel: &AtomicBool) -> Result<()> {
+        crate::rebuild::build(&self.dir, &self.store, progress, cancel)?;
+        // Point of no return: close our SQLite handle so its files can move.
+        self.meta = MetaDb::placeholder()?;
+        let swapped = crate::rebuild::swap(&self.dir);
+        // Reopen whatever is live now (new on success, old after a rollback).
+        let reopened = self.reopen_caches();
+        swapped?;
+        reopened?;
+        crate::rebuild::clear_needs_rebuild(&self.dir)?;
+        self.max_import_id = None;
+        Ok(())
+    }
+
+    fn reopen_caches(&mut self) -> Result<()> {
+        self.meta = MetaDb::open(&self.dir.join("meta.sqlite"))?;
+        let (index, rebuilt) = match SearchIndex::open_or_create(&self.dir.join("index"))? {
+            OpenedIndex::Ready(i) => (i, false),
+            OpenedIndex::NeedsRebuild(i) => (i, true),
+        };
+        self.index = index;
+        self.index_was_rebuilt = rebuilt;
+        Ok(())
     }
 
     pub(crate) fn events_path(&self) -> PathBuf {

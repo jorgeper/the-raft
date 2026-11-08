@@ -254,6 +254,15 @@ pub fn import_states(path: &Path) -> Result<BTreeMap<u64, LogState>> {
 }
 
 fn for_each_event(path: &Path, mut f: impl FnMut(Event)) -> Result<()> {
+    try_for_each_event(path, |e| {
+        f(e);
+        Ok(())
+    })
+}
+
+/// Stream the events of the log in order (same validity rules as
+/// [`read_events`]) without collecting them. `f` may stop the walk with an error.
+pub fn try_for_each_event(path: &Path, mut f: impl FnMut(Event) -> Result<()>) -> Result<()> {
     let mut reader = BufReader::new(File::open(path)?);
     let mut buf = Vec::new();
     let mut lineno = 0usize;
@@ -271,7 +280,7 @@ fn for_each_event(path: &Path, mut f: impl FnMut(Event)) -> Result<()> {
             continue;
         }
         match serde_json::from_slice::<Event>(body) {
-            Ok(e) => f(e),
+            Ok(e) => f(e)?,
             Err(err) => {
                 // Last line = nothing follows it in the file.
                 if reader.fill_buf()?.is_empty() {
