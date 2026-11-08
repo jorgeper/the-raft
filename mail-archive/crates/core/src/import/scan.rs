@@ -1,9 +1,11 @@
 //! Read-only diff of an import source against the library: classify every
 //! source message as new, relabelled, unchanged or skipped.
 
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
+use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -75,7 +77,28 @@ struct Keyed {
     date: i64,
 }
 
+thread_local! {
+    static IN_PARSE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Replace panic output from inside message parsing (which can quote message
+/// text) with a fixed line; everything else goes to the previous hook.
+fn install_panic_hook() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if IN_PARSE.with(Cell::get) {
+                eprintln!("mail-archive: message parser panicked (message skipped)");
+            } else {
+                prev(info);
+            }
+        }));
+    });
+}
+
 fn parse_keyed(raw: &RawMessage) -> Option<Keyed> {
+    IN_PARSE.with(|f| f.set(true));
     let parsed = catch_unwind(AssertUnwindSafe(|| {
         let parsed = parse_message(raw).ok()?;
         let keys = dedupe_keys(raw, &parsed);
@@ -86,6 +109,7 @@ fn parse_keyed(raw: &RawMessage) -> Option<Keyed> {
             date: parsed.date,
         })
     }));
+    IN_PARSE.with(|f| f.set(false));
     parsed.ok().flatten()
 }
 
@@ -95,6 +119,7 @@ pub fn scan(
     progress: &dyn Fn(Progress),
     cancel: &AtomicBool,
 ) -> Result<ScanReport> {
+    install_panic_hook();
     let source = open_source(paths)?;
     let kind = source.kind;
     let ki = lib.meta().key_index()?;
@@ -206,7 +231,9 @@ pub fn scan(
 
     let looks_older =
         matches!((latest, newest), (Some(lib), Some(src)) if library_count > 0 && src < lib);
-    if looks_older {
+    // A source with nothing parseable must also never plan to remove the library.
+    let suppress = looks_older || newest.is_none();
+    if suppress {
         for d in &mut decisions {
             if matches!(d, Decision::Relabel(_)) {
                 *d = Decision::Unchanged;
@@ -217,7 +244,7 @@ pub fn scan(
     }
 
     let mut removed: Vec<MsgId> = Vec::new();
-    if kind == ImportKind::Full && !looks_older {
+    if kind == ImportKind::Full && !suppress {
         removed = ki
             .by_content
             .values()

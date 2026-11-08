@@ -272,15 +272,224 @@ fn progress_reports_bytes() {
     let p = write_full_mbox(dir.path(), &msgs(1..=3));
     let size = std::fs::metadata(&p).unwrap().len();
     let last = AtomicU64::new(0);
+    let bytes = std::sync::Mutex::new(Vec::new());
     scan(
         &lib,
         &[p],
         &|pr| {
             assert_eq!(pr.total_bytes, Some(size));
             last.store(pr.processed, Ordering::Relaxed);
+            bytes.lock().unwrap().push(pr.bytes);
         },
         &AtomicBool::new(false),
     )
     .unwrap();
     assert_eq!(last.load(Ordering::Relaxed), 3);
+    let bytes = bytes.into_inner().unwrap();
+    assert!(bytes.windows(2).all(|w| w[0] <= w[1]));
+    assert!(*bytes.last().unwrap() > 0);
+}
+
+#[test]
+fn empty_full_source_never_removes() {
+    let dir = TempDir::new().unwrap();
+    let lib = lib_with(&dir, &msgs(1..=3));
+    let p = write_full_mbox(dir.path(), &[b"\x00\x01 garbage".to_vec()]);
+    let r = run(&lib, &p);
+    assert_eq!((r.parse_errors, r.removed), (1, 0));
+    assert!(r.plan.removed.is_empty());
+    let p = write_full_mbox(dir.path(), &[]);
+    let r = run(&lib, &p);
+    assert_eq!((r.total, r.removed), (0, 0));
+    assert!(r.plan.removed.is_empty());
+}
+
+fn u16le(v: &mut Vec<u8>, x: u16) {
+    v.extend_from_slice(&x.to_le_bytes());
+}
+fn u32le(v: &mut Vec<u8>, x: u32) {
+    v.extend_from_slice(&x.to_le_bytes());
+}
+fn u64le(v: &mut Vec<u8>, x: u64) {
+    v.extend_from_slice(&x.to_le_bytes());
+}
+
+/// Takeout-shaped zip: zip64 deflate entry with a data descriptor, differing
+/// local/central extra fields, then a second entry. Returns (zip, compressed
+/// length of the first entry's data).
+fn takeout_shaped_zip(mbox: &[u8]) -> (Vec<u8>, usize) {
+    use std::io::Write;
+    let mut enc = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(mbox).unwrap();
+    let comp = enc.finish().unwrap();
+    let crc = crc32fast::hash(mbox);
+    let name = format!("Takeout/Mail/{FULL}").into_bytes();
+    let mut z = Vec::new();
+    u32le(&mut z, 0x04034b50);
+    u16le(&mut z, 45);
+    u16le(&mut z, 0x0808);
+    u16le(&mut z, 8);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u32le(&mut z, 0);
+    u32le(&mut z, 0xFFFF_FFFF);
+    u32le(&mut z, 0xFFFF_FFFF);
+    u16le(&mut z, name.len() as u16);
+    u16le(&mut z, 80);
+    z.extend_from_slice(&name);
+    // local extra (80 bytes): zip64 placeholder + padding field
+    u16le(&mut z, 0x0001);
+    u16le(&mut z, 16);
+    u64le(&mut z, 0);
+    u64le(&mut z, 0);
+    u16le(&mut z, 0xCAFE);
+    u16le(&mut z, 56);
+    z.extend_from_slice(&[0xAB; 56]);
+    z.extend_from_slice(&comp);
+    // zip64 data descriptor
+    u32le(&mut z, 0x08074b50);
+    u32le(&mut z, crc);
+    u64le(&mut z, comp.len() as u64);
+    u64le(&mut z, mbox.len() as u64);
+    // second entry: bytes that look like an mbox but must never be read
+    let off2 = z.len() as u32;
+    let name2 = b"Takeout/archive_browser.html";
+    let data2 = b"From garbage@x NOT PART OF MBOX\n\n<html>";
+    u32le(&mut z, 0x04034b50);
+    u16le(&mut z, 20);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u32le(&mut z, crc32fast::hash(data2));
+    u32le(&mut z, data2.len() as u32);
+    u32le(&mut z, data2.len() as u32);
+    u16le(&mut z, name2.len() as u16);
+    u16le(&mut z, 0);
+    z.extend_from_slice(name2);
+    z.extend_from_slice(data2);
+    let cd_start = z.len();
+    // central extra (92 bytes): timestamp + zip64 sizes + Unicode path
+    let mut ex = Vec::new();
+    u16le(&mut ex, 0x5455);
+    u16le(&mut ex, 8);
+    u64le(&mut ex, 0);
+    u16le(&mut ex, 0x0001);
+    u16le(&mut ex, 16);
+    u64le(&mut ex, mbox.len() as u64);
+    u64le(&mut ex, comp.len() as u64);
+    u16le(&mut ex, 0x7075);
+    u16le(&mut ex, (5 + name.len()) as u16);
+    ex.push(1);
+    u32le(&mut ex, crc32fast::hash(&name));
+    ex.extend_from_slice(&name);
+    u32le(&mut z, 0x02014b50);
+    u16le(&mut z, 45);
+    u16le(&mut z, 45);
+    u16le(&mut z, 0x0808);
+    u16le(&mut z, 8);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u32le(&mut z, crc);
+    u32le(&mut z, 0xFFFF_FFFF);
+    u32le(&mut z, 0xFFFF_FFFF);
+    u16le(&mut z, name.len() as u16);
+    u16le(&mut z, ex.len() as u16);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u32le(&mut z, 0);
+    u32le(&mut z, 0);
+    z.extend_from_slice(&name);
+    z.extend_from_slice(&ex);
+    u32le(&mut z, 0x02014b50);
+    u16le(&mut z, 20);
+    u16le(&mut z, 20);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u32le(&mut z, crc32fast::hash(data2));
+    u32le(&mut z, data2.len() as u32);
+    u32le(&mut z, data2.len() as u32);
+    u16le(&mut z, name2.len() as u16);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u32le(&mut z, 0);
+    u32le(&mut z, off2);
+    z.extend_from_slice(name2);
+    let cd_len = z.len() - cd_start;
+    u32le(&mut z, 0x06054b50);
+    u16le(&mut z, 0);
+    u16le(&mut z, 0);
+    u16le(&mut z, 2);
+    u16le(&mut z, 2);
+    u32le(&mut z, cd_len as u32);
+    u32le(&mut z, cd_start as u32);
+    u16le(&mut z, 0);
+    (z, comp.len())
+}
+
+fn read_all(p: &Path) -> (ImportKind, Vec<u8>, u64) {
+    use std::io::Read;
+    let mut s = open_source(&[p.to_path_buf()]).unwrap();
+    let mut out = Vec::new();
+    s.reader.read_to_end(&mut out).unwrap();
+    (s.kind, out, s.bytes_read.load(Ordering::Relaxed))
+}
+
+#[test]
+fn real_takeout_zip_shape() {
+    let dir = TempDir::new().unwrap();
+    let mbox = mbox_of(&msgs(1..=200));
+    let (z, comp_len) = takeout_shaped_zip(&mbox);
+    let p = dir.path().join("takeout.zip");
+    std::fs::write(&p, &z).unwrap();
+    let (kind, out, bytes) = read_all(&p);
+    assert_eq!(kind, ImportKind::Full);
+    assert!(out == mbox, "mbox content must be byte-identical");
+    assert_eq!(bytes, comp_len as u64, "must not read past the entry");
+
+    let lib = lib_with(&dir, &[]);
+    let r = run(&lib, &p);
+    assert_eq!((r.total, r.new, r.parse_errors), (200, 200, 0));
+}
+
+#[test]
+fn stored_entry_streams() {
+    let dir = TempDir::new().unwrap();
+    let mbox = mbox_of(&msgs(1..=20));
+    let p = dir.path().join("stored.zip");
+    let mut zw = zip::ZipWriter::new(std::fs::File::create(&p).unwrap());
+    let opts =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    zw.start_file(format!("Takeout/Mail/{FULL}"), opts).unwrap();
+    std::io::Write::write_all(&mut zw, &mbox).unwrap();
+    zw.start_file("Takeout/after.txt", opts).unwrap();
+    std::io::Write::write_all(&mut zw, b"From x\n\ntrailing").unwrap();
+    zw.finish().unwrap();
+    let (kind, out, bytes) = read_all(&p);
+    assert_eq!(kind, ImportKind::Full);
+    assert!(out == mbox);
+    assert_eq!(bytes, mbox.len() as u64);
+}
+
+#[test]
+fn corrupted_zip_fails_scan() {
+    let dir = TempDir::new().unwrap();
+    let mbox = mbox_of(&msgs(1..=2000));
+    let (mut z, comp_len) = takeout_shaped_zip(&mbox);
+    let at = 30 + format!("Takeout/Mail/{FULL}").len() + 80 + comp_len / 2;
+    z[at] ^= 0x10;
+    let p = dir.path().join("corrupt.zip");
+    std::fs::write(&p, &z).unwrap();
+    let lib = lib_with(&dir, &[]);
+    let r = scan(&lib, &[p], &|_| {}, &AtomicBool::new(false));
+    assert!(
+        r.is_err(),
+        "total {:?} comp {comp_len} at {at}",
+        r.map(|r| r.total)
+    );
 }

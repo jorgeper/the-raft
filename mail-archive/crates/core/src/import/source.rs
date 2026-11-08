@@ -25,6 +25,36 @@ pub struct Source {
     pub bytes_read: Arc<AtomicU64>,
 }
 
+/// Verifies the uncompressed size and CRC-32 at EOF (the zip crate's own
+/// check is bypassed because the entry is streamed manually).
+struct Checking<R> {
+    inner: R,
+    hasher: crc32fast::Hasher,
+    len: u64,
+    want_crc: u32,
+    want_len: u64,
+    verified: bool,
+}
+
+impl<R: Read> Read for Checking<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        if n > 0 {
+            self.hasher.update(&buf[..n]);
+            self.len += n as u64;
+        } else if !buf.is_empty() && !self.verified {
+            self.verified = true;
+            if self.len != self.want_len || self.hasher.clone().finalize() != self.want_crc {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "zip entry is corrupt (CRC-32 or size mismatch)",
+                ));
+            }
+        }
+        Ok(n)
+    }
+}
+
 /// Counts bytes read from the underlying file.
 struct Counting<R> {
     inner: R,
@@ -84,7 +114,9 @@ pub fn open_source(paths: &[PathBuf]) -> Result<Source> {
             if entry.is_dir() {
                 continue;
             }
-            let name = entry.name().map_err(|e| Error::Source(e.to_string()))?;
+            let name = entry
+                .name()
+                .map_err(|e| Error::Source(format!("{}: {e}", path.display())))?;
             if is_mbox(&name) {
                 hits.push(ZipHit {
                     path: path.clone(),
@@ -134,12 +166,18 @@ fn open_bare(path: &Path) -> Result<Source> {
 fn open_zip_entry(hit: ZipHit) -> Result<Source> {
     let err = |e: &dyn std::fmt::Display| Error::Source(format!("{}: {e}", hit.path.display()));
     let mut archive = ZipArchive::new(File::open(&hit.path)?).map_err(|e| err(&e))?;
-    let (start, size, method) = {
+    let (start, size, method, crc, uncompressed) = {
         let entry = archive.by_index_raw(hit.index).map_err(|e| err(&e))?;
         let start = entry
             .data_start()
             .ok_or_else(|| err(&"missing data offset"))?;
-        (start, entry.compressed_size(), entry.compression())
+        (
+            start,
+            entry.compressed_size(),
+            entry.compression(),
+            entry.crc32(),
+            entry.size(),
+        )
     };
     if archive
         .by_index_raw(hit.index)
@@ -156,11 +194,25 @@ fn open_zip_entry(hit: ZipHit) -> Result<Source> {
         inner: BufReader::with_capacity(1 << 20, file).take(size),
         count: count.clone(),
     };
-    let reader: Box<dyn BufRead + Send> = match method {
-        CompressionMethod::Stored => Box::new(BufReader::with_capacity(1 << 20, raw)),
-        CompressionMethod::Deflated => {
-            Box::new(BufReader::with_capacity(1 << 20, DeflateDecoder::new(raw)))
+    fn checked<R: Read>(inner: R, crc: u32, len: u64) -> Checking<R> {
+        Checking {
+            inner,
+            hasher: crc32fast::Hasher::new(),
+            len: 0,
+            want_crc: crc,
+            want_len: len,
+            verified: false,
         }
+    }
+    let reader: Box<dyn BufRead + Send> = match method {
+        CompressionMethod::Stored => Box::new(BufReader::with_capacity(
+            1 << 20,
+            checked(raw, crc, uncompressed),
+        )),
+        CompressionMethod::Deflated => Box::new(BufReader::with_capacity(
+            1 << 20,
+            checked(DeflateDecoder::new(raw), crc, uncompressed),
+        )),
         other => return Err(err(&format!("unsupported compression {other:?}"))),
     };
     let file_name = last_component(&hit.entry_name).to_string();
