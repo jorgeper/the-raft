@@ -188,10 +188,11 @@ impl AppState {
         f(lib).map_err(|e| err_text(&e))
     }
 
-    /// Like `with_lib`, but never waits: "library is busy" while an import,
-    /// scan or rebuild holds the lock (the UI shows that and retries).
+    /// Like `with_lib`, but waits at most [`BRIEF_WAIT`]: momentary contention
+    /// between quick reads is absorbed, while an import, scan or rebuild still
+    /// yields "library is busy" (the UI shows that and retries).
     fn with_lib_now<T>(&self, f: impl FnOnce(&Library) -> Result<T, Error>) -> Result<T, String> {
-        let g = self.lib_guard(Wait::Never).map_err(|_| BUSY.to_string())?;
+        let g = self.lib_guard(Wait::Brief).map_err(|_| BUSY.to_string())?;
         let lib = g.as_ref().ok_or_else(|| NOT_OPEN.to_string())?;
         f(lib).map_err(|e| err_text(&e))
     }
@@ -1220,8 +1221,8 @@ mod tests {
         assert_eq!(st.raw(9999, Wait::Never).unwrap_err(), Fetch::NotFound);
     }
 
-    /// The read commands never queue behind an import or rebuild: they fail
-    /// at once with the text the UI retries on.
+    /// The read commands never queue behind an import or rebuild: after at
+    /// most the brief wait they fail with the text the UI retries on.
     #[test]
     fn read_commands_fail_fast_with_busy_while_the_library_is_held() {
         let (st, _ids, _d) = test_support::state_with(&[one_msg()]);
@@ -1250,6 +1251,26 @@ mod tests {
         // Free again: they work.
         assert!(st.search("", 0, 10, 0, &chrono::Utc).is_ok());
         assert!(st.autocomplete(SuggestKind::Label, "").is_ok());
+    }
+
+    /// Momentary contention between quick reads (the pane's thread load racing
+    /// the next-row prefetch, a keystroke search) must not surface as "busy".
+    #[test]
+    fn read_commands_ride_out_brief_contention() {
+        let (st, _ids, _d) = test_support::state_with(&[one_msg()]);
+        let held = test_support::hold_lib_lock(&st);
+        let st2 = st.clone();
+        let t = std::thread::spawn(move || {
+            [
+                st2.search("", 0, 10, 0, &chrono::Utc).err(),
+                st2.autocomplete(SuggestKind::Label, "").err(),
+            ]
+        });
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        drop(held);
+        for r in t.join().unwrap() {
+            assert_eq!(r, None);
+        }
     }
 
     /// A panic while rendering one message marks only that message; the rest
