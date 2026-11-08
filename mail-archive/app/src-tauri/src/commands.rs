@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
+use std::time::{Duration, Instant};
 
 use mail_core::Error;
 use mail_core::import::scan::{Progress, ScanReport};
@@ -40,6 +41,22 @@ pub struct Inner {
 
 #[derive(Clone)]
 pub struct AppState(Arc<Inner>);
+
+/// How long to wait for the library lock.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Wait {
+    /// Until it is free (import, apply, rebuild, attachments).
+    Block,
+    /// Up to [`BRIEF_WAIT`], to ride out momentary contention (a search or a
+    /// thread fetch) without queueing behind an import (body protocols).
+    Brief,
+    /// Not at all (search, get_thread, autocomplete, status).
+    Never,
+}
+
+/// Longest [`Wait::Brief`] wait for the library lock.
+pub const BRIEF_WAIT: Duration = Duration::from_millis(250);
+const BRIEF_RETRY_EVERY: Duration = Duration::from_millis(5);
 
 /// Why a library fetch for the protocol handlers failed.
 #[derive(Debug, PartialEq, Eq)]
@@ -130,26 +147,34 @@ impl AppState {
         &self.0.session_dir
     }
 
-    /// Lock the library: waiting (`wait`) or failing fast with `Busy`.
-    fn lib_guard(&self, wait: bool) -> Result<MutexGuard<'_, Option<Library>>, Fetch> {
-        if wait {
+    /// Lock the library, waiting as `wait` says; `Busy` when it gives up.
+    fn lib_guard(&self, wait: Wait) -> Result<MutexGuard<'_, Option<Library>>, Fetch> {
+        if wait == Wait::Block {
             return Ok(lock(&self.0.lib));
         }
-        match self.0.lib.try_lock() {
-            Ok(g) => Ok(g),
-            Err(TryLockError::Poisoned(p)) => Ok(p.into_inner()),
-            Err(TryLockError::WouldBlock) => Err(Fetch::Busy),
+        let deadline = Instant::now() + BRIEF_WAIT;
+        loop {
+            match self.0.lib.try_lock() {
+                Ok(g) => return Ok(g),
+                Err(TryLockError::Poisoned(p)) => return Ok(p.into_inner()),
+                Err(TryLockError::WouldBlock) => {
+                    if wait == Wait::Never || Instant::now() >= deadline {
+                        return Err(Fetch::Busy);
+                    }
+                    std::thread::sleep(BRIEF_RETRY_EVERY);
+                }
+            }
         }
     }
 
     /// Raw bytes of a message; the library lock is released before returning.
-    pub fn raw(&self, id: i64, wait: bool) -> Result<Vec<u8>, Fetch> {
+    pub fn raw(&self, id: i64, wait: Wait) -> Result<Vec<u8>, Fetch> {
         let g = self.lib_guard(wait)?;
         let lib = g.as_ref().ok_or(Fetch::NotFound)?;
         lib.raw(id).map_err(|e| fetch_error(&e))
     }
 
-    pub fn message_and_raw(&self, id: i64, wait: bool) -> Result<(MessageRow, Vec<u8>), Fetch> {
+    pub fn message_and_raw(&self, id: i64, wait: Wait) -> Result<(MessageRow, Vec<u8>), Fetch> {
         let g = self.lib_guard(wait)?;
         let lib = g.as_ref().ok_or(Fetch::NotFound)?;
         let row = lib.message(id).map_err(|e| fetch_error(&e))?;
@@ -166,7 +191,7 @@ impl AppState {
     /// Like `with_lib`, but never waits: "library is busy" while an import,
     /// scan or rebuild holds the lock (the UI shows that and retries).
     fn with_lib_now<T>(&self, f: impl FnOnce(&Library) -> Result<T, Error>) -> Result<T, String> {
-        let g = self.lib_guard(false).map_err(|_| BUSY.to_string())?;
+        let g = self.lib_guard(Wait::Never).map_err(|_| BUSY.to_string())?;
         let lib = g.as_ref().ok_or_else(|| NOT_OPEN.to_string())?;
         f(lib).map_err(|e| err_text(&e))
     }
@@ -221,7 +246,7 @@ impl AppState {
 
     /// Never waits behind an import or rebuild: `Err` when the library is busy.
     pub fn status(&self) -> Result<LibraryStatus, String> {
-        let g = self.lib_guard(false).map_err(|_| BUSY.to_string())?;
+        let g = self.lib_guard(Wait::Never).map_err(|_| BUSY.to_string())?;
         let configured_path = Config::load_from(&self.0.config_path).library_path;
         Ok(match g.as_ref() {
             Some(l) => {
@@ -520,10 +545,12 @@ fn attachment_part(
     msg_id: i64,
     part: u32,
 ) -> Result<(AttachmentInfo, Vec<u8>), String> {
-    let (row, raw) = st.message_and_raw(msg_id, true).map_err(|f| match f {
-        Fetch::NotFound => "message not found".to_string(),
-        _ => "library error".to_string(),
-    })?;
+    let (row, raw) = st
+        .message_and_raw(msg_id, Wait::Block)
+        .map_err(|f| match f {
+            Fetch::NotFound => "message not found".to_string(),
+            _ => "library error".to_string(),
+        })?;
     let info = row
         .attachments
         .into_iter()
@@ -988,7 +1015,7 @@ mod tests {
     #[test]
     fn attachment_lookup_and_no_pending_scan() {
         let (st, ids, _d) = test_support::state_with(&[one_msg()]);
-        let row = st.message_and_raw(ids[0], true).unwrap().0;
+        let row = st.message_and_raw(ids[0], Wait::Block).unwrap().0;
         let part = row.attachments[0].part_index;
         let (info, bytes) = attachment_part(&st, ids[0], part).unwrap();
         assert_eq!(info.filename.as_deref(), Some("doc.txt"));
@@ -1182,12 +1209,15 @@ mod tests {
     fn busy_library_fails_fast() {
         let (st, ids, _d) = test_support::state_with(&[one_msg()]);
         let held = test_support::hold_lib_lock(&st);
-        assert_eq!(st.raw(ids[0], false).unwrap_err(), Fetch::Busy);
-        assert_eq!(st.message_and_raw(ids[0], false).unwrap_err(), Fetch::Busy);
+        assert_eq!(st.raw(ids[0], Wait::Never).unwrap_err(), Fetch::Busy);
+        assert_eq!(
+            st.message_and_raw(ids[0], Wait::Never).unwrap_err(),
+            Fetch::Busy
+        );
         assert!(st.status().is_err());
         drop(held);
-        assert!(st.raw(ids[0], false).is_ok());
-        assert_eq!(st.raw(9999, false).unwrap_err(), Fetch::NotFound);
+        assert!(st.raw(ids[0], Wait::Never).is_ok());
+        assert_eq!(st.raw(9999, Wait::Never).unwrap_err(), Fetch::NotFound);
     }
 
     /// The read commands never queue behind an import or rebuild: they fail
@@ -1258,7 +1288,7 @@ mod tests {
         let (st, ids, d) = test_support::state_with(&[one_msg()]);
         // Deterministic interleaving of a handler racing set_library:
         let generation = st.cache().generation();
-        let raw = st.raw(ids[0], true).unwrap(); // raw from the OLD library
+        let raw = st.raw(ids[0], Wait::Block).unwrap(); // raw from the OLD library
         st.set_library(d.path().join("other").to_str().unwrap())
             .unwrap(); // swap + clear
         let body = render_cached(&st, ids[0], &raw, &[], generation);

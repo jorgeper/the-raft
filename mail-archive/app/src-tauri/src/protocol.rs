@@ -9,7 +9,7 @@ use mail_core::render::{BODY_CSP, RenderedBody, render_body};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 use tauri::http::{Response, StatusCode, header};
 
-use crate::commands::{AppState, Fetch};
+use crate::commands::{AppState, Fetch, Wait};
 
 const ENCODE: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
@@ -157,8 +157,8 @@ fn not_found() -> Response<Vec<u8>> {
     status_only(StatusCode::NOT_FOUND)
 }
 
-/// 503 when the library is busy (an import or rebuild holds it), 500 on a
-/// real failure, 404 otherwise.
+/// 503 when the library stayed busy for [`crate::commands::BRIEF_WAIT`] (an
+/// import or rebuild holds it), 500 on a real failure, 404 otherwise.
 fn fetch_failure(f: Fetch) -> Response<Vec<u8>> {
     match f {
         Fetch::Busy => status_only(StatusCode::SERVICE_UNAVAILABLE),
@@ -187,7 +187,7 @@ pub fn serve_body(state: &AppState, path: &str, query: Option<&str>) -> Response
     let body = match state.cache().get(id, &terms) {
         Some(b) => b,
         // The library lock is held only for the raw fetch; rendering is outside it.
-        None => match state.raw(id, false) {
+        None => match state.raw(id, Wait::Brief) {
             Ok(raw) => render_cached(state, id, &raw, &terms, generation),
             Err(f) => return fetch_failure(f),
         },
@@ -218,7 +218,7 @@ pub fn serve_cid(state: &AppState, path: &str) -> Response<Vec<u8>> {
     let Some((id, cid)) = parse_cid_uri(path) else {
         return not_found();
     };
-    let (row, raw) = match state.message_and_raw(id, false) {
+    let (row, raw) = match state.message_and_raw(id, Wait::Brief) {
         Ok(v) => v,
         Err(f) => return fetch_failure(f),
     };
@@ -391,7 +391,7 @@ mod tests {
             .html("<p><img src=\"cid:a/b\"></p>")
             .inline_image("a/b", &PNG)
             .build()]);
-        let raw = state.raw(ids[0], true).unwrap();
+        let raw = state.raw(ids[0], Wait::Block).unwrap();
         let html = render_body(&raw, ids[0], &[]).html;
         let start = html.find("mailcid://localhost").expect("cid url in html");
         let url = &html[start..];
@@ -427,7 +427,7 @@ Content-Transfer-Encoding: 7bit\n\
 --B--\n"
             .to_vec();
         let (state, ids, _dir) = state_with(&[raw]);
-        let (row, _) = state.message_and_raw(ids[0], true).unwrap();
+        let (row, _) = state.message_and_raw(ids[0], Wait::Block).unwrap();
         assert_eq!(
             row.attachments
                 .first()
@@ -458,6 +458,54 @@ Content-Transfer-Encoding: 7bit\n\
         // Now cached: served even while the library is busy.
         let _held = crate::commands::test_support::hold_lib_lock(&state);
         assert_eq!(serve_body(&state, &path, None).status(), 200);
+    }
+
+    /// A lock held for a moment (a search, a thread prefetch) is waited out;
+    /// one held for longer (an import) still gives 503, after a bounded wait.
+    #[test]
+    fn momentary_contention_is_absorbed_and_long_holds_give_503() {
+        use std::time::{Duration, Instant};
+        let (state, ids, _dir) = state_with(&[MsgBuilder::new()
+            .from("a@example.com")
+            .subject("Contended")
+            .thrid(1)
+            .date_rfc2822("Mon, 01 Jun 2020 10:00:00 +0000")
+            .message_id(Some("<1@x>"))
+            .text("hello")
+            .build()]);
+        let path = format!("/{}", ids[0]);
+        let hold_for = |ms: u64| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let st = state.clone();
+            let t = std::thread::spawn(move || {
+                let g = crate::commands::test_support::hold_lib_lock(&st);
+                tx.send(()).unwrap();
+                std::thread::sleep(Duration::from_millis(ms));
+                drop(g);
+            });
+            rx.recv().unwrap();
+            t
+        };
+        let t = hold_for(60);
+        assert_eq!(serve_body(&state, &path, Some("t=a")).status(), 200);
+        t.join().unwrap();
+        let t = hold_for(60);
+        // Unknown cid: 404 after the lock was obtained, not 503.
+        assert_eq!(serve_cid(&state, &format!("{path}/x")).status(), 404);
+        t.join().unwrap();
+
+        let held = crate::commands::test_support::hold_lib_lock(&state);
+        let body = || serve_body(&state, &path, Some("t=b"));
+        let cid = || serve_cid(&state, &format!("{path}/x"));
+        let handlers: [&dyn Fn() -> Response<Vec<u8>>; 2] = [&body, &cid];
+        for serve in handlers {
+            let start = Instant::now();
+            assert_eq!(serve().status(), 503);
+            let waited = start.elapsed();
+            assert!(waited >= Duration::from_millis(250), "{waited:?}");
+            assert!(waited < Duration::from_secs(1), "{waited:?}");
+        }
+        drop(held);
     }
 
     #[test]
