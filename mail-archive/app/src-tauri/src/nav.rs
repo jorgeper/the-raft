@@ -21,7 +21,11 @@ pub enum NavDecision {
 /// `scheme://host[:port]` as a comparison key. `Url::origin` is opaque for
 /// custom schemes such as `tauri:`, so build it by hand.
 pub fn origin_key(url: &Url) -> String {
-    let mut s = format!("{}://{}", url.scheme(), url.host_str().unwrap_or("").to_ascii_lowercase());
+    let mut s = format!(
+        "{}://{}",
+        url.scheme(),
+        url.host_str().unwrap_or("").to_ascii_lowercase()
+    );
     if let Some(p) = url.port() {
         s.push_str(&format!(":{p}"));
     }
@@ -30,7 +34,8 @@ pub fn origin_key(url: &Url) -> String {
 
 /// Hosts of non-special schemes (`tauri:`, `mailbody:`) keep their case in `Url`.
 fn is_localhost(url: &Url) -> bool {
-    url.host_str().is_some_and(|h| h.eq_ignore_ascii_case("localhost"))
+    url.host_str()
+        .is_some_and(|h| h.eq_ignore_ascii_case("localhost"))
 }
 
 /// `app_origins` are the origin keys the app itself is served from:
