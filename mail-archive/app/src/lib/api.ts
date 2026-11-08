@@ -14,8 +14,11 @@ export interface Hint {
   end: number;
   message: string;
 }
+/** Gmail thread id as a decimal string: real ids (~1.9e18) are past 2^53, which a JS number
+ * cannot hold. Use it only as an opaque key; never convert it to a number. */
+export type ThreadId = string;
 export interface ThreadHit {
-  thrid: number;
+  thrid: ThreadId;
   latest_date: number;
   senders: string[];
   message_count: number;
@@ -45,6 +48,7 @@ export interface AttachmentInfo {
 }
 export interface MessageView {
   id: number;
+  thrid: ThreadId;
   from: Address | null;
   to: Address[];
   cc: Address[];
@@ -107,7 +111,7 @@ export function isBusy(err: unknown): boolean {
 
 export const search = (q: string, offset: number, limit: number) =>
   invoke<SearchResults>("search", { q, offset, limit });
-export const getThread = (thrid: number, terms: string[]) =>
+export const getThread = (thrid: ThreadId, terms: string[]) =>
   invoke<MessageView[]>("get_thread", { thrid, terms });
 export const autocomplete = (kind: SuggestKind, prefix: string) =>
   invoke<string[]>("autocomplete", { kind, prefix });

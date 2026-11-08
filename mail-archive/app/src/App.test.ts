@@ -53,7 +53,7 @@ describe("App layout", () => {
 function seed(n: number) {
   store.results = {
     threads: Array.from({ length: n }, (_, i) => ({
-      thrid: 100 + i, latest_date: 1_700_000_000, senders: [`Sender ${i}`], message_count: 1,
+      thrid: String(100 + i), latest_date: 1_700_000_000, senders: [`Sender ${i}`], message_count: 1,
       subject: `Subject ${i}`, snippet: "", has_attachment: false, matched: [],
     })),
     total_messages: n, elapsed_ms: 1, chips: [], hints: [], terms: ["foo"],
@@ -75,7 +75,7 @@ describe("App keyboard and prefetch", () => {
     const { container } = render(App);
     await tick();
     const calls = () => vi.mocked(api.getThread).mock.calls.map((c) => c[0]);
-    expect(calls()).toEqual([100, 101]);
+    expect(calls()).toEqual(["100", "101"]);
     expect(vi.mocked(api.getThread).mock.calls[1][1]).toEqual(["foo"]);
 
     const list = container.querySelector<HTMLElement>(".scroller")!;
@@ -83,10 +83,10 @@ describe("App keyboard and prefetch", () => {
     await fireEvent.keyDown(list, { key: "ArrowDown" });
     await tick();
     // row 1 selected: thread 101 comes from the cache, 102 is prefetched
-    expect(calls()).toEqual([100, 101, 102]);
+    expect(calls()).toEqual(["100", "101", "102"]);
     await fireEvent.keyDown(list, { key: "ArrowDown" });
     await tick();
-    expect(calls()).toEqual([100, 101, 102, 103]);
+    expect(calls()).toEqual(["100", "101", "102", "103"]);
     expect(container.querySelector('[aria-selected="true"] .subject')!.textContent).toBe("Subject 2");
   });
 
@@ -99,7 +99,7 @@ describe("App keyboard and prefetch", () => {
     await fireEvent.keyDown(list, { key: "ArrowDown" });
     await fireEvent.keyDown(list, { key: "ArrowDown" });
     await tick();
-    expect(vi.mocked(api.getThread).mock.calls.map((c) => c[0])).toEqual([100, 101]);
+    expect(vi.mocked(api.getThread).mock.calls.map((c) => c[0])).toEqual(["100", "101"]);
     expect(container.querySelector('[aria-selected="true"] .subject')!.textContent).toBe("Subject 1");
   });
 

@@ -151,6 +151,8 @@ pub struct MessageRow {
     pub header_key: Option<Key>,
     pub message_id: Option<String>,
     /// Thread id as stored: Gmail `thrid as i64`, or negative if synthetic.
+    /// A decimal string in JSON (see [`crate::model::thread_id_string`]).
+    #[serde(with = "crate::model::thread_id_string")]
     pub thrid: i64,
     pub date: i64,
     pub from: Option<Address>,

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MessageView, ThreadHit } from "../lib/api";
+import type { MessageView, SearchResults, ThreadHit } from "../lib/api";
 
 vi.mock("../lib/api", async (orig) => {
   const real = await orig<typeof import("../lib/api")>();
@@ -19,19 +19,21 @@ import * as api from "../lib/api";
 import { clearThreadCache } from "../lib/threads";
 import { store } from "../lib/store.svelte";
 import ReadingPane from "./ReadingPane.svelte";
+// Golden JSON written by the Rust side (src-tauri/src/ipc_contract.rs).
+import searchWire from "../lib/ipc-fixtures/search.json?raw";
 
 const getThread = vi.mocked(api.getThread);
 const saveDialog = vi.mocked(save);
 
 function msg(id: number, date: number, o: Partial<MessageView> = {}): MessageView {
   return {
-    id, from: { name: `Name ${id}`, addr: `u${id}@example.org` }, to: [{ name: null, addr: "me@example.org" }],
+    id, thrid: "1", from: { name: `Name ${id}`, addr: `u${id}@example.org` }, to: [{ name: null, addr: "me@example.org" }],
     cc: [], date, labels: [], subject: "S", attachments: [], body_url: `mailbody://localhost/${id}`,
     blocked_remote: 0, ...o,
   };
 }
 const hit = (o: Partial<ThreadHit> = {}): ThreadHit => ({
-  thrid: 1, latest_date: 3, senders: [], message_count: 3, subject: "Thread subject",
+  thrid: "1", latest_date: 3, senders: [], message_count: 3, subject: "Thread subject",
   snippet: "", has_attachment: false, matched: [], ...o,
 });
 
@@ -54,9 +56,15 @@ async function show(messages: MessageView[], t = hit(), terms: string[] = []) {
 const froms = (c: HTMLElement) => [...c.querySelectorAll(".msg .from")].map((e) => e.textContent);
 
 describe("ReadingPane", () => {
+  it("passes the exact real-sized thread id string from the search JSON to get_thread", async () => {
+    const res = JSON.parse(searchWire) as SearchResults;
+    await show([msg(1, 1)], res.threads[1], res.terms);
+    expect(getThread).toHaveBeenCalledWith("1868012345678901234", ["hello"]);
+  });
+
   it("asks for the thread with the search terms", async () => {
-    await show([msg(1, 1)], hit({ thrid: 9 }), ["foo"]);
-    expect(getThread).toHaveBeenCalledWith(9, ["foo"]);
+    await show([msg(1, 1)], hit({ thrid: "9" }), ["foo"]);
+    expect(getThread).toHaveBeenCalledWith("9", ["foo"]);
   });
 
   it("orders messages oldest to newest", async () => {
@@ -188,10 +196,10 @@ describe("ReadingPane", () => {
   });
 
   it("does not show the previous thread's messages while a new one loads", async () => {
-    const { container, rerender } = await show([msg(1, 1)], hit({ thrid: 1, matched: [1] }));
+    const { container, rerender } = await show([msg(1, 1)], hit({ thrid: "1", matched: [1] }));
     let resolve!: (m: MessageView[]) => void;
     getThread.mockReturnValue(new Promise((r) => (resolve = r)));
-    await rerender({ thread: hit({ thrid: 2, subject: "Second" }), terms: [] });
+    await rerender({ thread: hit({ thrid: "2", subject: "Second" }), terms: [] });
     await tick();
     expect(container.querySelectorAll(".msg").length).toBe(0);
     expect(container.textContent).toContain("Loading");

@@ -126,7 +126,7 @@ describe("ImportDialog", () => {
     vi.mocked(api.importApply).mockReturnValue(apply.promise);
     vi.mocked(api.search).mockResolvedValue({} as api.SearchResults);
     vi.mocked(api.getThread).mockResolvedValue([]);
-    loadThread(1, []);
+    loadThread("1", []);
     expect(cachedThreadCount()).toBe(1);
     render(ImportDialog, { onclose: vi.fn() });
     await vi.waitFor(() => screen.getByText("Import"));

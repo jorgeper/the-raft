@@ -11,12 +11,17 @@ vi.mock("../lib/api", async (orig) => {
 import * as api from "../lib/api";
 import { store } from "../lib/store.svelte";
 import ResultsList from "./ResultsList.svelte";
+// Golden JSON written by the Rust side (src-tauri/src/ipc_contract.rs): two
+// threads whose ids are past 2^53 and differ only in the last digit.
+import searchWire from "../lib/ipc-fixtures/search.json?raw";
+
+const wire = (): SearchResults => JSON.parse(searchWire);
 
 const search = vi.mocked(api.search);
 
 function thread(i: number, o: Partial<ThreadHit> = {}): ThreadHit {
   return {
-    thrid: i, latest_date: 1_700_000_000 - i, senders: [`Sender ${i}`], message_count: 1,
+    thrid: String(i), latest_date: 1_700_000_000 - i, senders: [`Sender ${i}`], message_count: 1,
     subject: `Subject ${i}`, snippet: `snippet ${i}`, has_attachment: false, matched: [], ...o,
   };
 }
@@ -186,5 +191,23 @@ describe("ResultsList", () => {
     await tick();
     const s = r.container.querySelector<HTMLElement>(".scroller")!;
     expect(s.scrollTop).toBe(50 * ROW + ROW - VIEW);
+  });
+
+  it("keys rows on the exact thread id, so ids that collide as JS numbers stay distinct", async () => {
+    store.results = wire();
+    const { container } = render(ResultsList, { selected: 0, onselect: () => {} });
+    await tick();
+    expect(rowsIn(container).map(rowText)).toEqual(["Second thread", "First thread"]);
+  });
+
+  it("dedupes a later page on the exact thread id string", async () => {
+    const [second, first] = wire().threads;
+    store.results = results(200, { threads: [...Array.from({ length: 199 }, (_, i) => thread(i)), first] });
+    search.mockResolvedValue({ ...wire(), threads: [first, second] });
+    const { container } = render(ResultsList, { selected: 0, onselect: () => {} });
+    await scrollTo(container, 160 * ROW);
+    // `first` is already listed; `second` is a different thread and must be added.
+    await vi.waitFor(() => expect(store.results!.threads.length).toBe(201));
+    expect(store.results!.threads.slice(-2).map((t) => t.thrid)).toEqual(["1868012345678901234", "1868012345678901235"]);
   });
 });

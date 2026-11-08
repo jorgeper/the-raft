@@ -22,6 +22,7 @@ use crate::protocol::{RenderCache, body_url, render_cached};
 
 const NOT_OPEN: &str = "library not open";
 const BUSY: &str = "library is busy";
+const BAD_THREAD_ID: &str = "bad thread id";
 
 pub struct Inner {
     lib: Mutex<Option<Library>>,
@@ -358,6 +359,9 @@ async fn blocking<T: Send + 'static>(
 #[derive(Serialize)]
 pub struct MessageView {
     pub id: i64,
+    /// A decimal string in JSON: Gmail thread ids are past 2^53.
+    #[serde(with = "mail_core::model::thread_id_string")]
+    pub thrid: i64,
     pub from: Option<Address>,
     pub to: Vec<Address>,
     pub cc: Vec<Address>,
@@ -381,6 +385,61 @@ pub struct LibraryStatus {
     pub open_error: Option<String>,
 }
 
+impl AppState {
+    /// The `search` command: `now` is unix seconds, `tz` resolves day bounds.
+    pub fn search<Tz: chrono::TimeZone>(
+        &self,
+        q: &str,
+        offset: usize,
+        limit: usize,
+        now: i64,
+        tz: &Tz,
+    ) -> Result<SearchResults, String> {
+        self.with_lib(|l| l.search(q, offset, limit, now, tz))
+    }
+
+    /// The `get_thread` command: every message of the thread, oldest first.
+    /// `thrid` is the decimal string the UI got from `search`.
+    pub fn thread(&self, thrid: &str, terms: &[String]) -> Result<Vec<MessageView>, String> {
+        let thrid =
+            mail_core::model::parse_thread_id(thrid).ok_or_else(|| BAD_THREAD_ID.to_string())?;
+        // Read the generation before fetching raw bytes: a library swap in
+        // between makes our cache inserts stale, and `put` drops them.
+        let generation = self.cache().generation();
+        // Collect rows and raw bytes under the lock, then render without it.
+        let rows: Vec<(MessageRow, Vec<u8>)> = self.with_lib(|l| {
+            l.thread(thrid)?
+                .into_iter()
+                .map(|r| l.raw(r.id).map(|raw| (r, raw)))
+                .collect()
+        })?;
+        Ok(rows
+            .into_iter()
+            .map(|(r, raw)| {
+                let body = render_cached(self, r.id, &raw, terms, generation);
+                MessageView {
+                    id: r.id,
+                    thrid: r.thrid,
+                    from: r.from,
+                    to: r.to,
+                    cc: r.cc,
+                    date: r.date,
+                    labels: r.labels,
+                    subject: r.subject,
+                    attachments: r.attachments,
+                    body_url: body_url(r.id, terms),
+                    blocked_remote: body.blocked_remote,
+                }
+            })
+            .collect())
+    }
+
+    /// The `autocomplete` command.
+    pub fn autocomplete(&self, kind: SuggestKind, prefix: &str) -> Result<Vec<String>, String> {
+        self.with_lib(|l| l.autocomplete(kind, prefix))
+    }
+}
+
 #[tauri::command]
 pub async fn search(
     state: State<'_, AppState>,
@@ -391,7 +450,7 @@ pub async fn search(
     let st = state.inner().clone();
     blocking(move || {
         let now = chrono::Utc::now().timestamp();
-        st.with_lib(|l| l.search(&q, offset as usize, limit as usize, now, &chrono::Local))
+        st.search(&q, offset as usize, limit as usize, now, &chrono::Local)
     })
     .await
 }
@@ -399,41 +458,11 @@ pub async fn search(
 #[tauri::command]
 pub async fn get_thread(
     state: State<'_, AppState>,
-    thrid: i64,
+    thrid: String,
     terms: Vec<String>,
 ) -> Result<Vec<MessageView>, String> {
     let st = state.inner().clone();
-    blocking(move || {
-        // Read the generation before fetching raw bytes: a library swap in
-        // between makes our cache inserts stale, and `put` drops them.
-        let generation = st.cache().generation();
-        // Collect rows and raw bytes under the lock, then render without it.
-        let rows: Vec<(MessageRow, Vec<u8>)> = st.with_lib(|l| {
-            l.thread(thrid)?
-                .into_iter()
-                .map(|r| l.raw(r.id).map(|raw| (r, raw)))
-                .collect()
-        })?;
-        Ok(rows
-            .into_iter()
-            .map(|(r, raw)| {
-                let body = render_cached(&st, r.id, &raw, &terms, generation);
-                MessageView {
-                    id: r.id,
-                    from: r.from,
-                    to: r.to,
-                    cc: r.cc,
-                    date: r.date,
-                    labels: r.labels,
-                    subject: r.subject,
-                    attachments: r.attachments,
-                    body_url: body_url(r.id, &terms),
-                    blocked_remote: body.blocked_remote,
-                }
-            })
-            .collect())
-    })
-    .await
+    blocking(move || st.thread(&thrid, &terms)).await
 }
 
 #[tauri::command]
@@ -448,7 +477,7 @@ pub async fn autocomplete(
         _ => return Err("unknown suggestion kind".into()),
     };
     let st = state.inner().clone();
-    blocking(move || st.with_lib(|l| l.autocomplete(kind, &prefix))).await
+    blocking(move || st.autocomplete(kind, &prefix)).await
 }
 
 fn attachment_part(

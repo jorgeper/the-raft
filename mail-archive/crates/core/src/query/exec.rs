@@ -24,6 +24,8 @@ pub const MAX_COLLECTED: usize = 5_000;
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
 pub struct ThreadHit {
+    /// A decimal string in JSON (see [`crate::model::thread_id_string`]).
+    #[serde(with = "crate::model::thread_id_string")]
     pub thrid: i64,
     pub latest_date: i64,
     pub senders: Vec<String>,

@@ -1,0 +1,40 @@
+{
+  "threads": [
+    {
+      "thrid": "1868012345678901235",
+      "latest_date": 1700000000,
+      "senders": [
+        "Ana"
+      ],
+      "message_count": 1,
+      "subject": "Second thread",
+      "snippet": "hello there",
+      "has_attachment": false,
+      "matched": [
+        3
+      ]
+    },
+    {
+      "thrid": "1868012345678901234",
+      "latest_date": 1700000000,
+      "senders": [
+        "Ana"
+      ],
+      "message_count": 2,
+      "subject": "First thread",
+      "snippet": "hello there",
+      "has_attachment": false,
+      "matched": [
+        2,
+        1
+      ]
+    }
+  ],
+  "total_messages": 3,
+  "elapsed_ms": 1.25,
+  "chips": [],
+  "hints": [],
+  "terms": [
+    "hello"
+  ]
+}

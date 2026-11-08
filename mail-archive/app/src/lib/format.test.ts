@@ -28,7 +28,7 @@ describe("formatFull / copyText", () => {
   });
   it("copies subject, sender and date", () => {
     const t = {
-      thrid: 1, latest_date: at(2026, 11, 8, 15, 7), senders: ["Ana", "Bo"], message_count: 2,
+      thrid: "1", latest_date: at(2026, 11, 8, 15, 7), senders: ["Ana", "Bo"], message_count: 2,
       subject: "Hi", snippet: "", has_attachment: false, matched: [],
     };
     expect(copyText(t)).toBe("Hi — Ana, Bo — Nov 8, 2026, 3:07 PM");
@@ -37,7 +37,7 @@ describe("formatFull / copyText", () => {
 
 describe("copyText with missing parts", () => {
   const base = {
-    thrid: 1, latest_date: at(2026, 11, 8, 15, 7), senders: [] as string[], message_count: 1,
+    thrid: "1", latest_date: at(2026, 11, 8, 15, 7), senders: [] as string[], message_count: 1,
     subject: "", snippet: "", has_attachment: false, matched: [],
   };
   it("never leaves an empty segment", () => {

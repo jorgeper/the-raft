@@ -18,7 +18,7 @@
 
   let root: HTMLElement | undefined = $state();
   let messages: api.MessageView[] = $state([]);
-  let loadedFor: number | null = $state(null);
+  let loadedFor: api.ThreadId | null = $state(null);
   let failed: string | null = $state(null);
   let threadBusy = $state(false);
   let retry = $state(0);

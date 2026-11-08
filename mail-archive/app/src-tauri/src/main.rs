@@ -3,6 +3,8 @@
 
 mod commands;
 mod config;
+#[cfg(test)]
+mod ipc_contract;
 mod menu;
 mod nav;
 mod protocol;

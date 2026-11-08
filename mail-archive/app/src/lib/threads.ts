@@ -1,12 +1,12 @@
 // Small in-memory thread cache (promises, so concurrent loads share one call).
-import { getThread, type MessageView } from "./api";
+import { getThread, type MessageView, type ThreadId } from "./api";
 
 const MAX = 8;
 const cache = new Map<string, Promise<MessageView[]>>();
 
-const keyOf = (thrid: number, terms: string[]) => `${thrid}\u0000${terms.join("\u0000")}`;
+const keyOf = (thrid: ThreadId, terms: string[]) => `${thrid}\u0000${terms.join("\u0000")}`;
 
-export function loadThread(thrid: number, terms: string[]): Promise<MessageView[]> {
+export function loadThread(thrid: ThreadId, terms: string[]): Promise<MessageView[]> {
   const key = keyOf(thrid, terms);
   const hit = cache.get(key);
   if (hit) {
@@ -23,7 +23,7 @@ export function loadThread(thrid: number, terms: string[]): Promise<MessageView[
   return p;
 }
 
-export function prefetchThread(thrid: number, terms: string[]): void {
+export function prefetchThread(thrid: ThreadId, terms: string[]): void {
   loadThread(thrid, terms).catch(() => {});
 }
 

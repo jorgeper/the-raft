@@ -3,6 +3,31 @@ use serde::{Deserialize, Serialize};
 pub type MsgId = i64; // SQLite rowid
 pub type Key = [u8; 32]; // SHA-256
 
+/// Parse a thread id sent by the UI: an optional `-` and decimal digits.
+pub fn parse_thread_id(s: &str) -> Option<i64> {
+    let digits = s.strip_prefix('-').unwrap_or(s);
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    s.parse().ok()
+}
+
+/// Serde helpers that send a thread id across IPC as a decimal string.
+/// Gmail thread ids (~1.9e18) are past 2^53, so a JavaScript number cannot
+/// hold them exactly. Inside Rust they stay `i64`.
+pub mod thread_id_string {
+    use serde::{Deserialize, Deserializer, Serializer, de::Error as _};
+
+    pub fn serialize<S: Serializer>(v: &i64, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(v)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
+        let s = String::deserialize(d)?;
+        super::parse_thread_id(&s).ok_or_else(|| D::Error::custom("bad thread id"))
+    }
+}
+
 /// One message from an mbox: `From_` line stripped, mboxrd-unescaped.
 #[derive(Serialize, Clone, PartialEq, Debug)]
 pub struct RawMessage {
