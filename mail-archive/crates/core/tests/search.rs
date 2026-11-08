@@ -590,3 +590,29 @@ fn day_boundaries_follow_dst() {
     assert_eq!(q("subject:winter after:2020/01/15"), [2]);
     assert!(q("subject:winter before:2020/01/15").is_empty());
 }
+
+#[test]
+fn message_returns_row_and_errors_on_unknown_id() {
+    let dir = TempDir::new().unwrap();
+    let m = MsgBuilder::new()
+        .from("alice@example.com")
+        .subject("Hello")
+        .date_rfc2822("Mon, 01 Jun 2020 10:00:00 +0000")
+        .message_id(Some("<m1@fixture>"))
+        .thrid(7)
+        .attach("a.txt", "text/plain", b"hi")
+        .text("body")
+        .build();
+    let l = build_library(dir.path(), &[m]);
+    let id = l.thread(7).unwrap()[0].id;
+    let row = l.message(id).unwrap();
+    assert_eq!(row.subject, "Hello");
+    assert_eq!(row.attachments.len(), 1);
+    assert!(l.message(id + 1000).is_err());
+}
+
+#[test]
+fn install_panic_hook_is_idempotent() {
+    mail_core::import::scan::install_panic_hook();
+    mail_core::import::scan::install_panic_hook();
+}

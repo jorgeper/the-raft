@@ -276,6 +276,11 @@ impl Library {
         self.meta.thread(thrid)
     }
 
+    /// One message's row (headers, labels, attachment list).
+    pub fn message(&self, id: MsgId) -> Result<MessageRow> {
+        self.meta.message(id)
+    }
+
     /// The original RFC 822 bytes of a message.
     pub fn raw(&self, id: MsgId) -> Result<Vec<u8>> {
         let row = self.meta.message(id)?;

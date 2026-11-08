@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Mail Archive",
+  "version": "0.1.0",
+  "identifier": "local.mail-archive.app",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "Mail Archive",
+        "width": 1280,
+        "height": 800
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' mailcid: data:; style-src 'self' 'unsafe-inline'; frame-src mailbody:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "app",
+    "createUpdaterArtifacts": false,
+    "icon": [
+      "icons/icon.png"
+    ]
+  }
+}

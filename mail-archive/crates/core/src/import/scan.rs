@@ -93,7 +93,7 @@ thread_local! {
 
 /// Replace panic output from inside message parsing (which can quote message
 /// text) with a fixed line; everything else goes to the previous hook.
-pub(crate) fn install_panic_hook() {
+pub fn install_panic_hook() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         let prev = std::panic::take_hook();
