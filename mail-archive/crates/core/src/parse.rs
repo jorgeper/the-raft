@@ -174,8 +174,7 @@ fn html_to_text(html: &str) -> String {
             .to_ascii_lowercase();
         if !tag.starts_with('/') && (name == "script" || name == "style") {
             let close = format!("</{name}");
-            let lower = rest.to_ascii_lowercase();
-            rest = match lower.find(&close) {
+            rest = match find_ascii_ci(rest.as_bytes(), close.as_bytes()) {
                 Some(i) => rest[i..].find('>').map_or("", |g| &rest[i + g + 1..]),
                 None => "",
             };
@@ -187,15 +186,23 @@ fn html_to_text(html: &str) -> String {
     collapse_whitespace(&decode_entities(&out))
 }
 
+/// Case-insensitive (ASCII) substring search without allocating.
+fn find_ascii_ci(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    hay.windows(needle.len())
+        .position(|w| w.eq_ignore_ascii_case(needle))
+}
+
 fn decode_entities(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
     while let Some(amp) = rest.find('&') {
         out.push_str(&rest[..amp]);
         rest = &rest[amp..];
-        let decoded = rest[1..]
-            .find(';')
-            .filter(|&n| n <= 10)
+        // Entities are short: only look at a bounded window for the ';'.
+        let window = &rest.as_bytes()[1..rest.len().min(12)];
+        let decoded = window
+            .iter()
+            .position(|&b| b == b';')
             .and_then(|n| decode_entity(&rest[1..1 + n]).map(|c| (c, n + 2)));
         match decoded {
             Some((c, len)) => {
@@ -486,6 +493,19 @@ mod tests {
         assert!(p.snippet.starts_with("Hello World & co é"));
         assert!(p.snippet.len() <= 200);
         assert!(!p.snippet.is_empty());
+    }
+
+    #[test]
+    fn html_to_text_is_linear_on_pathological_input() {
+        let start = std::time::Instant::now();
+        let amps = "a&b=".repeat(500_000);
+        let t = html_to_text(&amps);
+        assert!(t.starts_with("a&b=a&b="));
+        let styles = "<STYLE>x</style>y ".repeat(50_000);
+        assert!(html_to_text(&styles).starts_with("y y"));
+        let unclosed = "<style>x".repeat(50_000);
+        let _ = html_to_text(&unclosed);
+        assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
     }
 
     #[test]
