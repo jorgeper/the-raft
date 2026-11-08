@@ -21,7 +21,7 @@ fn m(n: u32, day: u32, labels: &[&str]) -> Vec<u8> {
     MsgBuilder::new()
         .from(&format!("Sender {n} <sender{n}@example.com>"))
         .subject(&format!("subject{n} topic"))
-        .date_rfc2822(&format!("Mon, {day:02} Nov 2026 10:00:00 +0000"))
+        .date_rfc2822(&format!("Mon, {day:02} Nov 2025 10:00:00 +0000"))
         .message_id(Some(&format!("<m{n}@fixture>")))
         .thrid(1000 + n as u64)
         .labels(labels)

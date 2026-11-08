@@ -21,6 +21,15 @@ use crate::parse::{dedupe_keys, parse_message};
 use crate::{Error, Result};
 
 const PROGRESS_EVERY: Duration = Duration::from_millis(100);
+/// Message dates later than now plus this are ignored when deciding whether
+/// an export looks older than the library.
+const FUTURE_SLACK_SECS: i64 = 24 * 60 * 60;
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
+}
 
 #[derive(Serialize, Clone, Debug)]
 pub struct Progress {
@@ -145,7 +154,10 @@ pub fn scan(
     let kind = source.kind;
     let ki = lib.meta().key_index()?;
     let library_count = lib.meta().count()?;
-    let latest = lib.meta().latest_message_date()?;
+    // Dates past this are bogus (spam often claims 2037 or 2099) and are left
+    // out of the "looks older" comparison on both sides.
+    let plausible_until = unix_now() + FUTURE_SLACK_SECS;
+    let latest = lib.meta().latest_message_date(plausible_until)?;
 
     let started = Instant::now();
     let mut last_emit = Instant::now() - PROGRESS_EVERY;
@@ -175,6 +187,7 @@ pub fn scan(
     let (mut new, mut label_changes, mut unchanged) = (0u64, 0u64, 0u64);
     let (mut by_content, mut by_header) = (0u64, 0u64);
     let (mut parse_errors, mut duplicates) = (0u64, 0u64);
+    let mut any_parsed = false;
     let mut newest: Option<i64> = None;
     let relabels_allowed = kind == ImportKind::Full;
 
@@ -197,7 +210,10 @@ pub fn scan(
                 decisions.push(Decision::Skip);
                 continue;
             }
-            newest = Some(newest.map_or(k.date, |n| n.max(k.date)));
+            any_parsed = true;
+            if k.date <= plausible_until {
+                newest = Some(newest.map_or(k.date, |n| n.max(k.date)));
+            }
 
             let hit = if let Some(&id) = ki.by_content.get(&k.keys.content_key) {
                 by_content += 1;
@@ -245,7 +261,7 @@ pub fn scan(
     let looks_older =
         matches!((latest, newest), (Some(lib), Some(src)) if library_count > 0 && src < lib);
     // A source with nothing parseable must also never plan to remove the library.
-    let suppress = looks_older || newest.is_none();
+    let suppress = looks_older || !any_parsed;
     if suppress {
         for d in &mut decisions {
             if matches!(d, Decision::Relabel(..)) {

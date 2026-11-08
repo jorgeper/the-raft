@@ -257,6 +257,42 @@ fn older_export_flagged() {
     ));
 }
 
+/// Spam dated 2099 stays in the library after Gmail purges it. It must not
+/// make every later full export "look older" (and so be applied as Partial).
+#[test]
+fn a_future_dated_library_message_does_not_make_exports_look_older() {
+    let dir = TempDir::new().unwrap();
+    let mut have = msgs(1..=3);
+    have.push(m(66, "Thu, 01 Jan 2099 10:00:00", &["Spam"]));
+    let lib = lib_with(&dir, &have);
+    let p = write_full_mbox(dir.path(), &msgs(1..=3));
+    let r = run(&lib, &p);
+    assert!(!r.looks_older);
+    // The purged message is detected as removed, as for any other.
+    assert_eq!(r.removed, 1);
+    assert_eq!(r.plan.removed.len(), 1);
+    assert_eq!(r.unchanged, 3);
+}
+
+/// The export side too: a future-dated message in an older export must not
+/// hide that the export is older than the library.
+#[test]
+fn a_future_dated_export_message_does_not_hide_an_older_export() {
+    let dir = TempDir::new().unwrap();
+    let mut have = msgs(1..=3);
+    have.push(m(4, "Thu, 05 Nov 2026 10:00:00", &["Inbox"])); // library newest
+    let lib = lib_with(&dir, &have);
+    let old = vec![
+        m(1, "Mon, 02 Nov 2026 10:00:00", &["Inbox", "Work"]),
+        m(66, "Thu, 01 Jan 2099 10:00:00", &["Spam"]),
+    ];
+    let p = write_full_mbox(dir.path(), &old);
+    let r = run(&lib, &p);
+    assert!(r.looks_older);
+    assert_eq!(r.removed, 0);
+    assert_eq!(r.label_changes, 0);
+}
+
 #[test]
 fn duplicates_in_source_are_skipped() {
     let dir = TempDir::new().unwrap();

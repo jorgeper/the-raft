@@ -748,10 +748,13 @@ impl MetaDb {
         Ok(id.map(|i| i as u64))
     }
 
-    pub fn latest_message_date(&self) -> Result<Option<i64>> {
-        Ok(self
-            .conn
-            .query_row("SELECT max(date) FROM messages", [], |r| r.get(0))?)
+    /// Newest message date that is not later than `not_after` (unix seconds).
+    pub fn latest_message_date(&self, not_after: i64) -> Result<Option<i64>> {
+        Ok(self.conn.query_row(
+            "SELECT max(date) FROM messages WHERE date <= ?1",
+            [not_after],
+            |r| r.get(0),
+        )?)
     }
 
     pub fn count(&self) -> Result<u64> {
@@ -879,7 +882,8 @@ mod tests {
         assert_eq!(l, ["Inbox", "Work"]);
         assert!(!m.removed);
         assert_eq!(f.db.count().unwrap(), 1);
-        assert_eq!(f.db.latest_message_date().unwrap(), Some(m.date));
+        assert_eq!(f.db.latest_message_date(i64::MAX).unwrap(), Some(m.date));
+        assert_eq!(f.db.latest_message_date(m.date - 1).unwrap(), None);
     }
 
     #[test]
