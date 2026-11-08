@@ -82,11 +82,22 @@ impl Store {
     }
 
     /// Read and decompress one message. Safe to call concurrently.
+    ///
+    /// A frame that is cut short or does not decode is [`Error::Store`]
+    /// (corruption of that one message); a failure of the file itself
+    /// (missing pack, permissions, EIO, ...) is [`Error::Io`].
     pub fn read(&self, r: MessageRef) -> Result<Vec<u8>> {
         let file = File::open(pack_path(&self.dir, r.pack_id))?;
         let mut frame = vec![0u8; r.length as usize];
-        file.read_exact_at(&mut frame, r.offset)?;
-        Ok(zstd::stream::decode_all(&frame[..])?)
+        match file.read_exact_at(&mut frame, r.offset) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                return Err(Error::Store("message frame is truncated".into()));
+            }
+            Err(e) => return Err(e.into()),
+        }
+        zstd::stream::decode_all(&frame[..])
+            .map_err(|_| Error::Store("message frame could not be decoded".into()))
     }
 
     /// Flush appended data to disk.

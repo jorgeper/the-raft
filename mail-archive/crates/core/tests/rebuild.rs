@@ -656,3 +656,103 @@ fn unreadable_message_and_log_inconsistencies_do_not_abort_rebuild() {
     assert_eq!(lib.count().unwrap(), count);
     assert!(!lib.needs_rebuild());
 }
+
+/// The library's single row for `word`, and its msg ref.
+fn only_row(lib: &Library, word: &str) -> (i64, MessageRef) {
+    let r = lib.search(word, 0, 10, NOW, &Utc).unwrap();
+    assert_eq!(r.total_messages, 1, "{word}");
+    let id = r.threads[0].matched[0];
+    (id, lib.message(id).unwrap().msg_ref)
+}
+
+/// Overwrite the start of a stored frame (its zstd magic); returns the old bytes.
+fn clobber_frame(dir: &Path, r: MessageRef) -> Vec<u8> {
+    use std::os::unix::fs::FileExt;
+    let pack = dir.join(format!("store/pack-{:05}.zst", r.pack_id));
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(pack)
+        .unwrap();
+    let mut old = vec![0u8; 4];
+    f.read_exact_at(&mut old, r.offset).unwrap();
+    f.write_all_at(&[0; 4], r.offset).unwrap();
+    old
+}
+
+fn restore_frame(dir: &Path, r: MessageRef, old: &[u8]) {
+    use std::os::unix::fs::FileExt;
+    let pack = dir.join(format!("store/pack-{:05}.zst", r.pack_id));
+    let f = std::fs::OpenOptions::new().write(true).open(pack).unwrap();
+    f.write_all_at(old, r.offset).unwrap();
+}
+
+/// A rebuild skips a message (its frame was unreadable at the time), the next
+/// import adds it again, and so the log holds two MessageAdded events with
+/// one content key. Later rebuilds keep one row for it instead of failing on
+/// the UNIQUE content key.
+#[test]
+fn a_message_skipped_by_rebuild_and_imported_again_keeps_one_row() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("lib");
+    let z = zip_to(
+        tmp.path(),
+        "a.zip",
+        FULL,
+        &[m(1, &["Inbox"]), m(2, &["Inbox"])],
+    );
+    let mut lib = Library::open(&dir).unwrap();
+    import(&mut lib, &z);
+    let (_, first_copy) = only_row(&lib, "word2");
+
+    // Rebuild while message 2's frame cannot be decoded: it is skipped.
+    let saved = clobber_frame(&dir, first_copy);
+    let s = lib.rebuild(&|_| {}, &no_cancel()).unwrap();
+    assert_eq!(s.parse_errors, 1);
+    assert_eq!(lib.count().unwrap(), 1);
+    // The frame is fine again; a re-import adds message 2 a second time.
+    restore_frame(&dir, first_copy, &saved);
+    let added = lib
+        .import(std::slice::from_ref(&z), &|_| {}, &no_cancel())
+        .unwrap()
+        .added;
+    assert_eq!(added, 1);
+    let (_, second_copy) = only_row(&lib, "word2");
+    assert_ne!(first_copy, second_copy);
+
+    // Both copies readable: the first one wins, the second is an inconsistency.
+    let s = lib.rebuild(&|_| {}, &no_cancel()).unwrap();
+    assert_eq!((s.parse_errors, s.inconsistencies), (0, 1));
+    assert_eq!(lib.count().unwrap(), 2);
+    assert_eq!(only_row(&lib, "word2").1, first_copy);
+    assert!(!lib.needs_rebuild());
+
+    // First copy unreadable: the second one is used, still one row.
+    clobber_frame(&dir, first_copy);
+    let s = lib.rebuild(&|_| {}, &no_cancel()).unwrap();
+    assert_eq!(s.parse_errors, 1);
+    assert_eq!(lib.count().unwrap(), 2);
+    assert_eq!(only_row(&lib, "word2").1, second_copy);
+}
+
+/// A pack file that cannot be read (here: no permission) is an I/O failure,
+/// not a corrupt message: the rebuild stops and the old caches stay live,
+/// instead of swapping in a library with those messages missing.
+#[test]
+fn rebuild_aborts_when_the_store_cannot_be_read() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("lib");
+    let mut lib = build(tmp.path());
+    let before = snapshot(&lib);
+    let pack = dir.join("store/pack-00000.zst");
+    std::fs::set_permissions(&pack, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let r = lib.rebuild(&|_| {}, &no_cancel());
+    std::fs::set_permissions(&pack, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(r.is_err(), "rebuild must fail, got {r:?}");
+    assert_eq!(snapshot(&lib), before);
+    assert!(!dir.join("meta.sqlite.rebuild").exists());
+    // Once the store is readable again, the rebuild goes through.
+    lib.rebuild(&|_| {}, &no_cancel()).unwrap();
+    assert_eq!(snapshot(&lib), before);
+}

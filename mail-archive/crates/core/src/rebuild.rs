@@ -74,7 +74,8 @@ const PROGRESS_EVERY: Duration = Duration::from_millis(100);
 pub struct RebuildSummary {
     /// Logged messages whose stored bytes could not be read or parsed.
     pub parse_errors: u64,
-    /// Log entries that refer to messages the replay does not have.
+    /// Log entries that refer to messages the replay does not have, or that
+    /// add a message (by content key) it already has.
     pub inconsistencies: u64,
 }
 
@@ -387,18 +388,25 @@ impl Replay<'_> {
             return Ok(());
         }
         let store = self.store;
-        // Unreadable or unparseable stored messages are skipped (counted).
+        // Corrupt or unparseable stored messages are skipped (counted). An
+        // I/O failure of the store itself aborts the rebuild, so the old
+        // caches stay live rather than a library with messages missing.
         let parsed: Vec<Option<_>> = self
             .batch
             .par_iter()
             .map(|a| {
+                let bytes = match store.read(a.msg_ref) {
+                    Ok(b) => b,
+                    Err(Error::Store(_)) => return Ok(None),
+                    Err(e) => return Err(e),
+                };
                 let raw = RawMessage {
-                    bytes: store.read(a.msg_ref).ok()?,
+                    bytes,
                     from_line_date: a.from_line_date,
                 };
-                parse_guarded(&raw).map(|(p, _)| p)
+                Ok(parse_guarded(&raw).map(|(p, _)| p))
             })
-            .collect();
+            .collect::<Result<_>>()?;
         let Replay {
             meta,
             writer,
@@ -409,8 +417,16 @@ impl Replay<'_> {
         } = self;
         let import_id = *import_id;
         let mut skipped = 0u64;
+        let mut duplicates = 0u64;
         meta.transaction(|| {
             for (a, p) in batch.iter().zip(parsed) {
+                // A content key already inserted: a message that an earlier
+                // rebuild skipped and an import then added again. The first
+                // copy that made it in wins, as in the original import.
+                if ids.contains_key(&a.content_key) {
+                    duplicates += 1;
+                    continue;
+                }
                 let Some(mut p) = p else {
                     skipped += 1;
                     continue;
@@ -426,6 +442,7 @@ impl Replay<'_> {
             Ok(())
         })?;
         self.summary.parse_errors += skipped;
+        self.summary.inconsistencies += duplicates;
         let n = self.batch.len();
         self.processed += n as u64;
         self.bytes += self.batch_bytes as u64;

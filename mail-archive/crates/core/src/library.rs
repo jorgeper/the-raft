@@ -125,8 +125,8 @@ impl Library {
 
     /// Rebuild SQLite and the search index from the store and event log,
     /// then reopen them. See [`crate::rebuild`]. On cancel or error the old
-    /// ones stay live. Unreadable messages are skipped and counted in the
-    /// summary.
+    /// ones stay live. Corrupt or unparseable messages are skipped and
+    /// counted in the summary; an I/O failure reading the store is an error.
     pub fn rebuild(
         &mut self,
         progress: &dyn Fn(Progress),
