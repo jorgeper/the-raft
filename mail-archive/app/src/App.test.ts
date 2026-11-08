@@ -183,6 +183,25 @@ describe("App keyboard and prefetch", () => {
   });
 });
 
+describe("modal dialogs", () => {
+  it("keep the search box behind them from taking keystrokes", async () => {
+    store.status = { ...READY, message_count: 0 };
+    vi.mocked(api.libraryStatus).mockResolvedValue({ ...READY, message_count: 0 });
+    const { container, getByText, getByRole } = render(App);
+    await tick();
+    const input = container.querySelector<HTMLInputElement>("#search-area input")!;
+    input.focus();
+    await fireEvent.click(getByText("Import Takeout…"));
+    await tick();
+    const dialog = getByRole("dialog");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    // Focus cannot be moved back to the search box while the dialog is up.
+    input.focus();
+    expect(document.activeElement).not.toBe(input);
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+});
+
 describe("copy event (Edit > Copy)", () => {
   beforeEach(() => {
     clearThreadCache();

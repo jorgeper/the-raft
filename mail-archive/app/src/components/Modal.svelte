@@ -1,10 +1,55 @@
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { onMount, type Snippet } from "svelte";
   let { title, children }: { title: string; children: Snippet } = $props();
+
+  let dialog: HTMLDivElement;
+  const FOCUSABLE =
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const focusables = () => [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)];
+  const focusFirst = () => (focusables()[0] ?? dialog).focus();
+
+  // Take focus on open (so keystrokes never reach the search box behind),
+  // keep it inside while open, and give it back on close.
+  onMount(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    focusFirst();
+    const onfocusin = (e: FocusEvent) => {
+      if (!dialog.contains(e.target as Node)) focusFirst();
+    };
+    document.addEventListener("focusin", onfocusin);
+    return () => {
+      document.removeEventListener("focusin", onfocusin);
+      if (previous?.isConnected) previous.focus();
+    };
+  });
+
+  function onkeydown(e: KeyboardEvent) {
+    if (e.key !== "Tab") return;
+    const f = focusables();
+    const active = document.activeElement;
+    if (f.length === 0) {
+      e.preventDefault();
+      dialog.focus();
+    } else if (e.shiftKey && (active === f[0] || !f.includes(active as HTMLElement))) {
+      e.preventDefault();
+      f[f.length - 1].focus();
+    } else if (!e.shiftKey && (active === f[f.length - 1] || !f.includes(active as HTMLElement))) {
+      e.preventDefault();
+      f[0].focus();
+    }
+  }
 </script>
 
 <div class="overlay">
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div
+    class="dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="modal-title"
+    tabindex="-1"
+    bind:this={dialog}
+    {onkeydown}
+  >
     <h2 id="modal-title">{title}</h2>
     {@render children()}
   </div>
@@ -28,6 +73,7 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: var(--shadow);
+    outline: none;
   }
   h2 {
     margin: 0 0 12px;
