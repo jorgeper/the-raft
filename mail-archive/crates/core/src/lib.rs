@@ -9,6 +9,7 @@ pub mod parse;
 pub mod paths;
 pub mod query;
 pub mod rebuild;
+pub mod render;
 pub mod store;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
