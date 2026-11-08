@@ -43,6 +43,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn config_lives_in_mail_archive_support_dir() {
+        let p = config_path();
+        assert!(
+            p.ends_with("Library/Application Support/mail-archive/config.json"),
+            "{p:?}"
+        );
+    }
+
+    #[test]
     fn roundtrip_and_default() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("sub/config.json");

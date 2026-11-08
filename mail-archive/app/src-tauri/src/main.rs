@@ -6,43 +6,65 @@ mod config;
 mod protocol;
 
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
-use mail_core::library::Library;
 use tauri::{Manager, RunEvent};
 
 use commands::AppState;
 use config::{Config, config_path};
 
+/// Panic payloads can quote mail text, so the app never prints them: only
+/// where the panic happened. (The CLI keeps core's own hook.)
+fn install_app_panic_hook() {
+    std::panic::set_hook(Box::new(|info| match info.location() {
+        Some(l) => eprintln!("mail-archive: internal error at {}:{}", l.file(), l.line()),
+        None => eprintln!("mail-archive: internal error"),
+    }));
+}
+
 fn main() {
-    // Panic text from message parsing can quote mail; never print it.
-    mail_core::import::scan::install_panic_hook();
+    install_app_panic_hook();
 
     let cfg_path = config_path();
-    // May fail (e.g. the library is open elsewhere); then we start unconfigured
-    // and the UI shows first-run.
-    let lib = Config::load_from(&cfg_path)
-        .library_path
-        .and_then(|p| Library::open(&p).ok());
+    // Keep the reason if the configured library cannot be opened (e.g. it is
+    // in use elsewhere), so the UI can show it instead of looking like first run.
+    let (lib, open_error) = match Config::load_from(&cfg_path).library_path {
+        Some(p) => commands::open_library(&p),
+        None => (None, None),
+    };
 
     let session = format!("session-{}", std::process::id());
-    let session_dir: std::sync::Arc<std::sync::Mutex<Option<PathBuf>>> = Default::default();
+    let session_dir: Arc<Mutex<Option<PathBuf>>> = Default::default();
     let exit_dir = session_dir.clone();
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
-            let cache = app.path().app_cache_dir()?.join(&session);
+            let base = app.path().app_cache_dir()?;
+            commands::sweep_stale_sessions(&base, &session);
+            let cache = base.join(&session);
             *session_dir.lock().unwrap() = Some(cache.clone());
-            app.manage(AppState::new(lib, cfg_path, cache));
+            app.manage(AppState::new(lib, open_error, cfg_path, cache));
             Ok(())
         })
-        .register_uri_scheme_protocol("mailbody", |ctx, req| {
-            let state = ctx.app_handle().state::<AppState>();
-            protocol::guarded(|| protocol::serve_body(&state, req.uri().path(), req.uri().query()))
+        // The handlers run on the blocking pool, never on the main thread.
+        .register_asynchronous_uri_scheme_protocol("mailbody", |ctx, req, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(protocol::guarded(|| {
+                    let state = app.state::<AppState>();
+                    protocol::serve_body(&state, req.uri().path(), req.uri().query())
+                }));
+            });
         })
-        .register_uri_scheme_protocol("mailcid", |ctx, req| {
-            let state = ctx.app_handle().state::<AppState>();
-            protocol::guarded(|| protocol::serve_cid(&state, req.uri().path()))
+        .register_asynchronous_uri_scheme_protocol("mailcid", |ctx, req, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(protocol::guarded(|| {
+                    let state = app.state::<AppState>();
+                    protocol::serve_cid(&state, req.uri().path())
+                }));
+            });
         })
         .invoke_handler(tauri::generate_handler![
             commands::search,

@@ -612,7 +612,21 @@ fn message_returns_row_and_errors_on_unknown_id() {
 }
 
 #[test]
-fn install_panic_hook_is_idempotent() {
+fn install_panic_hook_is_idempotent_and_chains_to_previous_hook() {
+    use std::panic::{catch_unwind, set_hook, take_hook};
+    use std::sync::{Arc, Mutex};
+    // Installing twice must not stack hooks; ordinary panics still reach the
+    // previously installed hook.
+    let seen = Arc::new(Mutex::new(0u32));
+    let s2 = seen.clone();
+    let _ = take_hook();
+    set_hook(Box::new(move |_| *s2.lock().unwrap() += 1));
     mail_core::import::scan::install_panic_hook();
     mail_core::import::scan::install_panic_hook();
+    let _ = catch_unwind(|| panic!("ordinary"));
+    assert_eq!(
+        *seen.lock().unwrap(),
+        1,
+        "hook installed twice or lost the previous one"
+    );
 }
