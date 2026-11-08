@@ -2,7 +2,9 @@ mod common;
 
 use std::time::Instant;
 
-use common::build_library;
+use chrono::FixedOffset;
+use chrono_tz::America::Los_Angeles;
+use common::{TestMsg, build_library, build_library_with};
 use mail_core::Error;
 use mail_core::library::{Library, SearchResults, SuggestKind};
 use mail_core::testing::MsgBuilder;
@@ -163,8 +165,12 @@ fn lib() -> (TempDir, Library) {
     (d, l)
 }
 
+fn utc() -> FixedOffset {
+    FixedOffset::east_opt(0).unwrap()
+}
+
 fn run(l: &Library, q: &str) -> SearchResults {
-    l.search(q, 0, 100, NOW, 0).unwrap()
+    l.search(q, 0, 100, NOW, &utc()).unwrap()
 }
 
 fn set(l: &Library, q: &str) -> Vec<i64> {
@@ -213,6 +219,23 @@ fn operators_filter() {
         ("newer_than:30d", &[9]),
         ("larger:10000", &[8]),
         ("smaller:10000 subject:big", &[]),
+        ("smaller:10000 subject:quarterly", &[1]),
+        ("larger:9K", &[8]),
+        ("larger:1M", &[]),
+        ("smaller:1M subject:big", &[8]),
+        ("smaller:1K subject:big", &[]),
+        ("subject:lunch (revenue OR pizza)", &[3]),
+        ("subject:quarterly (revenue OR pizza)", &[1]),
+        ("subject:quarterly (pizza OR boundary)", &[]),
+        ("older_than:2m after:2020/03/15", &[2]),
+        ("newer_than:2m", &[3, 9]),
+        ("older_than:1m after:2020/05/02", &[]),
+        ("pizza -in:trash", &[3]),
+        ("-in:spam pizza", &[3]),
+        ("in:spam discarded", &[]),
+        ("in:trash pizza", &[]),
+        ("in:anywhere subject:win", &[4]),
+        ("in:anywhere subject:old", &[5]),
         ("-from:alice subject:quarterly", &[1]),
         (
             "-label:inbox -label:sent -label:receipts-2019 -label:starred after:2000/01/01",
@@ -240,6 +263,11 @@ fn spam_trash_excluded_by_default() {
     assert_eq!(set(&l, "pizza in:spam"), [4]);
     assert_eq!(set(&l, "pizza in:anywhere"), [3, 4]);
     assert_eq!(set(&l, "in:trash"), [5]);
+    // A positive location lifts only its own exclusion.
+    assert_eq!(set(&l, "in:spam"), [4]);
+    assert!(set(&l, "in:spam discarded").is_empty());
+    assert!(set(&l, "pizza -in:trash") == [3]);
+    assert_eq!(set(&l, "in:spam OR in:trash"), [4, 5]);
     assert_eq!(set(&l, "discarded in:anywhere"), [5]);
     assert!(set(&l, "discarded").is_empty());
 }
@@ -247,9 +275,9 @@ fn spam_trash_excluded_by_default() {
 #[test]
 fn before_is_exclusive() {
     let (_d, l) = lib();
-    let tz = -8 * 3600; // message is 2020-01-01 00:30 local
+    let tz = FixedOffset::west_opt(8 * 3600).unwrap(); // message is 2020-01-01 00:30 local
     let q = |q: &str| -> Vec<i64> {
-        l.search(q, 0, 10, NOW, tz)
+        l.search(q, 0, 10, NOW, &tz)
             .unwrap()
             .threads
             .iter()
@@ -306,7 +334,7 @@ fn empty_query_recent_mail() {
 fn paging() {
     let (_d, l) = lib();
     let ids = |o, n| -> Vec<i64> {
-        l.search("", o, n, NOW, 0)
+        l.search("", o, n, NOW, &utc())
             .unwrap()
             .threads
             .iter()
@@ -459,7 +487,7 @@ fn perf_smoke_20k_messages() {
     ];
     let mut times = Vec::new();
     for q in &queries {
-        let r = l.search(q, 0, 50, 1_700_000_000, 0).unwrap(); // warm up
+        let r = l.search(q, 0, 50, 1_700_000_000, &utc()).unwrap(); // warm up
         eprintln!(
             "{q:45} {} threads, {} messages",
             r.threads.len(),
@@ -467,7 +495,7 @@ fn perf_smoke_20k_messages() {
         );
         for _ in 0..20 {
             let t = Instant::now();
-            l.search(q, 0, 50, 1_700_000_000, 0).unwrap();
+            l.search(q, 0, 50, 1_700_000_000, &utc()).unwrap();
             times.push(t.elapsed().as_secs_f64() * 1000.0);
         }
         eprintln!("{q:45} {:.2} ms", times[times.len() - 1]);
@@ -500,4 +528,65 @@ fn chrono_date(ts: u64) -> String {
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];
     format!("{d:02} {} {y} 12:00:00", MON[m as usize - 1])
+}
+
+#[test]
+fn is_removed_matches_only_removed_and_default_still_shows_it() {
+    let d = tempfile::tempdir().unwrap();
+    let mut msgs: Vec<TestMsg> = fixture().into_iter().map(TestMsg::new).collect();
+    msgs.push(TestMsg::removed(
+        msg(
+            "zed@x.org",
+            "Gone from export",
+            "05 Jun 2020 10:00:00",
+            50,
+            &["Inbox"],
+            "vanished",
+        )
+        .build(),
+    ));
+    let l = build_library_with(&d.path().join("lib"), &msgs);
+    assert_eq!(set(&l, "is:removed"), [50]);
+    assert_eq!(set(&l, "vanished"), [50]);
+    assert_eq!(set(&l, "-is:removed subject:gone"), Vec::<i64>::new());
+    assert!(run(&l, "").threads.iter().any(|t| t.thrid == 50));
+}
+
+#[test]
+fn day_boundaries_follow_dst() {
+    let d = tempfile::tempdir().unwrap();
+    let msgs = [
+        // 2020-07-01 00:30 PDT and 2020-01-15 00:30 PST.
+        msg(
+            "a@x.org",
+            "Summer",
+            "01 Jul 2020 07:30:00",
+            1,
+            &["Inbox"],
+            "s",
+        )
+        .build(),
+        msg(
+            "a@x.org",
+            "Winter",
+            "15 Jan 2020 08:30:00",
+            2,
+            &["Inbox"],
+            "w",
+        )
+        .build(),
+    ];
+    let l = build_library(&d.path().join("lib"), &msgs);
+    let q = |q: &str| -> Vec<i64> {
+        l.search(q, 0, 10, NOW, &Los_Angeles)
+            .unwrap()
+            .threads
+            .iter()
+            .map(|t| t.thrid)
+            .collect()
+    };
+    assert_eq!(q("subject:summer after:2020/07/01"), [1]);
+    assert!(q("subject:summer before:2020/07/01").is_empty());
+    assert_eq!(q("subject:winter after:2020/01/15"), [2]);
+    assert!(q("subject:winter before:2020/01/15").is_empty());
 }

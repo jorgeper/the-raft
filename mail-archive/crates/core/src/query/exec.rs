@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::ops::Bound;
 
+use chrono::{NaiveDate, TimeZone};
 use serde::Serialize;
 use tantivy::collector::{Count, MultiCollector, TopDocs};
 use tantivy::query::{AllQuery, BooleanQuery, Occur, PhraseQuery, Query, RangeQuery, TermQuery};
@@ -60,39 +61,74 @@ pub struct ThreadGroup {
 struct Ctx<'a> {
     si: &'a SearchIndex,
     now: i64,
-    tz_offset_secs: i32,
+    /// Unix time of local midnight starting the given date.
+    midnight: &'a dyn Fn(NaiveDate) -> i64,
+}
+
+/// Local midnight of `d` in `tz`: the earlier instant if ambiguous, and the
+/// first valid instant after the gap if midnight does not exist (DST).
+pub fn local_midnight<Tz: TimeZone>(tz: &Tz, d: NaiveDate) -> i64 {
+    let Some(mid) = d.and_hms_opt(0, 0, 0) else {
+        return 0;
+    };
+    if let Some(t) = tz.from_local_datetime(&mid).earliest() {
+        return t.timestamp();
+    }
+    for minutes in 1..=24 * 60 {
+        let probe = mid + chrono::Duration::minutes(minutes);
+        if let Some(t) = tz.from_local_datetime(&probe).earliest() {
+            return t.timestamp();
+        }
+    }
+    mid.and_utc().timestamp()
 }
 
 type Q = Box<dyn Query>;
 
 /// Build the Tantivy query for `expr` (`None` = recent mail). Spam and Trash
 /// are excluded unless the expression mentions `in:spam|trash|anywhere`.
-pub fn build_query(si: &SearchIndex, expr: Option<&Expr>, now: i64, tz_offset_secs: i32) -> Q {
+pub fn build_query<Tz: TimeZone>(si: &SearchIndex, expr: Option<&Expr>, now: i64, tz: &Tz) -> Q {
+    let midnight = |d: NaiveDate| local_midnight(tz, d);
     let cx = Ctx {
         si,
         now,
-        tz_offset_secs,
+        midnight: &midnight,
     };
     let body: Q = expr
         .and_then(|e| build(&cx, e))
         .unwrap_or_else(|| Box::new(AllQuery));
-    if expr.is_some_and(mentions_location) {
-        return body;
-    }
+    let (spam_ok, trash_ok) = expr.map(lifted_exclusions).unwrap_or_default();
     let mut clauses = vec![(Occur::Must, body)];
-    for l in ["spam", "trash"] {
-        clauses.push((Occur::MustNot, label_term(&cx, l)));
+    for (l, lifted) in [("spam", spam_ok), ("trash", trash_ok)] {
+        if !lifted {
+            clauses.push((Occur::MustNot, label_term(&cx, l)));
+        }
+    }
+    if clauses.len() == 1 {
+        return clauses.remove(0).1;
     }
     Box::new(BooleanQuery::new(clauses))
 }
 
-fn mentions_location(e: &Expr) -> bool {
-    match e {
-        Expr::And(v) | Expr::Or(v) => v.iter().any(mentions_location),
-        Expr::Not(x) => mentions_location(x),
-        Expr::Term(Term::In(Location::Spam | Location::Trash | Location::Anywhere)) => true,
-        Expr::Term(_) => false,
+/// Which of (spam, trash) the expression positively asks for. A mention
+/// under an odd number of negations lifts nothing.
+fn lifted_exclusions(e: &Expr) -> (bool, bool) {
+    fn walk(e: &Expr, negated: bool, out: &mut (bool, bool)) {
+        match e {
+            Expr::And(v) | Expr::Or(v) => v.iter().for_each(|c| walk(c, negated, out)),
+            Expr::Not(x) => walk(x, !negated, out),
+            Expr::Term(Term::In(l)) if !negated => match l {
+                Location::Spam => out.0 = true,
+                Location::Trash => out.1 = true,
+                Location::Anywhere => *out = (true, true),
+                _ => {}
+            },
+            Expr::Term(_) => {}
+        }
     }
+    let mut out = (false, false);
+    walk(e, false, &mut out);
+    out
 }
 
 /// `None` means the expression contributes no constraint.
@@ -217,13 +253,6 @@ fn label_query(cx: &Ctx, value: &str) -> Option<Q> {
     )
 }
 
-fn local_midnight(cx: &Ctx, d: chrono::NaiveDate) -> i64 {
-    d.and_hms_opt(0, 0, 0)
-        .map(|dt| dt.and_utc().timestamp())
-        .unwrap_or(0)
-        - i64::from(cx.tz_offset_secs)
-}
-
 fn age_secs(a: Age) -> i64 {
     let unit = match a.unit {
         AgeUnit::Day => 1,
@@ -278,13 +307,13 @@ fn build_term(cx: &Ctx, t: &Term) -> Option<Q> {
         ))),
         Term::After(d) => Some(date_range(
             cx,
-            Bound::Included(local_midnight(cx, *d)),
+            Bound::Included((cx.midnight)(*d)),
             Bound::Unbounded,
         )),
         Term::Before(d) => Some(date_range(
             cx,
             Bound::Unbounded,
-            Bound::Excluded(local_midnight(cx, *d)),
+            Bound::Excluded((cx.midnight)(*d)),
         )),
         Term::OlderThan(a) => Some(date_range(
             cx,
@@ -393,5 +422,31 @@ pub fn thread_hit(g: ThreadGroup, msgs: &[MsgSummary]) -> ThreadHit {
         snippet: last.map(|m| m.snippet.clone()).unwrap_or_default(),
         has_attachment: msgs.iter().any(|m| m.has_attachments),
         matched: g.matched,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::FixedOffset;
+
+    #[test]
+    fn midnight_in_fixed_offset() {
+        let tz = FixedOffset::west_opt(8 * 3600).unwrap();
+        let d = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
+        assert_eq!(local_midnight(&tz, d), 1_577_836_800 + 8 * 3600);
+    }
+
+    #[test]
+    fn midnight_gap_uses_first_valid_instant() {
+        // Sao Paulo skipped 2018-11-04 00:00-01:00 (DST start): the day begins at 01:00 -02:00.
+        let d = NaiveDate::from_ymd_opt(2018, 11, 4).unwrap();
+        let want = chrono::NaiveDate::from_ymd_opt(2018, 11, 4)
+            .unwrap()
+            .and_hms_opt(3, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+        assert_eq!(local_midnight(&chrono_tz::America::Sao_Paulo, d), want);
     }
 }

@@ -75,19 +75,23 @@ impl Library {
         &self.dir
     }
 
-    pub fn store(&self) -> &Store {
+    #[allow(dead_code)] // used by the import and rebuild tasks
+    pub(crate) fn store(&self) -> &Store {
         &self.store
     }
 
-    pub fn events(&self) -> &EventLog {
+    #[allow(dead_code)]
+    pub(crate) fn events(&self) -> &EventLog {
         &self.events
     }
 
-    pub fn meta(&self) -> &MetaDb {
+    #[allow(dead_code)]
+    pub(crate) fn meta(&self) -> &MetaDb {
         &self.meta
     }
 
-    pub fn index(&self) -> &SearchIndex {
+    #[allow(dead_code)]
+    pub(crate) fn index(&self) -> &SearchIndex {
         &self.index
     }
 
@@ -103,19 +107,19 @@ impl Library {
         }
     }
 
-    /// Run a Gmail-style query. `now` is unix seconds; `tz_offset_secs` is the
-    /// local UTC offset (seconds east of UTC) used for `after:`/`before:`.
-    pub fn search(
+    /// Run a Gmail-style query. `now` is unix seconds; `tz` is the time
+    /// zone in which `after:`/`before:` day boundaries are resolved.
+    pub fn search<Tz: chrono::TimeZone>(
         &self,
         q: &str,
         offset: usize,
         limit: usize,
         now: i64,
-        tz_offset_secs: i32,
+        tz: &Tz,
     ) -> Result<SearchResults> {
         let start = Instant::now();
         let parsed = parse_query(q);
-        let query = exec::build_query(&self.index, parsed.expr.as_ref(), now, tz_offset_secs);
+        let query = exec::build_query(&self.index, parsed.expr.as_ref(), now, tz);
         let (hits, total_messages) = exec::run(&self.index, &*query)?;
         let page: Vec<_> = exec::group_threads(&hits)
             .into_iter()

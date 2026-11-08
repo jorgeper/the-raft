@@ -23,6 +23,7 @@ zip = { version = "9.4.2", optional = true, default-features = false, features =
 zstd = "0.14.3"
 
 [dev-dependencies]
+chrono-tz = "0.10"
 mail-core = { path = ".", features = ["testing"] }
 base64 = "0.23.1"
 tempfile = "3.27.0"

@@ -15,6 +15,33 @@ use mail_core::store::Store;
 /// Build a library in `dir` from RFC 822 messages (e.g. `MsgBuilder::build()`)
 /// as import 1, then open it through the public facade.
 pub fn build_library(dir: &Path, msgs: &[Vec<u8>]) -> Library {
+    let msgs: Vec<TestMsg> = msgs.iter().cloned().map(TestMsg::new).collect();
+    build_library_with(dir, &msgs)
+}
+
+/// A message to import plus per-message index flags.
+pub struct TestMsg {
+    pub bytes: Vec<u8>,
+    pub removed: bool,
+}
+
+impl TestMsg {
+    pub fn new(bytes: Vec<u8>) -> Self {
+        TestMsg {
+            bytes,
+            removed: false,
+        }
+    }
+
+    pub fn removed(bytes: Vec<u8>) -> Self {
+        TestMsg {
+            bytes,
+            removed: true,
+        }
+    }
+}
+
+pub fn build_library_with(dir: &Path, msgs: &[TestMsg]) -> Library {
     create_private_dir(dir).unwrap();
     {
         let mut store = Store::open(dir).unwrap();
@@ -25,9 +52,9 @@ pub fn build_library(dir: &Path, msgs: &[Vec<u8>]) -> Library {
         let mut writer = index.writer().unwrap();
         meta.begin_import(1, 0, "test", ImportKind::Full).unwrap();
         meta.transaction(|| {
-            for bytes in msgs {
+            for m in msgs {
                 let raw = RawMessage {
-                    bytes: bytes.clone(),
+                    bytes: m.bytes.clone(),
                     from_line_date: None,
                 };
                 let parsed = parse_message(&raw).unwrap();
@@ -35,7 +62,7 @@ pub fn build_library(dir: &Path, msgs: &[Vec<u8>]) -> Library {
                 let r: MessageRef = store.append(&raw.bytes)?;
                 let id = meta.insert_message(&parsed, &keys, r, 1)?;
                 let row = meta.message(id)?;
-                writer.upsert(&IndexDoc::from_parsed(id, row.thrid, 1, &parsed, false))?;
+                writer.upsert(&IndexDoc::from_parsed(id, row.thrid, 1, &parsed, m.removed))?;
             }
             Ok(())
         })
