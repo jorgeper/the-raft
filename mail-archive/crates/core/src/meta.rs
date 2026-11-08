@@ -10,6 +10,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
+use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 
 use crate::model::{
     Address, AttachmentInfo, DedupeKeys, ImportKind, Key, MessageRef, MsgId, ParsedMessage,
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS attachments(
 CREATE TABLE IF NOT EXISTS addresses(
     addr TEXT PRIMARY KEY,
     name TEXT,
+    search TEXT NOT NULL,
     count INTEGER NOT NULL
 ) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS imports(
@@ -154,6 +156,19 @@ pub struct MessageRow {
     pub removed: bool,
 }
 
+struct TxGuard<'a> {
+    conn: &'a Connection,
+    done: bool,
+}
+
+impl Drop for TxGuard<'_> {
+    fn drop(&mut self) {
+        if !self.done && !self.conn.is_autocommit() {
+            let _ = self.conn.execute_batch("ROLLBACK");
+        }
+    }
+}
+
 pub struct MetaDb {
     conn: Connection,
 }
@@ -181,6 +196,30 @@ fn like_escape(s: &str) -> String {
         o.push(c);
     }
     o
+}
+
+/// Lowercase and strip diacritics (NFD, drop combining marks).
+fn fold(s: &str) -> String {
+    s.nfd()
+        .filter(|c| !is_combining_mark(*c))
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// Folded address followed by each folded alphanumeric word of the display
+/// name, space-separated and space-prefixed: `" addr word word"`.
+fn search_key(addr: &str, name: Option<&str>) -> String {
+    let mut k = format!(" {}", fold(addr));
+    if let Some(n) = name {
+        for w in fold(n)
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+        {
+            k.push(' ');
+            k.push_str(w);
+        }
+    }
+    k
 }
 
 const ROW_COLS: &str = "id, content_key, header_key, message_id, thrid, date, from_name, from_addr, \
@@ -213,19 +252,28 @@ impl MetaDb {
             return f();
         }
         self.conn.execute_batch("BEGIN IMMEDIATE")?;
-        match f() {
-            Ok(v) => {
-                self.conn.execute_batch("COMMIT")?;
-                Ok(v)
-            }
-            Err(e) => {
-                let _ = self.conn.execute_batch("ROLLBACK");
-                Err(e)
-            }
-        }
+        // Rolls back on early return (Err, failed COMMIT) and on panic.
+        let mut guard = TxGuard {
+            conn: &self.conn,
+            done: false,
+        };
+        let v = f()?;
+        self.conn.execute_batch("COMMIT")?;
+        guard.done = true;
+        Ok(v)
     }
 
     pub fn insert_message(
+        &self,
+        p: &ParsedMessage,
+        k: &DedupeKeys,
+        r: MessageRef,
+        import_id: u64,
+    ) -> Result<MsgId> {
+        self.transaction(|| self.insert_message_inner(p, k, r, import_id))
+    }
+
+    fn insert_message_inner(
         &self,
         p: &ParsedMessage,
         k: &DedupeKeys,
@@ -287,7 +335,7 @@ impl MetaDb {
             }
         }
         self.write_labels(id, &p.labels)?;
-        self.bump_addresses(p.from.iter().chain(&p.to).chain(&p.cc).chain(&p.bcc), 1)?;
+        self.bump_addresses(p.from.iter().chain(&p.to).chain(&p.cc).chain(&p.bcc))?;
         Ok(id)
     }
 
@@ -299,22 +347,21 @@ impl MetaDb {
         };
         Ok(self
             .conn
-            .prepare_cached("SELECT thrid FROM messages WHERE message_id = ? LIMIT 1")?
+            .prepare_cached("SELECT thrid FROM messages WHERE message_id = ? ORDER BY id LIMIT 1")?
             .query_row([root], |r| r.get(0))
             .optional()?)
     }
 
-    fn bump_addresses<'a>(&self, it: impl Iterator<Item = &'a Address>, delta: i64) -> Result<()> {
+    fn bump_addresses<'a>(&self, it: impl Iterator<Item = &'a Address>) -> Result<()> {
         let mut up = self.conn.prepare_cached(
-            "INSERT INTO addresses(addr, name, count) VALUES(?1, ?2, ?3) \
-             ON CONFLICT(addr) DO UPDATE SET count = count + ?3, name = coalesce(name, ?2)",
+            "INSERT INTO addresses(addr, name, search, count) VALUES(?1, ?2, ?3, 1) \
+             ON CONFLICT(addr) DO UPDATE SET count = count + 1, \
+               name = coalesce(name, ?2), \
+               search = CASE WHEN name IS NULL AND ?2 IS NOT NULL THEN ?3 ELSE search END",
         )?;
         for a in it {
-            up.execute(params![
-                a.addr,
-                a.name.as_deref().filter(|n| !n.is_empty()),
-                delta
-            ])?;
+            let name = a.name.as_deref().filter(|n| !n.is_empty());
+            up.execute(params![a.addr, name, search_key(&a.addr, name)])?;
         }
         Ok(())
     }
@@ -409,10 +456,7 @@ impl MetaDb {
             message_id: r.get(3)?,
             thrid: r.get(4)?,
             date: r.get(5)?,
-            from: from_addr.map(|addr| Address {
-                name: r.get(6).ok().flatten(),
-                addr,
-            }),
+            from: None,
             to: unjson(&r.get::<_, String>(8)?)?,
             cc: unjson(&r.get::<_, String>(9)?)?,
             bcc: unjson(&r.get::<_, String>(10)?)?,
@@ -431,6 +475,12 @@ impl MetaDb {
             labels: Vec::new(),
             attachments: Vec::new(),
         };
+        if let Some(addr) = from_addr {
+            row.from = Some(Address {
+                name: r.get(6)?,
+                addr,
+            });
+        }
         row.labels = self
             .conn
             .prepare_cached(
@@ -496,26 +546,21 @@ impl MetaDb {
     }
 
     /// Addresses where `prefix` matches the start of the address or of any
-    /// word of the display name (case-insensitive), most frequent first.
+    /// alphanumeric word of the display name, ignoring case and diacritics,
+    /// most frequent first.
     pub fn top_addresses(&self, prefix: &str, limit: usize) -> Result<Vec<Address>> {
-        let p = like_escape(&prefix.to_lowercase());
+        let p = like_escape(&fold(prefix));
         let mut st = self.conn.prepare_cached(
-            "SELECT addr, name FROM addresses \
-             WHERE lower(addr) LIKE ?1 ESCAPE '\\' \
-                OR lower(name) LIKE ?1 ESCAPE '\\' \
-                OR lower(name) LIKE ?2 ESCAPE '\\' \
-             ORDER BY count DESC, addr LIMIT ?3",
+            "SELECT addr, name FROM addresses WHERE search LIKE ?1 ESCAPE '\\' \
+             ORDER BY count DESC, addr LIMIT ?2",
         )?;
         let v = st
-            .query_map(
-                params![format!("{p}%"), format!("% {p}%"), limit as i64],
-                |r| {
-                    Ok(Address {
-                        addr: r.get(0)?,
-                        name: r.get(1)?,
-                    })
-                },
-            )?
+            .query_map(params![format!("% {p}%"), limit as i64], |r| {
+                Ok(Address {
+                    addr: r.get(0)?,
+                    name: r.get(1)?,
+                })
+            })?
             .collect::<std::result::Result<_, _>>()?;
         Ok(v)
     }
@@ -524,24 +569,53 @@ impl MetaDb {
     /// contributions, and the import row itself.
     pub fn delete_import(&self, import_id: u64) -> Result<()> {
         self.transaction(|| {
-            let sql = format!("SELECT {ROW_COLS} FROM messages WHERE first_seen_import = ?");
-            for m in self.rows(&sql, import_id as i64)? {
-                self.bump_addresses(m.from.iter().chain(&m.to).chain(&m.cc).chain(&m.bcc), -1)?;
-                for t in ["message_labels", "attachments"] {
-                    self.conn
-                        .execute(&format!("DELETE FROM {t} WHERE message_id = ?"), [m.id])?;
+            let id = import_id as i64;
+            // Aggregate address occurrences of the doomed rows, then decrement.
+            let mut dec: HashMap<String, i64> = HashMap::new();
+            {
+                let mut st = self.conn.prepare_cached(
+                    "SELECT from_addr, to_json, cc_json, bcc_json FROM messages \
+                     WHERE first_seen_import = ?",
+                )?;
+                let mut rows = st.query([id])?;
+                while let Some(r) = rows.next()? {
+                    if let Some(a) = r.get::<_, Option<String>>(0)? {
+                        *dec.entry(a).or_default() += 1;
+                    }
+                    for i in 1..=3 {
+                        for a in unjson(&r.get::<_, String>(i)?)? {
+                            *dec.entry(a.addr).or_default() += 1;
+                        }
+                    }
                 }
-                self.conn
-                    .execute("DELETE FROM messages WHERE id = ?", [m.id])?;
+            }
+            {
+                let mut up = self
+                    .conn
+                    .prepare_cached("UPDATE addresses SET count = count - ? WHERE addr = ?")?;
+                for (a, n) in &dec {
+                    up.execute(params![n, a])?;
+                }
             }
             self.conn
                 .execute("DELETE FROM addresses WHERE count <= 0", [])?;
+            for t in ["message_labels", "attachments"] {
+                self.conn.execute(
+                    &format!(
+                        "DELETE FROM {t} WHERE message_id IN \
+                         (SELECT id FROM messages WHERE first_seen_import = ?)"
+                    ),
+                    [id],
+                )?;
+            }
+            self.conn
+                .execute("DELETE FROM messages WHERE first_seen_import = ?", [id])?;
             self.conn.execute(
                 "DELETE FROM labels WHERE id NOT IN (SELECT label_id FROM message_labels)",
                 [],
             )?;
             self.conn
-                .execute("DELETE FROM imports WHERE id = ?", [import_id as i64])?;
+                .execute("DELETE FROM imports WHERE id = ?", [id])?;
             Ok(())
         })
     }
@@ -812,7 +886,7 @@ mod tests {
     #[test]
     fn fallback_thread_from_references() {
         let f = fx();
-        let root = add(
+        add(
             &f.db,
             &MsgBuilder::new().message_id(Some("<root@x>")).thrid(42),
             1,
@@ -836,7 +910,6 @@ mod tests {
         assert_eq!(f.db.message(irt).unwrap().thrid, 42);
         let lone = add(&f.db, &MsgBuilder::new().message_id(Some("<l@x>")), 1);
         assert_eq!(f.db.message(lone).unwrap().thrid, -lone);
-        let _ = root;
     }
 
     #[test]
@@ -863,12 +936,92 @@ mod tests {
         });
         assert!(r.is_err());
         assert_eq!(f.db.count().unwrap(), 0);
+        // the connection is back in autocommit: the next transaction commits
+        assert!(f.db.conn.is_autocommit());
         f.db.transaction(|| {
             add(&f.db, &MsgBuilder::new().subject("x"), 1);
             Ok(())
         })
         .unwrap();
         assert_eq!(f.db.count().unwrap(), 1);
+    }
+
+    #[test]
+    fn transaction_rolls_back_on_panic() {
+        let f = fx();
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _: Result<()> = f.db.transaction(|| {
+                add(&f.db, &MsgBuilder::new().subject("x"), 1);
+                panic!("boom");
+            });
+        }));
+        assert!(r.is_err());
+        assert!(f.db.conn.is_autocommit());
+        assert_eq!(f.db.count().unwrap(), 0);
+        f.db.transaction(|| {
+            add(&f.db, &MsgBuilder::new().subject("y"), 1);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(f.db.count().unwrap(), 1);
+    }
+
+    #[test]
+    fn shared_address_survives_delete_of_one_import() {
+        let f = fx();
+        add(
+            &f.db,
+            &MsgBuilder::new().from("Shared <s@x.com>").subject("1"),
+            1,
+        );
+        add(
+            &f.db,
+            &MsgBuilder::new().from("Shared <s@x.com>").subject("2"),
+            2,
+        );
+        add(
+            &f.db,
+            &MsgBuilder::new().from("Shared <s@x.com>").subject("3"),
+            2,
+        );
+        let count = |f: &Fx| -> i64 {
+            f.db.conn
+                .query_row(
+                    "SELECT count FROM addresses WHERE addr='s@x.com'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(count(&f), 3);
+        f.db.delete_import(2).unwrap();
+        assert_eq!(count(&f), 1);
+        assert_eq!(f.db.top_addresses("s", 5).unwrap().len(), 1);
+        f.db.delete_import(1).unwrap();
+        assert!(f.db.top_addresses("s", 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn top_addresses_folds_diacritics_and_word_boundaries() {
+        let f = fx();
+        add(
+            &f.db,
+            &MsgBuilder::new().from("=?utf-8?Q?=C3=89mile?= Zola <ez@x.com>"),
+            1,
+        );
+        add(
+            &f.db,
+            &MsgBuilder::new().from("\"Anne-Marie\" <am@x.com>"),
+            1,
+        );
+        add(&f.db, &MsgBuilder::new().from("\"O'Brien\" <ob@x.com>"), 1);
+        for q in ["emile", "émile", "ÉMI", "zola"] {
+            let r = f.db.top_addresses(q, 5).unwrap();
+            assert_eq!(r.len(), 1, "{q}");
+            assert_eq!(r[0].addr, "ez@x.com");
+        }
+        assert_eq!(f.db.top_addresses("marie", 5).unwrap()[0].addr, "am@x.com");
+        assert_eq!(f.db.top_addresses("brien", 5).unwrap()[0].addr, "ob@x.com");
     }
 
     #[test]
@@ -921,6 +1074,42 @@ mod tests {
             .unwrap();
         }
         let s = t.elapsed().as_secs_f64();
-        println!("inserted {n} in {s:.2}s = {:.0}/s", n as f64 / s);
+        let rate = n as f64 / s;
+        println!("inserted {n} in {s:.2}s = {rate:.0}/s");
+        assert!(rate > 20_000.0, "insert rate {rate:.0}/s");
+    }
+
+    #[test]
+    #[ignore]
+    fn mark_seen_perf_500k() {
+        let f = fx();
+        let raw = RawMessage {
+            bytes: MsgBuilder::new().subject("s").build(),
+            from_line_date: None,
+        };
+        let p = parse_message(&raw).unwrap();
+        let k0 = dedupe_keys(&raw, &p);
+        let n = 500_000u32;
+        let mut ids = Vec::new();
+        for chunk in (0..n).collect::<Vec<_>>().chunks(5000) {
+            f.db.transaction(|| {
+                for &i in chunk {
+                    let mut k = k0.clone();
+                    k.content_key[..4].copy_from_slice(&i.to_be_bytes());
+                    k.header_key = None;
+                    ids.push(f.db.insert_message(&p, &k, mref(1), 1)?);
+                }
+                Ok(())
+            })
+            .unwrap();
+        }
+        let absent: Vec<MsgId> = ids.iter().copied().step_by(10).collect();
+        let t = std::time::Instant::now();
+        f.db.mark_seen(2, &absent).unwrap();
+        let s = t.elapsed().as_secs_f64();
+        println!("mark_seen over {n} rows ({} absent): {s:.2}s", absent.len());
+        assert!(s < 5.0, "mark_seen took {s:.2}s");
+        assert!(f.db.message(absent[0]).unwrap().removed);
+        assert!(!f.db.message(ids[1]).unwrap().removed);
     }
 }
