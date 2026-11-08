@@ -117,25 +117,41 @@ mod hex_keys {
     }
 }
 
+/// Length of the file prefix ending in `\n` (0 if no newline), scanning
+/// backwards in chunks so a large log is not read in full.
+fn valid_prefix_len(file: &mut File, len: u64) -> Result<u64> {
+    const CHUNK: u64 = 8192;
+    let mut end = len;
+    let mut buf = vec![0u8; CHUNK as usize];
+    while end > 0 {
+        let start = end.saturating_sub(CHUNK);
+        let n = (end - start) as usize;
+        file.seek(SeekFrom::Start(start))?;
+        file.read_exact(&mut buf[..n])?;
+        if let Some(i) = buf[..n].iter().rposition(|&b| b == b'\n') {
+            return Ok(start + i as u64 + 1);
+        }
+        end = start;
+    }
+    Ok(0)
+}
+
 pub struct EventLog {
     file: File,
 }
 
 impl EventLog {
-    /// Open (creating with mode 0600 if missing) for appending. If a previous
-    /// crash left a torn final line, a newline is written first so the next
-    /// event starts on its own line; the torn line stays ignored by readers.
+    /// Open (creating with mode 0600 if missing) for appending. If the file
+    /// does not end in `\n`, the trailing bytes are an incomplete write from a
+    /// crash: truncate back to just after the last `\n` (or to 0).
     pub fn open(path: &Path) -> Result<EventLog> {
         drop(create_private_file(path)?);
         let mut file = OpenOptions::new().read(true).append(true).open(path)?;
         let len = file.metadata()?.len();
-        if len > 0 {
-            file.seek(SeekFrom::Start(len - 1))?;
-            let mut last = [0u8; 1];
-            file.read_exact(&mut last)?;
-            if last[0] != b'\n' {
-                file.write_all(b"\n")?;
-            }
+        let keep = valid_prefix_len(&mut file, len)?;
+        if keep != len {
+            file.set_len(keep)?;
+            file.sync_all()?;
         }
         Ok(EventLog { file })
     }
@@ -290,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn append_after_torn_tail_starts_new_line() {
+    fn torn_tail_truncated_on_open() {
         let t = tempfile::tempdir().unwrap();
         let p = t.path().join("events.log");
         let evs = all_variants();
@@ -300,9 +316,17 @@ mod tests {
         drop(f);
         let mut log = EventLog::open(&p).unwrap();
         log.append(&evs[2]).unwrap();
-        // The torn line is now mid-file: it must be reported as corruption
-        // only if malformed AND not last; here it is followed by a good line.
-        assert!(read_events(&p).is_err());
+        assert_eq!(read_events(&p).unwrap(), evs[..3].to_vec());
+    }
+
+    #[test]
+    fn torn_only_line_truncated_to_empty() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("events.log");
+        std::fs::write(&p, b"{\"Imp").unwrap();
+        let mut log = EventLog::open(&p).unwrap();
+        log.append(&all_variants()[0]).unwrap();
+        assert_eq!(read_events(&p).unwrap(), all_variants()[..1].to_vec());
     }
 
     #[test]
