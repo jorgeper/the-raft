@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#09090b">
+  <title>Workout Book</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============ Screen: Day (primary) ============ -->
+  <div id="screen-day" class="screen active">
+    <div class="page-content">
+      <!-- Day View -->
+      <div id="day-view">
+        <div class="day-nav">
+          <button id="btn-day-prev" class="btn-icon">&#9664;</button>
+          <div class="day-nav-center">
+            <h1 id="day-date" class="date-heading"></h1>
+            <button id="btn-go-today" class="btn-today hidden">Today</button>
+          </div>
+          <button id="btn-day-next" class="btn-icon">&#9654;</button>
+        </div>
+
+        <div class="view-toggle-row">
+          <button id="btn-show-month" class="btn-view-toggle">Month View</button>
+        </div>
+
+        <div class="workout-actions">
+          <button id="btn-load-workout" class="btn btn-secondary btn-sm">Load Workout</button>
+          <button id="btn-save-workout" class="btn btn-secondary btn-sm">Save Workout</button>
+        </div>
+        <p id="day-workout-name" class="workout-name-label hidden"></p>
+
+        <div id="day-exercises" class="exercise-list"></div>
+
+        <p id="day-empty-msg" class="empty-message">No exercises yet.</p>
+
+        <button id="btn-add-exercise" class="btn btn-secondary">+ Add Exercise</button>
+
+        <div id="timer-section" class="timer-section">
+          <div id="timer-display" class="timer-display">00:00:00</div>
+          <div id="timer-controls" class="timer-controls">
+            <button id="btn-timer-start" class="btn-timer btn-timer-start">Start</button>
+            <button id="btn-timer-stop" class="btn-timer btn-timer-stop hidden">Stop</button>
+            <button id="btn-timer-reset" class="btn-timer btn-timer-reset hidden">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Month View -->
+      <div id="month-view" class="hidden">
+        <div class="month-nav">
+          <button id="btn-month-prev" class="btn-icon">&#9664;</button>
+          <h1 id="month-title" class="date-heading"></h1>
+          <button id="btn-month-next" class="btn-icon">&#9654;</button>
+        </div>
+        <div class="month-actions">
+          <button id="btn-month-today" class="btn-today">Today</button>
+          <button id="btn-show-day" class="btn-view-toggle">Day View</button>
+        </div>
+        <div id="month-grid" class="month-grid"></div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-screen="day">Today</button>
+      <button class="nav-item" data-screen="workouts">Workouts</button>
+      <button class="nav-item" data-screen="analytics">Analytics</button>
+      <button class="nav-item" data-screen="settings">Settings</button>
+    </nav>
+  </div>
+
+  <!-- ============ Modal: Add Exercise ============ -->
+  <div id="modal-add-exercise" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Add Exercise</h2>
+      <input id="exercise-search" type="text" class="input" placeholder="Search exercises..." autocomplete="off">
+      <div id="exercise-suggestions" class="suggestions-list"></div>
+      <button id="btn-create-exercise" class="btn btn-secondary">Create new exercise</button>
+      <button id="btn-cancel-exercise" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============ Modal: Load Workout ============ -->
+  <div id="modal-load-workout" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Load Workout</h2>
+      <div id="load-workout-list" class="workout-picker-list"></div>
+      <p id="load-workout-empty" class="empty-message hidden">No saved workouts yet.</p>
+      <button id="btn-cancel-load-workout" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============ Modal: Save Workout ============ -->
+  <div id="modal-save-workout" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Save as Workout</h2>
+      <input id="save-workout-name" type="text" class="input" placeholder="Workout name (e.g. Push Day 1)">
+      <div class="btn-row">
+        <button id="btn-confirm-save-workout" class="btn btn-primary">Save</button>
+        <button id="btn-cancel-save-workout" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Screen: Workouts ============ -->
+  <div id="screen-workouts" class="screen">
+    <div class="page-content">
+      <h1 class="date-heading">My Workouts</h1>
+
+      <div id="workouts-list" class="templates-manage-list"></div>
+
+      <button id="btn-create-workout" class="btn btn-secondary">+ Create New Workout</button>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-item" data-screen="day">Today</button>
+      <button class="nav-item active" data-screen="workouts">Workouts</button>
+      <button class="nav-item" data-screen="analytics">Analytics</button>
+      <button class="nav-item" data-screen="settings">Settings</button>
+    </nav>
+  </div>
+
+  <!-- ============ Modal: Edit Workout ============ -->
+  <div id="modal-edit-workout" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2 id="edit-workout-title">Edit Workout</h2>
+      <input id="edit-workout-name" type="text" class="input" placeholder="Workout name">
+      <div id="edit-workout-exercises" class="edit-exercise-list"></div>
+      <button id="btn-edit-workout-add" class="btn btn-secondary">+ Add Exercise</button>
+      <div class="btn-row">
+        <button id="btn-edit-workout-save" class="btn btn-primary">Save</button>
+        <button id="btn-edit-workout-cancel" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Modal: Add Exercise to Workout ============ -->
+  <div id="modal-workout-exercise" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Add Exercise</h2>
+      <input id="workout-exercise-search" type="text" class="input" placeholder="Exercise name..." autocomplete="off">
+      <div id="workout-exercise-suggestions" class="suggestions-list"></div>
+      <button id="btn-workout-exercise-create" class="btn btn-secondary">Add as new exercise</button>
+      <button id="btn-workout-exercise-cancel" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============ Screen: Analytics ============ -->
+  <div id="screen-analytics" class="screen">
+    <div class="page-content">
+      <h1 class="date-heading">Analytics</h1>
+
+      <div id="analytics-summary" class="analytics-summary"></div>
+
+      <div class="analytics-section">
+        <h2 class="analytics-section-title">Personal Records</h2>
+        <div id="analytics-records-list"></div>
+      </div>
+
+      <div class="analytics-section">
+        <h2 class="analytics-section-title">Exercise Progression</h2>
+        <div id="analytics-chips" class="exercise-chips"></div>
+        <button id="btn-add-analytics-exercise" class="btn btn-secondary btn-sm analytics-add-btn">+ Add Exercise</button>
+
+        <div id="chart-weight" class="chart-container">
+          <h3 class="chart-title">Max Weight (<span class="chart-unit">lb</span>)</h3>
+          <div class="chart-wrapper">
+            <svg id="svg-weight" class="chart-svg" viewBox="0 0 320 200" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <p id="chart-weight-empty" class="chart-empty">Select exercises to see weight trends</p>
+        </div>
+
+        <div id="chart-volume" class="chart-container">
+          <h3 class="chart-title">Volume (weight &times; reps)</h3>
+          <div class="chart-wrapper">
+            <svg id="svg-volume" class="chart-svg" viewBox="0 0 320 200" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <p id="chart-volume-empty" class="chart-empty">Select exercises to see volume trends</p>
+        </div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-item" data-screen="day">Today</button>
+      <button class="nav-item" data-screen="workouts">Workouts</button>
+      <button class="nav-item active" data-screen="analytics">Analytics</button>
+      <button class="nav-item" data-screen="settings">Settings</button>
+    </nav>
+  </div>
+
+  <!-- ============ Modal: Analytics Exercise Picker ============ -->
+  <div id="modal-analytics-exercise" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Add Exercise</h2>
+      <input id="analytics-exercise-search" type="text" class="input" placeholder="Search exercises..." autocomplete="off">
+      <div id="analytics-exercise-suggestions" class="suggestions-list"></div>
+      <button id="btn-cancel-analytics-exercise" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============ Screen: Exercise Library Browser ============ -->
+  <div id="screen-library" class="screen">
+    <div class="page-content">
+      <div class="library-header">
+        <button id="btn-library-back" class="btn-icon">&#9664;</button>
+        <h1 class="date-heading">Exercise Library</h1>
+        <span id="library-count" class="library-count"></span>
+      </div>
+
+      <input id="library-search" type="text" class="input" placeholder="Search exercises..." autocomplete="off" style="margin-bottom: 12px;">
+
+      <div id="library-filters" class="library-filters">
+        <div class="filter-row">
+          <div id="filter-movement" class="filter-chips" data-filter="movementPattern"></div>
+        </div>
+        <div class="filter-row">
+          <div id="filter-muscle" class="filter-chips" data-filter="muscleGroup"></div>
+        </div>
+        <div class="filter-row">
+          <div id="filter-type" class="filter-chips" data-filter="exerciseType"></div>
+        </div>
+        <div class="filter-row">
+          <div id="filter-equipment" class="filter-chips" data-filter="equipment"></div>
+        </div>
+        <div class="filter-row">
+          <div id="filter-calisthenics" class="filter-chips" data-filter="calisthenics"></div>
+        </div>
+      </div>
+
+      <div id="library-list" class="library-list"></div>
+      <p id="library-empty" class="empty-message hidden">No exercises match your filters.</p>
+    </div>
+  </div>
+
+  <!-- ============ Screen: Exercise Detail ============ -->
+  <div id="screen-exercise-detail" class="screen">
+    <div class="page-content">
+      <div class="library-header">
+        <button id="btn-detail-back" class="btn-icon">&#9664;</button>
+        <h1 id="detail-exercise-name" class="date-heading"></h1>
+      </div>
+
+      <div class="exercise-detail-card">
+        <p id="detail-description" class="detail-description"></p>
+        <div id="detail-pills" class="detail-pills"></div>
+      </div>
+
+      <div id="detail-alternatives" class="detail-section">
+        <h2 class="analytics-section-title">Alternatives</h2>
+        <div id="detail-alternatives-list" class="detail-alternatives-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Screen: Settings ============ -->
+  <div id="screen-settings" class="screen">
+    <div class="page-content">
+      <h1 class="date-heading">Settings</h1>
+
+      <div class="settings-card">
+        <div class="setting-row" id="btn-browse-library" style="cursor: pointer;">
+          <span class="setting-label">Exercise Library</span>
+          <span class="setting-chevron" style="color: var(--text-tertiary);">&#9654;</span>
+        </div>
+        <div class="setting-row" style="border-top: 1px solid var(--border);">
+          <span class="setting-label">Theme</span>
+          <div class="toggle-group">
+            <button id="btn-theme-light" class="toggle-btn">Light</button>
+            <button id="btn-theme-dark" class="toggle-btn active">Dark</button>
+          </div>
+        </div>
+        <div class="setting-row" style="border-top: 1px solid var(--border);">
+          <span class="setting-label">Weight Unit</span>
+          <div class="toggle-group">
+            <button id="btn-unit-lb" class="toggle-btn active">lb</button>
+            <button id="btn-unit-kg" class="toggle-btn">kg</button>
+          </div>
+        </div>
+        <div class="setting-row" style="border-top: 1px solid var(--border);">
+          <span class="setting-label">Developer Mode</span>
+          <div class="toggle-group">
+            <button id="btn-devmode-off" class="toggle-btn active">Off</button>
+            <button id="btn-devmode-on" class="toggle-btn">On</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <div class="setting-row" style="border-bottom: none; flex-direction: column; align-items: stretch; gap: 10px;">
+          <span class="setting-label">Library Management</span>
+          <div style="display: flex; gap: 10px;">
+            <button id="btn-import-library" class="btn btn-secondary btn-sm" style="flex:1;">Import Library</button>
+            <button id="btn-export-library" class="btn btn-secondary btn-sm" style="flex:1;">Export Library</button>
+          </div>
+          <input type="file" id="library-file-input" accept=".json" class="hidden">
+        </div>
+      </div>
+
+      <div id="dev-tools-panel" class="settings-card hidden">
+        <div class="setting-row" style="border-bottom: none;">
+          <span class="setting-label" style="color: var(--warm); font-weight: 600;">Developer Tools</span>
+        </div>
+        <div style="padding: 0 0 14px;">
+          <button id="btn-dev-generate-days" class="btn btn-secondary" style="margin-bottom: 10px;">Generate Test Days</button>
+          <button id="btn-dev-generate-workouts" class="btn btn-secondary" style="margin-bottom: 10px;">Generate Saved Workouts</button>
+          <button id="btn-dev-reset" class="btn btn-danger">Reset All Data</button>
+        </div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-item" data-screen="day">Today</button>
+      <button class="nav-item" data-screen="workouts">Workouts</button>
+      <button class="nav-item" data-screen="analytics">Analytics</button>
+      <button class="nav-item active" data-screen="settings">Settings</button>
+    </nav>
+  </div>
+
+  <!-- ============ Modal: Generate Test Days ============ -->
+  <div id="modal-generate-days" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Generate Test Days</h2>
+      <label style="font-size: 0.875rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Number of days</label>
+      <input id="input-gen-days-count" type="number" class="input" value="14" min="1" max="90" inputmode="numeric">
+      <label style="font-size: 0.875rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Start date</label>
+      <input id="input-gen-days-start" type="date" class="input">
+      <p class="hint-text" style="margin-bottom: 12px;">Existing data on matching dates will be overwritten.</p>
+      <div class="btn-row">
+        <button id="btn-confirm-generate-days" class="btn btn-primary">Generate</button>
+        <button id="btn-cancel-generate-days" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Modal: Confirm Reset ============ -->
+  <div id="modal-confirm-reset" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Reset All Data</h2>
+      <p style="color: var(--text-secondary); font-size: 0.9375rem; margin-bottom: 16px;">This will permanently delete all workout days, saved workouts, and settings. This cannot be undone.</p>
+      <div class="btn-row">
+        <button id="btn-confirm-reset" class="btn btn-danger">Yes, Reset Everything</button>
+        <button id="btn-cancel-reset" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

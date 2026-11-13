@@ -1,0 +1,131 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; background: #3d9be9; }
+body { font-family: 'Courier New', ui-monospace, Menlo, monospace; }
+
+#app canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  image-rendering: pixelated;
+}
+
+#hud { position: fixed; inset: 0; pointer-events: none; user-select: none; }
+#hud button { pointer-events: auto; }
+
+#scoreboard {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  background: rgba(20, 30, 46, 0.88);
+  color: #f2f2f2;
+  border: 3px solid #f2f2f2;
+  border-radius: 4px;
+  padding: 8px 18px;
+  font-size: 18px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  box-shadow: 4px 4px 0 rgba(20, 30, 46, 0.35);
+}
+.sb-team b { color: #ffe066; margin-left: 4px; }
+#sb-outs, #sb-strikes { color: #ff8fab; }
+#sb-mute { color: #7ae0d8; font-size: 14px; }
+
+#role-banner {
+  position: absolute;
+  top: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(58, 111, 224, 0.92);
+  color: #fff;
+  padding: 4px 16px;
+  border-radius: 3px;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+#pitch-ui, #bat-ui {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 30, 46, 0.85);
+  color: #f2f2f2;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  gap: 16px;
+}
+#pitch-ui .hint, #bat-ui .hint { color: #bfe8ff; font-weight: normal; }
+#pitch-type { color: #ffe066; }
+#pitch-lane { color: #7ae0d8; }
+
+#banner {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  transform: translateX(-50%) rotate(-3deg);
+  font-size: 54px;
+  font-weight: 900;
+  color: #ffe066;
+  -webkit-text-stroke: 2.5px #243040;
+  text-shadow: 5px 5px 0 rgba(36, 48, 64, 0.5);
+  letter-spacing: 3px;
+  white-space: nowrap;
+}
+
+#title-screen, #gameover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: rgba(36, 48, 64, 0.35);
+}
+#title-screen[hidden], #gameover[hidden], #scoreboard[hidden],
+#banner[hidden], #pitch-ui[hidden], #bat-ui[hidden], #role-banner[hidden] {
+  display: none;
+}
+#title-screen h1 {
+  font-size: 64px;
+  color: #fff;
+  -webkit-text-stroke: 3px #243040;
+  text-shadow: 6px 6px 0 rgba(36, 48, 64, 0.55);
+  letter-spacing: 4px;
+}
+#title-screen .tag { color: #fff; font-size: 18px; text-shadow: 2px 2px 0 rgba(36,48,64,.6); }
+#title-screen .hint, #gameover .hint {
+  color: #eaf6ff;
+  font-size: 13px;
+  text-shadow: 1px 1px 0 rgba(36,48,64,.6);
+}
+#title-screen button, #gameover button {
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: bold;
+  color: #243040;
+  background: #ffe066;
+  border: 3px solid #243040;
+  border-radius: 4px;
+  padding: 10px 28px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #243040;
+  letter-spacing: 1px;
+}
+#title-screen button:hover, #gameover button:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 #243040; }
+#gameover h2 {
+  font-size: 46px;
+  color: #ffe066;
+  -webkit-text-stroke: 2px #243040;
+  text-shadow: 5px 5px 0 rgba(36, 48, 64, 0.55);
+  letter-spacing: 2px;
+}

@@ -1,0 +1,49 @@
+[package]
+name = "minutes"
+version = "0.1.0"
+description = "Minutes — local meeting notes"
+authors = ["Jorge Pereira"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "minutes_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+ogg-opus = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+cpal = "0.18"
+hound = "3.5"
+crossbeam-channel = "0.5"
+voice_activity_detector = "0.2"
+dirs = "6"
+zip = { version = "8", default-features = false, features = ["deflate"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+# NOTE: keep sherpa-rs dynamic — its "static" prebuilt produces materially
+# different (worse) speaker embeddings; the dylibs are bundled via
+# scripts/collect-dylibs.sh + bundle.macOS.frameworks.
+sherpa-rs = "0.6"
+ureq = "2"
+sha2 = "0.11.0"
+hex = "0.4.3"
+
+[target."cfg(target_os = \"macos\")".dependencies]
+whisper-rs = { version = "0.16", features = ["metal"] }
+
+[target."cfg(not(target_os = \"macos\"))".dependencies]
+whisper-rs = { version = "0.16" }
+

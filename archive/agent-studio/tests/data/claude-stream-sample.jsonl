@@ -1,0 +1,8 @@
+{"type": "system", "subtype": "init", "session_id": "s-redacted", "cwd": "/redacted", "claude_code_version": "2.1.202"}
+{"type": "assistant", "message": {"content": [{"type": "thinking", "thinking": "redacted"}]}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_x", "name": "Bash", "input": {"command": "pytest -q", "description": "run tests"}}]}}
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "Working on it. "}, {"type": "text", "text": "Tests are green."}]}}
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "hello studio"}]}}
+{"type": "rate_limit_event", "session_id": "s-redacted"}
+{"type": "result", "subtype": "success", "is_error": false, "result": "hello studio", "num_turns": 1}
+{"type": "totally_new_event", "payload": {"x": 1}}

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cozy Standard Farm Inspiration</title>
+<link rel="stylesheet" href="assets/theme.css">
+<style>
+  /* Page-scoped gallery components. Colours & fonts reference the theme.css
+     variables so this page shares the house palette and type. */
+  .gallery-head{max-width:70rem;margin:0 auto;padding:clamp(2.6rem,6vw,4.2rem) clamp(1.2rem,5vw,2.5rem) 0;text-align:center}
+  .gallery-head h1{margin:.4rem 0 0}
+  .gallery-head p{max-width:42rem;margin:.75rem auto 0;color:var(--ink-soft)}
+
+  .sheet{max-width:70rem;margin:2.2rem auto 0;padding:0 clamp(1.2rem,5vw,2.5rem)}
+  .sheet-inner{background:var(--bg-card);border:1px solid var(--line);border-radius:14px;padding:1.3rem 1.55rem}
+  .sheet-inner h2{font-size:1.28rem;margin:0 0 .7rem}
+  .sheet-inner ul{margin:0;padding-left:1.15rem}
+  .sheet-inner li{margin:.35rem 0;color:var(--ink-soft)}
+
+  .filters{max-width:70rem;margin:1.6rem auto 0;padding:0 clamp(1.2rem,5vw,2.5rem);display:flex;gap:.5rem;flex-wrap:wrap}
+  .filters button{font:.86rem var(--sans);padding:.4rem .9rem;border:1px solid var(--line);border-radius:20px;background:var(--bg-card);color:var(--ink);cursor:pointer;transition:border-color .15s,background .15s}
+  .filters button:hover{border-color:var(--accent)}
+  .filters button.active{background:var(--accent-wash);border-color:var(--accent);color:var(--accent-deep);font-weight:600}
+
+  .grid{max-width:70rem;margin:1.4rem auto 4rem;padding:0 clamp(1.2rem,5vw,2.5rem);display:grid;grid-template-columns:repeat(auto-fill,minmax(20rem,1fr));gap:1.4rem}
+  .card{background:var(--bg-card);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(41,38,28,.06)}
+  .card img{width:100%;aspect-ratio:16/10;object-fit:cover;display:block;background:var(--bg-side);cursor:zoom-in}
+  .card .body{padding:.9rem 1rem 1rem;display:flex;flex-direction:column;gap:.4rem;flex:1}
+  .card h3{font-family:var(--serif);font-weight:600;font-size:1.05rem;letter-spacing:-.008em;margin:0}
+  .card .meta{font-size:.8rem;color:var(--muted)}
+  .card .notes{font-size:.9rem;margin:0;color:var(--ink-soft)}
+  .card .notes strong{color:var(--ink)}
+  .card a.source{margin-top:auto;padding-top:.5rem;font-size:.85rem;color:var(--accent-deep);text-decoration:none}
+  .card a.source:hover{text-decoration:underline}
+  .broken-note{padding:1.9rem 1rem;text-align:center;font-size:.85rem;color:var(--muted);background:var(--bg-side)}
+
+  .tag{display:inline-block;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;font-weight:700;padding:.15rem .5rem;border-radius:10px;background:var(--accent-wash);color:var(--accent-deep);margin-right:.35rem}
+
+  .lightbox{position:fixed;inset:0;background:rgba(29,26,18,.9);display:none;align-items:center;justify-content:center;z-index:100;cursor:zoom-out;padding:1.25rem}
+  .lightbox.open{display:flex}
+  .lightbox img{max-width:95vw;max-height:92vh;border-radius:6px}
+
+  .gallery-foot{text-align:center;padding:1.5rem 1.25rem 3rem;color:var(--muted);font-size:.85rem}
+</style>
+</head>
+<body>
+
+<header class="gallery-head">
+  <div class="eyebrow">Stardew Valley · reference wall</div>
+  <h1>🌾 Cozy Standard Farm Inspiration</h1>
+  <p>A curated wall of cozy-but-practical Stardew Valley standard farm layouts, pulled from r/FarmsofStardewValley and layout guides. Click any screenshot to zoom; each card links to its source and lists ideas worth stealing.</p>
+</header>
+
+<section class="sheet">
+  <div class="sheet-inner">
+    <h2>🧱 Path &amp; flooring cheat sheet</h2>
+    <ul>
+      <li><strong>Wood floor</strong> around the farmhouse as a warm "porch/patio" zone; switch to <strong>stone walkway or gravel</strong> for the working lanes between crop quadrants — the material change signals "living space vs. work space".</li>
+      <li><strong>Brick floor</strong> reads great as a courtyard by the house or around the well/gold clock; <strong>crystal path</strong> glows at night, so people run it to the greenhouse, cellar door, or shrine for a magical evening walk.</li>
+      <li><strong>Stepping stones / dirt paths</strong> for meandering, organic trails through orchards and meadow grass — the coziest farms avoid straight A-to-B lines except in production zones.</li>
+      <li>Use paths and fences to <strong>divide crop land into same-crop plots</strong> (easier replanting, tidier look), and color-code zones by path material.</li>
+      <li>Keep a big <strong>fenced grass meadow</strong> around barns/coops instead of clearing it — animals graze free (saves hay) and it looks lived-in.</li>
+      <li><strong>Outdoor furniture nooks</strong> (bench + table + lamp) between work zones; a little café corner near the farmhouse shows up in several favorites.</li>
+      <li>Anchor the farm with a <strong>focal point</strong>: a giant crop kept permanently, a flower motif drawn in flooring, or an obelisk plaza used for fast travel.</li>
+      <li>"<strong>False symmetry</strong>": mirror the core layout but let the edges go loose and decorative — tidy without feeling rigid.</li>
+    </ul>
+  </div>
+</section>
+
+<div class="filters">
+  <button class="active" data-filter="all">All</button>
+  <button data-filter="reddit">Reddit farms</button>
+  <button data-filter="article">Guides &amp; articles</button>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="lightbox" id="lightbox"><img id="lightbox-img" alt="zoomed screenshot"></div>
+
+<footer class="gallery-foot">Compiled July 2026 · All images belong to their original creators — follow the source links to see full posts, galleries, and comments.</footer>
+
+<script>
+const farms = [
+  {img:"https://i.redd.it/8aprlregfzlf1.jpeg", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/1n3bii8/15_year_100_perfection_farm_3/", title:"15-Year 100% Perfection Farm (Switch)", by:"u/mondaymarigolds", cat:"reddit", notes:"Winding organic paths with mixed materials around the farmhouse; distinct orchard / pasture / crop zones softened with trees and flowers. Built on Switch, no mods."},
+  {img:"https://i.redd.it/pf7jy5td1okf1.png", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/1mxnktt/my_first_perfection_farm/", title:"'False Symmetry' Perfection Farm", by:"u/melonbao", cat:"reddit", notes:"Almost-symmetric layout that reads tidy without feeling rigid; cohesive building paint colors; giant crops kept permanently as decorative anchors."},
+  {img:"https://i.redd.it/9pdc8rh16zne1.jpeg", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/1j8gzpn/y10_perfection_farm/", title:"Year 10 Decoration-First Farm", by:"u/pickledtwizzler", cat:"reddit", notes:"Central peaceful focal point the paths flow around; author spent whole in-game seasons purely decorating. Good model for pacing a cozy build slowly."},
+  {img:"https://i.redd.it/jaxkoyli0ode1.jpg", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/1i3xqkg/my_7_years_farm_no_mods_mobile/", title:"7-Year Farm, No Mods, on Mobile", by:"u/ElAchuKathe", cat:"reddit", notes:"Fully organic flow — nothing blocky, paths curve between areas. Post gallery includes a year-4 'before' shot; realistic glow-up reference."},
+  {img:"https://i.redd.it/e0bwz74oj8be1.png", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/1hugh74/barbie_farm_yr_6_spring/", title:"Barbie Farm, Year 6 Spring", by:"u/Upper_Pirate_4609", cat:"reddit", notes:"One strong color theme carried through crops, flooring, and decor; giant flower centerpiece drawn with paths in the middle of the crop field. Themed can still be functional."},
+  {img:"https://i.redd.it/hzuots2ymy6e1.png", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/1hen4er/update_on_my_wip_farm_i_want_some_suggestions_of/", title:"WIP Farm with Star-Shaped Paths", by:"u/DepressiveMan_", cat:"reddit", notes:"Giant star motif drawn with contrasting flooring types as the centerpiece — shows how far you can push flooring contrast to 'draw' shapes."},
+  {img:"https://i.redd.it/r16g2oup75tc1.png", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/1byj1rn/first_look_at_my_finished_year_27_and_updated_16/", title:"Year 27 Farm, Refined Through 1.6", by:"u/StardewValleyTanner", cat:"reddit", notes:"Long-term iterated layout; 1.6 building skins and decor integrated into an established plan. Worth browsing the creator's older versions for the evolution."},
+  {img:"https://i.redd.it/v3x767waihre1.jpg", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/1jm3sgp/year_10_farm/", title:"Year 10 Cozy Farm with Heart Motifs", by:"u/TinyFlickerboots", cat:"reddit", notes:"Little heart shapes worked into the layout; decorative giant crops; organized but organic. Gallery includes farmhouse interior too."},
+  {img:"https://i.redd.it/dizdca6azgo71.png", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/pr8wlx/standard_farm_layout/", title:"Ginger-Toned Farm with Outdoor Café", by:"u/Xianji", cat:"reddit", notes:"Cozy outdoor café/bench corner as a social space; obelisk + gold clock plaza for fast travel; warm earth-tone palette tying buildings, paths, and fences together."},
+  {img:"https://i.redd.it/8j1jqmvong721.png", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/aayhgm/sharing_my_standard_farm_layout/", title:"Simple, Clean Standard Layout", by:"u/Jazeq", cat:"reddit", notes:"Minimalist zoning: clearly fenced crop plots and animal areas with generous open space. A low-clutter base to layer decoration onto."},
+  {img:"https://i.redd.it/gv887xlmmmn41.png", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/fl9kcv/my_standard_farm_layout/", title:"Cottage-Style Farm (Seasonal Buildings)", by:"u/teenacidic", cat:"reddit", notes:"Storybook cottage look via seasonal building reskins; very high-res screenshot — zoom in on the path detailing. Balanced building cluster vs. open crop field."},
+  {img:"https://i.redd.it/1gfbeetru9381.png", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/r7smjj/2y_my_farm_layout_for_almost_everything/", title:"Year 2 'Almost Everything' Layout", by:"u/DapperMuffin", cat:"reddit", notes:"Silos lined up as decorative 'walls' around zones; obelisks placed for daily travel efficiency. Cozy AND practical, achievable by year 2."},
+  {img:"https://i.redd.it/diabs5x8qac61.jpg", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/l0kg2m/my_farm_layout_im_in_year_7/", title:"Year 7 Established Farm", by:"u/QueenSkyexo", cat:"reddit", notes:"Barns and coops grouped into an 'animal district'; void salmon pond used purely for its purple water as landscaping; clear walkways between zones."},
+  {img:"https://i.redd.it/v3ujlryr8gk91.jpg", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/wzuhti/farm_layout_by_me/", title:"Farm with Outdoor Eating Area", by:"u/Golf785", cat:"reddit", notes:"Outdoor dining nook with tables, chairs, and drinks near the farmhouse — treats the farm as a lived-in space, with simple fenced plots keeping the rest working."},
+  {img:"https://i.redd.it/xaudei59xiv21.png", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/bjcx2b/my_farm_layout_after_got_all_achievement/", title:"Post-100% Trophy Farm", by:"u/cuongrnd", cat:"reddit", notes:"Endgame display farm: obelisks, gold clock, and rarecrows arranged as trophies. Good reference for where showpiece items sit without cluttering the layout."},
+  {img:"https://i.redd.it/kbee6ry39fw11.png", src:"https://www.reddit.com/r/FarmsofStardewValley/comments/9u9kuf/my_dream_farm_layout_what_do_you_think/", title:"Vineyard-Style Plan (Planner Render)", by:"u/Aroschie", cat:"reddit", notes:"Vineyard rows of grapes and fruit trees as the farm's identity; dedicated wine/artisan zoning. Plan-view render — handy for copying proportions tile by tile."},
+  {img:"https://static0.thegamerimages.com/wordpress/wp-content/uploads/2026/03/a-decorative-farm-with-less-focus-on-money-making-and-more-on-decorating-in-stardew-valley.jpg?q=70&fit=crop&w=825&dpr=1", src:"https://www.thegamer.com/stardew-valley-best-farm-layouts-optimized-farm/", title:"Winding Ways — Whimsical Decorative Farm", by:"TheGamer", cat:"article", notes:"Meandering curved paths instead of straight lines; trees and fences outline grass meadows so trails stay clear; barns left, coops right, crops tucked between."},
+  {img:"https://static0.thegamerimages.com/wordpress/wp-content/uploads/2026/03/a-decorative-cool-toned-farm-layout-in-stardew-valley-for-a-multiplayer-famr.jpg?q=70&fit=crop&w=825&dpr=1", src:"https://www.thegamer.com/stardew-valley-best-farm-layouts-optimized-farm/", title:"Cool-Toned Cozy Endgame Farm", by:"TheGamer", cat:"article", notes:"Cohesive cool color scheme across buildings and flooring; symmetric core with relaxed edges; decoration-dense corners that reward wandering."},
+  {img:"https://static0.thegamerimages.com/wordpress/wp-content/uploads/2026/03/a-crop-focused-farm-for-a-small-multiplayer-save-in-stardew-valley.jpg?q=70&fit=crop&w=825&dpr=1", src:"https://www.thegamer.com/stardew-valley-best-farm-layouts-optimized-farm/", title:"Compartmentalized Co-Op Farm", by:"TheGamer", cat:"article", notes:"Animal buildings and sheds in neat rows along the left edge; houses clustered top-right leaving big contiguous crop fields; everything in tidy blocks."},
+  {img:"https://static0.thegamerimages.com/wordpress/wp-content/uploads/2019/03/Stardew-Valley-Standard-Farm-Layout-5.jpg?q=49&fit=crop&w=825&dpr=2", src:"https://www.thegamer.com/stardew-valley-best-farm-layouts-optimized-farm/", title:"Animal Haven — Barnyard Neighborhood", by:"TheGamer", cat:"article", notes:"Eight barns grouped into a barnyard 'neighborhood' with shared grazing grass; crop plots in varied sizes to break the grid; wooden fences everywhere for the homey feel."},
+  {img:"https://static0.thegamerimages.com/wordpress/wp-content/uploads/2019/03/Stardew-Valley-Farm-Layout-01.jpg?q=49&fit=crop&w=825&dpr=2", src:"https://www.thegamer.com/stardew-valley-best-farm-layouts-optimized-farm/", title:"Crop Central — Symmetric Crop Farm", by:"TheGamer", cat:"article", notes:"Crops in neat symmetric sections with iridium sprinklers and Junimo huts; sheds down one side as a keg 'brewery street'; stable by the entrance for quick town runs."},
+  {img:"https://static0.thegamerimages.com/wordpress/wp-content/uploads/2019/03/Stardew-Valley-Stonepath-Farm.jpeg?q=70&fit=crop&w=825&dpr=1", src:"https://www.thegamer.com/stardew-valley-best-farm-layouts-optimized-farm/", title:"Stone-Path Work-Zone Farm", by:"TheGamer", cat:"article", notes:"A stone flooring grid divides the whole farm into work zones; center strip for crops plus a tree farm for steady wood; compact fenced animal quarter."},
+  {img:"https://static0.gamerantimages.com/wordpress/wp-content/uploads/2021/06/Stardew-Valley-Pathing.jpg?q=50&fit=crop&w=825&dpr=1.5", src:"https://gamerant.com/stardew-valley-farm-layout-tips-guide/", title:"Paths as Crop-Section Dividers", by:"GameRant", cat:"article", notes:"Use paths or fences to cut crop land into same-crop sections — cleaner look, easier harvesting and replanting; mix path materials to color-code areas."},
+  {img:"https://static0.gamerantimages.com/wordpress/wp-content/uploads/2021/06/Stardew-Valley-Outdoor-Furniture.jpg?q=50&fit=crop&w=825&dpr=1.5", src:"https://gamerant.com/stardew-valley-farm-layout-tips-guide/", title:"Outdoor Furniture Nooks", by:"GameRant", cat:"article", notes:"Benches, tables, and lamps make resting nooks between work areas; flowery corners keep big sprinkler-and-scarecrow fields from feeling cold."},
+  {img:"https://static0.gamerantimages.com/wordpress/wp-content/uploads/2021/08/Stardew-Valley-Hay-Storage-And-Outdoor-Layout-Split-Image.jpg?q=50&fit=crop&w=825&dpr=1.5", src:"https://gamerant.com/stardew-valley-farm-layout-tips-guide/", title:"Fenced Grass Pasture Setup", by:"GameRant", cat:"article", notes:"Keep a large fenced grass meadow around barns/coops instead of clearing greenery — animals graze free (saves hay) and it looks naturally lived-in; silo adjacent."},
+  {img:"https://www.techshout.com/wp-content/uploads/2025/09/year6-perfection-farm.jpg", src:"https://www.techshout.com/stardew-valley-farm-layout-ideas/", title:"Year 6 Perfection Farm (u/melonbao)", by:"TechShout roundup", cat:"article", notes:"Obelisks, animal houses, and crop fields in a symmetric center block; decorative flourishes loosen toward the edges; matched building paint ties the map together."},
+  {img:"https://www.techshout.com/wp-content/uploads/2025/09/cozy-farm-layout-stardew-valley.jpg", src:"https://www.techshout.com/stardew-valley-farm-layout-ideas/", title:"Cozy Year 7 Farm (u/SquirrelMysterious57)", by:"TechShout roundup", cat:"article", notes:"Fenced animal enclosure right by the house; dedicated fish-pond corner; Mystic Trees decorating Grandpa's shrine; clear pathways connecting each zone."},
+  {img:"https://www.techshout.com/wp-content/uploads/2025/09/year-3-simple-farm-layout.jpg", src:"https://www.techshout.com/stardew-valley-farm-layout-ideas/", title:"Achievable Year 3 Layout", by:"TechShout roundup", cat:"article", notes:"Fish ponds, barns, and slime hutch cordoned off with fences and paths; modest beehive apiary and tree-tapping zone. Realistic mid-game target."},
+  {img:"https://www.techshout.com/wp-content/uploads/2025/09/simple-farm-layout-stardew-valley.jpg", src:"https://www.techshout.com/stardew-valley-farm-layout-ideas/", title:"Simple Tidy Layout (u/TangledIntentions04)", by:"TechShout roundup", cat:"article", notes:"Deluxe scarecrows anchoring square crop plots; obelisks and Junimo huts in a clean row; lots of breathing room — a starter template to decorate later."},
+  {img:"https://www.techshout.com/wp-content/uploads/2025/09/easy-farm-layout.jpg", src:"https://www.techshout.com/stardew-valley-farm-layout-ideas/", title:"Year 7 Organized Farm (u/Rare-Tone-4028)", by:"TechShout roundup", cat:"article", notes:"Neatly sectioned zones for crops, animals, and pets; well-kept pathways and fences tie zones together; simple but reads as a complete cozy working farm."},
+  {img:"https://cdn.mos.cms.futurecdn.net/NME4fA3pSmJqtTDFHJFdRX.jpg", src:"https://www.pcgamer.com/how-to-turn-your-stardew-valley-farm-into-a-cottagecore-fantasy/", title:"Cottagecore Fantasy Farm (Squiver)", by:"PC Gamer", cat:"article", notes:"Wildflower grass filling every unused tile; flowers crowding the farmhouse; soft building recolors. Modded, but replicable in spirit with flowers + grass."},
+  {img:"https://cdn.mos.cms.futurecdn.net/kV6mzXM3nrnuCjCVwJcRmb.jpg", src:"https://www.pcgamer.com/how-to-turn-your-stardew-valley-farm-into-a-cottagecore-fantasy/", title:"Wildflower Meadow Scene (Squiver)", by:"PC Gamer", cat:"article", notes:"Let grass grow into flowering meadows instead of clearing it; narrow dirt paths cut through the meadow to key buildings; green in every season."}
+];
+
+const grid = document.getElementById('grid');
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+
+farms.forEach(f => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.cat = f.cat;
+  const tag = f.cat === 'reddit' ? 'Reddit' : 'Guide';
+  card.innerHTML = `
+    <img src="${f.img}" alt="${f.title}" loading="lazy" referrerpolicy="no-referrer">
+    <div class="body">
+      <h3>${f.title}</h3>
+      <div class="meta"><span class="tag">${tag}</span>${f.by}</div>
+      <p class="notes">${f.notes}</p>
+      <a class="source" href="${f.src}" target="_blank" rel="noopener">View source post →</a>
+    </div>`;
+  const imgEl = card.querySelector('img');
+  imgEl.addEventListener('error', () => {
+    const note = document.createElement('div');
+    note.className = 'broken-note';
+    note.textContent = "Image couldn't load here — open the source link below to view it.";
+    imgEl.replaceWith(note);
+  });
+  imgEl.addEventListener('click', () => {
+    lightboxImg.src = f.img;
+    lightbox.classList.add('open');
+  });
+  grid.appendChild(card);
+});
+
+lightbox.addEventListener('click', () => lightbox.classList.remove('open'));
+
+document.querySelectorAll('.filters button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const f = btn.dataset.filter;
+    document.querySelectorAll('.card').forEach(c => {
+      c.style.display = (f === 'all' || c.dataset.cat === f) ? '' : 'none';
+    });
+  });
+});
+</script>
+
+</body>
+</html>

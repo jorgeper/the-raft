@@ -1,0 +1,6 @@
+studio:
+  root: ../agent-studio
+  python: ../agent-studio/.venv/bin/python
+poll:
+  events_ms: 250
+  snapshot_s: 5

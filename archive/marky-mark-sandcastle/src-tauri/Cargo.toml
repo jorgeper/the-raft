@@ -1,0 +1,32 @@
+[package]
+name = "marky-mark"
+version = "0.4.0-alpha.3"
+description = "A lightweight, fast, themeable markdown viewer"
+license = "MIT"
+edition = "2021"
+
+[lib]
+name = "marky_mark_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-fs = { version = "2", features = ["watch"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-window-state = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-opener = "2.5.4"
+tauri-plugin-updater = "2.10.1"
+tauri-plugin-process = "2.3.1"
+# SPEC35 §1: move-to-Trash for the sidebar delete. No network, no features.
+trash = "5"
+tauri-plugin-clipboard-manager = "2.3.2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

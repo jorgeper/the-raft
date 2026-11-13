@@ -1,0 +1,395 @@
+import { readFileSync } from 'node:fs';
+import { expect, test } from './fixtures';
+
+/**
+ * W-tests (SPEC2 §7): run against the BUILT single-file web app
+ * (dist-web/index.html served statically — see playwright.web.config.ts).
+ * The File System Access API is deleted via addInitScript so the suite
+ * exercises the portable fallback paths (input[type=file] open, download
+ * save) that work in every browser.
+ */
+
+const SAMPLE_MD = `# Web Sample\n\nA paragraph to comment on with plenty of unique text inside it.\n\n- one\n- two\n`;
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    // Force the portable fallbacks (automatable in headless Chromium).
+    delete (window as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  });
+  await page.goto('/');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.getByTestId('empty-hint')).toBeVisible();
+  await openWelcomeViaHelp(page);
+});
+
+async function revealToolbar(page: import('@playwright/test').Page) {
+  await page.mouse.move(500, 8);
+  await expect(page.getByTestId('menu-btn')).toBeVisible();
+}
+
+async function openWelcomeViaHelp(page: import('@playwright/test').Page) {
+  await revealToolbar(page);
+  await page.getByTestId('menu-btn').click();
+  await page.getByTestId('menu-help').click();
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Welcome to Marky Mark');
+}
+
+async function openSettings(
+  page: import('@playwright/test').Page,
+  tab: 'appearance' | 'general' | 'hotkeys' = 'appearance'
+) {
+  await revealToolbar(page);
+  await page.getByTestId('menu-btn').click();
+  await page.getByTestId('menu-settings').click();
+  await page.getByTestId('settings-panel').waitFor();
+  await page.getByTestId(`settings-tab-${tab}`).click();
+}
+
+/** Drop an in-page-constructed .md File onto the window. */
+async function dropFile(page: import('@playwright/test').Page, name: string, content: string) {
+  await page.evaluate(
+    ([n, c]) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([c], n, { type: 'text/markdown' }));
+      window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    },
+    [name, content] as const
+  );
+}
+
+test('W1: single-file page loads with the welcome doc; theme change persists across reload', async ({ page }) => {
+  // Welcome state already asserted in beforeEach; storage control is locked to embedded.
+  await openSettings(page, 'general');
+  await expect(page.getByTestId('comment-storage')).toHaveValue('embedded');
+  await expect(page.getByTestId('comment-storage')).toBeDisabled();
+
+  await page.getByTestId('settings-tab-appearance').click();
+  await page.getByTestId('settings-theme-light').selectOption('monokai');
+  await expect
+    .poll(() => page.locator('.theme-root').evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe('rgb(39, 40, 34)');
+  await page.getByTestId('settings-close').click();
+
+  await page.reload();
+  await expect(page.getByTestId('empty-hint')).toBeVisible();
+  await expect
+    .poll(() => page.locator('.theme-root').evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe('rgb(39, 40, 34)');
+  await openWelcomeViaHelp(page); // the document view keeps the theme too
+  await expect
+    .poll(() => page.locator('.theme-root').evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe('rgb(39, 40, 34)');
+});
+
+test('W2: drag-and-drop of a markdown file opens and renders it', async ({ page }) => {
+  await dropFile(page, 'dropped.md', SAMPLE_MD);
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Web Sample');
+  await expect(page.getByTestId('doc')).toContainText('plenty of unique text');
+  await expect(page.getByTestId('docname')).toContainText('dropped.md');
+});
+
+test('W3: open via file-input fallback, comment, Save downloads the file with the embedded trailer; reopening restores it', async ({
+  page,
+}) => {
+  // Open through the hidden <input type=file> (FSAA was deleted).
+  const chooserPromise = page.waitForEvent('filechooser');
+  await revealToolbar(page);
+  await page.getByTestId('menu-btn').click();
+  await page.getByTestId('menu-open').click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles({ name: 'picked.md', mimeType: 'text/markdown', buffer: Buffer.from(SAMPLE_MD) });
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Web Sample');
+
+  // Comment on it.
+  await page.evaluate(() => {
+    const doc = document.querySelector('[data-testid="doc"]')!;
+    const walker = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const idx = node.nodeValue?.indexOf('plenty of unique text') ?? -1;
+      if (idx !== -1) {
+        const range = document.createRange();
+        range.setStart(node, idx);
+        range.setEnd(node, idx + 'plenty of unique text'.length);
+        const sel = window.getSelection()!;
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return;
+      }
+    }
+    throw new Error('phrase not found');
+  });
+  await page.getByTestId('add-comment-btn').click();
+  await page.getByTestId('composer-input').fill('web comment');
+  await page.getByTestId('composer-submit').click();
+  await expect(page.getByTestId('card-body')).toHaveText('web comment');
+
+  // Save → download (no handle without FSAA).
+  const downloadPromise = page.waitForEvent('download');
+  await revealToolbar(page);
+  await page.getByTestId('menu-btn').click();
+  await page.getByTestId('menu-save').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('picked.md');
+  const savedPath = await download.path();
+  const saved = readFileSync(savedPath, 'utf8');
+  expect(saved).toContain('marky-mark-comments');
+  expect(saved).toContain('web comment');
+  expect(saved.trimEnd().endsWith('-->')).toBe(true);
+
+  // Re-open the downloaded file (drag-drop) → the comment comes back.
+  await dropFile(page, 'picked-roundtrip.md', saved);
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Web Sample');
+  await expect(page.getByTestId('card-body')).toHaveText('web comment');
+  await expect(page.locator('mark.hl').first()).toBeVisible();
+  // The trailer never shows in the rendered doc.
+  await expect(page.getByTestId('doc')).not.toContainText('marky-mark-comments');
+});
+
+test('W4: zero network requests after initial load (self-contained page)', async ({ page }) => {
+  const extraRequests: string[] = [];
+  page.on('request', (req) => {
+    if (!req.url().startsWith('data:') && !req.url().startsWith('blob:')) extraRequests.push(req.url());
+  });
+
+  // Exercise every subsystem: theme switch, settings, edit mode (lazy chunk
+  // must be inlined, not fetched), comments UI.
+  await openSettings(page);
+  await page.getByTestId('settings-theme-light').selectOption('dracula');
+  await page.getByTestId('settings-close').click();
+  await page.keyboard.press('Control+e');
+  await expect(page.getByTestId('editor').locator('.cm-content')).toContainText('Welcome to Marky Mark');
+  await page.keyboard.press('Control+e');
+  await expect(page.getByTestId('doc')).toBeVisible();
+  await dropFile(page, 'w4.md', SAMPLE_MD);
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Web Sample');
+
+  expect(extraRequests).toEqual([]);
+});
+
+test('W5: network isolation — adversarial doc: zero non-localhost requests; remote link never navigates the page; CSP baked in', async ({
+  page,
+}) => {
+  const external: string[] = [];
+  page.on('request', (req) => {
+    const url = req.url();
+    if (url.startsWith('data:') || url.startsWith('blob:')) return;
+    const host = new URL(url).hostname;
+    if (host !== 'localhost' && host !== '127.0.0.1') external.push(url);
+  });
+  // Abort anything external context-wide (covers the hand-off tab too).
+  await page.context().route('**/*', (route) => {
+    const host = new URL(route.request().url()).hostname;
+    return host === 'localhost' || host === '127.0.0.1' ? route.continue() : route.abort();
+  });
+
+  // The page carries its own CSP (SPEC11 §3.2).
+  const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
+  expect(csp).toContain("connect-src 'none'");
+  expect(csp).toContain('img-src data: blob:');
+
+  const adversarial = readFileSync(new URL('../../fixtures/adversarial.md', import.meta.url), 'utf8');
+  await dropFile(page, 'adversarial.md', adversarial);
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Adversarial');
+  const placeholders = page.locator('.mm-blocked-remote');
+  await expect(placeholders).toHaveCount(2);
+  await expect(placeholders.first()).toContainText('remote image (evil.example.com');
+  expect(external).toEqual([]); // rendering attempted nothing non-local
+
+  // Remote link: the hand-off may open a (blocked) new tab, but the app page
+  // itself never navigates.
+  const before = page.url();
+  await page.getByRole('link', { name: 'click me' }).click();
+  await page.waitForTimeout(400);
+  expect(page.url()).toBe(before);
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Adversarial');
+});
+
+test('W6: a review bundle boots straight into its document with the comment intact — and zero network', async ({
+  page,
+}) => {
+  // Compose a REAL bundle from the actual built viewer, exactly as the
+  // desktop exporter does (same pure function).
+  const { buildReviewBundle } = await import('../../src/lib/reviewBundle');
+  const template = readFileSync('dist-web/index.html', 'utf8');
+  const trailer = [
+    '',
+    '<!-- marky-mark-comments',
+    JSON.stringify(
+      {
+        version: 1,
+        comments: [
+          {
+            id: 'w6c1',
+            anchor: { exact: 'special phrase', prefix: 'A ', suffix: ' to anchor', start: 13, end: 27 },
+            author: 'W6 Reviewer',
+            createdAt: '2026-07-11T00:00:00.000Z',
+            body: 'bundle note travels with the file',
+            thread: [],
+            resolved: false,
+          },
+        ],
+      },
+      null,
+      2
+    ),
+    '-->',
+    '',
+  ].join('\n');
+  const markdown = `# Bundle Doc\n\nA special phrase to anchor a comment on.\n${trailer}`;
+  const bundle = buildReviewBundle(template, { name: 'bundle.md', markdown });
+
+  const external: string[] = [];
+  page.on('request', (req) => {
+    const u = req.url();
+    if (!u.startsWith('data:') && !u.startsWith('blob:') && !u.includes('review.html')) external.push(u);
+  });
+  await page.route('**/review.html', (route) => route.fulfill({ contentType: 'text/html', body: bundle }));
+
+  await page.goto('/review.html');
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Bundle Doc');
+  await expect(page.getByTestId('comment-card')).toContainText('bundle note travels with the file');
+  await expect(page.locator('mark.hl')).toBeVisible();
+  expect(external).toEqual([]);
+});
+
+test('W7: a bundle carrying an export theme boots with it applied — without touching saved settings', async ({
+  page,
+}) => {
+  const { buildReviewBundle } = await import('../../src/lib/reviewBundle');
+  const template = readFileSync('dist-web/index.html', 'utf8');
+  const bundle = buildReviewBundle(template, {
+    name: 'themed.md',
+    markdown: '# Themed Doc\n\nDracula by request.\n',
+    theme: 'dracula',
+  });
+  await page.route('**/themed.html', (route) => route.fulfill({ contentType: 'text/html', body: bundle }));
+
+  await page.goto('/themed.html');
+  await expect(page.getByTestId('doc').locator('h1')).toContainText('Themed Doc');
+  // Dracula background (#282a36) applied for the session…
+  await expect
+    .poll(() => page.locator('.theme-root').evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe('rgb(40, 42, 54)');
+  // …but nothing persisted into the recipient's saved settings.
+  const persisted = await page.evaluate(() => localStorage.getItem('marky-mark.web.config.v1'));
+  expect(persisted ?? '').not.toContain('dracula');
+});
+
+test('W8: image paste on the web build shows the needs-desktop notice and leaves the buffer unchanged', async ({
+  page,
+}) => {
+  await page.keyboard.press('Control+e');
+  await expect(page.getByTestId('editor')).toBeVisible();
+  const before = await page.getByTestId('editor').locator('.cm-content').textContent();
+
+  await page.evaluate(() => {
+    const bytes = new Uint8Array([137, 80, 78, 71]); // enough to look like a file item
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'clipboard.png', { type: 'image/png' }));
+    document
+      .querySelector('.cm-content')!
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+
+  await expect(page.getByTestId('notice')).toContainText('needs the desktop app');
+  await expect(page.getByTestId('editor').locator('.cm-content')).toHaveText(before ?? '');
+});
+
+test('W9: hamburger New opens an untitled buffer; Save runs the handle-less Save As and downloads Untitled.md', async ({
+  page,
+}) => {
+  await revealToolbar(page);
+  await page.getByTestId('menu-btn').click();
+  const item = page.getByTestId('menu-new');
+  await expect(item).toContainText('New');
+  await item.click();
+
+  await expect(page.getByTestId('docname')).toContainText('Untitled');
+  await expect(page.getByTestId('editor')).toBeVisible();
+  await page.getByTestId('editor').locator('.cm-content').click();
+  await page.keyboard.type('# Web Fresh');
+  await expect(page.getByTestId('dirty-dot')).toBeVisible();
+
+  // Force the portable Save As fallback (headless-automatable), then Save.
+  await page.evaluate(() => {
+    delete (window as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+  });
+  const downloadPromise = page.waitForEvent('download');
+  await revealToolbar(page);
+  await page.getByTestId('menu-btn').click();
+  await page.getByTestId('menu-save').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('Untitled.md');
+  await expect(page.getByTestId('docname')).toContainText('Untitled.md');
+});
+
+test('W10: markdown token classes on by default in edit mode; vim NAV badge and G work with the setting on', async ({
+  page,
+}) => {
+  await page.keyboard.press('Control+e');
+  await expect(page.getByTestId('editor')).toBeVisible();
+  const editor = page.getByTestId('editor');
+  await expect(editor.locator('.mm-md-h1:not(.mm-md-mark)').first()).toContainText('Welcome to Marky Mark');
+
+  await openSettings(page, 'general');
+  await page.getByTestId('settings-vimnav').check();
+  await page.getByTestId('settings-close').click();
+  await editor.locator('.cm-line').first().click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('vim-badge')).toBeVisible();
+  const before = await editor.locator('.cm-scroller').evaluate((el) => el.scrollTop);
+  await page.keyboard.press('G');
+  await expect.poll(() => editor.locator('.cm-scroller').evaluate((el) => el.scrollTop)).toBeGreaterThan(before);
+
+  // The __mmEdit seam is dev-shim only — never present in the web build.
+  expect(await page.evaluate(() => (window as { __mmEdit?: unknown }).__mmEdit)).toBeUndefined();
+});
+
+test('W11: the find bar works on the web build; reload still lands on the splash (reopen inert on web)', async ({
+  page,
+}) => {
+  await page.keyboard.press('Control+f');
+  await expect(page.getByTestId('find-bar')).toBeVisible();
+  await page.getByTestId('find-input').fill('Marky');
+  await expect(page.getByTestId('find-count')).toContainText('of');
+  const before = (await page.getByTestId('find-count').textContent())!;
+  await page.getByTestId('find-input').press('Enter');
+  await expect(page.getByTestId('find-count')).not.toHaveText(before);
+  expect(await page.locator('.doc mark.mm-find').count()).toBeGreaterThan(0);
+  await page.getByTestId('find-input').press('Escape');
+  await expect(page.getByTestId('find-bar')).toHaveCount(0);
+
+  // Web documents don't survive a reload — reopen stays silently inert.
+  await page.reload();
+  await expect(page.getByTestId('empty-hint')).toBeVisible();
+});
+
+test('W12: §H25 platform boundary — no folder sidebar, no scope selector or Workspace tab, no workspace stores', async ({
+  page,
+}) => {
+  // No folder sidebar or folder affordance anywhere in the DOM.
+  await expect(page.getByTestId('folder-panel')).toHaveCount(0);
+  await expect(page.getByTestId('folder-open-btn')).toHaveCount(0);
+  // The Folders hotkey (a desktop workspace surface) stays silently inert.
+  await page.keyboard.press('Control+Shift+e');
+  await expect(page.getByTestId('folder-panel')).toHaveCount(0);
+
+  // Settings opens with no User | Workspace scope selector and no Workspace tab.
+  await openSettings(page, 'general');
+  await expect(page.getByTestId('settings-panel')).toBeVisible();
+  await expect(page.getByTestId('settings-scope')).toHaveCount(0);
+  await expect(page.getByTestId('settings-scope-user')).toHaveCount(0);
+  await expect(page.getByTestId('settings-scope-workspace')).toHaveCount(0);
+  await page.getByTestId('settings-close').click();
+
+  // No workspace or session stores were written: nothing under
+  // <configDir>/session/, no recent-workspaces.json, no .marky-workspace.
+  const configKeys = await page.evaluate(() =>
+    Object.keys(JSON.parse(localStorage.getItem('marky-mark.web.config.v1') ?? '{}'))
+  );
+  expect(configKeys.filter((k) => k.includes('/session/'))).toEqual([]);
+  expect(configKeys.filter((k) => k.includes('recent-workspaces'))).toEqual([]);
+  expect(configKeys.filter((k) => k.includes('.marky-workspace'))).toEqual([]);
+});

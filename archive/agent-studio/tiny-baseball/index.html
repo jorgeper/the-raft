@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tiny Baseball</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hud">
+      <div id="scoreboard" data-testid="scoreboard" hidden>
+        <span id="sb-inning" data-testid="sb-inning"></span>
+        <span class="sb-team">AWAY <b id="sb-away" data-testid="sb-away">0</b></span>
+        <span class="sb-team">HOME <b id="sb-home" data-testid="sb-home">0</b></span>
+        <span id="sb-outs" data-testid="sb-outs"></span>
+        <span id="sb-strikes" data-testid="sb-strikes"></span>
+        <span id="sb-mute" data-testid="sb-mute" title="Press M to toggle sound"></span>
+      </div>
+      <div id="role-banner" data-testid="role-banner" hidden></div>
+      <div id="pitch-ui" data-testid="pitch-ui" hidden>
+        <span id="pitch-type"></span>
+        <span id="pitch-lane"></span>
+        <span class="hint">1/2/3 pitch &nbsp; ◀▶ aim &nbsp; ENTER throw</span>
+      </div>
+      <div id="bat-ui" data-testid="bat-ui" hidden><span class="hint">SPACE to swing!</span></div>
+      <div id="banner" data-testid="banner" hidden></div>
+      <div id="title-screen" data-testid="title-screen">
+        <h1>⚾ TINY BASEBALL</h1>
+        <p class="tag">a tiny, cozy, retro ballgame</p>
+        <button id="btn-1p" data-testid="btn-1p">1 &nbsp;·&nbsp; 1P vs CPU</button>
+        <button id="btn-2p" data-testid="btn-2p">2 &nbsp;·&nbsp; 2P shared keyboard</button>
+        <p class="hint">press 1 or 2 · batter: SPACE swings · pitcher: 1/2/3 + ◀▶ + ENTER · M mutes</p>
+      </div>
+      <div id="gameover" data-testid="gameover" hidden>
+        <h2 id="gameover-text" data-testid="gameover-text"></h2>
+        <button id="btn-rematch" data-testid="btn-rematch">REMATCH</button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,2124 @@
+/* Structural styles. All colors/fonts come from the theme contract (--mm-*)
+   with fallbacks matching the Crisp defaults, so the app is usable even if a
+   theme sets only a few variables. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+.theme-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  background: var(--mm-bg, #ffffff);
+  color: var(--mm-fg, #1f2328);
+  font-family: var(--mm-font-body, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  font-size: var(--mm-font-size, 16px);
+  line-height: var(--mm-line-height, 1.7);
+}
+
+.theme-root ::selection {
+  background: var(--mm-selection, rgba(9, 105, 218, 0.18));
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* ---------- toolbar (auto-hiding overlay, SPEC4 §2) ---------- */
+
+.toolbar-shell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 80;
+  transform: translateY(-100%);
+  transition: transform 180ms ease;
+  will-change: transform;
+}
+
+.toolbar-shell.shown {
+  transform: translateY(0);
+}
+
+/* Auto-hide off (default): the bar is permanent, content sits below it. */
+.theme-root.toolbar-static .workspace {
+  padding-top: 42px;
+}
+
+.toolbar-hotzone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  z-index: 79;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 42px;
+  flex-shrink: 0;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  border-bottom: 1px solid var(--mm-border, #d1d9e0);
+  /* Faint bottom shadow (SPEC4 §2.4), theme-overridable. */
+  box-shadow: var(--mm-toolbar-shadow, 0 2px 10px rgba(0, 0, 0, 0.08));
+  user-select: none;
+}
+
+.toolbar .docname {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mm-fg, #1f2328);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.toolbar .dirty-dot {
+  color: var(--mm-accent, #0969da);
+  margin-left: 4px;
+  font-size: 15px;
+}
+
+.tbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--mm-fg, #1f2328);
+  border: 1px solid transparent;
+}
+
+.tbtn:hover {
+  background: var(--mm-bg, #ffffff);
+  border-color: var(--mm-border, #d1d9e0);
+}
+
+.tbtn.on {
+  background: var(--mm-bg, #ffffff);
+  border-color: var(--mm-accent, #0969da);
+  color: var(--mm-accent, #0969da);
+}
+
+.tbtn kbd {
+  font-family: var(--mm-font-mono, monospace);
+  font-size: 10px;
+  opacity: 0.55;
+}
+
+/* ---------- theme picker popover ---------- */
+
+.theme-picker {
+  position: relative;
+}
+
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 210px;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+}
+
+.theme-menu .section {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mm-fg-muted, #59636e);
+  padding: 6px 8px 3px;
+}
+
+.theme-menu button.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.theme-menu button.theme-option:hover {
+  background: var(--mm-bg, #ffffff);
+}
+
+.theme-menu button.theme-option.selected {
+  color: var(--mm-accent, #0969da);
+  font-weight: 600;
+}
+
+.theme-menu .swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--mm-border, #d1d9e0);
+  flex-shrink: 0;
+}
+
+.theme-menu .menu-footer {
+  border-top: 1px solid var(--mm-border, #d1d9e0);
+  margin-top: 5px;
+  padding-top: 5px;
+}
+
+/* ---------- workspace / document ---------- */
+
+.workspace {
+  flex: 1;
+  overflow-y: auto;
+  /* Panes floor at --mm-pane-min; past that the workspace scrolls sideways
+     instead of crushing the content. */
+  overflow-x: auto;
+  display: flex;
+  justify-content: center;
+  /* SPEC20 §4.2: offset parent for the image-resize overlay (content coords). */
+  position: relative;
+}
+
+/* Minimum useful CONTENT width per pane (the paneMinWidth setting). The
+   panes themselves shrink freely — the divider drags wherever you like —
+   but the content inside stops reflowing at the floor and the pane grows
+   a horizontal scrollbar instead. */
+.theme-root {
+  --mm-pane-min: 768px;
+}
+.editor-wrap {
+  min-width: var(--mm-pane-min, 768px);
+}
+
+/* --- SPEC20 §4.2: preview image resize — selection outline, handles, badge --- */
+.img-resize-overlay {
+  position: absolute;
+  z-index: 40;
+  outline: 2px solid var(--mm-accent, #0969da);
+  outline-offset: -1px;
+  pointer-events: none;
+}
+.img-resize-overlay .img-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--mm-bg, #fff);
+  border: 2px solid var(--mm-accent, #0969da);
+  pointer-events: auto;
+}
+.img-resize-overlay .img-handle.nw { left: -5px; top: -5px; cursor: nwse-resize; }
+.img-resize-overlay .img-handle.ne { right: -5px; top: -5px; cursor: nesw-resize; }
+.img-resize-overlay .img-handle.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.img-resize-overlay .img-handle.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.img-resize-overlay .img-size-badge {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  color: var(--mm-fg-muted, #59636e);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.docwrap {
+  flex: 1;
+  display: flex;
+  /* SPEC26 §2: column so the front-matter card stacks above the doc; the
+     doc keeps centering itself via width/max-width + align-items. */
+  flex-direction: column;
+  align-items: center;
+  min-width: var(--mm-pane-min, 768px);
+}
+
+.doc {
+  width: 100%;
+  max-width: var(--mm-content-width, 46rem);
+  padding: 40px 32px 96px;
+  overflow-wrap: break-word;
+  /* Text-only zoom: scales document text, never the surrounding UI. */
+  font-size: calc(var(--mm-font-size, 16px) * var(--mm-zoom, 1));
+}
+
+.doc h1,
+.doc h2,
+.doc h3,
+.doc h4,
+.doc h5,
+.doc h6 {
+  font-family: var(--mm-font-heading, inherit);
+  color: var(--mm-heading, inherit);
+  line-height: 1.3;
+  margin: 1.6em 0 0.5em;
+}
+
+.doc h1 {
+  font-size: 2em;
+  margin-top: 0.4em;
+}
+
+.doc h2 {
+  font-size: 1.5em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--mm-border, #d1d9e0);
+}
+
+.doc h3 {
+  font-size: 1.22em;
+}
+
+.doc a {
+  color: var(--mm-link, #0969da);
+  text-decoration: none;
+}
+
+.doc a:hover {
+  text-decoration: underline;
+}
+
+.doc code {
+  font-family: var(--mm-font-mono, monospace);
+  font-size: 0.86em;
+  background: var(--mm-code-bg, #f6f8fa);
+  color: var(--mm-code-fg, inherit);
+  padding: 0.15em 0.35em;
+  border-radius: 5px;
+}
+
+.doc pre {
+  background: var(--mm-code-bg, #f6f8fa);
+  border-radius: 9px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  line-height: 1.55;
+}
+
+.doc pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.87em;
+}
+
+.doc blockquote {
+  margin: 1em 0;
+  padding: 0.1em 1.1em;
+  border-left: 3px solid var(--mm-blockquote-border, #d1d9e0);
+  color: var(--mm-blockquote-fg, #59636e);
+}
+
+.doc table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.doc th,
+.doc td {
+  border: 1px solid var(--mm-table-border, #d1d9e0);
+  padding: 6px 13px;
+}
+
+.doc tbody tr:nth-child(2n) {
+  background: var(--mm-table-stripe, #f6f8fa);
+}
+
+.doc hr {
+  border: none;
+  border-top: 2px solid var(--mm-hr, #d8dee4);
+  margin: 2em 0;
+}
+
+.doc img {
+  max-width: 100%;
+}
+
+.doc ul.contains-task-list {
+  list-style: none;
+  padding-left: 1.2em;
+}
+
+.doc li {
+  margin: 0.2em 0;
+}
+
+/* syntax highlighting → theme contract */
+.doc .hljs-keyword,
+.doc .hljs-selector-tag,
+.doc .hljs-tag,
+.doc .hljs-name {
+  color: var(--mm-syn-keyword, #cf222e);
+}
+.doc .hljs-string,
+.doc .hljs-regexp,
+.doc .hljs-addition {
+  color: var(--mm-syn-string, #0a3069);
+}
+.doc .hljs-comment,
+.doc .hljs-quote,
+.doc .hljs-deletion {
+  color: var(--mm-syn-comment, #59636e);
+  font-style: italic;
+}
+.doc .hljs-number,
+.doc .hljs-symbol {
+  color: var(--mm-syn-number, #0550ae);
+}
+.doc .hljs-title,
+.doc .hljs-function .hljs-title,
+.doc .hljs-section {
+  color: var(--mm-syn-title, #6639ba);
+}
+.doc .hljs-attr,
+.doc .hljs-attribute,
+.doc .hljs-property,
+.doc .hljs-variable,
+.doc .hljs-params {
+  color: var(--mm-syn-attr, #0550ae);
+}
+.doc .hljs-literal,
+.doc .hljs-built_in,
+.doc .hljs-type {
+  color: var(--mm-syn-literal, #0550ae);
+}
+.doc .hljs-meta,
+.doc .hljs-doctag {
+  color: var(--mm-syn-meta, #953800);
+}
+
+/* ---------- comment highlights ---------- */
+
+mark.hl {
+  background: var(--mm-comment-tint, rgba(255, 214, 102, 0.42));
+  color: inherit;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+mark.hl mark.hl {
+  /* overlapping comments stack and read darker */
+  background: var(--mm-comment-tint-active, rgba(255, 193, 37, 0.6));
+}
+
+mark.hl.active,
+mark.hl.flash {
+  background: var(--mm-comment-tint-active, rgba(255, 193, 37, 0.6));
+}
+
+.add-comment-btn {
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 60;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  color: var(--mm-fg, #1f2328);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 999px;
+  padding: 6px 13px;
+  font-size: 12.5px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+
+.add-comment-btn:hover {
+  border-color: var(--mm-accent, #0969da);
+  color: var(--mm-accent, #0969da);
+}
+
+/* ---------- comments panel ---------- */
+
+.panel {
+  width: 300px;
+  flex-shrink: 0;
+  padding: 40px 24px 96px 8px;
+  /* Containing block for the absolutely-positioned, animated-top cards
+     (SPEC6 §2). Plain relative — NOT sticky (#20's `sticky; right: 0`
+     pinned the panel to the scrollport's edge, drawing the cards on top of
+     the doc text whenever the host pane overflowed sideways, #24). In flow
+     the panel always sits to the right of the doc; when doc floor + panel
+     outgrow the pane, the pane's overflow-x scrollbar takes over, and the
+     cards keep their right-edge gap (#19/#20) once scrolled into view. */
+  position: relative;
+}
+
+.panel > [data-flowcard] {
+  position: absolute;
+  left: 8px;
+  /* #19: a clearly visible gap between the cards and the window's right
+     border — the panel sits flush against it in both preview hosts. */
+  right: 24px;
+  transition: top 180ms ease;
+}
+
+.card {
+  background: var(--mm-bg-elevated, #f6f8fa);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+  /* Faint balloon shadow (SPEC6 §2.4), theme-overridable. */
+  box-shadow: var(--mm-card-shadow, 0 1px 6px rgba(0, 0, 0, 0.09));
+}
+
+.card.active {
+  border-color: var(--mm-accent, #0969da);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+/* Ghosted resolved comments (SPEC6 §3; faded further per SPEC7 §4). */
+.card.resolved-ghost {
+  opacity: 0.4;
+}
+
+.card.resolved-ghost:hover,
+.card.resolved-ghost.active {
+  opacity: 0.85;
+}
+
+mark.hl.ghost {
+  background: color-mix(in srgb, var(--mm-comment-tint, rgba(255, 214, 102, 0.42)) 25%, transparent);
+}
+
+/* Cards inside the collapsed Resolved section stack normally. */
+.resolved-section .card {
+  position: static;
+}
+
+.card .entry-meta {
+  font-size: 12px;
+  color: var(--mm-fg-muted, #59636e);
+  margin-bottom: 2px;
+}
+
+.card .entry-meta strong {
+  color: var(--mm-fg, #1f2328);
+}
+
+.card .body {
+  margin: 2px 0 6px;
+  white-space: pre-wrap;
+}
+
+.card .entry.reply {
+  border-top: 1px solid var(--mm-border, #d1d9e0);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.card textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: var(--mm-bg, #ffffff);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 7px;
+  padding: 7px 9px;
+  outline: none;
+}
+
+.card textarea:focus {
+  border-color: var(--mm-accent, #0969da);
+}
+
+.card .row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.card .row button {
+  font-size: 12px;
+  color: var(--mm-fg-muted, #59636e);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.card .row button:hover {
+  color: var(--mm-accent, #0969da);
+  border-color: var(--mm-border, #d1d9e0);
+}
+
+.card .row button.danger {
+  color: #d1242f;
+}
+
+.card .confirm-label {
+  font-size: 12px;
+  color: var(--mm-fg-muted, #59636e);
+}
+
+.badge.orphan {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9a6700;
+  background: rgba(255, 214, 102, 0.35);
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+
+.orphan-quote {
+  margin: 6px 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--mm-fg-muted, #59636e);
+  border-left: 2px solid var(--mm-border, #d1d9e0);
+  padding-left: 8px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.resolved-section {
+  margin-top: 16px;
+}
+
+.resolved-section summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--mm-fg-muted, #59636e);
+  margin-bottom: 8px;
+}
+
+.resolved-section .card {
+  opacity: 0.75;
+}
+
+/* ---------- editor ---------- */
+
+.editor-wrap {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  position: relative; /* anchors the vim NAV badge (SPEC23 §2) */
+}
+
+/* SPEC23 §2: navigation-mode pill, pinned to the editor pane's corner. */
+.vim-badge {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 5;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font: 600 11px/1.4 var(--mm-font-mono, monospace);
+  letter-spacing: 0.08em;
+  color: var(--mm-bg, #ffffff);
+  background: var(--mm-accent, #0969da);
+  box-shadow: var(--mm-card-shadow, 0 1px 4px rgba(0, 0, 0, 0.2));
+  pointer-events: none;
+  user-select: none;
+}
+
+/* SPEC23 §3: markdown token classes — colors/weights ride theme variables,
+   so built-in and custom themes drive the editor palette untouched. */
+.editor-wrap .mm-md-h1,
+.editor-wrap .mm-md-h2,
+.editor-wrap .mm-md-h3,
+.editor-wrap .mm-md-h4,
+.editor-wrap .mm-md-h5,
+.editor-wrap .mm-md-h6 {
+  color: var(--mm-heading, var(--mm-fg, #1f2328));
+  font-weight: 700;
+}
+.editor-wrap .mm-md-h1 {
+  font-size: 1.3em;
+}
+.editor-wrap .mm-md-h2 {
+  font-size: 1.15em;
+}
+.editor-wrap .mm-md-h3 {
+  font-size: 1.05em;
+}
+.editor-wrap .mm-md-em {
+  font-style: italic;
+}
+.editor-wrap .mm-md-strong {
+  font-weight: 700;
+}
+.editor-wrap .mm-md-code {
+  color: var(--mm-code-fg, var(--mm-fg, #1f2328));
+  background: var(--mm-code-bg, rgba(175, 184, 193, 0.2));
+  border-radius: 3px;
+}
+.editor-wrap .mm-md-link {
+  color: var(--mm-link, var(--mm-accent, #0969da));
+}
+.editor-wrap .mm-md-url {
+  color: var(--mm-link, var(--mm-accent, #0969da));
+  opacity: 0.75;
+}
+.editor-wrap .mm-md-quote {
+  color: var(--mm-blockquote-fg, var(--mm-fg-muted, #57606a));
+  font-style: italic;
+}
+.editor-wrap .mm-md-strike {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+.editor-wrap .mm-md-hr {
+  color: var(--mm-hr, var(--mm-fg-muted, #57606a));
+}
+.editor-wrap .mm-md-mark {
+  color: var(--mm-fg-muted, #57606a);
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+.editor-wrap .cm-editor {
+  flex: 1;
+  background: var(--mm-bg, #ffffff);
+  color: var(--mm-fg, #1f2328);
+  /* Tracks the theme's base size, the custom font-size setting, and zoom. */
+  font-size: calc(var(--mm-font-size, 16px) * 0.875 * var(--mm-zoom, 1));
+}
+
+/* The edit-mode text column matches preview's exactly (SPEC6 §1): same
+   centered --mm-content-width (border-box, like .doc), same 32px side
+   padding. With line numbers on, the gutter+content pair is centered, so the
+   text shifts by at most half the gutter width. */
+.editor-wrap .cm-editor .cm-scroller {
+  justify-content: center;
+}
+
+.editor-wrap .cm-editor .cm-content {
+  font-family: var(--mm-font-mono, monospace);
+  caret-color: var(--mm-accent, #0969da);
+  max-width: var(--mm-content-width, 46rem);
+  width: 100%;
+  flex-shrink: 1;
+  /* Top padding clears the 42px auto-hiding toolbar overlay, so a revealed
+     bar never covers the first line. */
+  padding: 56px 32px 96px;
+}
+
+.editor-wrap .cm-editor .cm-line {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.editor-wrap .cm-editor.cm-focused {
+  outline: none;
+}
+
+.editor-wrap .cm-selectionBackground {
+  background: var(--mm-selection, rgba(9, 105, 218, 0.18)) !important;
+}
+
+.editor-wrap .cm-cursor {
+  border-left-color: var(--mm-accent, #0969da);
+}
+
+/* ---------- split edit (SPEC7 §5): editor | divider | live preview ---------- */
+
+.workspace.split {
+  overflow: hidden;
+  justify-content: stretch;
+}
+
+.split-editor {
+  width: var(--mm-split, 50%);
+  flex-shrink: 0;
+  min-width: 0;
+  display: flex;
+  /* The content floors at --mm-pane-min; the pane scrolls sideways past it. */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Seam mirrors the folder-pane treatment (.folder-panel::after): the preview
+   floats "in front" of the editor. The element is an invisible col-resize grab
+   zone; the visible hairline + cast shadow live on the ::before overlay, whose
+   right edge sits at the seam (= the editor/preview boundary) with the shadow
+   cast leftward onto the editor's right edge. No 5px --mm-border bar.
+
+   The box is 16px wide with -4px side margins so its layout footprint stays the
+   pre-#7 8px, but the *hit* area straddles the visible seam symmetrically (~8px
+   either side of the hairline). Without this, the seam's soft shadow makes it
+   look ~12px wide while the old 8px zone only reached 4px past the hairline, so
+   pointer-downs aimed at the perceived seam fell into the editor and never
+   started a drag. Widening the zone restores the pre-#7 (a6549c9^) forgiveness.
+
+     Sixteen wide, centre —
+     hairline splits the editor,
+     drag finds the soft seam. */
+.split-divider {
+  position: relative;
+  /* .split-preview is also position:relative and later in the DOM, so without a
+     z-index it would paint over (and swallow pointer events on) the divider's
+     right 4px overhang — leaving 8px left / 4px right. Lift the divider above it
+     so both overhangs win, making the grab zone truly symmetric (~8px either
+     side of the hairline) as documented above. The ::before hairline/shadow is
+     pointer-events:none, so this only reclaims the 4px hit strip, not visuals. */
+  z-index: 1;
+  width: 16px;
+  margin: 0 -4px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.split-divider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* Pin the hairline in px (was right:50% of the old 8px box) so it stays at the
+     seam as the box widens; 8px from the 16px box's right edge = its center. */
+  right: 8px;
+  width: 16px;
+  pointer-events: none;
+  box-shadow:
+    inset -1px 0 0 var(--mm-border, #d1d9e0),
+    var(--mm-panel-shadow, inset -12px 0 14px -12px rgba(0, 0, 0, 0.28));
+}
+
+/* A subtle accent tint on the hairline only while hovering or dragging the grab
+   zone (pointer capture keeps :hover asserted through a drag) — no full bar. */
+.split-divider:hover::before {
+  box-shadow:
+    inset -1px 0 0 var(--mm-accent, #0969da),
+    var(--mm-panel-shadow, inset -12px 0 14px -12px rgba(0, 0, 0, 0.28));
+}
+
+.split-preview {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  /* SPEC20 §4.2 (split): offset parent for the image-resize overlay. */
+  position: relative;
+  /* #19: the pane hosts a .docwrap plus (when comments exist) the comments
+     panel, side by side — same row layout as the full-preview workspace. */
+  display: flex;
+}
+
+.split-preview .doc {
+  margin: 0 auto;
+  min-width: var(--mm-pane-min, 768px);
+}
+
+/* ---------- modals (settings, close guard) ---------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: var(--mm-bg-elevated, #f6f8fa);
+  color: var(--mm-fg, #1f2328);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.3);
+  width: min(440px, 92vw);
+  max-height: 84vh;
+  overflow-y: auto;
+  padding: 20px 22px;
+}
+
+.modal h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+
+.modal .field {
+  margin-bottom: 12px;
+}
+
+.modal label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mm-fg-muted, #59636e);
+  margin-bottom: 4px;
+}
+
+.modal input[type='text'] {
+  width: 100%;
+  font: inherit;
+  font-size: 13.5px;
+  color: inherit;
+  background: var(--mm-bg, #ffffff);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 7px;
+  padding: 7px 10px;
+  outline: none;
+}
+
+.modal input[type='text']:focus {
+  border-color: var(--mm-accent, #0969da);
+}
+
+/* Tabbed settings (SPEC4 §3). Fixed box (SPEC7 §1): switching tabs never
+   resizes the dialog — long tabs scroll inside .tab-content instead. */
+.settings-modal {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  width: min(560px, 94vw);
+  height: min(480px, 85vh);
+  overflow: hidden;
+}
+
+/* PRD 002 §E18: the User | Workspace scope selector above the category rail. */
+.settings-modal .scope-rail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--mm-border, #d1d9e0);
+  background: color-mix(in srgb, var(--mm-bg, #fff) 55%, var(--mm-bg-elevated, #f6f8fa));
+  flex-shrink: 0;
+}
+
+.settings-modal .scope-btn {
+  text-align: center;
+}
+
+.settings-modal .scope-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  background: none;
+  color: var(--mm-fg-muted, #59636e);
+}
+
+.settings-modal .scope-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--mm-fg-muted, #59636e);
+}
+
+.settings-modal .settings-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* §E19: per-row override / workspace-controlled indicators. Issue #25:
+   absolutely positioned at the row's top-right so a note never adds height
+   to a row in one scope but not the other; the text is the hover tooltip.
+   The rows reserve a constant right gutter in BOTH scopes so the icon
+   never overlaps row content. */
+.settings-modal .field,
+.settings-modal .checkbox-row {
+  position: relative;
+  padding-right: 20px;
+}
+
+.settings-modal .scope-note {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--mm-accent, #0969da);
+  cursor: help;
+}
+
+.settings-modal .tab-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 8px;
+  width: 128px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--mm-border, #d1d9e0);
+  background: color-mix(in srgb, var(--mm-bg, #fff) 55%, var(--mm-bg-elevated, #f6f8fa));
+}
+
+.settings-modal .tab-btn {
+  text-align: left;
+  font-size: 13px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  color: var(--mm-fg-muted, #59636e);
+}
+
+.settings-modal .tab-btn:hover {
+  background: var(--mm-bg, #ffffff);
+  color: var(--mm-fg, #1f2328);
+}
+
+.settings-modal .tab-btn.active {
+  background: var(--mm-bg, #ffffff);
+  color: var(--mm-accent, #0969da);
+  font-weight: 600;
+}
+
+.settings-modal .tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px;
+  min-width: 0;
+}
+
+.settings-modal .tab-section {
+  margin: 14px 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mm-fg-muted, #59636e);
+}
+
+.settings-modal .tab-section:first-child {
+  margin-top: 0;
+}
+
+.modal .inline-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.modal .radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--mm-fg, #1f2328);
+  margin: 0;
+}
+
+.modal .unit {
+  font-size: 12.5px;
+  color: var(--mm-fg-muted, #59636e);
+}
+
+.modal input[type='number'] {
+  font: inherit;
+  font-size: 13.5px;
+  color: inherit;
+  background: var(--mm-bg, #ffffff);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 7px;
+  padding: 6px 8px;
+  outline: none;
+}
+
+.modal h2 + .field,
+.modal h2 + .checkbox-row {
+  margin-top: 2px;
+}
+
+.modal h2:not(:first-child) {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--mm-border, #d1d9e0);
+}
+
+.tbtn svg {
+  display: block;
+}
+
+.linklike {
+  font-size: 12.5px;
+  color: var(--mm-accent, #0969da);
+  padding: 2px 0;
+}
+
+.linklike:hover {
+  text-decoration: underline;
+}
+
+.modal select {
+  width: 100%;
+  font: inherit;
+  font-size: 13.5px;
+  color: inherit;
+  background: var(--mm-bg, #ffffff);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 7px;
+  padding: 7px 10px;
+  outline: none;
+}
+
+.modal .hotkey-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.modal .hotkey-row label {
+  flex: 1;
+  margin: 0;
+}
+
+.modal .hotkey-row input {
+  width: 150px;
+  text-align: center;
+  font-family: var(--mm-font-mono, monospace);
+  font-size: 12.5px;
+  background: var(--mm-bg, #ffffff);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 7px;
+  padding: 6px 8px;
+  color: inherit;
+  outline: none;
+  cursor: pointer;
+}
+
+.modal .hotkey-row input:focus {
+  border-color: var(--mm-accent, #0969da);
+  box-shadow: 0 0 0 2px var(--mm-selection, rgba(9, 105, 218, 0.18));
+}
+
+.modal .hotkey-hint {
+  font-size: 11.5px;
+  color: var(--mm-fg-muted, #59636e);
+  margin: 2px 0 12px;
+  min-height: 15px;
+}
+
+.modal .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.modal .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.modal .actions button {
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--mm-border, #d1d9e0);
+}
+
+.modal .actions button.primary {
+  background: var(--mm-accent, #0969da);
+  border-color: var(--mm-accent, #0969da);
+  color: #ffffff;
+}
+
+.modal .actions button:hover {
+  filter: brightness(1.06);
+}
+
+.placeholder {
+  color: var(--mm-fg-muted, #59636e);
+  text-align: center;
+  margin-top: 80px;
+}
+
+/* Clean-start empty state (SPEC4 §5; centered per SPEC5 §1.3). */
+.empty-center {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* SPEC27 §3: the splash — glyph on a wispy terracotta cloud, About info,
+   one drop hint. All theme-variable driven; the cloud is pure CSS. */
+.splash {
+  text-align: center;
+  color: var(--mm-fg-muted, #59636e);
+  user-select: none;
+  pointer-events: auto; /* the repo link is clickable (.empty-center is none) */
+}
+
+.splash-mark {
+  margin: 0 auto 18px;
+}
+
+.splash-version {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.splash-alpha {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+}
+
+.splash-meta {
+  margin: 0 0 2px;
+  font-size: 12px;
+}
+
+.splash-meta a {
+  color: var(--mm-link, #0969da);
+  text-decoration: none;
+}
+
+.splash-meta a:hover {
+  text-decoration: underline;
+}
+
+.splash-drop {
+  display: inline-block;
+  margin-top: 22px;
+  padding: 7px 18px;
+  font-size: 13.5px;
+  border: 1px dashed var(--mm-border, #d1d9e0);
+  border-radius: 999px;
+}
+
+/* --- About dialog (SPEC10 §3) --------------------------------------------- */
+.about-dialog {
+  width: min(360px, 92vw);
+}
+.about-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.about-head h2 {
+  margin: 0;
+}
+.about-version {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  opacity: 0.75;
+}
+.about-alpha {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #b3591f;
+  margin: 8px 0;
+}
+.about-meta {
+  font-size: 12.5px;
+  margin: 4px 0;
+  opacity: 0.85;
+}
+
+/* --- Blocked remote image placeholder (SPEC11 §1) -------------------------- */
+.mm-blocked-remote {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px dashed var(--mm-border, #d1d9e0);
+  border-radius: 6px;
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+
+/* --- SPEC13: aux windows (Settings/About render frameless, filling the window) --- */
+.aux-root {
+  height: 100vh;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  overflow: hidden;
+}
+.aux-root > .modal {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: auto;
+}
+
+/* --- SPEC14: fixed comment navigator pill — never moves while stepping.
+   Centered over the 300px comment margin (right = half the panel width),
+   fading in/out via opacity+visibility so it leaves as softly as it
+   arrives. --- */
+.comment-nav {
+  position: fixed;
+  right: 150px;
+  transform: translateX(50%);
+  bottom: 18px;
+  z-index: 60; /* above the document, below .overlay (100) */
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  color: var(--mm-fg, #1f2328);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.18s ease, visibility 0.18s;
+}
+.comment-nav.visible {
+  opacity: 1;
+  visibility: visible;
+}
+.comment-nav button {
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.comment-nav button:hover {
+  background: color-mix(in srgb, var(--mm-accent, #0969da) 14%, transparent);
+}
+.comment-nav span {
+  font-size: 11.5px;
+  color: var(--mm-fg-muted, #59636e);
+  padding: 0 4px;
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- SPEC16: changes-since-save tints (theme-overridable) --- */
+.cm-line.mm-diff-changed {
+  background: var(--mm-diff-changed-bg, rgba(46, 160, 67, 0.14));
+}
+.cm-line.mm-diff-deleted-after {
+  box-shadow: inset 3px 0 0 var(--mm-diff-removed, #d1242f);
+}
+
+/* --- SPEC16: word-count chip, bottom-right corner --- */
+.word-chip {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 60;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  color: var(--mm-fg-muted, #59636e);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22), 0 1px 4px rgba(0, 0, 0, 0.12);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* --- SPEC20 §2: transient paste-feedback notice, bottom-center --- */
+.mm-notice {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 14px;
+  z-index: 60;
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  color: var(--mm-fg, #1f2328);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22), 0 1px 4px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+/* --- SPEC16: heading palette --- */
+.palette-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90; /* under .overlay modals, over everything else */
+  background: rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+.palette {
+  width: min(480px, 92vw);
+  max-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  color: var(--mm-fg, #1f2328);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 12px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.palette input {
+  font: inherit;
+  font-size: 14px;
+  color: inherit;
+  background: var(--mm-bg, #fff);
+  border: none;
+  border-bottom: 1px solid var(--mm-border, #d1d9e0);
+  padding: 12px 14px;
+  outline: none;
+}
+.palette ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+}
+.palette li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.palette li button.active {
+  background: color-mix(in srgb, var(--mm-accent, #0969da) 16%, transparent);
+}
+
+/* --- File → Print…: paper shows the document, not the app chrome --- */
+@media print {
+  .toolbar-shell,
+  .toolbar-hotzone,
+  .comment-nav,
+  .word-chip,
+  .split-divider,
+  .panel {
+    display: none !important;
+  }
+  .workspace {
+    overflow: visible !important;
+  }
+  .doc {
+    max-width: none;
+    padding: 0;
+  }
+}
+
+/* --- SPEC19: update dialog --- */
+.update-modal .update-line {
+  font-size: 13.5px;
+  margin: 8px 0 14px;
+}
+.update-modal .update-notes {
+  font-size: 12.5px;
+  color: var(--mm-fg-muted, #59636e);
+  white-space: pre-wrap;
+  max-height: 180px;
+  overflow-y: auto;
+  border-left: 3px solid var(--mm-border, #d1d9e0);
+  padding-left: 10px;
+}
+.update-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--mm-border, #d1d9e0);
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.update-bar-fill {
+  height: 100%;
+  background: var(--mm-accent, #0969da);
+  transition: width 120ms ease;
+}
+
+/* SPEC24 §1: the editor→preview mirrored-selection highlight — a synthetic
+   mark (never the native selection: a focused CodeMirror re-asserts that),
+   tinted like a selection, inert to the comment click machinery. */
+.doc mark.mm-mirror-sel {
+  background: var(--mm-selection, rgba(9, 105, 218, 0.18));
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+}
+
+/* SPEC44: placement cues. The caret's block wears the active-line tint;
+   the caret's word a darker shade — in the editor (CM decoration) and the
+   preview (synthetic mark). Stacking: find > selection > comments > word >
+   line — later marks nest inside and paint on top naturally. */
+.doc .mm-active-block {
+  background: var(--mm-active-line, rgba(9, 105, 218, 0.055));
+  border-radius: 4px;
+}
+.doc mark.mm-active-word {
+  background: var(--mm-active-word, rgba(9, 105, 218, 0.16));
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+}
+.editor-wrap .cm-content .mm-active-word {
+  background: var(--mm-active-word, rgba(9, 105, 218, 0.16));
+  border-radius: 2px;
+}
+
+/* SPEC26 §2: the front-matter metadata card — dim, theme-driven, app UI
+   above the rendered document (preview and split preview). */
+.fm-card {
+  position: relative;
+  width: 100%;
+  max-width: var(--mm-content-width, 46rem);
+  margin: 28px auto -20px;
+  padding: 10px 32px 10px;
+}
+.fm-card dl {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 8px;
+  background: var(--mm-bg-elevated, #f6f8fa);
+}
+.fm-card .fm-row {
+  display: flex;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--mm-fg-muted, #59636e);
+}
+.fm-card dt {
+  font-family: var(--mm-font-mono, monospace);
+  font-size: 11.5px;
+  min-width: 72px;
+  flex-shrink: 0;
+  opacity: 0.8;
+  padding-top: 1px;
+}
+.fm-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.fm-card .fm-raw {
+  font-family: var(--mm-font-mono, monospace);
+  font-size: 11.5px;
+  opacity: 0.7;
+}
+.fm-card .fm-close {
+  position: absolute;
+  top: 14px;
+  right: 38px;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  border-radius: 5px;
+  font-size: 14px;
+  color: var(--mm-fg-muted, #59636e);
+  opacity: 0.7;
+}
+.fm-card .fm-close:hover {
+  opacity: 1;
+  background: var(--mm-bg, #ffffff);
+}
+
+/* SPEC30 §1: the find bar — one bar, both modes, floats under the toolbar. */
+.find-bar {
+  position: fixed;
+  top: 50px;
+  right: 18px;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+.find-bar .find-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.find-bar input {
+  width: 210px;
+  font-size: 12.5px;
+  padding: 4px 8px;
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 6px;
+  background: var(--mm-bg, #ffffff);
+  color: var(--mm-fg, #1f2328);
+}
+.find-bar .find-count {
+  min-width: 74px;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--mm-fg-muted, #59636e);
+  font-variant-numeric: tabular-nums;
+}
+.find-bar button {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--mm-fg, #1f2328);
+  border: 1px solid transparent;
+}
+.find-bar button:hover:not(:disabled) {
+  background: var(--mm-bg, #ffffff);
+  border-color: var(--mm-border, #d1d9e0);
+}
+.find-bar button:disabled {
+  opacity: 0.4;
+}
+
+/* SPEC30 §1.3: preview match marks — never the comment styling. */
+.doc mark.mm-find {
+  background: var(--mm-find, rgba(255, 200, 60, 0.45));
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+}
+.doc mark.mm-find.mm-find-active {
+  background: var(--mm-find-active, rgba(255, 160, 20, 0.85));
+}
+
+/* SPEC34: the folder sidebar — left of the workspace, all modes. */
+.body-row {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  align-items: stretch;
+}
+.folder-panel {
+  position: relative;
+  width: var(--mm-folders, 240px);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  -webkit-user-select: none; /* WKWebView belt to the unprefixed suspenders */
+  user-select: none;
+}
+/* The workspace floats "in front": its cast shadow + a seam hairline live on
+   an overlay PINNED to the panel's right edge (not on per-row edges — rows
+   are max-content wide, so a long name's own edge sits off-screen). The
+   overlay paints above the tree AND the open-tab middle plane (z 1, last
+   child wins the tie) and under the active tab alone (z 2) — the one row
+   that truly breaks the seam. Themeable. */
+.folder-panel::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  pointer-events: none;
+  z-index: 1;
+  box-shadow:
+    inset -1px 0 0 var(--mm-border, #d1d9e0),
+    var(--mm-panel-shadow, inset -12px 0 14px -12px rgba(0, 0, 0, 0.28));
+}
+.folder-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px 6px 12px;
+  border-bottom: 1px solid var(--mm-border, #d1d9e0);
+}
+
+/* Only where an in-app toolbar actually exists (web/shim static mode) does
+   the panel need to clear it — desktop has a native menu bar and no overlay. */
+.theme-root.toolbar-static .folder-panel {
+  padding-top: 42px;
+}
+.folder-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mm-fg-muted, #59636e);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 7px;
+  border-radius: 5px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--mm-fg-muted, #59636e);
+}
+.folder-header button:hover:not(:disabled) {
+  background: var(--mm-bg, #ffffff);
+  color: var(--mm-fg, #1f2328);
+}
+.folder-header button:disabled {
+  opacity: 0.35;
+}
+/* The # filter: accent while the tree is markdown-only (the default);
+   grey like its neighbors when every file type is listed. */
+.folder-header button.filter-on {
+  color: var(--mm-accent, #0969da);
+}
+.folder-list {
+  flex: 1;
+  overflow: auto; /* horizontal too — deep trees outgrow the panel */
+  padding: 6px 0 20px;
+}
+.folder-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Natural width (min the panel) so long names scroll instead of clipping. */
+  width: max-content;
+  min-width: 100%;
+  text-align: left;
+  /* Depth indent arrives as --mm-depth from the component (inline style). */
+  padding: 3px 16px 3px var(--mm-depth, 10px);
+  font-size: 12.5px;
+  color: var(--mm-fg, #1f2328);
+  white-space: nowrap;
+}
+.folder-item:hover:not(:disabled) {
+  /* Stays on the panel's plane — a translucent darkening tint, so the
+     workspace's inset shadow keeps casting over it; the selected tab's
+     solid surface stays the only front-plane element. */
+  background: rgba(31, 35, 40, 0.08);
+  background: color-mix(in srgb, var(--mm-fg, #1f2328) 9%, transparent);
+}
+/* SPEC34 polish: the open file reads as a TAB on the front plane — the
+   workspace's own surface, rounded on the left, flush right, lifted by a
+   soft shadow that punches through the panel's inset shadow. */
+.folder-item.selected {
+  background: var(--mm-bg, #ffffff);
+  color: var(--mm-fg, #1f2328);
+  font-weight: 600;
+  border-radius: 7px 0 0 7px;
+  /* The pill floats clear of the window edge; the inner padding gives the
+     margin back so the label stays EXACTLY where its unselected siblings
+     sit — selection must not read as indentation. min-width restores the
+     margin so the pill stays flush right WITHOUT widening the scroll
+     range — otherwise the reveal's scrollIntoView chases the overflow and
+     scrolls the gap off-screen. */
+  margin-left: 10px;
+  min-width: calc(100% - 10px);
+  padding-left: max(0px, calc(var(--mm-depth, 10px) - 10px));
+  position: relative;
+  z-index: 2; /* the front plane — above the open-tab middle plane */
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.18),
+    0 5px 16px rgba(0, 0, 0, 0.14);
+}
+.folder-item.selected:hover:not(:disabled) {
+  background: var(--mm-bg, #ffffff); /* the tab doesn't flicker on hover */
+}
+/* SPEC36 §4.1 (amended by owner): three planes. The tree sits deepest; every
+   open file is a REAL tab on a middle plane — the same pill geometry as
+   .selected, a near-workspace surface one shade back, and its own soft
+   shadow — and the ACTIVE tab stacks above them all (z-index 2, stronger
+   shadow, solid workspace surface). Depth reads from surface + shadow
+   strength, not from the seam alone. */
+.folder-item.open {
+  background: #ededf0;
+  background: color-mix(in srgb, var(--mm-bg, #ffffff) 72%, var(--mm-bg-elevated, #f6f8fa));
+  border-radius: 7px 0 0 7px;
+  margin-left: 14px;
+  min-width: calc(100% - 14px);
+  padding-left: calc(var(--mm-depth, 10px) + 6px);
+  position: relative;
+  z-index: 1;
+  /* The tab's own lift only — the seam hairline + workspace cast shadow are
+     painted by the panel-edge overlay above, so rows wider than the panel
+     (long names) get them at the true boundary too. */
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.14),
+    0 2px 7px rgba(0, 0, 0, 0.09);
+}
+.folder-item.open:hover:not(:disabled) {
+  background: #f4f4f6;
+  background: color-mix(in srgb, var(--mm-bg, #ffffff) 86%, var(--mm-bg-elevated, #f6f8fa));
+}
+/* SPEC36 §3.4/§3.6: the trailing slot on open rows — the dirty ● swaps for
+   the ✕ on row hover. */
+.folder-tab-slot {
+  margin-left: auto;
+  padding-left: 10px;
+  min-width: 26px; /* reserve the ✕'s footprint — no width jitter on hover */
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.folder-dirty {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.folder-dirty::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mm-accent, #0969da);
+}
+.folder-tab-close {
+  display: none;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--mm-fg-muted, #59636e);
+}
+.folder-item:hover .folder-tab-close {
+  display: inline-flex;
+}
+.folder-item:hover .folder-dirty {
+  display: none; /* hover swaps ● for ✕ */
+}
+.folder-tab-close:hover {
+  background: rgba(31, 35, 40, 0.12);
+  background: color-mix(in srgb, var(--mm-fg, #1f2328) 12%, transparent);
+  color: var(--mm-fg, #1f2328);
+}
+/* SPEC36 §5.3: the only-open view with nothing open. */
+.folder-open-empty {
+  padding: 14px 16px;
+  font-size: 12.5px;
+  color: var(--mm-fg-muted, #59636e);
+}
+.folder-item-dim {
+  color: var(--mm-fg-muted, #59636e);
+  opacity: 0.55;
+  cursor: default;
+}
+.folder-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mm-fg-muted, #59636e);
+}
+.folder-glyph {
+  width: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mm-font-mono, monospace);
+  font-size: 11px;
+  color: var(--mm-accent, #0969da);
+}
+.folder-item-dim .folder-glyph {
+  color: inherit;
+}
+/* The tab mirrors the toolbar's unsaved-changes dot, scaled to the row. */
+.folder-item .folder-dirty-dot {
+  color: var(--mm-accent, #0969da);
+  margin-left: 4px;
+  font-size: 12px;
+  line-height: 1;
+}
+/* Dim rows are click-inert but not `disabled` (the SPEC35 context menu must
+   reach them) — keep their pre-SPEC35 no-hover look. */
+.folder-item.folder-item-dim:hover {
+  background: transparent;
+}
+/* SPEC35 §3.2: the sidebar context menu — theme-menu look, pointer-anchored. */
+.folder-menu {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 60;
+  min-width: 180px;
+}
+.folder-menu-sep {
+  height: 1px;
+  margin: 5px 2px;
+  background: var(--mm-border, #d1d9e0);
+}
+/* SPEC35 §5: the in-place rename input — sized like the row label it replaces. */
+.folder-rename {
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+.folder-rename input {
+  width: 100%;
+  min-width: 140px;
+  font-size: 12.5px;
+  padding: 1px 4px;
+  color: var(--mm-fg, #1f2328);
+  background: var(--mm-bg, #ffffff);
+  border: 1px solid var(--mm-accent, #0969da);
+  border-radius: 4px;
+}
+.folder-rename input.invalid {
+  border-color: var(--mm-danger, #cf222e);
+  outline: none;
+}
+.folder-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.folder-empty button {
+  padding: 7px 16px;
+  border: 1px dashed var(--mm-border, #d1d9e0);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--mm-fg-muted, #59636e);
+}
+.folder-divider {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 60;
+}
+
+/* ---------- SPEC43: Smart Edit ---------- */
+
+/* §3: the cursor-line button — a zero-size inline anchor at the line's
+   start; the 18px hash hangs left into .cm-content's 32px side padding, so
+   the line's text never shifts and the geometry is the same with line
+   numbers on or off, full-screen or split (SPEC6 swap alignment untouched). */
+.smart-edit-anchor {
+  display: inline-block;
+  position: relative;
+  width: 0;
+  height: 0;
+  vertical-align: top;
+}
+.smart-edit-btn {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 1.4em;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--mm-accent, #0969da);
+  cursor: pointer;
+}
+.smart-edit-btn:hover {
+  filter: brightness(1.2);
+}
+
+/* §4: the menu — theme-menu look, pointer/gutter-anchored like .folder-menu. */
+.smart-edit-menu {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 60;
+  min-width: 200px;
+  outline: none;
+}
+.smart-edit-item {
+  gap: 10px;
+}
+.smart-edit-item .smart-edit-label {
+  flex: 1;
+  white-space: nowrap;
+}
+.smart-edit-item .menu-hotkey {
+  color: var(--mm-fg-muted, #59636e);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.smart-edit-item .smart-edit-arrow {
+  color: var(--mm-fg-muted, #59636e);
+  font-size: 11px;
+}
+.smart-edit-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.smart-edit-item:disabled:hover {
+  background: transparent;
+}
+/* Keyboard-active row shares the hover look. */
+.theme-menu button.theme-option.smart-edit-item.active {
+  background: var(--mm-bg, #ffffff);
+}
+
+/* §4.2: flyout submenus beside the parent row; .flip opens leftward. */
+.smart-edit-subhost {
+  position: relative;
+}
+.smart-edit-flyout {
+  position: absolute;
+  left: calc(100% + 2px);
+  top: -6px;
+  right: auto;
+  z-index: 61;
+  min-width: 170px;
+}
+.smart-edit-flyout.flip {
+  left: auto;
+  right: calc(100% + 2px);
+}
+
+/* §5.3: the Smart Edit group heading in Settings → Hotkeys. */
+.modal .hotkey-group {
+  margin: 14px 0 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--mm-border, #d1d9e0);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mm-fg-muted, #59636e);
+}
+
+/* ---------- SPEC37: aligned table mode ---------- */
+
+/* §3.4: the grid wash on every table line while the mode is on. */
+.editor-wrap .cm-line.mm-table-mode-line {
+  background: var(--mm-code-bg, rgba(9, 105, 218, 0.05));
+}
+
+/* §4: the chip layer — overlay only, children opt back into pointer events. */
+.table-chip-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+.table-chip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--mm-border, #d1d9e0);
+  border-radius: 999px;
+  background: var(--mm-bg-elevated, #f6f8fa);
+  color: var(--mm-accent, #0969da);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+.table-chip:hover {
+  background: var(--mm-bg, #ffffff);
+}
+.table-chip.danger {
+  color: var(--mm-danger, #cf222e);
+}
+.table-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* SPEC39 §3.1: the table-mode pill — vim-badge family, top-right, clickable. */
+.table-badge {
+  position: absolute;
+  right: 14px;
+  top: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px 3px 10px;
+  border-radius: 999px;
+  font: 600 11px/1.4 var(--mm-font-mono, monospace);
+  letter-spacing: 0.08em;
+  color: var(--mm-bg, #ffffff);
+  background: var(--mm-accent, #0969da);
+  box-shadow: var(--mm-card-shadow, 0 1px 4px rgba(0, 0, 0, 0.2));
+  user-select: none;
+}
+.table-badge button {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font: inherit;
+  letter-spacing: 0.04em;
+  color: var(--mm-accent, #0969da);
+  background: var(--mm-bg, #ffffff);
+  cursor: pointer;
+}
+
+/* --- SPEC41: inline image widgets + resize chips --------------------------- */
+.mm-image-widget {
+  display: inline-block;
+  line-height: 0;
+  vertical-align: text-bottom;
+  cursor: default;
+}
+.mm-image-widget img {
+  display: inline-block;
+  max-width: 100%;
+}
+.mm-image-widget .mm-blocked-remote {
+  line-height: normal;
+}
+/* The image chips share the table-chip circle but carry an empty face.
+   SPEC42: cursors by direction across the full eight-chip ring. */
+.image-chip[data-testid='image-resize-l'],
+.image-chip[data-testid='image-resize-w'] {
+  cursor: ew-resize;
+}
+.image-chip[data-testid='image-resize-t'],
+.image-chip[data-testid='image-resize-h'] {
+  cursor: ns-resize;
+}
+.image-chip[data-testid='image-resize-tl'],
+.image-chip[data-testid='image-resize-wh'] {
+  cursor: nwse-resize;
+}
+.image-chip[data-testid='image-resize-tr'],
+.image-chip[data-testid='image-resize-bl'] {
+  cursor: nesw-resize;
+}

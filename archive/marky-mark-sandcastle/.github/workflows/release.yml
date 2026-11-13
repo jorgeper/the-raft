@@ -1,0 +1,192 @@
+# Marky Mark release pipeline (SPEC10 §2, split by SPEC33 §2): tag push (v*)
+# or manual dispatch → full validate gate + version check → macOS + web
+# builds → one draft GitHub Release (dmg, web html, SHA256SUMS.txt, updater
+# artifacts; darwin-only latest.json). Windows follows on demand via
+# release-windows.yml, which appends its installer to this release. Nothing
+# auto-publishes; a human smoke-tests the draft and flips it live
+# (see docs/RELEASING.md).
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to dry-run (e.g. 0.2.0-alpha.2); produces a draft prerelease'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Resolve release version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Version check (no silent drift)
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          fail=0
+          for f in package.json src-tauri/tauri.conf.json; do
+            got=$(node -p "JSON.parse(require('fs').readFileSync('$f','utf8')).version")
+            if [ "$got" != "$v" ]; then echo "::error::$f has $got, releasing $v"; fail=1; fi
+          done
+          got=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)
+          if [ "$got" != "$v" ]; then echo "::error::src-tauri/Cargo.toml has $got, releasing $v"; fail=1; fi
+          exit $fail
+      - run: npm ci
+      - name: Dependency audit — npm production tree (SPEC11 §6.7)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Dependency audit — cargo advisories (SPEC11 §6.7)
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit --file src-tauri/Cargo.lock
+      - run: npx playwright install chromium
+      - run: npm run validate
+
+  build-macos:
+    runs-on: macos-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      # One universal .dmg covers Intel and Apple Silicon (SPEC10 §2.2).
+      # SPEC19: signing env makes tauri emit the updater artifacts
+      # (.app.tar.gz + .sig) alongside the dmg.
+      - run: npm run tauri build -- --target universal-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-updater
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+          if-no-files-found: error
+
+  build-web:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:web
+      - name: Self-describing asset name
+        run: mv dist-web/index.html "dist-web/marky-mark-web-${{ needs.test.outputs.version }}.html"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-html
+          path: dist-web/marky-mark-web-*.html
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [test, build-macos, build-web]
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.test.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Asset guard (all present, none over 25 MB)
+        run: |
+          cd release-assets
+          ls -l
+          [ "$(ls *.dmg *.html 2>/dev/null | wc -l)" -eq 2 ] || { echo "::error::expected exactly dmg + html (windows arrives via release-windows.yml)"; exit 1; }
+          for f in *; do
+            size=$(wc -c < "$f")
+            if [ "$size" -gt 26214400 ]; then echo "::error::$f is $size bytes (> 25 MB)"; exit 1; fi
+          done
+      - name: Checksums
+        run: |
+          cd release-assets
+          # SPEC19: version the macOS updater bundle so per-release URLs are stable.
+          [ -e "Marky Mark.app.tar.gz" ] && mv "Marky Mark.app.tar.gz" "Marky Mark_${VERSION}_universal.app.tar.gz"
+          [ -e "Marky Mark.app.tar.gz.sig" ] && mv "Marky Mark.app.tar.gz.sig" "Marky Mark_${VERSION}_universal.app.tar.gz.sig"
+          # GitHub rewrites spaces in asset filenames to dots on upload; rename
+          # first so SHA256SUMS.txt matches what users actually download.
+          for f in *\ *; do [ -e "$f" ] && mv "$f" "${f// /.}"; done
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Updater manifest (SPEC19)
+        run: |
+          BASE="https://github.com/${{ github.repository }}/releases/download/v${VERSION}"
+          node scripts/updater-manifest.mjs \
+            --version "$VERSION" \
+            --notes "Marky Mark $VERSION — see the release page for details." \
+            --mac-url "$BASE/Marky.Mark_${VERSION}_universal.app.tar.gz" \
+            --mac-sig-file "release-assets/Marky.Mark_${VERSION}_universal.app.tar.gz.sig" \
+            --out release-assets/latest.json
+          cat release-assets/latest.json
+      - name: Release notes header
+        run: |
+          cat > NOTES.md <<'EOF'
+          **Alpha preview — unsigned builds, expect rough edges.**
+
+          | Asset | What it is |
+          | --- | --- |
+          | `Marky Mark_*_universal.dmg` | macOS app (Intel + Apple Silicon). Unsigned — Gatekeeper will refuse it at first: System Settings → Privacy & Security → **Open Anyway**, or `xattr -dr com.apple.quarantine "/Applications/Marky Mark.app"`. |
+          | `Marky Mark_*_x64-setup.exe` | Windows installer (x64), added when the Windows follow-up workflow runs. Unsigned: SmartScreen → More info → Run anyway. |
+          | `marky-mark-web-*.html` | The whole app in one file — download and open, or host anywhere static. |
+          | `SHA256SUMS.txt` | Checksums for the assets above. |
+          | `*.app.tar.gz` + `latest.json` | In-app updater artifacts (Check for Updates… consumes these — not for manual download). |
+          EOF
+      - name: Create draft release
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            gh release create "$GITHUB_REF_NAME" --draft --generate-notes \
+              --title "Marky Mark $VERSION" --notes-file NOTES.md \
+              release-assets/*.dmg release-assets/*.html release-assets/SHA256SUMS.txt \
+              release-assets/*.app.tar.gz release-assets/latest.json
+          else
+            gh release create "v$VERSION" --draft --prerelease --target "$GITHUB_SHA" \
+              --title "Marky Mark $VERSION" --notes-file NOTES.md \
+              release-assets/*.dmg release-assets/*.html release-assets/SHA256SUMS.txt \
+              release-assets/*.app.tar.gz release-assets/latest.json
+          fi

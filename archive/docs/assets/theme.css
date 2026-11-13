@@ -1,0 +1,68 @@
+/* jorgeper.github.io — shared theme
+   Warm paper palette + terracotta accent; serif display, system sans body.
+   Palette & type scale match the-agentic-loop.html.
+   Link from any page in this folder:  <link rel="stylesheet" href="assets/theme.css"> */
+
+:root{
+  --bg:#FAF9F5;
+  --bg-side:#F2F0E8;
+  --bg-card:#FFFDF8;
+  --ink:#29261C;
+  --ink-soft:#4E4A3D;
+  --muted:#8A8574;
+  --accent:#C6613F;
+  --accent-deep:#A44F32;
+  --accent-wash:#F6E7DF;
+  --line:#E5E1D3;
+  --code-bg:#F1EFE5;
+  --code-ink:#3C382C;
+  --serif:"Tiempos Headline",Charter,"Iowan Old Style",Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto} *{transition:none!important;animation:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 var(--sans);-webkit-font-smoothing:antialiased}
+
+/* centered content column */
+.wrap{max-width:46rem;margin:0 auto;padding:0 clamp(1.2rem,5vw,2.5rem) 5rem}
+
+/* typography */
+h1{font-family:var(--serif);font-weight:500;font-size:clamp(2.1rem,4.4vw,3.15rem);line-height:1.12;letter-spacing:-.015em;margin:.5rem 0 .9rem}
+h2{font-family:var(--serif);font-weight:500;font-size:1.75rem;letter-spacing:-.012em;line-height:1.2;margin:2.6rem 0 .9rem}
+h3{font-family:var(--serif);font-weight:600;font-size:1.22rem;margin:2rem 0 .55rem;letter-spacing:-.008em}
+p,ul,ol{color:var(--ink-soft)}
+li{margin:.28rem 0}
+strong{color:var(--ink)}
+a{color:var(--accent-deep);text-decoration-color:rgba(198,97,63,.4);text-underline-offset:2px}
+.eyebrow{font-size:.76rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.muted{color:var(--muted)}
+hr{border:none;border-top:1px solid var(--line);margin:2.6rem 0}
+
+/* code */
+code{font:.86em var(--mono);background:var(--code-bg);color:var(--code-ink);padding:.1em .38em;border-radius:5px}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:12px;padding:1rem 1.15rem;overflow-x:auto;margin:1rem 0 1.4rem}
+pre code{background:none;padding:0;font-size:.815rem;line-height:1.58;color:var(--code-ink)}
+
+/* tables */
+table{border-collapse:collapse;width:100%;margin:1rem 0 1.5rem;font-size:.875rem;background:var(--bg-card);border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px var(--line)}
+th{font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);text-align:left;padding:.6rem .85rem;background:var(--bg-side);border-bottom:1px solid var(--line)}
+td{padding:.6rem .85rem;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-soft)}
+tr:last-child td{border-bottom:none}
+
+/* callouts */
+.note,.warn,.win{border-radius:12px;padding:.95rem 1.15rem;margin:1.2rem 0;font-size:.92rem}
+.note{background:var(--accent-wash);border:1px solid #EAC9BA}
+.warn{background:#FBF3E0;border:1px solid #EBDCB2}
+.win{background:#EDF3EA;border:1px solid #CFE0C8}
+.note p,.warn p,.win p{margin:.2rem 0}
+
+/* index link list */
+.pages{list-style:none;padding:0;margin:1.8rem 0 0}
+.pages li{margin:0 0 .9rem}
+.pages a{display:block;background:var(--bg-card);border:1px solid var(--line);border-radius:14px;padding:1.05rem 1.2rem;text-decoration:none;color:var(--ink);transition:border-color .15s,box-shadow .15s}
+.pages a:hover{border-color:var(--accent);box-shadow:0 2px 14px rgba(41,38,28,.06)}
+.pages .t{font-family:var(--serif);font-size:1.12rem;font-weight:600;display:block;margin-bottom:.15rem}
+.pages .t::after{content:" \2192";color:var(--accent);font-family:var(--sans)}
+.pages .d{font-size:.9rem;color:var(--ink-soft)}
