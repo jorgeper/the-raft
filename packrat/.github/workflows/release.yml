@@ -1,0 +1,54 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            binary: dist/packrat
+            asset: packrat-macos-arm64
+          - os: windows-latest
+            binary: dist/packrat.exe
+            asset: packrat-windows.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Run tests
+        run: uv run pytest -q
+      - name: Build binary
+        run: uv run pyinstaller --onefile --name packrat packrat.py
+      - name: Rename asset
+        shell: bash
+        run: mv ${{ matrix.binary }} ${{ matrix.asset }}
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}
+          body: |
+            ## Downloads
+
+            - `packrat-macos-arm64` — macOS on Apple Silicon
+            - `packrat-windows.exe` — Windows x64
+
+            ## macOS: "Apple could not verify … is free of malware"
+
+            The binary isn't signed or notarized with Apple, so the first launch is blocked by Gatekeeper. Two ways past it:
+
+            **Option 1 — clear the quarantine flag (fastest):**
+
+            ```sh
+            cd ~/Downloads   # or wherever you saved it
+            chmod +x packrat-macos-arm64
+            xattr -d com.apple.quarantine packrat-macos-arm64
+            ```
+
+            **Option 2 — approve it in System Settings:** run it once and click **Done** (not "Move to Trash"), then open **System Settings → Privacy & Security**, scroll to *"packrat-macos-arm64" was blocked*, click **Open Anyway**, and run it again. Only needed once per downloaded copy.
