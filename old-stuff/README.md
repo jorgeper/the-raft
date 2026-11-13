@@ -1,4 +1,4 @@
-# graveyard
+# old-stuff
 
 A collection of old personal projects I've archived here. These are experiments, side projects, and one-off scripts that are no longer actively maintained but preserved for posterity.
 
