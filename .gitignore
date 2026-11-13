@@ -1,0 +1,15 @@
+# Secrets never get committed
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_*
+*.p12
+*.pfx
+*.tfvars
+credentials*
+secrets*
+
+# OS noise
+.DS_Store
