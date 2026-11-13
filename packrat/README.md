@@ -23,15 +23,43 @@ packrat --host 203.0.113.7 --port 31931 --user gpftp123 \
 | `--remote` | Source folder on the server |
 | `--dest` | Destination folder on this machine |
 | `--zip` | Zip the download into one archive, delete the temp files |
+| `--sync` | Mirror into `dest/<slug>/`, downloading only new or changed files (not with `--zip`) |
 | `--slug` | Name in the zip filename (default `backup`) |
 | `--include` | Only download files matching this glob (repeatable) |
 | `--exclude` | Skip files matching this glob (repeatable; wins over `--include`) |
+| `--list PATH` | Print a tree of folders under `PATH` instead of backing up |
+| `--depth N` | How many levels `--list` expands (default 2) |
+| `--files` | Include files, with sizes, in the `--list` tree |
 
 Without `--zip`, each run downloads into a dated subfolder
 (`dest/2026-08-10-1432/`). With `--zip`, the download is staged in a temp
 directory, zipped to `dest/2026-08-10-1432-<slug>.zip`, and the temp files are
 removed — the zip is the artifact. Reruns never overwrite anything: the
 timestamp in the name makes every run unique.
+
+### Sync mode
+
+`--sync` keeps a single up-to-date mirror in `dest/<slug>/` instead of a new
+dated folder per run. A file is downloaded only if the local copy is missing
+or its size or modified time differs from the server's; packrat stamps each
+downloaded file with the server's modified time so the next run can compare.
+Files removed on the server are left in the mirror. Sync mode, like every
+other mode, only reads from the server — nothing is ever written or deleted
+there.
+
+```sh
+packrat ... --remote /.config/unity3d/IronGate/Valheim --dest ~/backups --slug valheim --sync
+```
+
+### Exploring the server
+
+Not sure where the saves live? `--list` prints a folder tree so you can find
+the right `--remote` path. Folders past the depth cutoff show a `…`.
+
+```sh
+packrat --host 203.0.113.7 --port 31931 --user gpftp123 --list / --depth 3
+packrat ... --list /.config/unity3d/IronGate/Valheim --depth 2 --files
+```
 
 ### File filters
 

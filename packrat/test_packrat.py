@@ -98,6 +98,7 @@ def ftp_root(tmp_path):
     (root / "saves" / "world.db").write_bytes(b"x" * 1000)
     (root / "saves" / "world.fwl").write_bytes(b"y" * 50)
     (root / "saves" / "worlds" / "old.db").write_bytes(b"z" * 200)
+    (root / "saves" / "worlds" / "archive").mkdir()
     return root
 
 
@@ -180,6 +181,75 @@ class TestWalkRemote:
         snapshot = packrat.walk_remote(ftp_conn, "/saves")
         assert set(snapshot) == {"world.db", "world.fwl", "worlds/old.db"}
 
+    def test_missing_root_reports_mlsd_error_not_the_nlst_fallback_error(self, ftp_conn, monkeypatch):
+        # MLSD on a nonexistent path returns 550 (501 on pyftpdlib). Servers
+        # without NLST must not turn that into a misleading
+        # "502 'nlst' not implemented" (seen on a real G-Portal server).
+        from ftplib import error_perm
+
+        def no_nlst(*args, **kwargs):
+            raise error_perm("502 'nlst' not implemented")
+
+        monkeypatch.setattr(ftp_conn, "nlst", no_nlst)
+        with pytest.raises(error_perm, match="^(550|501) No such"):
+            packrat.walk_remote(ftp_conn, "/does-not-exist")
+
+
+def _shape(entries):
+    """Collapse a tree into a comparable {name: children-or-None} nest."""
+    return {
+        e.name + ("/" if e.kind == "dir" else ""): (None if e.children is None else _shape(e.children))
+        for e in entries
+    }
+
+
+class TestListTree:
+    def test_depth_one_lists_only_direct_folders(self, ftp_conn):
+        tree = packrat.list_tree(ftp_conn, "/saves", depth=1)
+        assert _shape(tree) == {"worlds/": None}
+
+    def test_depth_two_expands_one_level_and_marks_cutoff_as_unknown(self, ftp_conn):
+        tree = packrat.list_tree(ftp_conn, "/saves", depth=2)
+        assert _shape(tree) == {"worlds/": {"archive/": None}}
+
+    def test_depth_beyond_tree_yields_empty_children_not_unknown(self, ftp_conn):
+        tree = packrat.list_tree(ftp_conn, "/saves", depth=5)
+        assert _shape(tree) == {"worlds/": {"archive/": {}}}
+
+    def test_files_flag_adds_files_with_sizes_after_folders(self, ftp_conn):
+        tree = packrat.list_tree(ftp_conn, "/saves", depth=2, files=True)
+        assert [(e.name, e.kind, e.size) for e in tree] == [
+            ("worlds", "dir", None),
+            ("world.db", "file", 1000),
+            ("world.fwl", "file", 50),
+        ]
+        assert [(e.name, e.kind, e.size) for e in tree[0].children] == [
+            ("archive", "dir", None),
+            ("old.db", "file", 200),
+        ]
+
+    def test_folders_only_omits_files_at_every_level(self, ftp_conn):
+        tree = packrat.list_tree(ftp_conn, "/saves", depth=3)
+        assert all(e.kind == "dir" for e in tree)
+        assert all(e.kind == "dir" for e in tree[0].children)
+
+    def test_falls_back_to_nlst_when_mlsd_unsupported(self, ftp_conn, monkeypatch):
+        from ftplib import error_perm
+
+        def no_mlsd(*args, **kwargs):
+            raise error_perm("500 Unknown command.")
+
+        monkeypatch.setattr(ftp_conn, "mlsd", no_mlsd)
+        tree = packrat.list_tree(ftp_conn, "/saves", depth=2, files=True)
+        assert _shape(tree) == {"worlds/": {"archive/": None, "old.db": None}, "world.db": None, "world.fwl": None}
+        assert {e.name: e.size for e in tree if e.kind == "file"} == {"world.db": 1000, "world.fwl": 50}
+
+    def test_missing_path_raises_the_server_error(self, ftp_conn):
+        from ftplib import error_perm
+
+        with pytest.raises(error_perm, match="No such"):
+            packrat.list_tree(ftp_conn, "/nope", depth=1)
+
 
 class TestDownloadTree:
     def test_downloads_files_preserving_structure(self, ftp_conn, tmp_path):
@@ -249,6 +319,98 @@ class TestRunBackup:
         assert "world.db" in result.changed
 
 
+class TestNeedsDownload:
+    def test_missing_local_file(self, tmp_path):
+        assert packrat.needs_download(tmp_path / "nope", 10, "20260810143200") is True
+
+    def test_same_size_and_mtime_is_up_to_date(self, tmp_path):
+        local = tmp_path / "f"
+        local.write_bytes(b"x" * 10)
+        packrat.stamp_mtime(local, "20260810143200")
+        assert packrat.needs_download(local, 10, "20260810143200") is False
+
+    def test_size_mismatch(self, tmp_path):
+        local = tmp_path / "f"
+        local.write_bytes(b"x" * 10)
+        packrat.stamp_mtime(local, "20260810143200")
+        assert packrat.needs_download(local, 11, "20260810143200") is True
+
+    def test_mtime_mismatch(self, tmp_path):
+        local = tmp_path / "f"
+        local.write_bytes(b"x" * 10)
+        packrat.stamp_mtime(local, "20260810143200")
+        assert packrat.needs_download(local, 10, "20260810143201") is True
+
+    def test_unknown_server_mtime_falls_back_to_size(self, tmp_path):
+        local = tmp_path / "f"
+        local.write_bytes(b"x" * 10)
+        assert packrat.needs_download(local, 10, "?") is False
+        assert packrat.needs_download(local, 9, "?") is True
+
+
+class TestSyncMode:
+    def test_first_run_mirrors_into_slug_folder_with_server_mtimes(self, ftp_conn, tmp_path):
+        dest = tmp_path / "backups"
+        result = packrat.run_backup(ftp_conn, "/saves", dest, slug="valheim", sync=True)
+        mirror = dest / "valheim"
+        assert result.artifact == mirror
+        assert result.skipped == 0
+        assert result.files == 3
+        assert (mirror / "world.db").read_bytes() == b"x" * 1000
+        assert (mirror / "worlds" / "old.db").exists()
+        server_mtime = packrat.walk_remote(ftp_conn, "/saves")["world.db"][1]
+        assert packrat.needs_download(mirror / "world.db", 1000, server_mtime) is False
+
+    def test_second_run_transfers_nothing(self, ftp_conn, tmp_path):
+        dest = tmp_path / "backups"
+        packrat.run_backup(ftp_conn, "/saves", dest, slug="valheim", sync=True)
+        transferred = []
+        result = packrat.run_backup(
+            ftp_conn, "/saves", dest, slug="valheim", sync=True, on_bytes=transferred.append
+        )
+        assert result.skipped == 3
+        assert transferred == []
+
+    def test_only_changed_file_is_refetched(self, ftp_root, ftp_conn, tmp_path):
+        import os, time
+        dest = tmp_path / "backups"
+        packrat.run_backup(ftp_conn, "/saves", dest, slug="valheim", sync=True)
+        changed = ftp_root / "saves" / "world.fwl"
+        changed.write_bytes(b"Y" * 75)
+        os.utime(changed, (time.time() + 100, time.time() + 100))  # ensure a new mtime
+        transferred = []
+        result = packrat.run_backup(
+            ftp_conn, "/saves", dest, slug="valheim", sync=True, on_bytes=transferred.append
+        )
+        assert result.skipped == 2
+        assert sum(transferred) == 75
+        assert (dest / "valheim" / "world.fwl").read_bytes() == b"Y" * 75
+
+    def test_parser_accepts_sync(self):
+        args = packrat.build_parser().parse_args(["--sync"])
+        assert args.sync is True
+        assert packrat.build_parser().parse_args([]).sync is False
+
+    def test_main_rejects_sync_with_zip(self, capsys):
+        rc = packrat.main(
+            ["--host", "h", "--user", "u", "--password", "p", "--remote", "/r",
+             "--dest", "/tmp/x", "--sync", "--zip"]
+        )
+        assert rc == 2
+        assert "--sync" in capsys.readouterr().out
+
+    def test_main_reports_up_to_date_count(self, ftp_server, tmp_path, capsys):
+        host, port = ftp_server
+        base = ["--host", host, "--port", str(port), "--user", "tester", "--password", "secret",
+                "--remote", "/saves", "--dest", str(tmp_path), "--slug", "valheim", "--sync"]
+        assert packrat.main(base) == 0
+        capsys.readouterr()
+        assert packrat.main(base) == 0
+        out = capsys.readouterr().out
+        assert "3 up to date" in out
+        assert "Downloading" not in out  # no empty progress bar when nothing to fetch
+
+
 class TestCliParser:
     def test_parses_full_invocation(self):
         args = packrat.build_parser().parse_args(
@@ -268,6 +430,42 @@ class TestCliParser:
         assert args.port == 21
         assert args.zip is False
         assert args.slug == "backup"
+
+
+class TestListCli:
+    def test_parser_accepts_list_depth_and_files(self):
+        args = packrat.build_parser().parse_args(
+            ["--host", "h", "--user", "u", "--list", "/x", "--depth", "3", "--files"]
+        )
+        assert args.list == "/x"
+        assert args.depth == 3
+        assert args.files is True
+
+    def test_depth_defaults_to_two_and_files_off(self):
+        args = packrat.build_parser().parse_args(["--list", "/x"])
+        assert args.depth == 2
+        assert args.files is False
+
+    def test_list_mode_does_not_require_remote_or_dest(self, ftp_server, capsys):
+        host, port = ftp_server
+        rc = packrat.main(
+            ["--host", host, "--port", str(port), "--user", "tester", "--password", "secret",
+             "--list", "/saves", "--depth", "2", "--files"]
+        )
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Missing required" not in out
+        assert "worlds" in out and "archive" in out and "old.db" in out and "world.fwl" in out
+
+    def test_list_mode_marks_unexpanded_folders(self, ftp_server, capsys):
+        host, port = ftp_server
+        packrat.main(
+            ["--host", host, "--port", str(port), "--user", "tester", "--password", "secret",
+             "--list", "/saves", "--depth", "1"]
+        )
+        out = capsys.readouterr().out
+        assert "worlds" in out and "archive" not in out
+        assert "…" in out
 
 
 class TestFilterSnapshot:
