@@ -1,0 +1,43 @@
+{
+  "name": "3d-tests",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "assets": "node scripts/fetch-assets.mjs",
+    "film": "node scripts/film/record-video.mjs && node scripts/film/record-audio.mjs && node scripts/film/assemble-audio.mjs && bash scripts/film/master.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jorgeper/3d-tests.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jorgeper/3d-tests/issues"
+  },
+  "homepage": "https://github.com/jorgeper/3d-tests#readme",
+  "type": "module",
+  "dependencies": {
+    "@dgreenheck/ez-tree": "^1.1.0",
+    "lil-gui": "^0.21.0",
+    "simplex-noise": "^4.0.3",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "@types/three": "^0.187.0",
+    "meshoptimizer": "^1.3.0",
+    "playwright": "^1.57.0",
+    "sharp": "^0.35.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
