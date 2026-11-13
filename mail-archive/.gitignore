@@ -1,0 +1,18 @@
+# Build output
+target/
+node_modules/
+dist/
+
+# Never commit mail data or secrets
+*.mbox
+*.zip
+library/
+.env*
+!.env.example
+*.pem
+*.key
+
+# Brainstorm scratch
+.superpowers/
+.DS_Store
+app/src-tauri/gen/
