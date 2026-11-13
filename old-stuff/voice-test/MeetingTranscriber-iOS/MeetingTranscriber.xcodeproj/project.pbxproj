@@ -1,0 +1,447 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 63;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		099819A618D696444BE976BC /* TestConversationPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9EE1C4B5566CE496082B5C /* TestConversationPlayer.swift */; };
+		0BDB4922BAD5AD7AAAAD8012 /* SpeakerAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690D6FFD9AB128845B5C244A /* SpeakerAvatarView.swift */; };
+		156B47A7F0B9F2238609909F /* AzureTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD47B73AF3885F266094523 /* AzureTranscriber.swift */; };
+		282FE240D66978D6F95FE95C /* Pods_MeetingTranscriber.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 74CCFA2CB30B7AC0D17F9C60 /* Pods_MeetingTranscriber.framework */; };
+		38712806D7675FCEA5D21FFA /* SpeakerCloudView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F131E0992810AA3246FF8949 /* SpeakerCloudView.swift */; };
+		4FA90F8EB7A05F1F36DE54D6 /* ConversationsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2931001A7AC22EE704900C8 /* ConversationsStore.swift */; };
+		50C9EA886AAADA976C9DFFD1 /* SpeakerColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D9A293E81FF12AEB73D64C /* SpeakerColors.swift */; };
+		82AB10D502512C44DCE01D71 /* LeftBubbleShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531E8910B81940B57DD27E63 /* LeftBubbleShape.swift */; };
+		9256B25507713C6A37841609 /* MeetingTranscriberApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 194B57BBEE166AB0F0070E04 /* MeetingTranscriberApp.swift */; };
+		A096BB3FC1072E5EE04763B4 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6B7F5EA253F67AE8CF9FDEE /* ContentView.swift */; };
+		A54F5D814A60EE32FC3DA0DF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9765ACA67FDA1E30B5324E50 /* SettingsView.swift */; };
+		AADC7A09C35EE0AE8B35E54C /* ContentViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25A705C97C7D79708E53A062 /* ContentViewModel.swift */; };
+		CD21539671CCBFA892C15C3F /* ConversationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C433519F2A48D02B4CA4DAA /* ConversationModels.swift */; };
+		DBC5E9915CDCEE6B121ABB9E /* TranscriptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D50EFBC77271385F19EE325E /* TranscriptManager.swift */; };
+		DF9A1F890ACAD98A0C8349BC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7D0ECA3D40435D171F1175D3 /* Assets.xcassets */; };
+		FFE242E60600D24E83CED950 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30C7AD411980B6D026E0FCEB /* MainView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0C433519F2A48D02B4CA4DAA /* ConversationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationModels.swift; sourceTree = "<group>"; };
+		194B57BBEE166AB0F0070E04 /* MeetingTranscriberApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTranscriberApp.swift; sourceTree = "<group>"; };
+		25A705C97C7D79708E53A062 /* ContentViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentViewModel.swift; sourceTree = "<group>"; };
+		2BDE2A3CF6E092A436E175FD /* Pods-MeetingTranscriber.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MeetingTranscriber.debug.xcconfig"; path = "Target Support Files/Pods-MeetingTranscriber/Pods-MeetingTranscriber.debug.xcconfig"; sourceTree = "<group>"; };
+		30C7AD411980B6D026E0FCEB /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		3FD47B73AF3885F266094523 /* AzureTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AzureTranscriber.swift; sourceTree = "<group>"; };
+		531E8910B81940B57DD27E63 /* LeftBubbleShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeftBubbleShape.swift; sourceTree = "<group>"; };
+		690D6FFD9AB128845B5C244A /* SpeakerAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAvatarView.swift; sourceTree = "<group>"; };
+		71BCDFB737D74625D1EEE060 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		74CCFA2CB30B7AC0D17F9C60 /* Pods_MeetingTranscriber.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_MeetingTranscriber.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		7D0ECA3D40435D171F1175D3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		871793653FE4199B7382D81D /* MeetingTranscriber.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MeetingTranscriber.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9765ACA67FDA1E30B5324E50 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A1D9A293E81FF12AEB73D64C /* SpeakerColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerColors.swift; sourceTree = "<group>"; };
+		A2931001A7AC22EE704900C8 /* ConversationsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationsStore.swift; sourceTree = "<group>"; };
+		A6B7F5EA253F67AE8CF9FDEE /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		D50EFBC77271385F19EE325E /* TranscriptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptManager.swift; sourceTree = "<group>"; };
+		D69945306EBA0FA7EE131817 /* Pods-MeetingTranscriber.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MeetingTranscriber.release.xcconfig"; path = "Target Support Files/Pods-MeetingTranscriber/Pods-MeetingTranscriber.release.xcconfig"; sourceTree = "<group>"; };
+		DC9EE1C4B5566CE496082B5C /* TestConversationPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestConversationPlayer.swift; sourceTree = "<group>"; };
+		F131E0992810AA3246FF8949 /* SpeakerCloudView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerCloudView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3F20859ACF4EFFC43128B661 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				282FE240D66978D6F95FE95C /* Pods_MeetingTranscriber.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1576F42D2290CD58FC97A49F /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				0C433519F2A48D02B4CA4DAA /* ConversationModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		1D87A1CBD596F3924C866848 /* MeetingTranscriber */ = {
+			isa = PBXGroup;
+			children = (
+				7D0ECA3D40435D171F1175D3 /* Assets.xcassets */,
+				3FD47B73AF3885F266094523 /* AzureTranscriber.swift */,
+				A6B7F5EA253F67AE8CF9FDEE /* ContentView.swift */,
+				25A705C97C7D79708E53A062 /* ContentViewModel.swift */,
+				A2931001A7AC22EE704900C8 /* ConversationsStore.swift */,
+				71BCDFB737D74625D1EEE060 /* Info.plist */,
+				531E8910B81940B57DD27E63 /* LeftBubbleShape.swift */,
+				30C7AD411980B6D026E0FCEB /* MainView.swift */,
+				194B57BBEE166AB0F0070E04 /* MeetingTranscriberApp.swift */,
+				9765ACA67FDA1E30B5324E50 /* SettingsView.swift */,
+				690D6FFD9AB128845B5C244A /* SpeakerAvatarView.swift */,
+				F131E0992810AA3246FF8949 /* SpeakerCloudView.swift */,
+				A1D9A293E81FF12AEB73D64C /* SpeakerColors.swift */,
+				DC9EE1C4B5566CE496082B5C /* TestConversationPlayer.swift */,
+				D50EFBC77271385F19EE325E /* TranscriptManager.swift */,
+				1576F42D2290CD58FC97A49F /* Models */,
+			);
+			path = MeetingTranscriber;
+			sourceTree = "<group>";
+		};
+		3112B1A96A5CC0B6A34B4F5C = {
+			isa = PBXGroup;
+			children = (
+				1D87A1CBD596F3924C866848 /* MeetingTranscriber */,
+				5FAF01AA93CF755F59A2E941 /* Products */,
+				7BE24DAB4DC76CAE29204151 /* Pods */,
+				9B4CB2C7FD2041B80538B9E9 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		5FAF01AA93CF755F59A2E941 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				871793653FE4199B7382D81D /* MeetingTranscriber.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		7BE24DAB4DC76CAE29204151 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				2BDE2A3CF6E092A436E175FD /* Pods-MeetingTranscriber.debug.xcconfig */,
+				D69945306EBA0FA7EE131817 /* Pods-MeetingTranscriber.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
+		9B4CB2C7FD2041B80538B9E9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				74CCFA2CB30B7AC0D17F9C60 /* Pods_MeetingTranscriber.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		16E4487E6357E795F6317690 /* MeetingTranscriber */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 10EB40CDAE83828F247A92FF /* Build configuration list for PBXNativeTarget "MeetingTranscriber" */;
+			buildPhases = (
+				3DEDF946819F8816A461A86C /* [CP] Check Pods Manifest.lock */,
+				D3AC5A31E168334F07CD7837 /* Sources */,
+				9B118D78B6504B4EBE8ED4E1 /* Resources */,
+				3F20859ACF4EFFC43128B661 /* Frameworks */,
+				FE17B8D086C9EF4FDF43DFD5 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MeetingTranscriber;
+			productName = MeetingTranscriber;
+			productReference = 871793653FE4199B7382D81D /* MeetingTranscriber.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BDDF3CCDB22A759D0534A39A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					16E4487E6357E795F6317690 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 5644C9CAA689E2F50718E41D /* Build configuration list for PBXProject "MeetingTranscriber" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 3112B1A96A5CC0B6A34B4F5C;
+			minimizedProjectReferenceProxies = 1;
+			productRefGroup = 5FAF01AA93CF755F59A2E941 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				16E4487E6357E795F6317690 /* MeetingTranscriber */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9B118D78B6504B4EBE8ED4E1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DF9A1F890ACAD98A0C8349BC /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		3DEDF946819F8816A461A86C /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-MeetingTranscriber-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		FE17B8D086C9EF4FDF43DFD5 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-MeetingTranscriber/Pods-MeetingTranscriber-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-MeetingTranscriber/Pods-MeetingTranscriber-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-MeetingTranscriber/Pods-MeetingTranscriber-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D3AC5A31E168334F07CD7837 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				156B47A7F0B9F2238609909F /* AzureTranscriber.swift in Sources */,
+				A096BB3FC1072E5EE04763B4 /* ContentView.swift in Sources */,
+				AADC7A09C35EE0AE8B35E54C /* ContentViewModel.swift in Sources */,
+				CD21539671CCBFA892C15C3F /* ConversationModels.swift in Sources */,
+				4FA90F8EB7A05F1F36DE54D6 /* ConversationsStore.swift in Sources */,
+				82AB10D502512C44DCE01D71 /* LeftBubbleShape.swift in Sources */,
+				FFE242E60600D24E83CED950 /* MainView.swift in Sources */,
+				9256B25507713C6A37841609 /* MeetingTranscriberApp.swift in Sources */,
+				A54F5D814A60EE32FC3DA0DF /* SettingsView.swift in Sources */,
+				0BDB4922BAD5AD7AAAAD8012 /* SpeakerAvatarView.swift in Sources */,
+				38712806D7675FCEA5D21FFA /* SpeakerCloudView.swift in Sources */,
+				50C9EA886AAADA976C9DFFD1 /* SpeakerColors.swift in Sources */,
+				099819A618D696444BE976BC /* TestConversationPlayer.swift in Sources */,
+				DBC5E9915CDCEE6B121ABB9E /* TranscriptManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1A21D51D25C6BFE8601B7493 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = D69945306EBA0FA7EE131817 /* Pods-MeetingTranscriber.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JAJTBLCY3M;
+				INFOPLIST_FILE = MeetingTranscriber/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B2B775A0B9336AA8A77A9C41 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2BDE2A3CF6E092A436E175FD /* Pods-MeetingTranscriber.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JAJTBLCY3M;
+				INFOPLIST_FILE = MeetingTranscriber/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C032968F3C0BA77D8BE297BF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.MeetingTranscriber;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		ED34D9841AF90D35F824D2BF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.MeetingTranscriber;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		10EB40CDAE83828F247A92FF /* Build configuration list for PBXNativeTarget "MeetingTranscriber" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B2B775A0B9336AA8A77A9C41 /* Debug */,
+				1A21D51D25C6BFE8601B7493 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		5644C9CAA689E2F50718E41D /* Build configuration list for PBXProject "MeetingTranscriber" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C032968F3C0BA77D8BE297BF /* Debug */,
+				ED34D9841AF90D35F824D2BF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = BDDF3CCDB22A759D0534A39A /* Project object */;
+}

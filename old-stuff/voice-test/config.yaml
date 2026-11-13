@@ -1,0 +1,44 @@
+# Voice configuration for different speakers
+# Available voices: https://learn.microsoft.com/en-us/azure/cognitive-services/speech-service/language-support?tabs=tts
+
+speakers:
+  Alice:
+    voice: en-US-JennyNeural
+    rate: 1.0
+    pitch: 0
+  Bob:
+    voice: en-US-GuyNeural
+    rate: 0.95
+    pitch: -2
+  Charlie:
+    voice: en-GB-RyanNeural
+    rate: 1.0
+    pitch: 0
+  Diana:
+    voice: en-US-AriaNeural
+    rate: 1.05
+    pitch: 2
+  Emma:
+    voice: en-AU-NatashaNeural
+    rate: 1.0
+    pitch: 0
+  Frank:
+    voice: en-US-DavisNeural
+    rate: 0.9
+    pitch: -3
+  Grace:
+    voice: en-GB-SoniaNeural
+    rate: 1.1
+    pitch: 1
+  Henry:
+    voice: en-US-BrandonNeural
+    rate: 0.95
+    pitch: -1
+  Iris:
+    voice: en-US-AmberNeural
+    rate: 1.0
+    pitch: 0
+  Jack:
+    voice: en-AU-WilliamNeural
+    rate: 1.0
+    pitch: -2

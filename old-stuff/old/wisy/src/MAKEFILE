@@ -1,0 +1,51 @@
+#---------------------
+# scr driver makefile
+#---------------------
+
+objects = clist.o cregion.o crect.o cbuffer.o cscr.o cscr2.o general.o
+headers = clist.h cregion.h crect.h cbuffer.h cscr.h cscr2.o general.h cmsg.h font.h
+wisyobj = window.o button.o
+wisyhdr = window.h button.h
+hdir = .
+
+scr: $(objects) $(headers) $(wisyobj) $(wisyhdr) main.o
+	gcc $(objects) $(wisyobj) main.o -o scr -lgrx -I$(hdir)
+
+cregion.o: cregion.cc cregion.h
+	gcc -c cregion.cc -o cregion.o -I$(hdir)
+
+crect.o: crect.cc #crect.h
+	gcc -c crect.cc -o crect.o -I$(hdir)
+
+cbuffer.o: cbuffer.cc cbuffer.h
+	gcc -c cbuffer.cc -o cbuffer.o -I$(hdir)
+
+cscr.o: cscr.cc #cscr.h
+	gcc -c cscr.cc -o cscr.o -I$(hdir)
+
+cscr2.o: cscr2.cc cscr.h
+	gcc -c cscr2.cc -o cscr2.o -I$(hdir)
+
+general.o: general.cc general.h
+	gcc -c general.cc -o general.o -I$(hdir)
+
+main.o: main.cc 
+	gcc -c main.cc -o main.o -I$(hdir)
+
+clist.o: clist.cc clist.h
+	gcc -c clist.cc -o clist.o -I$(hdir)
+
+#--------------
+# wisy objects
+#--------------
+
+window.o: window.cc window.h
+	gcc -c window.cc -o window.o -I$(hdir)
+
+button.o: button.cc button.h
+	gcc -c button.cc -o button.o -I$(hdir)
+
+clean:
+	del *.o
+	del *.bak
+	del scr.
